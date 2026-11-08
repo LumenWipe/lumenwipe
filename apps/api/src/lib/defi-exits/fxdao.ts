@@ -26,7 +26,9 @@ import { contractAddressOf, contractDataEntry, instanceOfEntry } from "@/lib/ste
 /**
  * The FxDAO exit (architecture.md §9.7): a CDP vault locks XLM collateral and mints one of three
  * stablecoins (USDx/EURx/GBPx, one vault per denomination). Closing it means fully repaying the
- * stablecoin debt through `pay_debt`.
+ * stablecoin debt through `pay_debt`. A denomination is the symbol the vault contract keys its
+ * storage by (`USD` on mainnet, `usd` on the testnet reference deployment), not the stablecoin's
+ * ticker.
  *
  * Ground truth for this adapter came from three cross-checked sources, because the vault contract
  * this codebase's registry already tracks is not independently readable right now: the testnet
@@ -73,6 +75,13 @@ import { contractAddressOf, contractDataEntry, instanceOfEntry } from "@/lib/ste
  * never unsafely.
  */
 
+/**
+ * The one registered vault code version `pay_debt` was verified on (the testnet reference build of
+ * FxDAO-SC v0.6.0). Any other version is refused before it is read: the mainnet vault is
+ * registered as `wind-down`, code whose only entry points are `evict` and `upgrade`.
+ */
+export const FXDAO_REPAY_VERSION = "v1";
+
 export interface FxdaoVaultKeyLike {
   account: string;
   denomination: string;
@@ -117,6 +126,8 @@ export type FxdaoLive =
       ratio: bigint;
     }
   | { status: "not_vault"; kind: string }
+  /** The vault runs a registered code version other than the one `pay_debt` was verified on. */
+  | { status: "no_repay"; version: string }
   /** The account holds no open vault for this denomination - already closed, or never existed. */
   | { status: "not_found" }
   | { status: "unreadable" }
@@ -302,6 +313,32 @@ export function fxdaoCurrencyContract(
   }
 }
 
+/**
+ * The denominations a vault instance has registered, read from its own storage: the symbol in
+ * every `Currency(denomination)` and `VaultsInfo(denomination)` key, sorted, never a throw. These
+ * symbols are what `Vault(account, denomination)` is keyed by, and they differ per deployment (the
+ * mainnet vault stores `USD`/`EUR`/`GBP`, the testnet reference deployment `usd`), so they are
+ * never pinned. Only a symbol counts: a string key would encode to a different ledger key.
+ */
+export function fxdaoDenominations(instanceEntry: xdr.LedgerEntryData): string[] {
+  const out = new Set<string>();
+  try {
+    for (const entry of instanceOfEntry(instanceEntry).storage ?? []) {
+      const key = entry.key;
+      if (key.type !== "scvVec") continue;
+      const parts = key.vec ?? [];
+      const tag = asSymbol(parts[0]);
+      const denomination = asSymbol(parts[1]);
+      if ((tag === "Currency" || tag === "VaultsInfo") && denomination !== null) {
+        out.add(denomination);
+      }
+    }
+  } catch {
+    return [];
+  }
+  return [...out].sort();
+}
+
 async function readEntries(
   rpc: ExitRpc,
   keys: xdr.LedgerKey[]
@@ -421,6 +458,10 @@ export function fxdaoExitAdapter(
 
     async readLive(position, code, ctx, rpc): Promise<FxdaoLive> {
       if (code.kind !== "vault") return { status: "not_vault", kind: code.kind };
+      // Checked before any read: a version this adapter was not verified against may lay out its
+      // storage differently, and the mainnet wind-down code has no `pay_debt` at all.
+      if (code.version !== FXDAO_REPAY_VERSION)
+        return { status: "no_repay", version: code.version };
 
       try {
         const vault = position.contractAddress;
@@ -485,6 +526,14 @@ export function fxdaoExitAdapter(
 
     plan(position, live, _code, ctx): ExitPlan {
       const vaultLabel = shortAddress(position.contractAddress);
+      if (live.status === "no_repay") {
+        return manualReview(
+          "fxdao_vault_no_repay",
+          `The FxDAO vault ${vaultLabel} runs code (${live.version}) that has no repay entry ` +
+            "point, so its debt cannot be repaid and no exit was built. Manage this vault through " +
+            "FxDAO directly, or choose to leave it behind."
+        );
+      }
       if (live.status === "not_vault") {
         return manualReview(
           "fxdao_contract_not_vault",

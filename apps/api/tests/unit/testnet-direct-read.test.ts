@@ -300,45 +300,120 @@ test("a zero-balance reserve index produces no position, not a zero-amount entry
   expect(result.unrecognizedPositions).toEqual([]);
 });
 
-test("decodes an FxDAO vault only for the denomination the account actually holds", async () => {
-  const entries = [
-    registryEntry({
-      address: FXDAO_VAULTS,
-      protocol: "fxdao",
-      kind: "vault",
-      wasmHash: FXDAO_WASM_HASH,
-    }),
-  ];
+/** The registered testnet vault and the instance storage it really carries: one denomination,
+ *  the lowercase symbol `usd`, as read from the live instance on 2026-11-08. */
+const FXDAO_TESTNET_VAULT = "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N";
 
-  const usdxKey = variantVal("Vault", xdr.ScVal.scvVec([addressVal(USER), symbolVal("USDx")]));
-  const vaultValue = structVal({
-    total_collateral: i128Val(1000_0000000n),
-    total_debt: i128Val(400_0000000n),
-  });
+const fxdaoEntries = (address = FXDAO_VAULTS) => [
+  registryEntry({ address, protocol: "fxdao", kind: "vault", wasmHash: FXDAO_WASM_HASH }),
+];
 
-  const rpc = mockRpc([
-    contractInstanceEntry(FXDAO_VAULTS, FXDAO_WASM_HASH),
-    contractDataEntry(FXDAO_VAULTS, usdxKey, vaultValue),
-    // EURx/GBPx keys are queried too but have no matching entry - mockRpc simply omits them.
-  ]);
+const fxdaoVaultKey = (denomination: string) =>
+  variantVal("Vault", xdr.ScVal.scvVec([addressVal(USER), symbolVal(denomination)]));
 
+/** `Currency(denomination)` and `VaultsInfo(denomination)`, the two instance keys a denomination
+ *  the vault has registered carries. */
+const fxdaoDenominationStorage = (
+  denomination: xdr.ScVal,
+  stable: xdr.ScVal = new Address(FXDAO_STABLE).toScVal()
+): Array<[xdr.ScVal, xdr.ScVal]> => [
+  [
+    xdr.ScVal.scvVec([symbolVal("Currency"), denomination]),
+    structVal({ active: xdr.ScVal.scvBool(true), contract: stable, denomination }),
+  ],
+  [
+    xdr.ScVal.scvVec([symbolVal("VaultsInfo"), denomination]),
+    structVal({ denomination, lowest_key: xdr.ScVal.scvVec([symbolVal("None")]) }),
+  ],
+];
+
+const fxdaoVault = (address: string, denomination: string, collateral: bigint, debt: bigint) =>
+  contractDataEntry(
+    address,
+    fxdaoVaultKey(denomination),
+    structVal({ total_collateral: i128Val(collateral), total_debt: i128Val(debt) })
+  );
+
+test("FxDAO: the vault is probed under the denomination symbol its instance stores, the real testnet key shape", async () => {
+  const instance = contractInstanceEntry(
+    FXDAO_TESTNET_VAULT,
+    FXDAO_WASM_HASH,
+    fxdaoDenominationStorage(symbolVal("usd"))
+  );
   const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
-    rpc,
-    registryEntries: entries,
+    rpc: mockRpc([instance, fxdaoVault(FXDAO_TESTNET_VAULT, "usd", 1000_0000000n, 400_0000000n)]),
+    registryEntries: fxdaoEntries(FXDAO_TESTNET_VAULT),
   });
   expect(result.unrecognizedPositions).toEqual([]);
   expect(result.positions).toEqual([
     {
       protocol: "fxdao",
       positionType: "cdp",
-      contractAddress: FXDAO_VAULTS,
+      contractAddress: FXDAO_TESTNET_VAULT,
       wasmHash: FXDAO_WASM_HASH,
-      denomination: "USDx",
+      denomination: "usd",
       collateralAmount: "10000000000",
       debtAmount: "4000000000",
+      debtToken: FXDAO_STABLE,
       usdValue: null,
     },
   ]);
+
+  // A vault under the stablecoin's ticker is not one the contract can hold: it is never probed.
+  const underTicker = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([instance, fxdaoVault(FXDAO_TESTNET_VAULT, "USDx", 10n, 4n)]),
+    registryEntries: fxdaoEntries(FXDAO_TESTNET_VAULT),
+  });
+  expect(underTicker.positions).toEqual([]);
+});
+
+test("FxDAO: every denomination the instance registers is probed, and only the held one is reported", async () => {
+  // The mainnet vault's shape: three uppercase denominations.
+  const storage = ["USD", "EUR", "GBP"].flatMap((d) => fxdaoDenominationStorage(symbolVal(d)));
+  const queried: string[] = [];
+  const ledger = mockRpc([
+    contractInstanceEntry(FXDAO_VAULTS, FXDAO_WASM_HASH, storage),
+    fxdaoVault(FXDAO_VAULTS, "EUR", 10n, 4n),
+  ]);
+  const rpc = {
+    getLedgerEntries: async (...keys: xdr.LedgerKey[]) => {
+      for (const key of keys) queried.push(key.toXdr("base64"));
+      return ledger.getLedgerEntries(...keys);
+    },
+  } as unknown as typeof ledger;
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc,
+    registryEntries: fxdaoEntries(),
+  });
+  expect(result.positions.map((p) => ("denomination" in p ? p.denomination : null))).toEqual([
+    "EUR",
+  ]);
+  for (const denomination of ["USD", "EUR", "GBP"]) {
+    const key = xdr.LedgerKey.contractData(
+      new xdr.LedgerKeyContractData({
+        contract: new Address(FXDAO_VAULTS).toScAddress(),
+        key: fxdaoVaultKey(denomination),
+        durability: xdr.ContractDataDurability.persistent,
+      })
+    );
+    expect(queried).toContain(key.toXdr("base64"));
+  }
+});
+
+test("FxDAO: a denomination stored as a string, not a symbol, is not probed", async () => {
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([
+      contractInstanceEntry(
+        FXDAO_VAULTS,
+        FXDAO_WASM_HASH,
+        fxdaoDenominationStorage(xdr.ScVal.scvString("usd"))
+      ),
+      fxdaoVault(FXDAO_VAULTS, "usd", 10n, 4n),
+    ]),
+    registryEntries: fxdaoEntries(),
+  });
+  expect(result.positions).toEqual([]);
+  expect(result.unrecognizedPositions).toEqual([]);
 });
 
 const phoenixRegistry = () => [
@@ -407,42 +482,43 @@ test("Phoenix: a zero balance, a missing CONFIG, or a share token that is not a 
   }
 });
 
+test("FxDAO: a denomination named only by its VaultsInfo is still probed, and reported without a debt token", async () => {
+  const [, vaultsInfo] = fxdaoDenominationStorage(symbolVal("usd"));
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([
+      contractInstanceEntry(FXDAO_VAULTS, FXDAO_WASM_HASH, [vaultsInfo!]),
+      fxdaoVault(FXDAO_VAULTS, "usd", 10n, 4n),
+    ]),
+    registryEntries: fxdaoEntries(),
+  });
+  expect(result.positions).toHaveLength(1);
+  expect(result.positions[0]).toMatchObject({ denomination: "usd", debtAmount: "4" });
+  expect(result.positions[0]).not.toHaveProperty("debtToken");
+});
+
 test("FxDAO: a vault position carries the stablecoin its vault registers for the denomination", async () => {
-  const entries = [
-    registryEntry({
-      address: FXDAO_VAULTS,
-      protocol: "fxdao",
-      kind: "vault",
-      wasmHash: FXDAO_WASM_HASH,
-    }),
-  ];
-  const usdxKey = variantVal("Vault", xdr.ScVal.scvVec([addressVal(USER), symbolVal("USDx")]));
-  const currency = (contract: xdr.ScVal): Array<[xdr.ScVal, xdr.ScVal]> => [
-    [
-      xdr.ScVal.scvVec([symbolVal("Currency"), symbolVal("USDx")]),
-      structVal({ active: xdr.ScVal.scvBool(true), contract, denomination: symbolVal("USDx") }),
-    ],
-  ];
-  const vault = contractDataEntry(
-    FXDAO_VAULTS,
-    usdxKey,
-    structVal({ total_collateral: i128Val(10n), total_debt: i128Val(4n) })
-  );
-  const read = async (storage: Array<[xdr.ScVal, xdr.ScVal]>) =>
+  const read = async (stable: xdr.ScVal) =>
     (
       await detectDefiPositionsViaDirectRead(USER, "testnet", {
-        rpc: mockRpc([contractInstanceEntry(FXDAO_VAULTS, FXDAO_WASM_HASH, storage), vault]),
-        registryEntries: entries,
+        rpc: mockRpc([
+          contractInstanceEntry(
+            FXDAO_VAULTS,
+            FXDAO_WASM_HASH,
+            fxdaoDenominationStorage(symbolVal("usd"), stable)
+          ),
+          fxdaoVault(FXDAO_VAULTS, "usd", 10n, 4n),
+        ]),
+        registryEntries: fxdaoEntries(),
       })
     ).positions;
 
-  expect(await read(currency(new Address(FXDAO_STABLE).toScVal()))).toEqual([
+  expect(await read(new Address(FXDAO_STABLE).toScVal())).toEqual([
     {
       protocol: "fxdao",
       positionType: "cdp",
       contractAddress: FXDAO_VAULTS,
       wasmHash: FXDAO_WASM_HASH,
-      denomination: "USDx",
+      denomination: "usd",
       collateralAmount: "10",
       debtAmount: "4",
       debtToken: FXDAO_STABLE,
@@ -450,7 +526,7 @@ test("FxDAO: a vault position carries the stablecoin its vault registers for the
     },
   ]);
   // An account is never the stablecoin: the position is still reported, without a debt token.
-  const [withoutToken] = await read(currency(addressVal(USER)));
+  const [withoutToken] = await read(addressVal(USER));
   expect(withoutToken).toBeDefined();
   expect(withoutToken).not.toHaveProperty("debtToken");
 });
@@ -1083,7 +1159,11 @@ test("every registered contract is verified in one ledger read, not one round tr
   const { rpc, sizes } = tracingRpc(
     mockRpc([
       contractInstanceEntry(BLEND_POOL, BLEND_WASM_HASH),
-      contractInstanceEntry(FXDAO_VAULTS, FXDAO_WASM_HASH),
+      contractInstanceEntry(
+        FXDAO_VAULTS,
+        FXDAO_WASM_HASH,
+        fxdaoDenominationStorage(symbolVal("usd"))
+      ),
       contractInstanceEntry(PHOENIX_POOL, PHOENIX_WASM_HASH),
     ])
   );

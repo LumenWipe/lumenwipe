@@ -87,6 +87,7 @@ const ADAPTER_UNEXITABLE_CODES: ReadonlySet<string> = new Set([
   "blend_contract_not_pool",
   "blend_pool_version_unsupported",
   "fxdao_contract_not_vault",
+  "fxdao_vault_no_repay",
   "phoenix_contract_not_pool",
   "phoenix_position_too_small",
   "soroswap_contract_not_pair",

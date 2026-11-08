@@ -53,7 +53,7 @@ import type {
   UnrecognizedDefiPosition,
 } from "@lumenwipe/types";
 import { contractDataEntry, instanceOfEntry } from "@/lib/stellar/contract-data";
-import { fxdaoCurrencyContract } from "@/lib/defi-exits/fxdao";
+import { fxdaoCurrencyContract, fxdaoDenominations } from "@/lib/defi-exits/fxdao";
 import { phoenixConfigKey, phoenixShareToken } from "@/lib/defi-exits/phoenix";
 
 type RpcServer = ReturnType<typeof getRpcServer>;
@@ -148,8 +148,6 @@ export interface DirectReadDeps {
   registryEntries?: ContractRegistryEntry[];
 }
 
-const FXDAO_DENOMINATIONS = ["USDx", "EURx", "GBPx"] as const;
-
 // ─── ScVal / ledger-key construction ─────────────────────────────────────────
 
 /** Exported for tests, which independently re-derive expected ledger keys with these same
@@ -213,8 +211,8 @@ function asBigInt(value: unknown): bigint | null {
 /**
  * Confirms a registry entry's contract still exists on-chain with the recorded wasmHash before
  * anything is decoded against it. Returns false (and pushes an `unrecognizedPositions` entry) on
- * either "contract not found" (a registry-integrity gap, not "this account has no position" -
- * exercised for real by the FxDAO entry today) or a wasmHash mismatch (halt-on-unknown, same
+ * either "contract not found" (a registry-integrity gap, not "this account has no position") or
+ * a wasmHash mismatch (halt-on-unknown, same
  * invariant the exit adapters hold to).
  *
  * `liveWasmHash` is what the ledger returned for the entry's instance - null when the contract
@@ -228,8 +226,8 @@ function verifyEntry(
   unrecognized: UnrecognizedDefiPosition[]
 ): boolean {
   if (liveWasmHash === null) {
-    // The registry already records this entry as absent from the network (verifiedLive: false,
-    // FxDAO's documented-but-undeployed vault today). Still absent is the registry's fact, not
+    // The registry already records this entry as absent from the network (verifiedLive: false:
+    // documented by the protocol but not deployed). Still absent is the registry's fact, not
     // this account's, and flagging it would block every account on the network - so it is
     // skipped only while the network agrees with the registry. The moment it resolves, the
     // branch below reports it, because a contract the registry has no hash for cannot be read.
@@ -898,36 +896,39 @@ async function readPhoenixLpShares(
 
 // ─── FxDAO vault ───────────────────────────────────────────────────────────────
 
+/**
+ * The vault's own instance (already read once to verify its code) names the denominations it
+ * keys vaults by and, per denomination, `Currency(denomination)`: the stablecoin a repay burns.
+ */
 async function readFxdaoVaults(
   rpc: LedgerReader,
   entry: ContractRegistryEntry,
+  instance: xdr.LedgerEntryData,
   address: string
 ): Promise<DefiPosition[]> {
-  const keys = FXDAO_DENOMINATIONS.map((denom) =>
+  const denominations = fxdaoDenominations(instance);
+  const keys = denominations.map((denom) =>
     contractDataKey(
       entry.address,
       variantVal("Vault", xdr.ScVal.scvVec([addressVal(address), symbolVal(denom)]))
     )
   );
-  // The vault's instance carries `Currency(denomination)`, the stablecoin a repay burns.
-  const vaultInstanceKey = instanceKey(entry.address);
-  const results = await batchRead(rpc, [...keys, vaultInstanceKey]);
-  const instance = results.get(vaultInstanceKey.toXdr("base64"));
+  const results = await batchRead(rpc, keys);
 
   const positions: DefiPosition[] = [];
-  for (let i = 0; i < FXDAO_DENOMINATIONS.length; i++) {
+  denominations.forEach((denomination, i) => {
     const native = contractDataScVal(results.get(keys[i]!.toXdr("base64")));
-    if (!isRecord(native)) continue;
+    if (!isRecord(native)) return;
     const collateral = native.total_collateral;
     const debt = native.total_debt;
-    if (typeof collateral !== "bigint" || typeof debt !== "bigint") continue;
-    const debtToken = instance ? fxdaoCurrencyContract(instance, FXDAO_DENOMINATIONS[i]!) : null;
+    if (typeof collateral !== "bigint" || typeof debt !== "bigint") return;
+    const debtToken = fxdaoCurrencyContract(instance, denomination);
     const position: FxdaoCdpPosition = {
       protocol: "fxdao",
       positionType: "cdp",
       contractAddress: entry.address,
       wasmHash: entry.wasmHash ?? undefined,
-      denomination: FXDAO_DENOMINATIONS[i]!,
+      denomination,
       collateralAmount: collateral.toString(),
       debtAmount: debt.toString(),
       // Omitted when the vault does not name it: the verifier then refuses the repay, safely.
@@ -935,7 +936,7 @@ async function readFxdaoVaults(
       usdValue: null,
     };
     positions.push(position);
-  }
+  });
   return positions;
 }
 
@@ -950,13 +951,15 @@ interface EntryOutcome {
 async function readEntry(
   rpc: LedgerReader,
   entry: ContractRegistryEntry,
-  liveWasmHash: string | null,
+  instance: xdr.LedgerEntryData | undefined,
   entries: ContractRegistryEntry[],
   address: string
 ): Promise<EntryOutcome> {
   const positions: DefiPosition[] = [];
   const unrecognized: UnrecognizedDefiPosition[] = [];
-  if (!verifyEntry(entry, liveWasmHash, unrecognized)) return { positions, unrecognized };
+  if (!verifyEntry(entry, liveWasmHashOf(instance), unrecognized) || !instance) {
+    return { positions, unrecognized };
+  }
 
   if (entry.protocol === "blend" && entry.kind === "backstop") {
     positions.push(
@@ -971,7 +974,7 @@ async function readEntry(
   } else if (entry.protocol === "blend" && entry.kind === "pool") {
     positions.push(...(await readBlendPoolPositions(rpc, entry, address)));
   } else if (entry.protocol === "fxdao" && entry.kind === "vault") {
-    positions.push(...(await readFxdaoVaults(rpc, entry, address)));
+    positions.push(...(await readFxdaoVaults(rpc, entry, instance, address)));
   } else if (entry.protocol === "phoenix" && entry.kind === "pool") {
     const lp = await readPhoenixLpShares(rpc, entry, address);
     if (lp) positions.push(lp);
@@ -1023,13 +1026,7 @@ export async function detectDefiPositionsViaDirectRead(
   const instances = await batchReadChunked(rpc, instanceKeys);
   const outcomes = await Promise.all(
     probed.map((entry, i) =>
-      readEntry(
-        rpc,
-        entry,
-        liveWasmHashOf(instances.get(instanceKeys[i]!.toXdr("base64"))),
-        entries,
-        address
-      )
+      readEntry(rpc, entry, instances.get(instanceKeys[i]!.toXdr("base64")), entries, address)
     )
   );
   const positions = outcomes.flatMap((o) => o.positions);

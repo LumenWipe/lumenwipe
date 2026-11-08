@@ -20,10 +20,32 @@ interface RegistryEntry {
   kind: string;
   address: string;
   wasmHash: string | null;
+  version: string;
   verifiedLive: boolean;
 }
 
-const REGISTRY = embedded as { validUntil: string; entries: RegistryEntry[] };
+interface Registry {
+  validUntil: string;
+  /** Per protocol, the code versions registered only to be recognized and refused. */
+  noExitVersions?: Record<string, string[]>;
+  entries: RegistryEntry[];
+}
+
+const REGISTRY = embedded as Registry;
+
+/**
+ * Whether an exit or a conversion may touch this entry's contract at all: verified live, pinned
+ * to a hash, and not running a version the registry lists in `noExitVersions`. A refused
+ * protocol's contract adds nothing an exit may touch, even where `EXIT_FUNCTIONS` would block
+ * every call it could receive: its code can change under the same address.
+ */
+function isExitCapable(entry: RegistryEntry): boolean {
+  return (
+    entry.verifiedLive &&
+    entry.wasmHash !== null &&
+    !(REGISTRY.noExitVersions?.[entry.protocol] ?? []).includes(entry.version)
+  );
+}
 
 /** The registry kinds an exit may call besides the position's own contract. */
 export type ExitContractKind = "router" | "backstop" | "stake";
@@ -74,9 +96,8 @@ export function conversionContractsFor(network: Network, now: Date = new Date())
       (e) =>
         e.network === network &&
         (e.protocol === "soroswap" || e.protocol === "xbull") &&
-        e.verifiedLive &&
         // A hash-less entry is one nobody resolved on-chain; the API refuses those too.
-        e.wasmHash !== null &&
+        isExitCapable(e) &&
         (e.kind === "aggregator" || e.kind === "router")
     )
     .map((e) => e.address);
@@ -95,7 +116,7 @@ export function exitContractsFor(
       (e) =>
         e.network === network &&
         e.kind === kind &&
-        e.verifiedLive &&
+        isExitCapable(e) &&
         wanted.has(e.protocol) &&
         EXIT_FUNCTIONS[e.protocol as DefiPosition["protocol"]][kind].length > 0
     )
@@ -110,6 +131,6 @@ export function exitContractsFor(
 export function registryContractsFor(network: Network, now: Date = new Date()): string[] {
   if (!isContractRegistryUsable(now)) return [];
   return REGISTRY.entries
-    .filter((e) => e.network === network && e.verifiedLive)
+    .filter((e) => e.network === network && isExitCapable(e))
     .map((e) => e.address);
 }

@@ -3,6 +3,7 @@
   "lastVerified": "2026-10-10",
   "validUntil": "2027-01-08",
   "source": "manually verified per-entry against each protocol's official docs/GitHub (Blend: docs.blend.capital/mainnet-deployments + blend-capital/blend-utils mainnet.contracts.json; Soroswap: soroswap/core public/mainnet.contracts.json; Aquarius: docs.aqua.network addresses-and-networks + the router's own instance) and the live instance's executable hash over RPC on lastVerified; mainnet labels cross-checked against the stellar.expert directory where it names the contract",
+  "noExitVersions": { "fxdao": ["wind-down"] },
   "entries": [
     {
       "network": "testnet",
@@ -646,11 +647,11 @@
       "protocol": "fxdao",
       "kind": "vault",
       "address": "CCUN4RXU5VNDHSF4S4RKV4ZJYMX2YWKOH6L4AKEKVNVDQ7HY5QIAO4UB",
-      "wasmHash": null,
-      "version": "v1",
-      "label": "FxDAO Vaults (mainnet, per fxdao.io/docs/addresses) - documented as the protocol's Vaults contract, but the deployed code's own interface does not match: no pay_debt or other vault-management entrypoint exists on it today, the same interface gap already found and recorded for the testnet entry",
-      "verifiedLive": false,
-      "verifiedBy": "2026-09-26: stellar contract info interface over RPC (mainnet.sorobanrpc.com) against CCUN4RXU5VNDHSF4S4RKV4ZJYMX2YWKOH6L4AKEKVNVDQ7HY5QIAO4UB shows only evict/upgrade - the contract resolves and has a real code hash, but not the pay_debt interface an exit needs, so it is recorded unresolvable by design rather than trusted"
+      "wasmHash": "0245bac3d0ada657e247346273316c22b106c113f2085dbbc2c46faa0c28d498",
+      "version": "wind-down",
+      "label": "FxDAO Vaults (mainnet, per fxdao.io/docs/addresses) - registered so its code is recognized and refused: the deployed code exposes no repay entry point (only evict and upgrade) and the protocol reports panic mode, so no exit is built and no exit may touch it (noExitVersions)",
+      "verifiedLive": true,
+      "verifiedBy": "2026-11-08: stellar contract fetch --id CCUN4RXU5VNDHSF4S4RKV4ZJYMX2YWKOH6L4AKEKVNVDQ7HY5QIAO4UB over mainnet.sorobanrpc.com, sha256 0245bac3...d498, matching the instance executable from stellar ledger entry fetch contract-data --instance (last modified ledger 62645363); stellar contract info interface lists only evict(prev_key, vault_key) and upgrade(hash); instance CoreState.panic_mode true, VaultsInfo(USD/EUR/GBP) total_vaults 0 with lowest_key None"
     }
   ]
 }

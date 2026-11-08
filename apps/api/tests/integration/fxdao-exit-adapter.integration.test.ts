@@ -5,6 +5,7 @@ import { test, expect } from "bun:test";
 import { Horizon, Keypair, Transaction, TransactionBuilder } from "@stellar/stellar-sdk";
 import type { FxdaoCdpPosition } from "@lumenwipe/types";
 import { EXIT_POSITION_GONE, fxdaoExitAdapter, runExitAdapter } from "@/lib/defi-exits";
+import { detectDefiPositionsViaDirectRead } from "@/lib/defi-positions/testnet-direct-read";
 import { getRpcServer } from "@/lib/stellar/rpc";
 import { submitAndWait } from "@/lib/stellar/submit";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
@@ -53,15 +54,20 @@ test.skipIf(!RUN_INTEGRATION || FORK_PR_WITHOUT_SECRETS)(
 
     const horizon = new Horizon.Server(HORIZON_URL);
     const rpc = getRpcServer("testnet");
-    const position: FxdaoCdpPosition = {
-      protocol: "fxdao",
+    // Detection through the production direct read, against the registered deployment: the
+    // vault is keyed by the denomination symbol the contract stores, which detection must find.
+    const detected = await detectDefiPositionsViaDirectRead(account.publicKey(), "testnet");
+    expect(detected.unrecognizedPositions).toEqual([]);
+    const position = detected.positions.find(
+      (p): p is FxdaoCdpPosition => p.protocol === "fxdao" && p.contractAddress === FXDAO_VAULT
+    );
+    expect(position).toMatchObject({
       positionType: "cdp",
-      contractAddress: FXDAO_VAULT,
       denomination: FXDAO_DENOMINATION,
-      collateralAmount: "0",
-      debtAmount: "0",
-      usdValue: null,
-    };
+      debtAmount: FXDAO_DEBT_UNITS.toString(),
+      debtToken: FXDAO_CURRENCY_CONTRACT,
+    });
+    if (!position) throw new Error("expected the opened vault to be detected");
     const adapter = fxdaoExitAdapter();
 
     // A single full pay_debt clears the vault (fxdao.ts's own module doc explains why there is

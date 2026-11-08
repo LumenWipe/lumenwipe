@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { Asset, Networks } from "@stellar/stellar-sdk";
 import type { AccountState } from "@/types/account";
 import { exitExpectations } from "@/lib/stellar/exit-expectations";
+import embeddedRegistry from "@registry/contract-registry.json";
 import {
+  conversionContractsFor,
   exitContractsFor,
   isContractRegistryUsable,
   registryContractsFor,
@@ -251,6 +253,42 @@ test("a FxDAO vault position pins only the vault itself, to pay_debt - no router
   );
   expect(e.exitContracts).toEqual([VAULT]);
   expect(e.exitFunctions).toEqual({ [VAULT]: ["pay_debt"] });
+});
+
+test("a registered contract running a no-exit version is nothing an exit may touch, though it is verified live", () => {
+  // The mainnet FxDAO vault: pinned and verified live so its code is recognized, but its version
+  // is listed in noExitVersions, so no value-moving list may name it.
+  const vault = "CCUN4RXU5VNDHSF4S4RKV4ZJYMX2YWKOH6L4AKEKVNVDQ7HY5QIAO4UB";
+  const entry = (
+    embeddedRegistry as {
+      noExitVersions: Record<string, string[]>;
+      entries: Array<{ address: string; network: string; version: string; verifiedLive: boolean }>;
+    }
+  ).entries.find((e) => e.network === "mainnet" && e.address === vault);
+  expect(entry?.verifiedLive).toBe(true);
+  expect(embeddedRegistry.noExitVersions.fxdao).toContain(entry!.version);
+  expect(registryContractsFor("mainnet")).not.toContain(vault);
+  expect(registryContractsFor("mainnet").length).toBeGreaterThan(0);
+  for (const kind of ["router", "backstop", "stake"] as const) {
+    expect(exitContractsFor("mainnet", ["fxdao"], kind).map((c) => c.address)).not.toContain(vault);
+  }
+  expect(conversionContractsFor("mainnet")).not.toContain(vault);
+  expect(
+    exitExpectations(
+      state([
+        {
+          protocol: "fxdao",
+          positionType: "cdp",
+          contractAddress: vault,
+          denomination: "USD",
+          collateralAmount: "1",
+          debtAmount: "1",
+          usdValue: null,
+        },
+      ]),
+      "mainnet"
+    ).registryContracts
+  ).not.toContain(vault);
 });
 
 test("a Soroban token balance the analysis confirmed is a held token contract an exit may reference; an older read adds none", () => {

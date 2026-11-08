@@ -15,6 +15,7 @@ interface RegistryEntry {
 interface Registry {
   lastVerified: string;
   validUntil: string;
+  noExitVersions?: Record<string, string[]>;
   entries: RegistryEntry[];
 }
 
@@ -119,8 +120,11 @@ function protocolsBlock(): string {
       const entries = registry.entries.filter((e) => e.protocol === key && e.network === network);
       if (entries.length === 0) continue;
       const live = entries.filter((e) => e.verifiedLive).length;
-      const status =
-        live === entries.length
+      const noExit = registry.noExitVersions?.[key] ?? [];
+      const exitless = entries.every((e) => e.version !== undefined && noExit.includes(e.version));
+      const status = exitless
+        ? "Registered and verified live, but the deployed code has no exit entry point: no exit is built"
+        : live === entries.length
           ? `Registered, ${live} of ${entries.length} entries verified live`
           : live === 0
             ? "Registered, not verified live: no exit is built"

@@ -5,7 +5,6 @@ import {
   enumerateAquariusPools,
 } from "@/lib/defi-positions/testnet-direct-read";
 import { servedContractRegistry } from "@/lib/contract-registry";
-import { readLiveWasmHash } from "@/lib/stellar/contract-instance";
 import { getRpcServer } from "@/lib/stellar/rpc";
 
 // This test calls the real, live Stellar testnet RPC - no mock. The package's `test` script
@@ -16,9 +15,8 @@ const RUN_INTEGRATION = !!process.env.LUMENWIPE_RUN_INTEGRATION;
 test.skipIf(!RUN_INTEGRATION)(
   "every verifiedLive registry entry still resolves on live testnet with the recorded wasmHash",
   async () => {
-    // A real regression/staleness canary: this is the same check the FxDAO entry (verifiedLive:
-    // false) is already known to fail today - if a `verifiedLive: true` entry starts failing
-    // too, testnet reset or a redeploy invalidated the registry and it needs a refresh PR.
+    // A real regression/staleness canary: if a `verifiedLive: true` entry starts failing, testnet
+    // reset or a redeploy invalidated the registry and it needs a refresh PR.
     const { Contract } = await import("@stellar/stellar-sdk");
     const { getRpcServer } = await import("@/lib/stellar/rpc");
     const rpc = getRpcServer("testnet");
@@ -49,18 +47,6 @@ test.skipIf(!RUN_INTEGRATION)(
     expect(result.network).toBe("testnet");
     expect(Array.isArray(result.positions)).toBe(true);
     expect(result.positions).toEqual([]);
-    // The FxDAO entry is documented-but-currently-unresolvable (see contract-registry.json). The
-    // registry records that (verifiedLive: false); the read still probes it and stays silent only
-    // while the network agrees it is absent, so a fresh account is clean rather than blocked on a
-    // registry gap it has nothing to do with. The probe is asserted here so the silence is never
-    // mistaken for a skip: the day the contract appears, this and the unit suite both say so.
-    const documentedGaps = servedContractRegistry().entries.filter(
-      (e) => e.protocol === "fxdao" && !e.verifiedLive
-    );
-    expect(documentedGaps.length).toBeGreaterThan(0);
-    for (const gap of documentedGaps) {
-      expect(await readLiveWasmHash(getRpcServer("testnet"), gap.address)).toBeNull();
-    }
     expect(result.unrecognizedPositions).toEqual([]);
   },
   30_000

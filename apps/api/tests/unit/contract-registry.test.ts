@@ -4,10 +4,12 @@ import {
   entriesForNetwork,
   entriesForProtocol,
   isRegistryFresh,
+  isExitCapable,
   resolveWasmHash,
   servedContractRegistry,
   validateContractRegistry,
 } from "@/lib/contract-registry";
+import { FXDAO_REPAY_VERSION } from "@/lib/defi-exits/fxdao";
 import shippedRegistry from "@/config/contract-registry.json";
 
 const HASH_A = "a".repeat(64);
@@ -68,15 +70,9 @@ test("every protocol with a working exit adapter has verified mainnet entries: t
   expect(entriesForNetwork("testnet").length).toBeGreaterThan(0);
   const mainnet = entriesForNetwork("mainnet");
   expect(mainnet.length).toBeGreaterThan(0);
-  // FxDAO's mainnet Vaults contract is the one documented-but-unresolvable exception (see the
-  // dedicated test below): its live interface does not match protocol documentation, so it is
-  // recorded null/unresolvable on purpose, the same halt-don't-guess convention testnet already
-  // uses. Every other mainnet entry backs a working exit and must resolve.
-  expect(
-    mainnet
-      .filter((e) => e.protocol !== "fxdao")
-      .every((e) => e.verifiedLive && e.wasmHash !== null)
-  ).toBe(true);
+  // Every mainnet entry resolves; FxDAO's vault does too, but runs a no-exit version (see the
+  // dedicated test below), so it backs no exit.
+  expect(mainnet.every((e) => e.verifiedLive && e.wasmHash !== null)).toBe(true);
   for (const protocol of ["blend", "aquarius", "soroswap", "phoenix"] as const) {
     const kinds = new Set(entriesForProtocol("mainnet", protocol).map((e) => e.kind));
     expect(kinds.size).toBeGreaterThan(0);
@@ -163,16 +159,33 @@ test("the testnet FxDAO vault is our own reference redeploy of FxDAO's real code
   expect(fxdao[0]!.wasmHash).not.toBeNull();
 });
 
-test("the mainnet FxDAO Vaults entry is null/unresolvable too: its live interface does not match documentation", () => {
+test("the mainnet FxDAO vault is pinned to its live code as a no-exit version, recognized and never exit-capable", () => {
   const fxdao = entriesForProtocol("mainnet", "fxdao");
   expect(fxdao).toHaveLength(1);
-  expect(fxdao[0]).toMatchObject({ kind: "vault", wasmHash: null, verifiedLive: false });
-  expect(
-    resolveWasmHash("mainnet", "0245bac3d0ada657e247346273316c22b106c113f2085dbbc2c46faa0c28d498")
-  ).toEqual({
-    status: "unknown",
+  const vault = fxdao[0]!;
+  expect(vault).toMatchObject({
+    kind: "vault",
+    address: "CCUN4RXU5VNDHSF4S4RKV4ZJYMX2YWKOH6L4AKEKVNVDQ7HY5QIAO4UB",
     wasmHash: "0245bac3d0ada657e247346273316c22b106c113f2085dbbc2c46faa0c28d498",
+    version: "wind-down",
+    // Verified live, so the mainnet canary keeps re-reading its hash.
+    verifiedLive: true,
   });
+  expect(vault.verifiedBy).toContain("2026-11-08");
+  expect(resolveWasmHash("mainnet", vault.wasmHash!)).toEqual({
+    status: "known",
+    protocol: "fxdao",
+    kind: "vault",
+    version: "wind-down",
+    wasmHash: vault.wasmHash!,
+  });
+  expect(servedContractRegistry().noExitVersions).toEqual({ fxdao: ["wind-down"] });
+  expect(isExitCapable(vault)).toBe(false);
+  // The adapter only repays on the version it was verified on, which is exit-capable.
+  expect(vault.version).not.toBe(FXDAO_REPAY_VERSION);
+  expect(entriesForProtocol("testnet", "fxdao").map((e) => [e.version, isExitCapable(e)])).toEqual([
+    [FXDAO_REPAY_VERSION, true],
+  ]);
 });
 
 test("resolves the xBull mainnet router by its live wasm hash", () => {
@@ -256,6 +269,68 @@ describe("validateContractRegistry", () => {
     ["an impossible date", "2026-13-40"],
   ])("rejects lastVerified that is %s", (_label, lastVerified) => {
     expectRejected({ ...wellFormed(), lastVerified }, "lastVerified must be a YYYY-MM-DD date");
+  });
+
+  test("noExitVersions: absent means none; listed versions make an entry not exit-capable", () => {
+    const fx = entry({ protocol: "fxdao", kind: "vault", version: "wind-down", wasmHash: HASH_B });
+    expect(validateContractRegistry(wellFormed([fx])).noExitVersions).toEqual({});
+    expect(
+      createContractRegistryLookup(validateContractRegistry(wellFormed([fx]))).isExitCapable(
+        validateContractRegistry(wellFormed([fx])).entries[0]!
+      )
+    ).toBe(true);
+    const listed = validateContractRegistry({
+      ...wellFormed([fx, entry({ address: ADDRESS_2, version: "wind-down" })]),
+      noExitVersions: { fxdao: ["wind-down"] },
+    });
+    expect(Object.isFrozen(listed.noExitVersions)).toBe(true);
+    expect(Object.isFrozen(listed.noExitVersions.fxdao)).toBe(true);
+    const lookup = createContractRegistryLookup(listed);
+    expect(lookup.isExitCapable(listed.entries[0]!)).toBe(false);
+    // Another protocol's entry on the same version name is untouched.
+    expect(lookup.isExitCapable(listed.entries[1]!)).toBe(true);
+    // A hash-less or not-live entry is never exit-capable either.
+    const unresolved = validateContractRegistry(
+      wellFormed([
+        entry({ wasmHash: null, verifiedLive: false }),
+        entry({ address: ADDRESS_2, verifiedLive: false }),
+      ])
+    );
+    const unresolvedLookup = createContractRegistryLookup(unresolved);
+    expect(unresolved.entries.map((e) => unresolvedLookup.isExitCapable(e))).toEqual([
+      false,
+      false,
+    ]);
+  });
+
+  test("noExitVersions: rejects a non-object, an unknown protocol, a non-array, a blank or an unused version", () => {
+    const fx = entry({ protocol: "fxdao", kind: "vault", version: "wind-down" });
+    const withList = (noExitVersions: unknown) => ({ ...wellFormed([fx]), noExitVersions });
+    expectRejected(withList(["wind-down"]), "noExitVersions must be an object");
+    expectRejected(
+      withList({ fxdoa: ["wind-down"] }),
+      "noExitVersions.fxdoa is not a recognized protocol"
+    );
+    expectRejected(
+      withList({ fxdao: "wind-down" }),
+      "noExitVersions.fxdao must be an array of versions"
+    );
+    expectRejected(
+      withList({ fxdao: [" "] }),
+      "noExitVersions.fxdao[0] must be a non-empty string"
+    );
+    expectRejected(
+      withList({ fxdao: ["wind-dwon"] }),
+      "noExitVersions.fxdao[0] names a version no fxdao entry runs"
+    );
+    // The version must be run by an entry of that same protocol.
+    expectRejected(
+      {
+        ...wellFormed([entry({ version: "wind-down" })]),
+        noExitVersions: { fxdao: ["wind-down"] },
+      },
+      "noExitVersions.fxdao[0] names a version no fxdao entry runs"
+    );
   });
 
   test("rejects a validUntil earlier than lastVerified", () => {
