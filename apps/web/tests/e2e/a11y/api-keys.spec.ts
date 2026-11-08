@@ -192,11 +192,16 @@ test("keys show their label, scope, last use and counts, and a scoped key can be
       keyRecord(2, { usage: null }),
     ],
   });
-  await expect(page.getByText("Production")).toBeVisible();
-  await expect(page.getByText("Mainnet only", { exact: true })).toBeVisible();
-  await expect(page.getByText("3 today · 40 in 30 days · 2 rate-limited")).toBeVisible();
-  await expect(page.getByText("Untitled key")).toBeVisible();
-  await expect(page.getByText("Usage unavailable")).toBeVisible();
+  // The scope names are also the create form's radio labels, so every check is made inside a row.
+  const keyRows = page.getByRole("listitem").filter({ hasText: "Created" });
+  await expect(keyRows).toHaveCount(2);
+  const production = keyRows.filter({ hasText: "Production" });
+  await expect(production.getByText("Mainnet only", { exact: true })).toBeVisible();
+  await expect(production.getByText("3 today · 40 in 30 days · 2 rate-limited")).toBeVisible();
+  const untitled = keyRows.filter({ hasText: "Untitled key" });
+  await expect(untitled.getByText("All networks", { exact: true })).toBeVisible();
+  await expect(untitled.getByText("Never used")).toBeVisible();
+  await expect(untitled.getByText("Usage unavailable")).toBeVisible();
   await expectNoAxeViolations(page, "api keys, keys with label, scope and usage");
 
   await page.getByRole("textbox", { name: "Label (optional)" }).fill("staging");
