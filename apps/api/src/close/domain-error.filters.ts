@@ -1,6 +1,9 @@
 import { type ArgumentsHost, Catch, type ExceptionFilter } from "@nestjs/common";
 import type { Response } from "express";
-import { ErrorEnvelopeFilter } from "@/common/error-envelope.filter";
+import {
+  ErrorEnvelopeFilter,
+  setServiceUnavailableRetryAfter,
+} from "@/common/error-envelope.filter";
 import {
   type DomainErrorEntry,
   mapDomainError,
@@ -16,7 +19,9 @@ function respond(entries: readonly DomainErrorEntry[], exception: unknown, host:
   }
   const error: Record<string, unknown> = { code: mapped.code, message: mapped.message };
   if (mapped.details !== undefined) error.details = mapped.details;
-  host.switchToHttp().getResponse<Response>().status(mapped.status).json({ error });
+  const res = host.switchToHttp().getResponse<Response>();
+  setServiceUnavailableRetryAfter(res, mapped.status);
+  res.status(mapped.status).json({ error });
 }
 
 @Catch(...PLAN_ERRORS.map((e) => e.type))

@@ -11,6 +11,13 @@ version number before 0.4.0. Neither has a git tag.
 
 ## [Unreleased]
 
+### Changed
+
+- The default `timeout` of `LumenWipeClient` and `LumenWipeIntegratorClient` is 45000 ms instead
+  of 30000 ms, longer than the API's 40-second request deadline. A slow read now ends in the API's
+  typed `503` with `Retry-After` instead of `LumenWipeTimeoutError`. An explicit `timeout` still
+  overrides it.
+
 ## [0.10.0] - 2026-11-08
 
 ### Added

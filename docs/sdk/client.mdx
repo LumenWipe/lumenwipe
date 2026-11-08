@@ -13,7 +13,6 @@ const client = new LumenWipeClient({
   baseUrl: "https://api.lumenwipe.com",
   apiKey: process.env.LUMENWIPE_API_KEY!,
   network: "mainnet",
-  timeout: 30_000,
 });
 ```
 
@@ -23,7 +22,7 @@ const client = new LumenWipeClient({
 | `apiKey`  | yes      | Integrator API key, sent as `Authorization: Bearer <apiKey>`.                                                   |
 | `network` | no       | Default network for calls that omit it: `"mainnet"` or `"testnet"`. Defaults to `"testnet"`.                    |
 | `fetch`   | no       | Custom fetch for runtimes without a global one, or for testing.                                                 |
-| `timeout` | no       | Per-request timeout in milliseconds. Defaults to `30000`. `0` or `Infinity` disables it.                        |
+| `timeout` | no       | Per-request timeout in ms; `45000` by default, above the API's 40 s deadline. `0` or `Infinity` disables it.    |
 | `retry`   | no       | `{ attempts, baseDelayMs }`. Opt-in retries; off by default. See [Error handling](/sdk/errors#retrying-safely). |
 | `logger`  | no       | Receives one-time notices. Defaults to `console.warn`.                                                          |
 

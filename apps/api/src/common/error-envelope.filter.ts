@@ -1,6 +1,14 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, Logger } from "@nestjs/common";
 import type { ErrorCode } from "@lumenwipe/types";
 import type { Response } from "express";
+import { SERVICE_UNAVAILABLE_RETRY_AFTER_SECONDS } from "@/config/constants";
+
+/** Every 503 tells the client when to retry, unless whoever answered already did. */
+export function setServiceUnavailableRetryAfter(res: Response, status: number): void {
+  if (status === 503 && res.getHeader("Retry-After") === undefined) {
+    res.setHeader("Retry-After", String(SERVICE_UNAVAILABLE_RETRY_AFTER_SECONDS));
+  }
+}
 
 /**
  * Puts every error the service emits into one envelope.
@@ -15,9 +23,6 @@ import type { Response } from "express";
  * Bodies that already carry the envelope pass through untouched, so nothing a controller says
  * is rewritten here.
  */
-/** How long a client is told to wait after a 503; a fixed default, not a measured recovery time. */
-export const SERVICE_UNAVAILABLE_RETRY_AFTER_SECONDS = 30;
-
 @Catch()
 export class ErrorEnvelopeFilter implements ExceptionFilter {
   private readonly logger = new Logger("errors");
@@ -28,9 +33,7 @@ export class ErrorEnvelopeFilter implements ExceptionFilter {
     if (exception instanceof HttpException) {
       const status = exception.getStatus();
       const body = exception.getResponse();
-      if (status === 503 && res.getHeader("Retry-After") === undefined) {
-        res.setHeader("Retry-After", String(SERVICE_UNAVAILABLE_RETRY_AFTER_SECONDS));
-      }
+      setServiceUnavailableRetryAfter(res, status);
 
       if (typeof body === "object" && body !== null && "error" in body) {
         const inner = (body as { error: unknown }).error;

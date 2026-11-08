@@ -3,13 +3,14 @@ import type { Network } from "@/config/networks";
 import { rpcProviders, RPC_URLS, RPC_HEADERS, type ProviderEndpoint } from "@/config/networks";
 import {
   RPC_MAX_LEDGER_AGE_SECONDS,
+  RPC_PROVIDER_COOLDOWN_MS,
   RPC_READ_TIMEOUT_MS,
   RPC_SIMULATE_TIMEOUT_MS,
 } from "@/config/constants";
 import { currentDeadline, currentProviderPins } from "@/common/request-context";
 import { parseLedgerCloseTime } from "./claim-predicates";
 import { recordProviderFailover } from "./provider-failover";
-import { UpstreamError } from "./upstream-client";
+import { UpstreamError, type UpstreamErrorKind } from "./upstream-client";
 import { recordUpstream } from "./upstream-metrics";
 
 // Memoized per-network singletons. A switch rather than a map keyed by the caller's string, so a
@@ -108,9 +109,36 @@ async function latestFreshLedger(
   return latest.sequence;
 }
 
+// Process-local: when each provider that answered 429 or 5xx may be probed again.
+const coolingUntil = new Map<string, number>();
+
+const cooldownKey = (network: Network, provider: ProviderEndpoint): string =>
+  `${network}\n${provider.url}`;
+
+function isCooling(network: Network, provider: ProviderEndpoint): boolean {
+  return (coolingUntil.get(cooldownKey(network, provider)) ?? 0) > Date.now();
+}
+
+/** Test-only: forgets every cooldown so one test's failures don't leak into another. */
+export function resetRpcCooldowns(): void {
+  coolingUntil.clear();
+}
+
+/** The providers to probe: the ones not cooling down first, the cooling ones only after them. */
+function probeOrder(network: Network, providers: ProviderEndpoint[]): ProviderEndpoint[] {
+  const ready = providers.filter((p) => !isCooling(network, p));
+  if (ready.length === 0) return providers;
+  const cooling = providers.filter((p) => !ready.includes(p));
+  for (const skipped of cooling) {
+    recordProviderFailover("rpc", network, skipped.url, ready[0]!.url, "cooling_down");
+  }
+  return [...ready, ...cooling];
+}
+
 /** The first provider that answers with a recent ledger, spending at most an even share of what
  *  is left of the request on each so a dead provider cannot starve a live one further down. */
-async function probeProviders(network: Network, providers: ProviderEndpoint[]): Promise<RpcPin> {
+async function probeProviders(network: Network, all: ProviderEndpoint[]): Promise<RpcPin> {
+  const providers = probeOrder(network, all);
   const deadline = currentDeadline();
   for (const [i, endpoint] of providers.entries()) {
     const share = Math.floor((deadline?.remainingMs() ?? Infinity) / (providers.length - i));
@@ -190,14 +218,60 @@ function raceDeadline<T>(call: Promise<T>): Promise<T> {
   });
 }
 
+/** An HTTP status the provider answered with; undefined when no response came back. */
+function httpStatusOf(error: unknown): number | undefined {
+  const status = (error as { response?: { status?: unknown } } | null)?.response?.status;
+  return typeof status === "number" ? status : undefined;
+}
+
+// Read from the error's type and code, never its message: an SDK not-found message embeds the
+// caller's address or key, which may spell "TIMEOUT".
+const TIMEOUT_CODES = new Set<unknown>(["ECONNABORTED", "ETIMEDOUT"]);
+
+function isTransportTimeout(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return error.name === "TimeoutError" || TIMEOUT_CODES.has((error as { code?: unknown }).code);
+}
+
+/**
+ * What a failed RPC request means. Only the HTTP status or a transport timeout counts: a JSON-RPC
+ * error, a missing entry or a 4xx is the provider's answer, never an outage, so it maps to null.
+ */
+function rpcFailureKind(error: unknown): UpstreamErrorKind | null {
+  const status = httpStatusOf(error);
+  if (status === 429) return "rate_limited";
+  if (status !== undefined) return status >= 500 ? "unavailable" : null;
+  return isTransportTimeout(error) ? "timeout" : null;
+}
+
+/**
+ * Types a read's outage as an `UpstreamError`, which every route answers as a 503. A provider that
+ * refused (429) or failed (5xx) cools down, so the next requests pin another one; the current
+ * request stays on its pin. A timeout already spent its share of the budget and cools nothing.
+ */
+function typedRead(network: Network, provider: ProviderEndpoint, call: unknown): Promise<unknown> {
+  return Promise.resolve(call).catch((error: unknown) => {
+    const kind = rpcFailureKind(error);
+    if (kind === null) throw error;
+    if (kind !== "timeout") {
+      coolingUntil.set(cooldownKey(network, provider), Date.now() + RPC_PROVIDER_COOLDOWN_MS);
+    }
+    throw new UpstreamError(kind, "rpc");
+  });
+}
+
+const isRead = (prop: PropertyKey): boolean =>
+  SIMULATION_METHODS.has(prop) || READ_METHODS.has(prop);
+
 function callPinned(network: Network, prop: PropertyKey, args: unknown[]): Promise<unknown> {
   const call = pinRpcProvider(network).then(({ endpoint }) => {
     const servers = serversFor(network, endpoint);
     const owner = SIMULATION_METHODS.has(prop) ? servers.simulation : servers.reads;
     const method = Reflect.get(owner, prop, owner) as (...args: unknown[]) => unknown;
-    return method.apply(owner, withLegacyAuth(prop, args));
+    const result = method.apply(owner, withLegacyAuth(prop, args));
+    return isRead(prop) ? typedRead(network, endpoint, result) : result;
   });
-  return SIMULATION_METHODS.has(prop) || READ_METHODS.has(prop) ? raceDeadline(call) : call;
+  return isRead(prop) ? raceDeadline(call) : call;
 }
 
 /**
@@ -220,25 +294,21 @@ function withRequestDeadline(network: Network): rpc.Server {
         return (...args: unknown[]) => callPinned(network, prop, args);
       }
       const bound = (value as (...args: unknown[]) => unknown).bind(owner);
-      if (!SIMULATION_METHODS.has(prop) && !READ_METHODS.has(prop)) return bound;
+      if (!isRead(prop)) return bound;
       return (...args: unknown[]) =>
-        raceDeadline(bound(...withLegacyAuth(prop, args)) as Promise<unknown>);
+        raceDeadline(
+          typedRead(network, rpcProviders(network)[0]!, bound(...withLegacyAuth(prop, args)))
+        );
     },
   });
 }
 
 function recordRpcFailure(network: Network, error: unknown): void {
-  const { response, message } = (error ?? {}) as {
-    response?: { status?: unknown };
-    message?: unknown;
-  };
-  const status = response?.status;
-  if (status === 429) recordUpstream(network, "rpc", "rate_limited");
-  else if (typeof status === "number") {
-    if (status >= 500) recordUpstream(network, "rpc", "server_errors");
-  } else if (/timeout|aborted/i.test(String(message))) {
-    recordUpstream(network, "rpc", "timeouts");
-  } else recordUpstream(network, "rpc", "unavailable");
+  const kind = rpcFailureKind(error);
+  if (kind === "rate_limited") recordUpstream(network, "rpc", "rate_limited");
+  else if (kind === "unavailable") recordUpstream(network, "rpc", "server_errors");
+  else if (kind === "timeout") recordUpstream(network, "rpc", "timeouts");
+  else if (httpStatusOf(error) === undefined) recordUpstream(network, "rpc", "unavailable");
 }
 
 /**

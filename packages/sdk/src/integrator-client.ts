@@ -31,7 +31,7 @@ export class LumenWipeIntegratorClient {
     this.http = new HttpTransport(
       withoutTrailingSlashes(options.baseUrl),
       undefined,
-      options.timeout ?? 30_000,
+      options.timeout,
       resolved,
       options.retry
     );

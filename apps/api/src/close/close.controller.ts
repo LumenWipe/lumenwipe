@@ -50,7 +50,7 @@ export class CloseController {
   ])
   @ApiErrorResponse(
     503,
-    "The destination, the account's issued assets or the ledger could not be read. Retry.",
+    "The data provider, the destination, the account's issued assets or the ledger could not be read. Retry.",
     ["destination_read_failed", "issuer_read_failed", "service_unavailable"]
   )
   @ApiBodyErrorResponses()
