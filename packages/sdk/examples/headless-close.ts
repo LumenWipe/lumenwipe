@@ -85,9 +85,9 @@ async function main(): Promise<void> {
     },
     verify: (tx) =>
       verifyCloseTransaction(tx, {
-        source: sourceAddress,
+        account: before,
         destination: destinationAddress,
-        networkPassphrase,
+        network: NETWORK,
       }),
     requiredWeight: (tx) => requiredWeightFor(tx, signerState, networkPassphrase),
     sign: async (_tx, xdr) => {

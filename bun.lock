@@ -144,6 +144,7 @@
       "devDependencies": {
         "@eslint/js": "^10.0.1",
         "@lumenwipe/types": "workspace:*",
+        "@lumenwipe/verify": "workspace:*",
         "@microsoft/api-extractor": "^7.59.4",
         "@stellar/stellar-sdk": "17.4.0",
         "@types/bun": "^1.4.3",
