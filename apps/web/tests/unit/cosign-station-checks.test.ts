@@ -5,6 +5,7 @@ import {
   Keypair,
   MuxedAccount,
   Networks,
+  StrKey,
   Operation,
   TransactionBuilder,
   type xdr,
@@ -165,24 +166,29 @@ describe("checkRequest", () => {
     ],
     ["a master weight change", [...NORMALIZATION, Operation.setOptions({ masterWeight: 2 })]],
     ["a home domain", [...NORMALIZATION, Operation.setOptions({ homeDomain: "example.com" })]],
-    ["no threshold reset", [removal(cosignerB.publicKey())]],
+    ["no threshold reset", [removal(cosignerB.publicKey()), removal(cosignerC.publicKey())]],
     ["two threshold resets", [...NORMALIZATION, RESET]],
     [
       "thresholds above the master key's weight",
       [
         removal(cosignerB.publicKey()),
+        removal(cosignerC.publicKey()),
         Operation.setOptions({ lowThreshold: 0, medThreshold: 2, highThreshold: 2 }),
       ],
     ],
     [
       "a partial threshold change",
-      [removal(cosignerB.publicKey()), Operation.setOptions({ highThreshold: 1 })],
+      [
+        removal(cosignerB.publicKey()),
+        removal(cosignerC.publicKey()),
+        Operation.setOptions({ highThreshold: 1 }),
+      ],
     ],
     [
       "a signer added",
       [Operation.setOptions({ signer: { ed25519PublicKey: destination, weight: 1 } }), RESET],
     ],
-    ["an unknown signer removed", [removal(destination), RESET]],
+    ["an unknown signer removed", [...NORMALIZATION, removal(destination)]],
     [
       "an operation of another account",
       [
@@ -200,6 +206,74 @@ describe("checkRequest", () => {
       expect(refusalOf(() => check(request({ ops })))).toBe(REFUSED.notNormalization);
     });
   }
+
+  describe("removes every other signer exactly once", () => {
+    const hashX = StrKey.encodeSha256Hash(Buffer.alloc(32, 7));
+    const preAuth = StrKey.encodePreAuthTx(Buffer.alloc(32, 9));
+    const signedPayload = StrKey.encodeSignedPayload(
+      Buffer.concat([
+        StrKey.decodeEd25519PublicKey(cosignerB.publicKey()),
+        Buffer.from([0, 0, 0, 4]),
+        Buffer.from([1, 2, 3, 4]),
+      ])
+    );
+    const everyType: LiveAccount = {
+      ...LIVE,
+      signers: [
+        ...LIVE.signers,
+        { key: hashX, weight: 1, type: "hash_x" },
+        { key: preAuth, weight: 1, type: "preauth_tx" },
+        { key: signedPayload, weight: 1, type: "ed25519_signed_payload" },
+      ],
+    };
+    const removeHashX = Operation.setOptions({
+      signer: { sha256Hash: Buffer.alloc(32, 7), weight: 0 },
+    });
+    const removePreAuth = Operation.setOptions({
+      signer: { preAuthTx: Buffer.alloc(32, 9), weight: 0 },
+    });
+    const removeSignedPayload = Operation.setOptions({
+      signer: { ed25519SignedPayload: signedPayload, weight: 0 },
+    });
+    const removeEvery = [
+      removal(cosignerB.publicKey()),
+      removal(cosignerC.publicKey()),
+      removeHashX,
+      removePreAuth,
+      removeSignedPayload,
+      RESET,
+    ];
+
+    test("accepts the exact set of the account's other signers, of every type", () => {
+      const checked = check(request({ ops: removeEvery }), everyType);
+      expect(checked.summary.removedSigners.map((s) => s.key)).toEqual([
+        cosignerB.publicKey(),
+        cosignerC.publicKey(),
+        hashX,
+        preAuth,
+        signedPayload,
+      ]);
+    });
+
+    test("refuses a partial removal that would leave another signer in control", () => {
+      const ops = [removal(cosignerB.publicKey()), RESET];
+      expect(refusalOf(() => check(request({ ops })))).toBe(REFUSED.notNormalization);
+    });
+
+    test("refuses removing one signer twice in place of another", () => {
+      const ops = [removal(cosignerB.publicKey()), removal(cosignerB.publicKey()), RESET];
+      expect(refusalOf(() => check(request({ ops })))).toBe(REFUSED.notNormalization);
+      const twice = [...NORMALIZATION.slice(0, 2), removal(cosignerB.publicKey()), RESET];
+      expect(refusalOf(() => check(request({ ops: twice })))).toBe(REFUSED.notNormalization);
+    });
+
+    test("refuses a request that leaves out a live signer of any type", () => {
+      for (const left of [removeHashX, removePreAuth, removeSignedPayload]) {
+        const ops = removeEvery.filter((op) => op !== left);
+        expect(refusalOf(() => check(request({ ops }), everyType))).toBe(REFUSED.notNormalization);
+      }
+    });
+  });
 
   test("refuses a precondition other than time bounds", () => {
     const configs: ((b: TransactionBuilder) => void)[] = [

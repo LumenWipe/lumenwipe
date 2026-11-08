@@ -125,8 +125,9 @@ const isReset = (op: SetOptions): boolean =>
 
 /**
  * The v1 station signs signer normalization only (Section 7.2): every operation is a `set_options`
- * of the account that either removes one of its signers other than the master key, or is the one
- * threshold reset, which lowers every threshold to what the master key alone meets.
+ * of the account that either removes one of its signers other than the master key, each of them
+ * exactly once, or is the one threshold reset, which lowers every threshold to what the master key
+ * alone meets.
  */
 function normalizationSummary(
   operations: IntentOperation[],
@@ -155,12 +156,18 @@ function normalizationSummary(
       if (signer.weight !== 0 || signer.key === account || !known) {
         refuse(REFUSED.notNormalization);
       }
+      if (removedSigners.some((s) => s.key === signer.key)) refuse(REFUSED.notNormalization);
       removedSigners.push(signer);
     } else if (isReset(op) && reset === null) {
       reset = op;
     } else {
       refuse(REFUSED.notNormalization);
     }
+  }
+  // Each removal is a distinct live signer other than the master key, so an equal count is the
+  // exact set: sole control holds only when every other signer goes, whatever its type.
+  if (removedSigners.length !== live.signers.filter((s) => s.key !== account).length) {
+    refuse(REFUSED.notNormalization);
   }
   if (
     reset === null ||
