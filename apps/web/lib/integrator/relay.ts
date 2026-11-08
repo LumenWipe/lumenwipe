@@ -5,7 +5,7 @@ import { rateLimitProxy } from "@/lib/api/rate-limit";
 import { buildUpstreamRequest } from "./upstream";
 
 /**
- * Relays an integrator request to the API's `/integrator/*` routes. These authenticate with the
+ * Relays an integrator request to the API's `/v1/integrator/*` routes. These authenticate with the
  * user's own wallet session, so the browser's `Authorization` header is forwarded as-is and the
  * shared server-side API key is deliberately never attached.
  */

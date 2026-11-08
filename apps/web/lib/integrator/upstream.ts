@@ -16,7 +16,7 @@ export function buildUpstreamRequest(
   if (authorization) headers.Authorization = authorization;
   if (method === "POST" && bodyText) headers["Content-Type"] = "application/json";
   return {
-    url: `${baseUrl.replace(/\/+$/, "")}/integrator/${path}`,
+    url: `${baseUrl.replace(/\/+$/, "")}/v1/integrator/${path}`,
     init: {
       method,
       headers,

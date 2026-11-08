@@ -111,6 +111,12 @@ release is cut.
 
 ### Changed
 
+- `getAccount`, `getPaths`, `getAllowances`, `revokeAllowance`, `mediatorCheck`, `mediatorSign`
+  and `feeBumpSponsor` call their `/v1/{network}/...` paths. The SDK no longer calls any legacy
+  unversioned path; those answer with `Deprecation` and `Sunset` headers until 2027-06-01.
+  Request bodies and headers are unchanged. The network segment is percent-encoded after it is
+  checked.
+
 - `runClose` resolves with `{ mergeConfirmed }` instead of `undefined`. It is true only with
   `reconcile`, for a transaction the client parsed as a merge and saw confirmed under its own hash.
   Without `reconcile` it is always false: a caller must establish the merge itself, because `covers`

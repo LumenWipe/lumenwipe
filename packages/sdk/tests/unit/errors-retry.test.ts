@@ -233,7 +233,7 @@ test("omitting network logs one notice and defaults to testnet; an explicit netw
   const client = new LumenWipeClient({ baseUrl: "https://x", apiKey: "k", fetch, logger });
   await client.getAccount("A");
   await client.getAccount("B");
-  expect(calls[0].url).toBe("https://x/testnet/account/A");
+  expect(calls[0].url).toBe("https://x/v1/testnet/account/A");
   expect(messages).toHaveLength(1);
 
   await client.getAccount("C", "mainnet");

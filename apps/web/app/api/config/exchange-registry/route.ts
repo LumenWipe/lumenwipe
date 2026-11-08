@@ -28,7 +28,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     );
   }
   try {
-    const res = await fetch(`${base}/config/exchange-registry`, {
+    const res = await fetch(`${base}/v1/config/exchange-registry`, {
       // Explicitly time-bounded and revalidated per request rather than prerendered: whether a
       // route-level `revalidate` takes effect depends on whether the API happened to be
       // reachable from the build container, which is not a property to leave to chance for the

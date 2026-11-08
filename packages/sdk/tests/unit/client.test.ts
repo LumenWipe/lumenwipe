@@ -86,7 +86,7 @@ test("getPaths builds the query string and respects the network override", async
 
   await client.getPaths({ fromAsset: "USDC:GISS", amount: "10" }, "mainnet");
 
-  expect(calls[0].url).toBe("https://x/mainnet/paths?fromAsset=USDC%3AGISS&amount=10");
+  expect(calls[0].url).toBe("https://x/v1/mainnet/paths?fromAsset=USDC%3AGISS&amount=10");
   expect(calls[0].init?.method).toBe("GET");
 });
 
@@ -101,7 +101,7 @@ test("getAllowances GETs the network-scoped path", async () => {
 
   await client.getAllowances("GABC", "mainnet");
 
-  expect(calls[0].url).toBe("https://x/mainnet/allowances/GABC");
+  expect(calls[0].url).toBe("https://x/v1/mainnet/allowances/GABC");
   expect(calls[0].init?.method).toBe("GET");
 });
 
@@ -116,7 +116,7 @@ test("revokeAllowance posts owner/token/spender to the revoke path", async () =>
 
   await client.revokeAllowance({ owner: "GABC", token: "CABC", spender: "CDEF" }, "testnet");
 
-  expect(calls[0].url).toBe("https://x/testnet/allowances/revoke");
+  expect(calls[0].url).toBe("https://x/v1/testnet/allowances/revoke");
   expect(calls[0].init?.method).toBe("POST");
   expect(JSON.parse(calls[0].init?.body as string)).toEqual({
     owner: "GABC",
@@ -136,7 +136,7 @@ test("GET requests carry no Content-Type and no body", async () => {
 
   await client.getAccount("GABC");
 
-  expect(calls[0].url).toBe("https://x/testnet/account/GABC");
+  expect(calls[0].url).toBe("https://x/v1/testnet/account/GABC");
   expect(calls[0].init?.body).toBeUndefined();
   expect((calls[0].init?.headers as Record<string, string>)["Content-Type"]).toBeUndefined();
 });
