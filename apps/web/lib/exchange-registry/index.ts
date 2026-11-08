@@ -145,6 +145,12 @@ export function mediatorAllowedFor(address: string): boolean {
   return EMBEDDED.entries.find((e) => e.address === address)?.requiresMediator === true;
 }
 
+/** Whether the bundled registry lists this address. A served copy can add an exchange, but its
+ *  memo type is then the user's to state, never the served one. */
+export function isBundledExchange(address: string): boolean {
+  return EMBEDDED.entries.some((e) => e.address === address);
+}
+
 /**
  * Whether the served registry gives this listed address a memo type other than the bundled one.
  * Neither copy can be trusted to be the current one, and a memo of the wrong type is credited to

@@ -106,8 +106,9 @@ export function keepDestinationDraft(
   if (!keepable(state, source)) return;
   const snapshot = snapshotOf(network, source, state, previousOf(network, source));
   // Only a memo that could be sent is kept: one over the byte limit, of the wrong shape for its
-  // type, or holding a key never reaches storage.
-  const field = memoField(destination, memo, memoType === "id" ? "id" : "text");
+  // type, or holding a key never reaches storage. Whether the type was chosen does not bear on
+  // that, and a restored page asks for it again.
+  const field = memoField(destination, memo, memoType === "id" ? "id" : "text", true);
   const kept = field.error === null ? field.normalized : "";
   writeDecisions({
     ...snapshot,

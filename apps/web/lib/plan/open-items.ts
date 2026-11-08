@@ -49,7 +49,9 @@ export interface ProceedReason {
 }
 
 export type DestinationFact = "empty" | "invalid" | "self" | "ok";
-export type MemoFact = "ok" | "missing" | "invalid";
+/** `type-unchosen` and `type-mismatch` are for an exchange only the served registry lists: its
+ *  memo type is the user's to state, and a served type that differs stops the close. */
+export type MemoFact = "ok" | "missing" | "invalid" | "type-unchosen" | "type-mismatch";
 
 /** Everything the button depends on, as plain facts the view derives. */
 export interface ProceedFacts {
@@ -184,7 +186,19 @@ export function proceedReasons(facts: ProceedFacts): ProceedReason[] {
       target: address,
     });
   }
-  if (facts.memo === "missing") {
+  if (facts.memo === "type-unchosen") {
+    reasons.push({
+      key: "memo",
+      text: "Choose the memo type this exchange asks for",
+      target: field('[data-jump="destination-memo-type"]'),
+    });
+  } else if (facts.memo === "type-mismatch") {
+    reasons.push({
+      key: "memo",
+      text: "The memo type you chose does not match this exchange's deposit rules",
+      target: field('[data-jump="destination-memo-type"]'),
+    });
+  } else if (facts.memo === "missing") {
     reasons.push({
       key: "memo",
       text: "Memo is required by this exchange",

@@ -9,18 +9,29 @@
  */
 
 import { isValidGAddress } from "@/lib/utils/validation";
-import { lookupExchange } from "@/lib/exchange-registry";
+import { isBundledExchange, lookupExchange } from "@/lib/exchange-registry";
 import type { MemoFact } from "@/lib/plan/open-items";
 
 export type ChosenMemoType = "text" | "id";
+
+/** Which registry lists the destination: the bundled one, only the served one, or neither. */
+export type MemoListing = "bundled" | "served" | "unlisted";
 
 export const TEXT_MEMO_MAX_BYTES = 28;
 const UINT64_MAX = BigInt("18446744073709551615");
 
 export interface MemoField {
   type: "text" | "id" | "hash";
-  /** The registry lists the destination, so its memo type is not the user's to choose. */
+  /** The memo type is not the user's to choose: the bundled registry lists the destination, or
+   *  the served one lists it with a hash memo, which cannot be sent whatever the choice. */
   typeFixed: boolean;
+  listing: MemoListing;
+  /** The type the served registry gives an address only it lists, to hold the user's choice to;
+   *  null otherwise. Never the type that is sent. */
+  servedType: "text" | "id" | "hash" | null;
+  /** Whether the type is settled: fixed, chosen for this destination, or unlisted, where the
+   *  choice has always defaulted to text. */
+  typeChosen: boolean;
   required: boolean;
   exchangeName: string | null;
   normalized: string;
@@ -54,9 +65,24 @@ function valueError(memo: string, type: MemoField["type"]): string | null {
     : null;
 }
 
-export function memoField(destination: string, memo: string, chosen: ChosenMemoType): MemoField {
+/**
+ * `chosenForDestination` says the user picked `chosen` for this destination. It matters only for
+ * an address the served registry alone lists: that copy is not authenticated, so its memo type is
+ * never adopted, and the user states one that the served type is then held to.
+ */
+export function memoField(
+  destination: string,
+  memo: string,
+  chosen: ChosenMemoType,
+  chosenForDestination: boolean
+): MemoField {
   const entry = isValidGAddress(destination) ? lookupExchange(destination) : null;
-  const type = entry?.memoType ?? chosen;
+  const listing: MemoListing =
+    entry === null ? "unlisted" : isBundledExchange(destination) ? "bundled" : "served";
+  const typeFixed = entry !== null && (listing === "bundled" || entry.memoType === "hash");
+  const type = typeFixed ? entry.memoType : chosen;
+  const servedType = listing === "served" && entry !== null ? entry.memoType : null;
+  const typeChosen = listing !== "served" || typeFixed || chosenForDestination;
   const required = entry?.requiresMemo ?? false;
   const normalized = memo.trim();
   const error =
@@ -65,15 +91,29 @@ export function memoField(destination: string, memo: string, chosen: ChosenMemoT
         ? "This exchange needs a memo."
         : null
       : valueError(normalized, type);
+  const typeMatters = !typeFixed && servedType !== null && (normalized !== "" || required);
+  const fact: MemoFact =
+    typeMatters && !typeChosen
+      ? "type-unchosen"
+      : typeMatters && type !== servedType
+        ? "type-mismatch"
+        : error === null
+          ? "ok"
+          : normalized === ""
+            ? "missing"
+            : "invalid";
   return {
     type,
-    typeFixed: entry !== null,
+    typeFixed,
+    listing,
+    servedType,
+    typeChosen,
     required,
     exchangeName: entry?.name ?? null,
     normalized,
     bytes: memoBytes(normalized),
     error,
-    fact: error === null ? "ok" : normalized === "" ? "missing" : "invalid",
+    fact,
     memoType: normalized === "" ? null : type,
   };
 }
@@ -86,9 +126,10 @@ export interface ConfirmedMemo {
 /**
  * The memo and type a close sends and verifies, from what the plan page stored. One value feeds
  * both the transactions request and `verify()`, so the type the API is asked for is the type the
- * signed transaction is held to. The type follows `memoField`: the registry's for a listed
- * exchange, the user's choice otherwise, and text for a record saved before the choice existed,
- * which is also what the API uses when no type is sent.
+ * signed transaction is held to. The type follows `memoField`: the registry's for an exchange
+ * the bundled registry lists, the user's choice otherwise (an address only the served registry
+ * lists included, so `verify()` holds the served type to it), and text for a record saved before
+ * the choice existed, which is also what the API uses when no type is sent.
  */
 export function confirmedMemo(
   destination: string,
@@ -98,7 +139,8 @@ export function confirmedMemo(
   const normalized = memo?.trim() ?? "";
   if (normalized === "") return null;
   const entry = isValidGAddress(destination) ? lookupExchange(destination) : null;
-  return { memo: normalized, memoType: entry?.memoType ?? memoType ?? "text" };
+  const bundled = entry !== null && isBundledExchange(destination) ? entry.memoType : null;
+  return { memo: normalized, memoType: bundled ?? memoType ?? "text" };
 }
 
 /** Whether an edit to an id memo is refused as it is typed: anything but digits. The edit is

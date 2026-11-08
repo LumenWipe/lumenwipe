@@ -27,7 +27,8 @@ import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import type { IntentOperation, TxIntent } from "@/types/close-api";
 import type { AccountSigner } from "@/types/account";
 import { fromHex, toHex } from "@/lib/stellar/hex";
-import { activeRegistry, setRegistry } from "@/lib/exchange-registry";
+import { activeRegistry, bundledRegistry, setRegistry } from "@/lib/exchange-registry";
+import { confirmedMemo } from "@/lib/plan/memo-field";
 import { exitExpectations } from "@/lib/stellar/exit-expectations";
 import type { AccountState } from "@/types/account";
 import { REAL_EXIT_ENVELOPES, type RealExitEnvelope } from "./fixtures/real-exit-envelopes";
@@ -4341,6 +4342,49 @@ describe("memo value and type", () => {
         "This destination requires a deposit memo."
       );
     });
+  });
+
+  test("a type the user chose for an exchange only the served registry lists is held to the served one", () => {
+    const address = Keypair.random().publicKey();
+    const before = activeRegistry();
+    const bundled = bundledRegistry();
+    setRegistry({
+      ...bundled,
+      served: true,
+      entries: [
+        ...bundled.entries,
+        {
+          address,
+          name: "Newly Listed",
+          domain: "example.com",
+          requiresMediator: false,
+          requiresMemo: true,
+          memoType: "id",
+        },
+      ],
+    });
+    try {
+      const sent = (type: "text" | "id") => {
+        const memo = confirmedMemo(address, MEMO, type);
+        if (memo === null || memo.memoType === "hash") throw new Error("no memo to send");
+        return { memo: memo.memo, memoType: memo.memoType };
+      };
+      const xdrOf = (memo: Memo) =>
+        buildXdr([Operation.accountMerge({ destination: address })], memo);
+      const chosen = sent("text");
+      expect(chosen).toEqual({ memo: MEMO, memoType: "text" });
+      expectRefusal(
+        () => verifyMemo(xdrOf(Memo.text(MEMO)), address, chosen.memo, chosen.memoType),
+        "registry_memo_type_unconfirmed",
+        "lists Newly Listed with an id memo, not the text memo you confirmed"
+      );
+      const matching = sent("id");
+      expect(() =>
+        verifyMemo(xdrOf(Memo.id(MEMO)), address, matching.memo, matching.memoType)
+      ).not.toThrow();
+    } finally {
+      setRegistry(before);
+    }
   });
 
   test("the mediated merge and forward carries the memo in the registry type", () => {

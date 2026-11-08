@@ -162,6 +162,9 @@ export default function PlanView({
   const [destination, setDestination] = useState(storedDest ?? "");
   const [memo, setMemo] = useState(storedMemo ?? "");
   const [memoType, setMemoType] = useState<ChosenMemoType>(storedMemoType === "id" ? "id" : "text");
+  // The destination the user last picked a memo type for. Kept here only, so a destination whose
+  // type is theirs to state (one only the served registry lists) is asked again on a new page.
+  const [memoTypeChosenFor, setMemoTypeChosenFor] = useState<string | null>(null);
   const [proceeding, setProceeding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -418,7 +421,7 @@ export default function PlanView({
 
   // One memo, validated once: the value and type checked here are what the draft keeps, what the
   // review shows and what the request carries.
-  const memoState = memoField(destination, memo, memoType);
+  const memoState = memoField(destination, memo, memoType, memoTypeChosenFor === destination);
 
   useEffect(() => {
     keepDestinationDraft(
@@ -718,7 +721,11 @@ export default function PlanView({
             memo={memo}
             onMemoChange={setMemo}
             memoType={memoType}
-            onMemoTypeChange={setMemoType}
+            onMemoTypeChange={(type) => {
+              setMemoType(type);
+              setMemoTypeChosenFor(destination);
+            }}
+            memoTypeChosen={memoTypeChosenFor === destination}
             source={account.address}
             acknowledged={destinationAcknowledgedFor === destination}
             onAcknowledgedChange={(ack) => acknowledgeDestination(ack ? destination : null)}
