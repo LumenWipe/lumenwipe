@@ -23,6 +23,11 @@ export interface PendingRound {
   /** How many transactions that batch held. Set by `runClose`; when absent, `txIndex + 1` plus
    *  the length of `queue`. */
   txCount?: number;
+  /** The hash of the transaction `verify` approved, taken from `tx.xdr` with `transactionHash`
+   *  right after `verify` passed. Set by `runClose` only when `transactionHash` is given. A resume
+   *  that carries it is refused unless `xdr` hashes to it, and only such a resume can reach
+   *  `prepare` without a `sign` call. Keep it when adding signatures to `xdr`. */
+  approvedHash?: string;
 }
 
 /** Where a close is, as `onProgressEvent` reports it. */
@@ -68,6 +73,22 @@ export class InsufficientSignatureWeightError extends Error {
       `Transaction ${pending.tx.id} needs signing weight ${pending.requiredWeight} but only has ${pending.accumulatedWeight}.`
     );
     this.name = "InsufficientSignatureWeightError";
+  }
+}
+
+/** Thrown when the transaction about to be signed or submitted is not the one `verify` approved:
+ *  its hash differs from the `approvedHash` pinned at verify time, or a pinned round was resumed
+ *  without `transactionHash` (`actualHash` is then null). Nothing was submitted. */
+export class ApprovedHashMismatchError extends Error {
+  constructor(
+    public readonly tx: CloseTransaction,
+    public readonly approvedHash: string,
+    public readonly actualHash: string | null
+  ) {
+    super(
+      "This transaction does not match the one that was verified, so nothing was submitted. Start this step again."
+    );
+    this.name = "ApprovedHashMismatchError";
   }
 }
 
@@ -263,12 +284,26 @@ export interface CloseEngineDeps {
   /** The signing weight this transaction actually needs, from its operation set and the
    *  account's real per-category thresholds - never a single account-wide number. */
   requiredWeight: (tx: CloseTransaction) => number;
+  /**
+   * The hash of the transaction in `xdr`, computed on your side over your own network
+   * passphrase, never taken from the API. It hashes the envelope's own transaction: a fee-bump
+   * envelope MUST NOT be unwrapped to its inner transaction, so a fee-bumped resume fails the
+   * check. It must not throw for a valid plain envelope; if it throws, `runClose` rethrows that
+   * error with nothing submitted, and a result that is not a non-empty string throws a
+   * `TypeError` before anything is signed. Opt-in: given, each transaction's hash is pinned as
+   * `approvedHash` once `verify` passes, the signed and resumed envelopes are checked against it,
+   * and a pinned resume whose `accumulatedWeight` already meets `requiredWeight` goes to `prepare`
+   * without calling `sign`. A mismatch throws `ApprovedHashMismatchError`.
+   */
+  transactionHash?: (xdr: string) => string;
   /** Signs the given xdr (which may already carry earlier signatures) with the currently
    *  available signer, returning the updated xdr and its total accumulated signing weight
    *  against the account's known signer set. */
   sign: (tx: CloseTransaction, xdr: string) => Promise<{ xdr: string; weight: number }>;
   /** Turns a signed envelope into the final one, adding any co-signature or sponsorship. Runs
-   *  once per transaction: a resend never comes back here. */
+   *  once per transaction: a resend never comes back here. It MUST keep the transaction it is
+   *  given: with `transactionHash`, the engine checks `xdr` against the approved hash before this
+   *  call, and only this function can check what it returns. */
   prepare?: (tx: CloseTransaction, xdr: string) => Promise<string>;
   /** Submits a transaction whose accumulated weight already meets its requirement; resolves
    *  to the tx hash. */
@@ -284,6 +319,7 @@ export interface CloseEngineDeps {
    * then for each transaction `verifying`, `awaiting-signature` (the signer is asked),
    * `submitting` (signed; from here on the network and any `prepare` step are waited on) and
    * `confirmed`. A resumed transaction starts at `awaiting-signature`: it is not verified again.
+   * A pinned resume whose weight is already met starts at `submitting`.
    * An observer only: each event is a fresh object, nothing it returns is awaited, and anything it
    * throws or rejects with is ignored, so it can neither stop nor change the close.
    */
@@ -337,7 +373,7 @@ export async function runClose(
   if (resume) {
     const at = resumedPosition(resume);
     firstRound = at.round + 1;
-    await signOrThrow(run, resume.tx, resume.xdr, resume.queue, at);
+    await resumeRound(run, resume, at);
     await processTxs(run, resume.queue, { ...at, txIndex: at.txIndex + 1 });
     if (!resume.requiresAnotherCall) return resultOf(run);
   }
@@ -484,8 +520,50 @@ async function processTxs(
     const at = { ...start, txIndex: start.txIndex + i };
     reportTx(deps, "verifying", at, tx.covers);
     await deps.verify(tx);
-    await signOrThrow(deps, tx, tx.xdr, txs.slice(i + 1), at);
+    const approvedHash = pinApprovedHash(deps, tx.xdr);
+    await signOrThrow(deps, tx, tx.xdr, txs.slice(i + 1), at, approvedHash);
   }
+}
+
+function pinApprovedHash(deps: CloseEngineDeps, xdr: string): string | undefined {
+  if (!deps.transactionHash) return undefined;
+  const hash: unknown = deps.transactionHash(xdr);
+  if (typeof hash !== "string" || hash === "") {
+    throw new TypeError(
+      "transactionHash must return the transaction's hash as a non-empty string."
+    );
+  }
+  return hash;
+}
+
+function assertApproved(
+  deps: CloseEngineDeps,
+  tx: CloseTransaction,
+  xdr: string,
+  approvedHash: string | undefined
+): void {
+  if (approvedHash === undefined) return;
+  if (!deps.transactionHash) throw new ApprovedHashMismatchError(tx, approvedHash, null);
+  const actual = deps.transactionHash(xdr);
+  if (actual !== approvedHash) throw new ApprovedHashMismatchError(tx, approvedHash, actual);
+}
+
+/** Resumes a stopped round onto its own envelope, read once. A round pinned at verify time is
+ *  checked against that hash before anything else, and goes to `prepare` without a signer when
+ *  the weight it carries already meets what it needs. */
+async function resumeRound(run: EngineRun, resume: PendingRound, at: TxPosition): Promise<void> {
+  const { tx, xdr, queue, approvedHash, accumulatedWeight } = resume;
+  assertApproved(run, tx, xdr, approvedHash);
+  if (
+    approvedHash !== undefined &&
+    Number.isFinite(accumulatedWeight) &&
+    accumulatedWeight > 0 &&
+    accumulatedWeight >= run.requiredWeight(tx)
+  ) {
+    await submitSigned(run, tx, xdr, at);
+    return;
+  }
+  await signOrThrow(run, tx, xdr, queue, at, approvedHash);
 }
 
 async function signOrThrow(
@@ -493,11 +571,13 @@ async function signOrThrow(
   tx: CloseTransaction,
   xdr: string,
   queue: CloseTransaction[],
-  at: TxPosition
+  at: TxPosition,
+  approvedHash: string | undefined
 ): Promise<void> {
   const required = deps.requiredWeight(tx);
   reportTx(deps, "awaiting-signature", at, tx.covers);
   const { xdr: signedXdr, weight } = await deps.sign(tx, xdr);
+  assertApproved(deps, tx, signedXdr, approvedHash);
   if (weight < required) {
     throw new InsufficientSignatureWeightError({
       tx,
@@ -509,8 +589,18 @@ async function signOrThrow(
       round: at.round,
       txIndex: at.txIndex,
       txCount: at.txCount,
+      ...(approvedHash !== undefined && { approvedHash }),
     });
   }
+  await submitSigned(deps, tx, signedXdr, at);
+}
+
+async function submitSigned(
+  deps: EngineRun,
+  tx: CloseTransaction,
+  signedXdr: string,
+  at: TxPosition
+): Promise<void> {
   reportTx(deps, "submitting", at, tx.covers);
   const finalXdr = deps.prepare ? await deps.prepare(tx, signedXdr) : signedXdr;
   if (!deps.reconcile) {

@@ -88,7 +88,8 @@ await runClose({
 - `phase`: `preparing` before each round is fetched; then, for each transaction, `verifying`,
   `awaiting-signature` (the signer, for example a wallet, has been asked), `submitting` (signed;
   the network is waited on) and `confirmed`. A resumed transaction starts at
-  `awaiting-signature`.
+  `awaiting-signature`, or at `submitting` when it is pinned (`transactionHash`) and its weight
+  is already met.
 - `round`: zero-based round of the close. A resumed close keeps the numbering it stopped at.
 - `txIndex`: zero-based position of the transaction in its round (not on `preparing`).
 - `txCount`: how many transactions the round holds (not on `preparing`).
