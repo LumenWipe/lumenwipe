@@ -11,6 +11,12 @@ version number before 0.4.0. Neither has a git tag.
 
 ## [Unreleased]
 
+### Fixed
+
+- `runClose` treats a signing weight returned by `sign` that is not a finite number (`NaN`,
+  `Infinity`), or a `requiredWeight` of `NaN`, as insufficient: it throws
+  `InsufficientSignatureWeightError` with a resumable round instead of submitting.
+
 ## [0.10.1] - 2026-11-08
 
 ### Changed
