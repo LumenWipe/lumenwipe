@@ -170,18 +170,18 @@ function feeOf(tx: CloseTransaction): bigint {
 
 /**
  * Refuses a Soroban round the account could not see through. No sponsor pays a Soroban round, so
- * this one, the later ones, the classic fees and the exchange merge must all fit in what the
- * account holds above its reserve and its offers before this round is signed.
+ * this round's own fee, the later ones, the classic fees and the exchange merge must all fit in
+ * what the account holds above its reserve and its offers before this round is signed.
  */
 function assertOwnFeesFit(
   state: AccountState,
-  tx: CloseTransaction,
+  roundFeeStroops: bigint,
   laterSorobanRounds: number,
   viaMediator: boolean,
   claimSelections: Readonly<Record<string, string>>
 ): void {
   const owed =
-    feeOf(tx) +
+    roundFeeStroops +
     laterOwnFeesStroops(state, laterSorobanRounds, viaMediator) +
     claimTrustlineCostStroops(state, claimSelections);
   const short = ownFeeShortfallStroops(state, owed);
@@ -400,17 +400,12 @@ export async function buildCloseTransactions(
       validUntilLedger,
       accountState,
       sponsorConfigured,
-      // With Soroban rounds ahead, `assertOwnFeesFit` below holds the account to every later fee.
+      // With Soroban rounds ahead, `assertOwnFeesFit` below holds the account to every fee ahead.
       sorobanRounds > 0 ? 0n : laterOwnStroops.afterNormalization
     )[0]!;
     if (sorobanRounds > 0) {
-      assertOwnFeesFit(
-        accountState,
-        normalization,
-        sorobanRounds,
-        needsMediator,
-        claimableBalanceSelections
-      );
+      // The classic bound already counts this round's operations, as the plan's own-fee bound does.
+      assertOwnFeesFit(accountState, 0n, sorobanRounds, needsMediator, claimableBalanceSelections);
     }
     const removed = normalization.intent.operations.length - 1;
     return {
@@ -449,7 +444,7 @@ export async function buildCloseTransactions(
     if (exit) {
       assertOwnFeesFit(
         accountState,
-        exit.transaction,
+        feeOf(exit.transaction),
         exit.remainingSteps +
           accountState.defiPositions.positions.length +
           tokenRoundsAhead(accountState, dispositions),
@@ -497,7 +492,7 @@ export async function buildCloseTransactions(
     if (tokenRound) {
       assertOwnFeesFit(
         accountState,
-        tokenRound.transaction,
+        feeOf(tokenRound.transaction),
         tokenRound.remainingSteps + tokenRoundsAhead(accountState, dispositions, "convert"),
         needsMediator,
         claimableBalanceSelections
@@ -523,7 +518,7 @@ export async function buildCloseTransactions(
       if (conversionRound) {
         assertOwnFeesFit(
           accountState,
-          conversionRound.transaction,
+          feeOf(conversionRound.transaction),
           conversionRound.remainingSteps,
           needsMediator,
           claimableBalanceSelections

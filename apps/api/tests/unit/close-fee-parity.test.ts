@@ -1,11 +1,16 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { Account, Keypair } from "@stellar/stellar-sdk";
-import type { AccountState, ClaimableBalance, Trustline } from "@lumenwipe/types";
+import { Account, Keypair, StrKey, TransactionBuilder } from "@stellar/stellar-sdk";
+import type { AccountState, ClaimableBalance, CloseTransaction, Trustline } from "@lumenwipe/types";
 import { buildCloseTransactions, CloseBuildError } from "@/lib/close-api/build-transactions";
 import { buildPlan } from "@/lib/stellar/tx-builder";
 import { ALL_ON, type KillSwitches } from "@/config/kill-switches";
-import { closeFeeShortMessage } from "@/lib/stellar/claim-reserve";
-import { stroopsToFixedXlm } from "@/lib/utils/amounts";
+import { closeFeeShortMessage, laterOwnFeesStroops } from "@/lib/stellar/claim-reserve";
+import {
+  normalizesSignersFirst,
+  signerNormalizationOpCount,
+} from "@/lib/stellar/tx-builder/signers";
+import { BASE_FEE_STROOPS } from "@/config/constants";
+import { stroopsToFixedXlm, xlmToStroops } from "@/lib/utils/amounts";
 import * as rpcModule from "@/lib/stellar/rpc";
 import * as registry from "@/lib/exchange-registry";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
@@ -96,6 +101,10 @@ async function refusal(promise: Promise<unknown>): Promise<CloseBuildError> {
   );
   expect(failure).toBeInstanceOf(CloseBuildError);
   return failure as CloseBuildError;
+}
+
+function feeOf(tx: CloseTransaction): bigint {
+  return BigInt(TransactionBuilder.fromXDR(tx.xdr, tx.networkPassphrase).fee);
 }
 
 describe("a claim round that opens a trustline, with no fee sponsor", () => {
@@ -280,9 +289,10 @@ describe("signer normalization first, with later rounds of other kinds", () => {
       ...over,
     });
 
-  test("with a Soroban round ahead, the refusal is the own-fee bound, not the classic projection", async () => {
-    const token = "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA";
-    const withToken = multisig(ONE_XLM + 250n, {
+  const token = "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA";
+  const dispositions = { [token]: "convert" as const };
+  const withToken = (balanceStroops: bigint, over: Partial<AccountState> = {}) =>
+    multisig(balanceStroops, {
       sorobanTokens: {
         tokens: [{ contract: token, balance: "250", symbol: "XTAR", decimals: 7, sources: [] }],
         unreadable: [],
@@ -290,30 +300,83 @@ describe("signer normalization first, with later rounds of other kinds", () => {
         eventsScanned: null,
         warnings: [],
       },
+      ...over,
     });
-    const dispositions = { [token]: "convert" as const };
-    const planned = buildPlan(
+  const planShortfall = (s: AccountState) =>
+    buildPlan(
       NO_SPONSOR,
-      withToken,
+      s,
       false,
       false,
       {},
       undefined,
       dispositions,
       {},
-      withToken.defiPositions,
+      s.defiPositions,
       false
     ).blockers.find((b) => b.code === "close_fee_balance_short");
-    expect(planned).toBeDefined();
+  const build = (s: AccountState) =>
+    buildCloseTransactions(NO_SPONSOR, s, DEST, dispositions, "testnet");
+  // The Soroban round at the estimate and the classic bound of 400: the normalization round's two
+  // operations, then the master key the next call still lists, and the merge.
+  const owed = 100_000n + 400n;
+  // What the next call reads once normalization has landed: the master key alone, thresholds
+  // reset, the cosigner's sponsored entry gone, and the normalization fee paid.
+  const normalized = (s: AccountState, feeStroops: bigint) =>
+    withToken(BigInt(xlmToStroops(s.nativeBalanceLumens)) - feeStroops, {
+      signers: [{ key: SOURCE, weight: 1, type: "ed25519_public_key" }],
+      thresholds: { low: 0, med: 1, high: 1 },
+      numSubEntries: 0,
+      numSponsored: 0,
+    });
 
-    const failure = await refusal(
-      buildCloseTransactions(NO_SPONSOR, withToken, DEST, dispositions, "testnet")
-    );
+  test("with a Soroban round ahead, the plan and the build report the same code and amount", async () => {
+    const short = withToken(ONE_XLM + 250n);
+    const planned = planShortfall(short);
+    expect(planned?.message).toBe(closeFeeShortMessage(owed - 250n));
+
+    const failure = await refusal(build(short));
     expect(failure.code).toBe("close_fee_balance_short");
-    // The normalization round's 200 stroops, the Soroban round at the estimate and the classic
-    // bound of 300, from 250 spare; the classic projection alone would have asked for 50.
-    expect(failure.message).toBe(closeFeeShortMessage(200n + 100_000n + 300n - 250n));
+    expect(failure.status).toBe(422);
+    expect(failure.message).toBe(planned!.message);
   });
+
+  test("with a Soroban round ahead, the build emits normalization exactly when the plan is clear", async () => {
+    const oneShort = withToken(ONE_XLM + owed - 1n);
+    expect(planShortfall(oneShort)?.message).toBe(closeFeeShortMessage(1n));
+    expect((await refusal(build(oneShort))).message).toBe(closeFeeShortMessage(1n));
+
+    const enough = withToken(ONE_XLM + owed);
+    expect(planShortfall(enough)).toBeUndefined();
+    const round = await build(enough);
+    expect(round.transactions[0]!.covers).toEqual(["NORMALIZE_SIGNERS"]);
+    expect(round.transactions[0]!.needsSponsoredFee).toBeUndefined();
+    const fee = feeOf(round.transactions[0]!);
+    expect(fee).toBe(BigInt(BASE_FEE_STROOPS * signerNormalizationOpCount(enough.signers, SOURCE)));
+    expect(planShortfall(normalized(enough, fee))).toBeUndefined();
+  });
+
+  test.each([
+    ["one cosigner", [cosigner]],
+    ["two cosigners", [cosigner, Keypair.random().publicKey()]],
+  ])(
+    "with %s, the bound before normalization covers its fee and the next call's bound",
+    (_name, cosigners) => {
+      const before = withToken(ONE_XLM, {
+        signers: [
+          { key: SOURCE, weight: 1, type: "ed25519_public_key" },
+          ...cosigners.map((key) => ({ key, weight: 1, type: "ed25519_public_key" as const })),
+          { key: StrKey.encodeSha256Hash(Buffer.alloc(32)), weight: 1, type: "hash_x" },
+        ],
+        thresholds: { low: 9, med: 9, high: 9 },
+      });
+      expect(normalizesSignersFirst(before)).toBe(true);
+      const fee = BigInt(BASE_FEE_STROOPS * signerNormalizationOpCount(before.signers, SOURCE));
+      expect(laterOwnFeesStroops(before, 1, false)).toBeGreaterThanOrEqual(
+        fee + laterOwnFeesStroops(normalized(before, fee), 1, false)
+      );
+    }
+  );
 
   test("with a sponsor and a claim round short of its trustline reserve, the build refuses with the plan's code", async () => {
     const balance = usdcBalance("e");

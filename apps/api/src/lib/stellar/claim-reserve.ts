@@ -6,6 +6,7 @@ import {
   SOROBAN_EXIT_FEE_ESTIMATE_STROOPS,
 } from "@/config/constants";
 import { stroopsToFixedXlm, xlmToStroops } from "@/lib/utils/amounts";
+import { normalizesSignersFirst } from "@/lib/stellar/tx-builder/signers";
 
 /** The account state a fee is judged against: balance, reserve and the XLM held by open offers. */
 export type FeeAffordability = Pick<
@@ -65,10 +66,14 @@ export const MEDIATOR_TX_FEE_STROOPS = BigInt(2 * BASE_FEE_STROOPS);
  *  merge can start from is this plus its own fee. */
 export const MEDIATOR_MIN_FORWARD_STROOPS = BigInt(xlmToStroops("1"));
 
-/** Classic operations the close may still need, each counted at its worst case. */
+/**
+ * Classic operations the close may still need, each counted at its worst case. Signer
+ * normalization as its own round leaves the master key listed, and the next call counts it again.
+ */
 function classicOpsBound(state: AccountState): number {
   return (
     state.signers.length +
+    (normalizesSignersFirst(state) ? 1 : 0) +
     state.dataEntries.length +
     state.openOffers.length +
     2 * state.trustlines.length +
