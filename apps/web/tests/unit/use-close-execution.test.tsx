@@ -1089,6 +1089,7 @@ test("useCloseExecution › a later transaction in the round is signed against t
     accumulatedWeight: 0,
     contributed: [],
     remainingSigners: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+    notice: null,
   });
 
   await act(async () => {
@@ -1183,6 +1184,7 @@ async function twoRoundClose(roundTwoReportsSigners: boolean): Promise<void> {
     accumulatedWeight: 0,
     contributed: [],
     remainingSigners: masterOnly.signers,
+    notice: null,
   });
 
   await act(async () => {
@@ -1249,6 +1251,7 @@ test("useCloseExecution › a key the round no longer lists pauses for a current
     accumulatedWeight: 0,
     contributed: [],
     remainingSigners: masterOnly,
+    notice: null,
   });
 });
 
@@ -3686,6 +3689,7 @@ test("useCloseExecution › a run with no signer pauses with a status and submit
     accumulatedWeight: 0,
     contributed: [],
     remainingSigners: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+    notice: null,
   });
   expect(useDemolishStore.getState().phase).toBe("STEP_FAILED");
 });

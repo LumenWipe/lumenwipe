@@ -29,6 +29,7 @@ import * as sessionStore from "@/lib/session/store";
 import { fromHex } from "@/lib/stellar/hex";
 import {
   closeFailureMessage,
+  KEPT_ROUND_TIMED_OUT,
   PROGRESS_NOT_SAVED,
   UNCONFIRMED_NOTICE,
   walletAccountMismatch,
@@ -107,6 +108,7 @@ let currentSignatureStatus: {
   accumulatedWeight: number;
   contributed: { key: string; weight: number; type: string }[];
   remainingSigners: { key: string; weight: number; type: string }[];
+  notice?: string | null;
 } | null = null;
 
 let currentWalletAddress: string | null = null;
@@ -992,6 +994,47 @@ test("execution-wizard › after a timeout, Retry is offered again after 5 s if 
   expect(hold).not.toBeNull();
   act(() => hold!());
   expect(retry.disabled).toBe(false);
+});
+
+/** The round was kept after the wallet timed out: the screen waits on the next signature. */
+function keptAfterTimeout(stale: Promise<void> | null): void {
+  timedOutWallet(stale);
+  currentSignatureStatus = {
+    requiredWeight: 2,
+    accumulatedWeight: 1,
+    contributed: [{ key: cosigner, weight: 1, type: "ed25519_public_key" }],
+    remainingSigners: [{ key: source, weight: 1, type: "ed25519_public_key" }],
+    notice: KEPT_ROUND_TIMED_OUT,
+  };
+  useDemolishStore.setState({ lastError: KEPT_ROUND_TIMED_OUT } as never);
+}
+
+test("execution-wizard › a round kept after a wallet timeout says why it paused beside the signing progress", () => {
+  keptAfterTimeout(null);
+  render(<ExecutionWizard network="testnet" />);
+  expect(screen.getByText(KEPT_ROUND_TIMED_OUT)).toBeDefined();
+  expect(screen.getByText(/1 more signing weight/)).toBeDefined();
+  expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+});
+
+test("execution-wizard › a plain weight pause shows no wallet notice", () => {
+  keptAfterTimeout(null);
+  currentSignatureStatus = { ...currentSignatureStatus!, notice: null };
+  render(<ExecutionWizard network="testnet" />);
+  expect(screen.queryByText(KEPT_ROUND_TIMED_OUT)).toBeNull();
+});
+
+test("execution-wizard › with a kept round, Add signature waits for the earlier wallet prompt to answer", async () => {
+  let answer!: () => void;
+  keptAfterTimeout(new Promise<void>((resolve) => (answer = resolve)));
+  render(<ExecutionWizard network="testnet" />);
+  const add = screen.getByRole("button", { name: "Add signature" }) as HTMLButtonElement;
+  expect(add.disabled).toBe(true);
+  await act(async () => {
+    answer();
+    await Promise.resolve();
+  });
+  expect(add.disabled).toBe(false);
 });
 
 test("execution-wizard › Retry is not held when no wallet prompt is left open", () => {

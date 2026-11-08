@@ -78,7 +78,10 @@ import {
   closeRetryIsSafe,
   CLOSE_INTERRUPTED,
   HASH_NOT_KEPT,
+  KEPT_ROUND_DECLINED,
+  KEPT_ROUND_TIMED_OUT,
   NO_MERGE_CONFIRMED,
+  PENDING_ROUND_EXPIRED,
   requestIdOf,
   SIGNED_NOT_APPROVED,
   UserFacingError,
@@ -96,6 +99,8 @@ import {
   WALLET_CONNECT_WALLET_ID,
   WalletKitSigner,
   WalletSignerMismatchError,
+  WalletSigningError,
+  WalletSigningTimeoutError,
   type TransactionSigner,
 } from "@/lib/stellar/signer";
 import {
@@ -133,6 +138,26 @@ export interface SignatureStatus {
   accumulatedWeight: number;
   contributed: AccountSigner[];
   remainingSigners: AccountSigner[];
+  /** Why the round paused when it was not for weight alone: the wallet declined or did not
+   *  answer, and the collected signatures were kept. Null on a plain weight pause. */
+  notice: string | null;
+}
+
+/** The wallet itself refused or did not answer: neither changes the envelope or the account, so
+ *  a partly signed round survives it. Only the typed decline (-4) counts, never a reading of the
+ *  wallet's text. */
+function walletStoppedSigning(err: unknown): boolean {
+  return (
+    err instanceof WalletSigningTimeoutError ||
+    (err instanceof WalletSigningError && err.code === -4)
+  );
+}
+
+/** A partly signed round past its upper time bound by this device's clock (or with none, which
+ *  is never sent) can no longer land, so it is never resumed. */
+function roundExpired(xdr: string, passphrase: string, now: number): boolean {
+  const validUntil = submissionValidUntil(xdr, passphrase);
+  return validUntil === null || validUntil * 1000 <= now;
 }
 
 async function keepDurably(owner: CloseOwner, submission: UnresolvedSubmission): Promise<boolean> {
@@ -315,6 +340,18 @@ export function useCloseExecution() {
         signerStateForRef.current = stateFor;
       }
       if (!signerStateRef.current) signerStateRef.current = snapshotState;
+      const passphrase = NETWORK_PASSPHRASES[network];
+      // A kept round that ran out of time is dropped before anyone is asked to sign it again.
+      if (
+        pendingRoundRef.current &&
+        roundExpired(pendingRoundRef.current.xdr, passphrase, Date.now())
+      ) {
+        pendingRoundRef.current = null;
+        setSignatureStatus(null);
+        setLastError(PENDING_ROUND_EXPIRED);
+        setPhase("STEP_FAILED");
+        return;
+      }
       const resuming = pendingRoundRef.current !== null;
       const knownSigners = (resuming ? signerStateRef.current : snapshotState).signers;
       if (signer && !knownSigners.some((s) => s.key === signer.publicKey)) {
@@ -329,7 +366,10 @@ export function useCloseExecution() {
         return;
       }
 
-      const passphrase = NETWORK_PASSPHRASES[network];
+      // The round this run resumes, and whether the wallet itself stopped signing that very
+      // envelope: only then does the round survive the failure (see the catch below).
+      const resumedRound = pendingRoundRef.current;
+      let walletStoppedResume = false;
       const initialSignerState = signerStateRef.current;
       const roundSignerState = (): SignerState => signerStateRef.current ?? initialSignerState;
       // The network needs at least one matching signature even where a threshold is 0.
@@ -545,6 +585,19 @@ export function useCloseExecution() {
               let signedXdr: string;
               try {
                 signedXdr = await signer.sign(xdr, passphrase);
+              } catch (err) {
+                // Tagged here, and only for the wallet's own decline or timeout on the resumed
+                // envelope: every check after signing, and a later transaction of this run,
+                // still clears the round.
+                if (
+                  resumedRound !== null &&
+                  tx === resumedRound.tx &&
+                  xdr === resumedRound.xdr &&
+                  walletStoppedSigning(err)
+                ) {
+                  walletStoppedResume = true;
+                }
+                throw err;
               } finally {
                 setSigningPrompt(null);
               }
@@ -749,14 +802,13 @@ export function useCloseExecution() {
           err instanceof CloseTransactionFailedError
             ? err.submission
             : (inFlight as CloseTransaction | null);
-        if (err instanceof InsufficientSignatureWeightError) {
-          // Paused for another signer, not failed: the panel below the steps says what is needed.
-          markCoveredStatus(err.pending.tx.covers, err.pending.tx.coversTargets, "pending");
-          // The weight the transaction really needs, also after a run with no signer.
-          const pending = { ...err.pending, requiredWeight: requiredFor(err.pending.tx) };
+        // Paused for another signer, not failed: the panel below the steps says what is needed,
+        // and the next run resumes this exact envelope.
+        const pauseFor = (pending: PendingRound, notice: string | null): void => {
+          markCoveredStatus(pending.tx.covers, pending.tx.coversTargets, "pending");
           pendingRoundRef.current = pending;
           const contributions = evaluateSignatureContributions(
-            err.pending.xdr,
+            pending.xdr,
             passphrase,
             roundSignerState().signers
           );
@@ -765,11 +817,17 @@ export function useCloseExecution() {
             accumulatedWeight: pending.accumulatedWeight,
             contributed: contributions.filter((c) => c.contributed).map((c) => c.signer),
             remainingSigners: contributions.filter((c) => !c.contributed).map((c) => c.signer),
+            notice,
           });
           setLastError(
-            `This account needs ${Math.max(0, pending.requiredWeight - pending.accumulatedWeight)} more signing weight. Connect another signer to continue.`
+            notice ??
+              `This account needs ${Math.max(0, pending.requiredWeight - pending.accumulatedWeight)} more signing weight. Connect another signer to continue.`
           );
           setPhase("STEP_FAILED");
+        };
+        if (err instanceof InsufficientSignatureWeightError) {
+          // The weight the transaction really needs, also after a run with no signer.
+          pauseFor({ ...err.pending, requiredWeight: requiredFor(err.pending.tx) }, null);
           return;
         }
         if (
@@ -780,6 +838,20 @@ export function useCloseExecution() {
           setSignatureStatus(null);
           setLastError(null);
           setPhase("STEP_UNCONFIRMED");
+          return;
+        }
+        // The wallet declined or did not answer on the resumed envelope: neither changes the
+        // envelope or the account, so the signatures already on it are kept for the next attempt,
+        // which signs and checks it like any resume. One already past its time limit is not.
+        if (
+          walletStoppedResume &&
+          resumedRound !== null &&
+          !roundExpired(resumedRound.xdr, passphrase, Date.now())
+        ) {
+          pauseFor(
+            resumedRound,
+            err instanceof WalletSigningTimeoutError ? KEPT_ROUND_TIMED_OUT : KEPT_ROUND_DECLINED
+          );
           return;
         }
         if (err instanceof CloseStateChangedError) {
