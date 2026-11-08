@@ -75,6 +75,13 @@ import { contractAddressOf, contractDataEntry, instanceOfEntry } from "@/lib/ste
  * never unsafely.
  */
 
+/**
+ * The one registered vault code version `pay_debt` was verified on (the testnet reference build of
+ * FxDAO-SC v0.6.0). Any other version is refused before it is read: the mainnet vault is
+ * registered as `wind-down`, code whose only entry points are `evict` and `upgrade`.
+ */
+export const FXDAO_REPAY_VERSION = "v1";
+
 export interface FxdaoVaultKeyLike {
   account: string;
   denomination: string;
@@ -119,6 +126,8 @@ export type FxdaoLive =
       ratio: bigint;
     }
   | { status: "not_vault"; kind: string }
+  /** The vault runs a registered code version other than the one `pay_debt` was verified on. */
+  | { status: "no_repay"; version: string }
   /** The account holds no open vault for this denomination - already closed, or never existed. */
   | { status: "not_found" }
   | { status: "unreadable" }
@@ -449,6 +458,10 @@ export function fxdaoExitAdapter(
 
     async readLive(position, code, ctx, rpc): Promise<FxdaoLive> {
       if (code.kind !== "vault") return { status: "not_vault", kind: code.kind };
+      // Checked before any read: a version this adapter was not verified against may lay out its
+      // storage differently, and the mainnet wind-down code has no `pay_debt` at all.
+      if (code.version !== FXDAO_REPAY_VERSION)
+        return { status: "no_repay", version: code.version };
 
       try {
         const vault = position.contractAddress;
@@ -513,6 +526,14 @@ export function fxdaoExitAdapter(
 
     plan(position, live, _code, ctx): ExitPlan {
       const vaultLabel = shortAddress(position.contractAddress);
+      if (live.status === "no_repay") {
+        return manualReview(
+          "fxdao_vault_no_repay",
+          `The FxDAO vault ${vaultLabel} runs code (${live.version}) that has no repay entry ` +
+            "point, so its debt cannot be repaid and no exit was built. Manage this vault through " +
+            "FxDAO directly, or choose to leave it behind."
+        );
+      }
       if (live.status === "not_vault") {
         return manualReview(
           "fxdao_contract_not_vault",

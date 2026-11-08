@@ -97,10 +97,19 @@ contract its `CONFIG` names, since `unbond` runs there. Four of those stake cont
 earlier build of the stake code, registered as its own hash after its interface and `BondingInfo`
 layout were confirmed to match.
 FxDAO's documented Vaults contract is the one mainnet exception: its live interface exposes only
-`evict`/`upgrade`, not `pay_debt` or any other vault-management entrypoint, so it is recorded
-`wasmHash: null, verifiedLive: false` rather than trusted - the same interface gap already found
-and recorded for its testnet entry, now confirmed on mainnet too.
+`evict`/`upgrade`, not `pay_debt` or any other vault-management entrypoint. It is pinned to its
+live hash under its own version, `wind-down`, so its code is recognized, and that version is listed
+in `noExitVersions` (below), so no exit is built against it and no exit may touch it.
 
 `bun run test:integration` includes a read-only mainnet canary
 (`tests/integration/mainnet-registry.integration.test.ts`) that re-reads every `verifiedLive`
 mainnet entry's hash; it needs no account and moves no funds.
+
+## Versions with no exit
+
+`noExitVersions` maps a protocol to the code versions registered only so they are recognized and
+refused: code that exposes no exit entry point. An entry running one of them stays `verifiedLive`
+(the canary keeps checking its hash), but it is never exit-capable: the API's conversion and
+router lookups and the web's bundled lists of contracts an exit may touch all skip it, and the
+protocol's adapter refuses it by name. A listed version must be one an entry of that protocol
+runs, so a typo fails validation instead of leaving the real version exit-capable.

@@ -211,8 +211,8 @@ function asBigInt(value: unknown): bigint | null {
 /**
  * Confirms a registry entry's contract still exists on-chain with the recorded wasmHash before
  * anything is decoded against it. Returns false (and pushes an `unrecognizedPositions` entry) on
- * either "contract not found" (a registry-integrity gap, not "this account has no position" -
- * exercised for real by the FxDAO entry today) or a wasmHash mismatch (halt-on-unknown, same
+ * either "contract not found" (a registry-integrity gap, not "this account has no position") or
+ * a wasmHash mismatch (halt-on-unknown, same
  * invariant the exit adapters hold to).
  *
  * `liveWasmHash` is what the ledger returned for the entry's instance - null when the contract
@@ -226,8 +226,8 @@ function verifyEntry(
   unrecognized: UnrecognizedDefiPosition[]
 ): boolean {
   if (liveWasmHash === null) {
-    // The registry already records this entry as absent from the network (verifiedLive: false,
-    // FxDAO's documented-but-undeployed vault today). Still absent is the registry's fact, not
+    // The registry already records this entry as absent from the network (verifiedLive: false:
+    // documented by the protocol but not deployed). Still absent is the registry's fact, not
     // this account's, and flagging it would block every account on the network - so it is
     // skipped only while the network agrees with the registry. The moment it resolves, the
     // branch below reports it, because a contract the registry has no hash for cannot be read.

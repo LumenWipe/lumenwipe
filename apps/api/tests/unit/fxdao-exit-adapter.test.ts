@@ -118,6 +118,13 @@ describeExitAdapterInvariants("fxdao vault", {
       expectCodes: ["fxdao_contract_not_vault"],
     },
     {
+      name: "the vault runs a registered version with no repay entry point",
+      position,
+      rpc: rpc(),
+      registry: registry([entry({ version: "wind-down" })]),
+      expectCodes: ["fxdao_vault_no_repay"],
+    },
+    {
       name: "the account no longer holds an open vault",
       position,
       rpc: rpc({ ownVaultMissing: true }),
@@ -193,6 +200,36 @@ function optionalKeyTag(val: xdr.ScVal): string {
 }
 
 describe("fxdao exit adapter", () => {
+  test("a vault on any version but the verified one is refused before its state is read, and may be left behind", async () => {
+    const ledger = rpc();
+    let reads = 0;
+    let simulations = 0;
+    const counting = {
+      ...ledger,
+      getLedgerEntries: (...keys: Parameters<typeof ledger.getLedgerEntries>) => {
+        reads++;
+        return ledger.getLedgerEntries(...keys);
+      },
+      simulateTransaction: (...args: Parameters<typeof ledger.simulateTransaction>) => {
+        simulations++;
+        return ledger.simulateTransaction(...args);
+      },
+    };
+    const windDown = registry([entry({ version: "wind-down" })]);
+    const result = await runExitAdapter(adapter, position, ctx, {
+      rpc: counting,
+      resolveWasmHash: windDown.resolveWasmHash,
+      isRegistryFresh: () => true,
+    });
+    expect(result.next).toBeNull();
+    expect(result.blockers.map((b) => b.code)).toEqual(["fxdao_vault_no_repay"]);
+    expect(result.blockers[0]!.message).toContain("no repay entry point");
+    expect(result.leaveEligible).toBe(true);
+    // Only the runner's own code-hash read: the adapter reads nothing against unverified code.
+    expect(reads).toBe(1);
+    expect(simulations).toBe(0);
+  });
+
   test("plans one repay of the full debt, never a separate withdrawal step", async () => {
     const result = await run();
     expect(result.blockers).toEqual([]);

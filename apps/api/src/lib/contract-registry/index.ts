@@ -88,6 +88,13 @@ export interface ContractRegistryEntry {
 
 export interface ContractRegistry {
   version: string;
+  /**
+   * Per protocol, the code versions that are registered only so they are recognized and refused:
+   * code that exposes no exit entry point. An entry running one of them is never a contract an
+   * exit or a conversion may touch, here or in the web's bundled copy, even while it is verified
+   * live; the protocol's adapter refuses it by name.
+   */
+  noExitVersions: Partial<Record<DefiProtocol, string[]>>;
   /** The date a human last checked every entry against live RPC and the protocols' own docs. */
   lastVerified: string;
   /** After this date the data is treated as unusable, not merely old. */
@@ -212,7 +219,33 @@ function validateEntry(raw: unknown, path: string): ContractRegistryEntry {
   return entry;
 }
 
+/** Absent means none. A listed version must be one an entry of that protocol actually runs, so
+ *  a typo cannot leave the real version silently exit-capable. */
+function validateNoExitVersions(
+  raw: unknown,
+  entries: ContractRegistryEntry[]
+): Partial<Record<DefiProtocol, string[]>> {
+  if (raw === undefined) return {};
+  if (!isRecord(raw)) fail("noExitVersions", "must be an object");
+  const out: Partial<Record<DefiProtocol, string[]>> = {};
+  for (const [protocol, versions] of Object.entries(raw)) {
+    const path = `noExitVersions.${protocol}`;
+    if (!isOneOf(protocol, ALL_PROTOCOLS)) fail(path, "is not a recognized protocol");
+    if (!Array.isArray(versions)) fail(path, "must be an array of versions");
+    out[protocol] = versions.map((version, i) => {
+      const name = requireString(version, `${path}[${i}]`);
+      if (!entries.some((e) => e.protocol === protocol && e.version === name)) {
+        fail(`${path}[${i}]`, `names a version no ${protocol} entry runs`);
+      }
+      return name;
+    });
+  }
+  return out;
+}
+
 function deepFreeze(registry: ContractRegistry): ContractRegistry {
+  for (const versions of Object.values(registry.noExitVersions)) Object.freeze(versions);
+  Object.freeze(registry.noExitVersions);
   for (const entry of registry.entries) Object.freeze(entry);
   Object.freeze(registry.entries);
   return Object.freeze(registry);
@@ -227,7 +260,14 @@ function deepFreeze(registry: ContractRegistry): ContractRegistry {
  */
 export function validateContractRegistry(raw: unknown): ContractRegistry {
   if (!isRecord(raw)) fail("root", "must be an object");
-  requireKeys(raw, "root", ["version", "lastVerified", "validUntil", "source", "entries"]);
+  requireKeys(raw, "root", [
+    "version",
+    "lastVerified",
+    "validUntil",
+    "source",
+    "noExitVersions",
+    "entries",
+  ]);
   if (!Array.isArray(raw.entries)) fail("entries", "must be an array");
 
   const lastVerified = requireDate(raw.lastVerified, "lastVerified");
@@ -264,6 +304,7 @@ export function validateContractRegistry(raw: unknown): ContractRegistry {
     lastVerified,
     validUntil,
     source: requireString(raw.source, "source"),
+    noExitVersions: validateNoExitVersions(raw.noExitVersions, entries),
     entries,
   });
 }
@@ -274,6 +315,9 @@ export interface ContractRegistryLookup {
   entriesForNetwork: (network: Network) => ContractRegistryEntry[];
   entriesForProtocol: (network: Network, protocol: DefiProtocol) => ContractRegistryEntry[];
   resolveWasmHash: (network: Network, wasmHash: string) => ContractResolution;
+  /** Whether an exit or a conversion may invoke this entry's contract: verified live, pinned to a
+   *  hash, and not running a version listed in `noExitVersions`. */
+  isExitCapable: (entry: ContractRegistryEntry) => boolean;
 }
 
 /**
@@ -310,6 +354,14 @@ export function createContractRegistryLookup(registry: ContractRegistry): Contra
      * odd contract on someone's account must surface as a manual-review flag, not crash their
      * close plan. A hash never verified on the caller's network is unknown there.
      */
+    isExitCapable(entry: ContractRegistryEntry): boolean {
+      return (
+        entry.verifiedLive &&
+        entry.wasmHash !== null &&
+        !(registry.noExitVersions[entry.protocol] ?? []).includes(entry.version)
+      );
+    },
+
     resolveWasmHash(network: Network, wasmHash: string): ContractResolution {
       if (typeof wasmHash !== "string") return { status: "unknown", wasmHash: "" };
       const normalized = wasmHash.trim().toLowerCase();
@@ -352,6 +404,10 @@ export function resolveWasmHash(network: Network, wasmHash: string): ContractRes
   return shipped.resolveWasmHash(network, wasmHash);
 }
 
+export function isExitCapable(entry: ContractRegistryEntry): boolean {
+  return shipped.isExitCapable(entry);
+}
+
 /**
  * The Soroswap contracts a token conversion may invoke on a network: the aggregator, the adapters
  * it dispatches to, and the router (the API builds a single-protocol route as a direct router
@@ -365,7 +421,7 @@ export function soroswapConversionContracts(
   if (!shipped.isRegistryFresh(now)) return { aggregator: [], adapters: [], routers: [] };
   const live = shipped
     .entriesForProtocol(network, "soroswap")
-    .filter((e) => e.verifiedLive && e.wasmHash !== null);
+    .filter((e) => shipped.isExitCapable(e));
   const of = (kind: ContractKind): string[] =>
     live.filter((e) => e.kind === kind).map((e) => e.address);
   return { aggregator: of("aggregator"), adapters: of("adapter"), routers: of("router") };
@@ -385,7 +441,7 @@ export function xbullConversionContracts(
   return {
     router: shipped
       .entriesForProtocol(network, "xbull")
-      .filter((e) => e.verifiedLive && e.wasmHash !== null && e.kind === "router")
+      .filter((e) => shipped.isExitCapable(e) && e.kind === "router")
       .map((e) => e.address),
   };
 }

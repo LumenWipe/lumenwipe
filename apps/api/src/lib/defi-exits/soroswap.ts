@@ -2,7 +2,7 @@ import { Address, Asset, Contract, nativeToScVal, scValToNative, xdr } from "@st
 import type { DefiPosition, PlanBlocker, SoroswapLpPosition } from "@lumenwipe/types";
 import { TX_TIMEOUT_SECONDS } from "@/config/constants";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
-import { entriesForNetwork } from "@/lib/contract-registry";
+import { entriesForNetwork, isExitCapable } from "@/lib/contract-registry";
 import {
   EXIT_POSITION_GONE,
   type BuiltExitStep,
@@ -68,7 +68,7 @@ function registered(
   kind: "router" | "factory"
 ): string | null {
   const entry = entriesForNetwork(network).find(
-    (e) => e.protocol === "soroswap" && e.kind === kind && e.verifiedLive
+    (e) => e.protocol === "soroswap" && e.kind === kind && isExitCapable(e)
   );
   return entry?.address ?? null;
 }
