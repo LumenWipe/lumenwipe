@@ -10,7 +10,8 @@ icon: "users"
 > outcome and the changes it required are in [Section 14](#14-security-design-review). The API change in
 > Section 3.1, signer normalization as the first transaction of a multisig close, is built (INV-51). The
 > two engine changes of check 7.3g are built in the SDK's `runClose` (INV-52); the hub does not use them yet.
-> Nothing described here as "the station" or "the artifact" exists in the code today.
+> The artifact parser (`apps/web/lib/cosign/artifact.ts`) and the station at `/cosign`
+> (`apps/web/lib/cosign/station-checks.ts`) are built. The hub's export and merge (Sections 4 and 7.3) are not.
 
 ## 1. Summary
 
