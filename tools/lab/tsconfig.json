@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM"],
+    "target": "ES2022",
+    "types": ["bun"],
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "paths": {
+      "@lumenwipe/sdk": ["../../packages/sdk/src/index.ts"],
+      "@lumenwipe/types": ["../../packages/types/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules"]
+}

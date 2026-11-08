@@ -8,7 +8,8 @@
   },
   "workspaces": [
     "apps/*",
-    "packages/*"
+    "packages/*",
+    "tools/*"
   ],
   "scripts": {
     "dev": "bun run --filter '@lumenwipe/web' dev",
@@ -23,6 +24,7 @@
     "start:web": "bun run --filter '@lumenwipe/web' start",
     "start:api": "bun run --filter '@lumenwipe/api' start:prod",
     "start:playground": "bun run --filter '@lumenwipe/playground' start",
+    "lab": "cd tools/lab && bun run lab",
     "lint": "bun run --filter '*' lint",
     "type-check": "bun run --filter '*' type-check",
     "test": "bun run --filter '*' test",
