@@ -28,6 +28,7 @@ import {
 import {
   apiStepsToPlannedSteps,
   planTransactionCountOf,
+  planTransactionsOf,
   decisionPointsToLeavablePositions,
   planFeeStroopsOf,
 } from "@/lib/api/plan-adapters";
@@ -590,7 +591,8 @@ export default function PlanView({
         apiStepsToPlannedSteps(plan),
         plan.planHash,
         planTransactionCountOf(plan),
-        signatureOf(plan, account, useDemolishStore.getState())
+        signatureOf(plan, account, useDemolishStore.getState()),
+        planTransactionsOf(plan)
       );
       const finalFee = planFeeStroopsOf(plan);
       setExpectedReceive(finalFee === null ? null : expectedFrom(finalFee, false));

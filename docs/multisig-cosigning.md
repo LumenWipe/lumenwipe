@@ -357,40 +357,55 @@ and from its next live read (INV-02, INV-41).
 
 ## 12. Interim statement
 
-Until this design ships, the review screen and the multisig notice on the signing step say:
+Until this design ships, the review screen and the multisig notice on the signing step say (built by
+`apps/web/lib/stellar/cosign-requirement.ts`):
 
-> This close needs signatures from N of this account's M keys, and these N must all sign here, in this
-> browser. T of the close's transactions need these N signatures. Signing from another device is not
-> supported yet.
+> This account needs signatures from at least N of its M keys, on K transactions of this close. These N must
+> sign here, in this browser, during this close. Signing from another device is not supported yet.
 
-When a transaction of the close removes signers without merging the account
-(`assertMasterSignsSignerRemoval` applies), it adds:
+When N equals M, the first sentence reads "all M of its keys". When a transaction of the close removes
+signers without merging the account (`assertMasterSignsSignerRemoval` applies), it adds:
 
-> One transaction removes the other signers without closing the account. It must also be signed by the
-> master key, `<first 8>…<last 8>`. After it, the master key alone completes the close.
+> One transaction removes the other signers without closing the account, so the master key,
+> `<first 8>…<last 8>`, must be one of these N. After it, the master key alone completes the close.
 
 Rules:
 
 - **M** counts the account's `ed25519_public_key` signers with weight above 0. A signer with weight 0
   cannot sign and is not counted.
-- **N** is the smallest number of those keys whose weights together reach the high threshold, counted from
-  the heaviest key down. When the master key is required, N counts it among the N. The statement shows only
-  when N is 2 or more.
-- **T** is the number of the plan's transactions up to and including the one that removes the signers, or
-  all of them for a close that merges in the same transaction as the removal. When the plan does not give
-  the number yet, the sentence reads "Each transaction until the other signers are removed needs these N
-  signatures."
+- **N** is the smallest number of those keys whose weights together reach the signing threshold of the
+  close (at least 1), counted from the heaviest key down. That threshold is the high one, raised to the
+  medium or low threshold of any transaction before the removal when that one is higher: Stellar allows a
+  medium threshold above the high one, and the same N sign every transaction up to the removal. Without a
+  breakdown the plan may hold a DeFi exit, so the medium threshold counts. When the master key is required, N
+  counts it among the N. The statement shows only when N is 2 or more, or when the keys alone cannot reach
+  the threshold.
+- **The master key** is required when the plan's transaction that covers `NORMALIZE_SIGNERS` does not also
+  cover `MERGE`. Without a breakdown, an exchange close through the relay account requires it, and a direct
+  close says instead: "If a transaction removes the other signers before the final transaction, the master
+  key, `<first 8>…<last 8>`, must sign it as well."
+- **K** counts, among the plan's transactions up to and including the one that covers `NORMALIZE_SIGNERS`,
+  those whose own signing weight one key cannot reach. The removal transaction needs the high threshold.
+  Each earlier one is judged against the threshold category of what it covers, as the signing step judges
+  it (`requiredSignatureWeight`): low for a claim round that only claims, high for anything that touches
+  signers or merges, medium otherwise. The order comes only from the breakdown's `order` field, so K stays
+  correct when the removal moves to its own first transaction. When the plan gives no breakdown, or none
+  covers `NORMALIZE_SIGNERS`, the first sentence ends "for this close" and states no count.
+  An earlier version counted every transaction up to the removal. That count was false when the medium or
+  low threshold is below the high one: such a transaction is signed by fewer keys than N.
 - **hash(x) signers** are not keys that sign here and are not counted. When the account lists any, the
-  statement adds: "It also has K hash(x) signers. A preimage is entered in this browser, and only on the
+  statement adds: "It also has H hash(x) signers. A preimage is entered in this browser, and only on the
   step that removes its own signer."
 - **Pre-authorized transaction signers** are not keys that sign here and are not counted. When the account
-  lists any, it adds: "It also has K pre-authorized transaction signers. Each is used by submitting that
+  lists any, it adds: "It also has P pre-authorized transaction signers. Each is used by submitting that
   exact transaction in this browser, not by signing."
-- **Signed-payload signers** are not counted. When the account lists any, it adds: "It also has K
+- **Signed-payload signers** are not counted. When the account lists any, it adds: "It also has S
   signed-payload signers, which cannot sign in LumenWipe."
-- When the ed25519 keys together cannot reach the high threshold, the first sentence becomes: "This
+- When the ed25519 keys together cannot reach the high threshold, the first two sentences become: "This
   account's keys alone cannot reach the signing weight this close needs. It also needs its hash(x) or
-  pre-authorized transaction signers, used in this browser."
+  pre-authorized transaction signers, used in this browser. Its keys must also sign here, in this browser,
+  during this close." When the account has no hash(x) or pre-authorized transaction signers either, the
+  plan is blocked and no statement is shown.
 
 ## 13. Invariants the build would add
 

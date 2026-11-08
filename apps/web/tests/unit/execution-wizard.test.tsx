@@ -181,12 +181,14 @@ beforeEach(() => {
     // accountState.signers - not bare equality to sourceAddress. Without this, the
     // second-wallet-switch test below couldn't pass even with the fix correctly applied.
     accountState: {
+      address: source,
       signers: [
         { key: source, weight: 1, type: "ed25519_public_key" },
         { key: cosigner, weight: 1, type: "ed25519_public_key" },
       ],
       thresholds: { low: 1, med: 2, high: 2 },
     } as never,
+    planTransactions: null,
   } as never);
 });
 
@@ -1267,12 +1269,43 @@ test("execution-wizard › the signed list and the still-needed line show each s
   expect(bar.getAttribute("aria-valuetext")).toBe("2 of 4 signature weight collected");
 });
 
-test("execution-wizard › the multisig notice says each transaction needs the full weight", () => {
-  useDemolishStore.setState({ estimatedTransactionCount: 3 } as never);
+test("execution-wizard › the multisig notice says which keys sign here, on how many transactions", () => {
+  useDemolishStore.setState({
+    estimatedTransactionCount: 2,
+    planTransactions: [
+      { order: 0, covers: ["HANDLE_ASSETS"] },
+      { order: 1, covers: ["NORMALIZE_SIGNERS", "REMOVE_TRUSTLINES", "MERGE"] },
+    ],
+  } as never);
   runImpl = async () => {};
 
   render(<ExecutionWizard network="testnet" />);
 
+  const notice = screen.getByTestId("multisig-notice");
+  expect(screen.getByTestId("multisig-statement").textContent).toBe(
+    "This account needs signatures from all 2 of its keys, on 2 transactions of this close. These 2 must sign here, in this browser, during this close. Signing from another device is not supported yet."
+  );
+  expect(notice.textContent).not.toContain("expect to sign up to");
+  useDemolishStore.setState({ estimatedTransactionCount: null, planTransactions: null } as never);
+});
+
+test("execution-wizard › a multisig account one key can close keeps the weight notice without the statement", () => {
+  useDemolishStore.setState({
+    estimatedTransactionCount: 3,
+    accountState: {
+      address: source,
+      signers: [
+        { key: source, weight: 2, type: "ed25519_public_key" },
+        { key: cosigner, weight: 1, type: "ed25519_public_key" },
+      ],
+      thresholds: { low: 1, med: 2, high: 2 },
+    } as never,
+  } as never);
+  runImpl = async () => {};
+
+  render(<ExecutionWizard network="testnet" />);
+
+  expect(screen.queryByTestId("multisig-statement")).toBeNull();
   expect(screen.getByTestId("multisig-notice").textContent).toContain(
     "Each transaction needs that full weight on its own, so expect to sign up to 3 times with each signer."
   );
@@ -1390,6 +1423,7 @@ test("execution-wizard › a secret key the user entered is not replaced by a co
   const sourceKey = Keypair.random();
   useDemolishStore.setState({
     accountState: {
+      address: sourceKey.publicKey(),
       signers: [
         { key: sourceKey.publicKey(), weight: 1, type: "ed25519_public_key" },
         { key: cosigner, weight: 1, type: "ed25519_public_key" },

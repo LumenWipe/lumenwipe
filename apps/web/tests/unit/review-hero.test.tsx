@@ -162,6 +162,7 @@ test("the account counts are shown open", async () => {
       openOffers: [],
       dataEntries: [],
       signers: [],
+      thresholds: { low: 0, med: 0, high: 0 },
       defiPositions: { positions: [], unrecognizedPositions: [], source: "lumenwipe" },
     } as never,
   });

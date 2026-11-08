@@ -12,6 +12,7 @@ import type {
   StepStatus,
   StepType,
 } from "@/types/plan";
+import type { ExecutionTxBreakdown } from "@/types/close-api";
 import type { CompletedStepRecord } from "@/types/session";
 import type { ExpectedReceive } from "@/lib/plan/expected-receive";
 import type { PlanSignature } from "@/lib/plan/plan-freshness";
@@ -110,6 +111,9 @@ interface DemolishState {
   /** The installed plan's own transaction count, for /review. Display only: never sent to the
    *  API and never part of verify(). */
   estimatedTransactionCount: number | null;
+  /** The installed plan's transaction breakdown, for the multisig statement. Display only: never
+   *  sent to the API and never part of verify(). */
+  planTransactions: ExecutionTxBreakdown[] | null;
   /** What the reviewed plan is expected to deliver, kept for the screens after /analyze. Display
    *  only: never sent to the API and never part of verify(). */
   expectedReceive: ExpectedReceive | null;
@@ -164,7 +168,8 @@ interface DemolishState {
     plan: PlannedStep[],
     planHash?: string,
     transactionCount?: number | null,
-    signature?: PlanSignature
+    signature?: PlanSignature,
+    transactions?: ExecutionTxBreakdown[] | null
   ) => void;
   setExpectedReceive: (expected: ExpectedReceive | null) => void;
   /** Called once a transaction of the close confirms: the account has changed on purpose, so the
@@ -328,6 +333,7 @@ const initialState = {
   planChangedNotice: null,
   planHash: null,
   estimatedTransactionCount: null,
+  planTransactions: null,
   expectedReceive: null,
   planPreparedAt: null,
   planSignature: null,
@@ -440,13 +446,14 @@ export const useDemolishStore = create<DemolishState>((set) => ({
   // Reset the step pointer whenever a new plan is installed: a prior run may have
   // advanced currentStepIndex, and a new (often shorter) plan must start at step 0
   // so executionPlan[currentStepIndex] never points past the end.
-  setPlan: (executionPlan, planHash, transactionCount, signature) =>
+  setPlan: (executionPlan, planHash, transactionCount, signature, transactions) =>
     set({
       executionPlan,
       currentStepIndex: 0,
       planChangedNotice: null,
       planHash: planHash ?? null,
       estimatedTransactionCount: transactionCount ?? null,
+      planTransactions: transactions ?? null,
       planPreparedAt: Date.now(),
       planSignature: signature ?? null,
     }),
@@ -465,6 +472,7 @@ export const useDemolishStore = create<DemolishState>((set) => ({
       planChangedNotice: notice,
       planHash: null,
       estimatedTransactionCount: null,
+      planTransactions: null,
       expectedReceive: null,
       planPreparedAt: null,
       planSignature: null,

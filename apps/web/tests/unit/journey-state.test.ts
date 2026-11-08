@@ -145,6 +145,7 @@ describe("allowance table", () => {
   const EXACT: Record<JourneyStateName, ClaimKey[]> = {
     untouched: [
       "key-stays-in-browser",
+      "same-browser-signing",
       "nothing-sent",
       "account-unchanged",
       "each-tx-checked",
@@ -152,6 +153,7 @@ describe("allowance table", () => {
     ],
     planned: [
       "key-stays-in-browser",
+      "same-browser-signing",
       "nothing-sent",
       "account-unchanged",
       "each-tx-checked",
@@ -159,6 +161,7 @@ describe("allowance table", () => {
     ],
     reviewed: [
       "key-stays-in-browser",
+      "same-browser-signing",
       "nothing-sent",
       "account-unchanged",
       "each-tx-checked",
@@ -169,6 +172,7 @@ describe("allowance table", () => {
     ],
     signing: [
       "key-stays-in-browser",
+      "same-browser-signing",
       "more-sent-only-when-signed",
       "resume-after-stop",
       "each-tx-checked",
@@ -181,6 +185,7 @@ describe("allowance table", () => {
     ],
     partial: [
       "key-stays-in-browser",
+      "same-browser-signing",
       "each-tx-checked",
       "this-tx-not-sent",
       "no-new-sent",
@@ -193,6 +198,7 @@ describe("allowance table", () => {
     ],
     complete: [
       "key-stays-in-browser",
+      "same-browser-signing",
       "each-tx-checked",
       "account-closed",
       "no-new-sent",
@@ -202,6 +208,7 @@ describe("allowance table", () => {
     ],
     unknown: [
       "key-stays-in-browser",
+      "same-browser-signing",
       "each-tx-checked",
       "more-sent-only-when-signed",
       "resume-after-stop",
