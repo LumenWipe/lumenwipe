@@ -6,6 +6,7 @@ import {
 } from "@lumenwipe/sdk";
 import { errorEnvelope, requestIdHeaders } from "@/lib/api/error-body";
 import { invalidNetworkResponse } from "@/lib/api/network-segment";
+import { secondsUntilNextUtcDay } from "@/lib/utc-day";
 
 /** The server has no API URL or key: an operator's fault, which a retry can outlast. */
 export class ApiNotConfiguredError extends Error {
@@ -62,10 +63,19 @@ function errorResponseFor(e: unknown): NextResponse {
   });
 }
 
-export function rateLimitedResponse(): NextResponse {
+/** The answer of a route whose caller is over its daily limit: a 429 in the usual envelope that
+ *  says when the counter, keyed by the UTC day of `now`, starts again, and that no cache may keep
+ *  and serve to another caller. Every route gets both headers from here. */
+export function rateLimitedResponse(now: Date = new Date()): NextResponse {
   return NextResponse.json(
     errorEnvelope("rate_limited", "Too many requests. Please slow down and try again later."),
-    { status: 429 }
+    {
+      status: 429,
+      headers: {
+        "Retry-After": String(secondsUntilNextUtcDay(now)),
+        "Cache-Control": "no-store",
+      },
+    }
   );
 }
 

@@ -48,8 +48,13 @@ export async function rateLimitProxy(
 ): Promise<NextResponse | null> {
   if (params && !isValidNetwork((await params).network)) return invalidNetworkResponse();
 
-  const verdict = await checkNamespacedRateLimit(`proxy:${namespace}`, clientIp(req), limitPerDay);
-  if (verdict === "limited") return rateLimitedResponse();
+  // One clock for the counter's day and the 429's Retry-After, so a request that crosses midnight
+  // is never told to wait for a reset its own key has already had.
+  const now = new Date();
+  const verdict = await checkNamespacedRateLimit(`proxy:${namespace}`, clientIp(req), limitPerDay, {
+    now,
+  });
+  if (verdict === "limited") return rateLimitedResponse(now);
   if (verdict === "unavailable" && whenUnavailable === "refuse") {
     return rateLimiterUnavailableResponse();
   }
