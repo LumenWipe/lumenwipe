@@ -7,6 +7,7 @@ import {
 } from "@lumenwipe/sdk";
 import { fetchCloseTransactions } from "@/lib/api/close-client";
 import { VerificationError } from "@/lib/stellar/verify";
+import { VERIFICATION_ERROR_CODES } from "@/lib/stellar/verification-error";
 import { TxSubmitError } from "@/lib/utils/errors";
 import {
   SignerReleasedError,
@@ -159,11 +160,23 @@ describe("toUserMessage", () => {
 
   test("a verification failure never leaks its technical detail", () => {
     const msg = toUserMessage(
-      new VerificationError("op 2 pays GABC to unexpected dest"),
+      new VerificationError("transfer_not_chosen", "op 2 pays GABC to unexpected dest"),
       "execute"
     );
     expect(msg).toMatch(/doesn't match what you approved/);
     expect(msg).not.toMatch(/GABC|op 2/);
+  });
+
+  test("every verification code maps to the same plain copy, whatever the message", () => {
+    const VERIFICATION_FAILED =
+      "This transaction doesn't match what you approved, so it was not signed or sent. Contact support if it keeps happening.";
+    for (const code of VERIFICATION_ERROR_CODES) {
+      for (const context of ["execute", "generic"] as const) {
+        expect(toUserMessage(new VerificationError(code, `detail for ${code}`), context)).toBe(
+          VERIFICATION_FAILED
+        );
+      }
+    }
   });
 
   test("API status codes map to plain copy", () => {
@@ -383,7 +396,10 @@ describe("closeFailureMessage", () => {
   const roundOne = [step(0, "CANCEL_OFFERS", "pending"), step(1, "MERGE", "pending")];
   const roundTwo = [step(0, "CANCEL_OFFERS", "confirmed"), step(1, "MERGE", "pending")];
   const declined = new WalletSigningError(-4, VARIAL_ID, "User declined access");
-  const mismatch = new VerificationError("op 2 pays GABC to unexpected dest");
+  const mismatch = new VerificationError(
+    "transfer_not_chosen",
+    "op 2 pays GABC to unexpected dest"
+  );
 
   test("a wallet decline in round one speaks only for this transaction", () => {
     const msg = closeFailureMessage(declined, "before-submit", roundOne);
@@ -406,6 +422,14 @@ describe("closeFailureMessage", () => {
     expect(msg).toMatch(/doesn't match what you approved, so it was not signed or sent/);
     expect(msg.match(/not signed/g)).toHaveLength(1);
     expect(msg).not.toMatch(/plan steps|nothing was sent|GABC/i);
+  });
+
+  test("a verification failure reads the same in a close whatever its code", () => {
+    const expected = closeFailureMessage(mismatch, "before-submit", roundOne);
+    for (const code of VERIFICATION_ERROR_CODES) {
+      const err = new VerificationError(code, mismatch.message);
+      expect(closeFailureMessage(err, "before-submit", roundOne)).toBe(expected);
+    }
   });
 
   test("a verification failure in round two states what is already confirmed", () => {

@@ -11,7 +11,10 @@ import { verifyCloseTransaction as webVerifyCloseTransaction } from "../../../ap
 import { exitExpectations as webExitExpectations } from "../../../apps/web/lib/stellar/exit-expectations";
 import { mediatorAllowedFor } from "../../../apps/web/lib/exchange-registry";
 
-export { VerificationError } from "../../../apps/web/lib/stellar/verification-error";
+export {
+  VerificationError,
+  type VerificationErrorCode,
+} from "../../../apps/web/lib/stellar/verification-error";
 export type { AccountSigner, AccountState, AccountThresholds };
 
 /** The Stellar network a transaction is verified for. Selects the network passphrase the XDR is

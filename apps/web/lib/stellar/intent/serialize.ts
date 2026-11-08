@@ -25,7 +25,10 @@ function memoToString(
   try {
     return STRICT_UTF8.decode(value);
   } catch {
-    throw new VerificationError("The transaction carries a memo that is not valid text.");
+    throw new VerificationError(
+      "memo_invalid_text",
+      "The transaction carries a memo that is not valid text."
+    );
   }
 }
 

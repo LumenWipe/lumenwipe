@@ -198,12 +198,18 @@ function assertMergeShape(
   const merges = intent.operations.filter((o) => o.type === "account_merge");
   if (merges.length === 0) return null;
   if (merges.length > 1) {
-    throw new VerificationError("The transaction would merge more than one account.");
+    throw new VerificationError(
+      "merge_multiple",
+      "The transaction would merge more than one account."
+    );
   }
   const merge = merges[0]!;
 
   if (merge.source !== expected.source) {
-    throw new VerificationError("The account merge is not sent by the account being closed.");
+    throw new VerificationError(
+      "operation_source_mismatch",
+      "The account merge is not sent by the account being closed."
+    );
   }
 
   // Merging to the address the user typed needs no intermediary and no further shape checks,
@@ -213,6 +219,7 @@ function assertMergeShape(
   if (merge.destination === expected.destination) {
     if (expected.directMergeRefused) {
       throw new VerificationError(
+        "merge_direct_refused",
         "This exchange cannot credit an account merge, so the balance has to reach it as a payment. This transaction would merge your account straight into it."
       );
     }
@@ -223,7 +230,10 @@ function assertMergeShape(
   // user routed straight to their own wallet would make an attacker-nominated intermediary
   // reachable for every user, not only the ones closing to an exchange.
   if (!expected.mediatorRequired) {
-    throw new VerificationError("The account would be merged to an address you did not choose.");
+    throw new VerificationError(
+      "merge_destination_mismatch",
+      "The account would be merged to an address you did not choose."
+    );
   }
 
   // Anywhere else, the transaction has to be the two-operation hand-off. Anything more is an
@@ -237,6 +247,7 @@ function assertMergeShape(
   // observable.
   if (ops.length !== 2 || ops[0]!.type !== "account_merge" || ops[1]!.type !== "payment") {
     throw new VerificationError(
+      "mediator_handoff_shape",
       "The account would be merged to an address you did not choose, and this transaction does not hand the balance straight on to your destination."
     );
   }
@@ -247,16 +258,21 @@ function assertMergeShape(
     // Without this the intermediary is just an address funds go to. With it, the account that
     // received the balance is the one sending it on, in the same transaction.
     throw new VerificationError(
+      "mediator_forward_source_mismatch",
       "The balance would be handed to one account and forwarded by another. Nothing guarantees the account receiving your funds is the one passing them on."
     );
   }
   if (forward.destination !== expected.destination) {
     throw new VerificationError(
+      "mediator_forward_destination_mismatch",
       `The transaction would pay funds to an unexpected address (${forward.destination}).`
     );
   }
   if (forward.asset !== "native") {
-    throw new VerificationError("The forwarded balance would not be XLM.");
+    throw new VerificationError(
+      "mediator_forward_not_native",
+      "The forwarded balance would not be XLM."
+    );
   }
   assertForwardCarriesTheBalance(forward.amount, expected.nativeBalance);
 
@@ -346,6 +362,7 @@ function isBlendExitRequest(value: unknown): boolean {
 function assertBlendSubmitArguments(args: string[], source: string): void {
   if (args.length !== 4 || args.slice(0, 3).some((party) => party !== source)) {
     throw new VerificationError(
+      "exit_argument_party_mismatch",
       "A DeFi exit would act for, or pay, an address other than the account being closed."
     );
   }
@@ -357,6 +374,7 @@ function assertBlendSubmitArguments(args: string[], source: string): void {
   }
   if (!Array.isArray(requests) || requests.length === 0 || !requests.every(isBlendExitRequest)) {
     throw new VerificationError(
+      "exit_request_not_allowed",
       "A DeFi exit would make a request of a lending pool that LumenWipe does not use to leave it."
     );
   }
@@ -366,6 +384,7 @@ function assertBlendSubmitArguments(args: string[], source: string): void {
 function assertSoroswapRemovalArguments(args: string[], source: string): void {
   if (args.length !== 7 || args[5] !== source) {
     throw new VerificationError(
+      "exit_argument_party_mismatch",
       "A DeFi exit would act for, or pay, an address other than the account being closed."
     );
   }
@@ -489,6 +508,7 @@ function swapFloor(chosen: { minAmountOut: string; amountOut?: string }): bigint
   const quoted = chosen.amountOut ?? "";
   if (!/^\d+$/.test(chosen.minAmountOut) || !/^[1-9]\d*$/.test(quoted)) {
     throw new VerificationError(
+      "swap_quote_missing",
       "A swap cannot be checked against the quote you were shown. Run the analysis again."
     );
   }
@@ -542,6 +562,7 @@ function assertSwapAuthorizesOnlyItsInput(
     if (sub.contract !== token) {
       if (ownTokens.has(sub.contract) || !sub.function.startsWith("swap")) {
         throw new VerificationError(
+          "swap_auth_unexpected_call",
           "A swap would authorize something other than paying in the token you chose to convert."
         );
       }
@@ -555,13 +576,17 @@ function assertSwapAuthorizesOnlyItsInput(
       !/^\d+$/.test(sub.args[2] ?? "")
     ) {
       throw new VerificationError(
+        "swap_auth_unexpected_call",
         "A swap would authorize something other than paying in the token you chose to convert."
       );
     }
     moved += BigInt(sub.args[2]!);
   }
   if (moved > amountIn) {
-    throw new VerificationError("A swap would authorize spending more than the balance it sells.");
+    throw new VerificationError(
+      "swap_auth_exceeds_amount",
+      "A swap would authorize spending more than the balance it sells."
+    );
   }
 }
 
@@ -573,22 +598,26 @@ function assertUserChoseThisTransfer(
   const chosen = expected.transfers[op.asset];
   if (!chosen) {
     throw new VerificationError(
+      "transfer_not_chosen",
       `The transaction would pay funds to an unexpected address (${op.destination}).`
     );
   }
   if (op.destination !== chosen.destination) {
     throw new VerificationError(
+      "transfer_destination_mismatch",
       `The transaction would send ${assetCode(op.asset)} to an address you did not choose.`
     );
   }
   const exchange = expected.depositAddresses[op.destination];
   if (exchange !== undefined && op.destination !== op.asset.split(":")[1]) {
     throw new VerificationError(
+      "transfer_to_deposit_address",
       `The transaction would send ${assetCode(op.asset)} to a ${exchange} deposit address. A transfer in a close carries no deposit memo, so ${exchange} could not credit it. Go back to the plan and choose a wallet you control.`
     );
   }
   if (seen.has(op.asset)) {
     throw new VerificationError(
+      "transfer_duplicate",
       `The transaction would send ${assetCode(op.asset)} more than once.`
     );
   }
@@ -610,6 +639,7 @@ function assertUserChoseThisTransfer(
   // would aim.
   if (BigInt(xlmToStroops(op.amount)) < BigInt(xlmToStroops(chosen.amount))) {
     throw new VerificationError(
+      "transfer_amount_short",
       `The transaction would send less ${assetCode(op.asset)} than you approved.`
     );
   }
@@ -635,6 +665,7 @@ function assertForwardCarriesTheBalance(forwardAmount: string, nativeBalance: st
 
   if (forwarded < floor) {
     throw new VerificationError(
+      "mediator_forward_short",
       "This transaction would hand your balance to an intermediary and pass on only part of it."
     );
   }
@@ -651,11 +682,13 @@ function assertExpiresSoon(intent: TxIntent, nowSeconds: number): void {
   const maxTime = intent.maxTime ?? null;
   if (maxTime === null || !/^\d+$/.test(maxTime) || BigInt(maxTime) === BigInt(0)) {
     throw new VerificationError(
+      "expiry_missing",
       "This transaction never expires, so it could be submitted long after you approved it."
     );
   }
   if (BigInt(maxTime) > BigInt(Math.floor(nowSeconds)) + BigInt(MAX_VALIDITY_SECONDS)) {
     throw new VerificationError(
+      "expiry_too_far",
       "This transaction stays valid for far longer than a close needs. If your device clock is " +
         "wrong, correct it and try again."
     );
@@ -664,13 +697,17 @@ function assertExpiresSoon(intent: TxIntent, nowSeconds: number): void {
 
 function assertClassicFee(intent: TxIntent): void {
   if (!/^\d+$/.test(intent.fee)) {
-    throw new VerificationError("The transaction's network fee could not be read.");
+    throw new VerificationError(
+      "fee_unreadable",
+      "The transaction's network fee could not be read."
+    );
   }
   // A Soroban call's fee includes simulated resources; its own branch caps it.
   if (intent.operations.some((op) => op.type === "invoke_host_function")) return;
   const cap = BigInt(intent.operations.length) * MAX_CLASSIC_FEE_PER_OPERATION_STROOPS;
   if (BigInt(intent.fee) > cap) {
     throw new VerificationError(
+      "fee_above_cap",
       "This transaction would pay a network fee far above what its operations need."
     );
   }
@@ -679,7 +716,10 @@ function assertClassicFee(intent: TxIntent): void {
 export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation): void {
   // The transaction must be for the account being closed.
   if (intent.source !== expected.source) {
-    throw new VerificationError("The transaction is not for your account.");
+    throw new VerificationError(
+      "transaction_source_mismatch",
+      "The transaction is not for your account."
+    );
   }
 
   if (!expected.preAuthorized) {
@@ -716,6 +756,7 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
         // account the merge paid into.
         if (op !== forward && op.source !== expected.source) {
           throw new VerificationError(
+            "operation_source_mismatch",
             "The transaction would pay funds from an account other than the one being closed."
           );
         }
@@ -729,23 +770,34 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
       case "path_payment_strict_send": {
         // Conversions must swap to XLM into the account itself, with a positive floor.
         if (op.destination !== expected.source) {
-          throw new VerificationError("A conversion would send funds out of your account.");
+          throw new VerificationError(
+            "conversion_recipient_mismatch",
+            "A conversion would send funds out of your account."
+          );
         }
         if (op.destAsset !== "native") {
-          throw new VerificationError("A conversion would not settle in XLM.");
+          throw new VerificationError(
+            "conversion_not_to_xlm",
+            "A conversion would not settle in XLM."
+          );
         }
         if (!(Number(op.destMin) > 0)) {
-          throw new VerificationError("A conversion has no minimum-received floor.");
+          throw new VerificationError(
+            "conversion_min_out_missing",
+            "A conversion has no minimum-received floor."
+          );
         }
         const chosen = expected.classicConversions[op.sendAsset];
         if (!chosen) {
           throw new VerificationError(
+            "conversion_asset_not_chosen",
             "A conversion would sell an asset you did not choose to convert. If a balance arrived " +
               "since the analysis, run it again."
           );
         }
         if (seenConversions.has(op.sendAsset)) {
           throw new VerificationError(
+            "conversion_duplicate",
             `The transaction would convert ${assetCode(op.sendAsset)} more than once.`
           );
         }
@@ -755,6 +807,7 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
           BigInt(xlmToStroops(op.destMin)) < BigInt(chosen.minAmountOut)
         ) {
           throw new VerificationError(
+            "conversion_min_out_below_floor",
             `A conversion of ${assetCode(op.sendAsset)} would accept less XLM than the minimum you were shown.`
           );
         }
@@ -765,19 +818,28 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
         // narrow exception: a raised trustline for an asset the user themselves chose to add
         // in order to claim an otherwise-unreachable balance ("add trustline and claim").
         if (Number(op.limit) !== 0 && !expected.claimTrustlineAssets.includes(op.asset)) {
-          throw new VerificationError("A trustline would be created or raised, not removed.");
+          throw new VerificationError(
+            "trustline_not_removal",
+            "A trustline would be created or raised, not removed."
+          );
         }
         break;
       case "manage_data":
         // The close only deletes data entries.
         if (op.value !== null) {
-          throw new VerificationError("A data entry would be written, not removed.");
+          throw new VerificationError(
+            "data_entry_not_removal",
+            "A data entry would be written, not removed."
+          );
         }
         break;
       case "manage_sell_offer":
         // The close only cancels offers (amount 0).
         if (Number(op.amount) !== 0) {
-          throw new VerificationError("An offer would be created, not cancelled.");
+          throw new VerificationError(
+            "offer_not_cancellation",
+            "An offer would be created, not cancelled."
+          );
         }
         break;
       case "set_options":
@@ -788,26 +850,30 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
         if (op.signer !== null) {
           const signer = op.signer;
           if (signer.weight !== 0) {
-            throw new VerificationError("A signer would be added or empowered.");
+            throw new VerificationError("signer_added", "A signer would be added or empowered.");
           }
           const touchesKnownSigner = expected.accountSigners.some(
             (s) => s.key === signer.key && s.type === signer.type
           );
           if (!touchesKnownSigner) {
             throw new VerificationError(
+              "signer_unknown",
               "This transaction touches a signer that wasn't on your account when we last read it. Re-run the analysis and try again."
             );
           }
         }
         if (op.masterWeight !== null) {
-          throw new VerificationError("The master key's weight would be changed.");
+          throw new VerificationError(
+            "master_weight_changed",
+            "The master key's weight would be changed."
+          );
         }
         if (
           (op.lowThreshold ?? 0) > 1 ||
           (op.medThreshold ?? 0) > 1 ||
           (op.highThreshold ?? 0) > 1
         ) {
-          throw new VerificationError("Account thresholds would be raised.");
+          throw new VerificationError("thresholds_raised", "Account thresholds would be raised.");
         }
         if (
           op.homeDomain !== null ||
@@ -816,6 +882,7 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
           op.inflationDest !== null
         ) {
           throw new VerificationError(
+            "account_settings_changed",
             "This transaction would change account flags, the home domain, or the inflation destination, which a close never legitimately needs to touch."
           );
         }
@@ -849,45 +916,60 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
             op.function === XBULL_SWAP_FUNCTION)
         ) {
           if (intent.operations.length !== 1) {
-            throw new VerificationError("A swap must be the only operation in its transaction.");
+            throw new VerificationError(
+              "invocation_not_alone",
+              "A swap must be the only operation in its transaction."
+            );
           }
           if (BigInt(intent.fee) > MAX_EXIT_FEE_STROOPS) {
             throw new VerificationError(
+              "fee_above_cap",
               "A swap would pay a network fee far above what any swap needs."
             );
           }
           if (op.source !== expected.source) {
             throw new VerificationError(
+              "operation_source_mismatch",
               "A swap would act for an account other than the one being closed."
             );
           }
           if (op.function === SWAP_FUNCTION || op.function === AGGREGATOR_SWAP_FUNCTION) {
             const swap = readSwapArgs(op.function, op.args);
             if (!swap) {
-              throw new VerificationError("A swap's arguments could not be read.");
+              throw new VerificationError(
+                "swap_args_unreadable",
+                "A swap's arguments could not be read."
+              );
             }
             const chosen = expected.tokenConversions[swap.token];
             if (!chosen) {
               throw new VerificationError(
+                "conversion_asset_not_chosen",
                 "A swap would exchange a token you did not choose to convert."
               );
             }
             if (swap.assetOut !== expected.xlmContract) {
-              throw new VerificationError("A swap would buy something other than XLM.");
+              throw new VerificationError(
+                "conversion_not_to_xlm",
+                "A swap would buy something other than XLM."
+              );
             }
             if (swap.amountIn < BigInt(chosen.amountIn)) {
               throw new VerificationError(
+                "conversion_amount_short",
                 "A swap would exchange less of the token than the balance you were shown. If you " +
                   "moved some of it since, run the analysis again."
               );
             }
             if (swap.destination !== expected.source) {
               throw new VerificationError(
+                "conversion_recipient_mismatch",
                 "A swap would pay the proceeds to an address other than the account being closed."
               );
             }
             if (swap.minAmountOut < swapFloor(chosen)) {
               throw new VerificationError(
+                "conversion_min_out_below_floor",
                 "A swap would accept less XLM than the minimum you were shown."
               );
             }
@@ -902,41 +984,53 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
             // table, so the tokens it spends and buys are read through the bundled copy of it.
             const swap = readXBullSwapArgs(op.args);
             if (!swap) {
-              throw new VerificationError("A swap's arguments could not be read.");
+              throw new VerificationError(
+                "swap_args_unreadable",
+                "A swap's arguments could not be read."
+              );
             }
             if (swap.refsCount !== 0) {
               throw new VerificationError(
+                "swap_referral_recipient",
                 "A swap would pay a referral fee to an address you never agreed to."
               );
             }
             const route = readXBullRoute(swap.path, expected.xbullAssets);
             if (!route) {
               throw new VerificationError(
+                "swap_route_asset_unknown",
                 "A swap's route names an asset LumenWipe cannot identify. Run the analysis again."
               );
             }
             const chosen = expected.tokenConversions[route.spends];
             if (!chosen) {
               throw new VerificationError(
+                "conversion_asset_not_chosen",
                 "A swap would exchange a token you did not choose to convert."
               );
             }
             if (route.buys !== expected.xlmContract) {
-              throw new VerificationError("A swap would buy something other than XLM.");
+              throw new VerificationError(
+                "conversion_not_to_xlm",
+                "A swap would buy something other than XLM."
+              );
             }
             if (swap.amount < BigInt(chosen.amountIn)) {
               throw new VerificationError(
+                "conversion_amount_short",
                 "A swap would exchange less of the token than the balance you were shown. If you " +
                   "moved some of it since, run the analysis again."
               );
             }
             if (swap.to !== expected.source) {
               throw new VerificationError(
+                "conversion_recipient_mismatch",
                 "A swap would pay the proceeds to an address other than the account being closed."
               );
             }
             if (swap.minToGet < swapFloor(chosen)) {
               throw new VerificationError(
+                "conversion_min_out_below_floor",
                 "A swap would accept less XLM than the minimum you were shown."
               );
             }
@@ -949,15 +1043,20 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
           }
           if (op.authorizesBeyondSelf) {
             throw new VerificationError(
+              "invocation_auth_beyond_self",
               "A swap would authorize actions beyond this account's own contract calls."
             );
           }
           if (op.unsupportedAddressCount > 0) {
-            throw new VerificationError("A swap names an address form that cannot be verified.");
+            throw new VerificationError(
+              "invocation_address_unsupported",
+              "A swap names an address form that cannot be verified."
+            );
           }
           for (const account of op.accountsReferenced) {
             if (account !== expected.source) {
               throw new VerificationError(
+                "invocation_foreign_account",
                 "A swap would send funds to, or act for, an account other than the one being closed."
               );
             }
@@ -973,37 +1072,44 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
         if (tokenTransfer) {
           if (intent.operations.length !== 1) {
             throw new VerificationError(
+              "invocation_not_alone",
               "A token transfer must be the only operation in its transaction."
             );
           }
           if (BigInt(intent.fee) > MAX_EXIT_FEE_STROOPS) {
             throw new VerificationError(
+              "fee_above_cap",
               "A token transfer would pay a network fee far above what any transfer needs."
             );
           }
           if (op.source !== expected.source) {
             throw new VerificationError(
+              "operation_source_mismatch",
               "A token transfer would act for an account other than the one being closed."
             );
           }
           if (op.function !== "transfer" || op.args.length !== 3) {
             throw new VerificationError(
+              "token_transfer_function_invalid",
               "A token transaction would call something other than a plain transfer."
             );
           }
           if (op.args[0] !== expected.source) {
             throw new VerificationError(
+              "token_transfer_from_mismatch",
               "A token transfer would move a balance other than this account's own."
             );
           }
           if (op.args[1] !== tokenTransfer.destination) {
             throw new VerificationError(
+              "transfer_destination_mismatch",
               "A token transfer would send the balance to an address you did not choose."
             );
           }
           const exchange = expected.depositAddresses[tokenTransfer.destination];
           if (exchange !== undefined) {
             throw new VerificationError(
+              "transfer_to_deposit_address",
               `A token transfer would send the balance to a ${exchange} deposit address. A token transfer carries no deposit memo, so ${exchange} could not credit it. Go back to the plan and choose a wallet you control.`
             );
           }
@@ -1014,23 +1120,27 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
             BigInt(amount) < BigInt(tokenTransfer.amount)
           ) {
             throw new VerificationError(
+              "transfer_amount_short",
               "A token transfer would send less than the balance you were shown. If you moved " +
                 "some of this token since, run the analysis again."
             );
           }
           if (op.authorizesBeyondSelf || op.authDepth !== 0) {
             throw new VerificationError(
+              "invocation_auth_beyond_self",
               "A token transfer would authorize actions beyond the transfer itself."
             );
           }
           if (op.unsupportedAddressCount > 0) {
             throw new VerificationError(
+              "invocation_address_unsupported",
               "A token transfer names an address form that cannot be verified."
             );
           }
           for (const account of op.accountsReferenced) {
             if (account !== expected.source && account !== tokenTransfer.destination) {
               throw new VerificationError(
+                "invocation_foreign_account",
                 "A token transfer names an account other than this one and your chosen destination."
               );
             }
@@ -1038,6 +1148,7 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
           for (const contract of op.contractsReferenced) {
             if (contract !== op.contract) {
               throw new VerificationError(
+                "token_transfer_foreign_contract",
                 "A token transfer would reach a contract other than the token itself."
               );
             }
@@ -1058,20 +1169,26 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
         // or the protocol-level meaning of the call - that is the runner's job on the API and is
         // the residual trust documented in architecture.md §13.
         if (intent.operations.length !== 1) {
-          throw new VerificationError("A DeFi exit must be the only operation in its transaction.");
+          throw new VerificationError(
+            "invocation_not_alone",
+            "A DeFi exit must be the only operation in its transaction."
+          );
         }
         if (BigInt(intent.fee) > MAX_EXIT_FEE_STROOPS) {
           throw new VerificationError(
+            "fee_above_cap",
             "A DeFi exit would pay a network fee far above what any exit needs."
           );
         }
         if (op.source !== expected.source) {
           throw new VerificationError(
+            "operation_source_mismatch",
             "A DeFi exit would act for an account other than the one being closed."
           );
         }
         if (!expected.exitContracts.includes(op.contract)) {
           throw new VerificationError(
+            "exit_contract_not_position",
             "A DeFi exit would call a contract that is not one of this account's detected positions."
           );
         }
@@ -1086,26 +1203,33 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
           expected.debtTokenContracts.some((t) => expected.protectedTokenContracts.includes(t))
         ) {
           throw new VerificationError(
+            "exit_expectation_inconsistent",
             "Your analysis names XLM, a classic asset or another token you hold as a DeFi " +
               "position's own share or debt token, which it never is. Run the analysis again."
           );
         }
         if (!(expected.exitFunctions[op.contract] ?? []).includes(op.function)) {
           throw new VerificationError(
+            "exit_function_not_allowed",
             "A DeFi exit would call a function LumenWipe does not use to leave this protocol."
           );
         }
         if (op.authorizesBeyondSelf) {
           throw new VerificationError(
+            "invocation_auth_beyond_self",
             "A DeFi exit would authorize actions beyond this account's own contract call."
           );
         }
         if (op.unsupportedAddressCount > 0) {
-          throw new VerificationError("A DeFi exit names an address form that cannot be verified.");
+          throw new VerificationError(
+            "invocation_address_unsupported",
+            "A DeFi exit names an address form that cannot be verified."
+          );
         }
         for (const account of op.accountsReferenced) {
           if (account !== expected.source) {
             throw new VerificationError(
+              "invocation_foreign_account",
               "A DeFi exit would send funds to, or act for, an account other than the one being closed."
             );
           }
@@ -1117,6 +1241,7 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
             !expected.positionTokenContracts.includes(contract)
           ) {
             throw new VerificationError(
+              "exit_foreign_contract",
               "A DeFi exit would send funds to, or call, a contract this account has no position, balance, or pool token in."
             );
           }
@@ -1140,6 +1265,7 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
           (op.args[0] !== expected.source || op.args[op.args.length - 1] !== expected.source)
         ) {
           throw new VerificationError(
+            "exit_argument_party_mismatch",
             "A DeFi exit would act for, or pay, an address other than the account being closed."
           );
         }
@@ -1158,6 +1284,7 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
               (isAccountToken && !own.includes(sub.contract))
             ) {
               throw new VerificationError(
+                "exit_unverified_spend",
                 "A DeFi exit would spend your XLM, a classic asset or another token through a " +
                   "contract LumenWipe has not verified."
               );
@@ -1175,6 +1302,7 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
               sub.args[1] === op.contract;
             if (!repaysThisPool) {
               throw new VerificationError(
+                "exit_spend_not_repay",
                 "This exit would spend your XLM or a classic asset other than to repay a debt in " +
                   "your analysis. If this position changed since, run the analysis again."
               );
@@ -1195,6 +1323,7 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
               sub.args[2] === op.args[2];
             if (!paysShareIntoPair) {
               throw new VerificationError(
+                "exit_liquidity_auth_invalid",
                 "A DeFi exit would authorize something other than paying its liquidity share into its pair."
               );
             }
@@ -1205,12 +1334,14 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
             expected.positionTokenContracts.includes(sub.contract);
           if (!isToken) {
             throw new VerificationError(
+              "exit_auth_foreign_contract",
               "A DeFi exit would authorize a call on a contract that is not one of this account's tokens."
             );
           }
           const shape = TOKEN_SUB_INVOCATION_FUNCTIONS[sub.function];
           if (shape === undefined) {
             throw new VerificationError(
+              "exit_token_function_not_allowed",
               "A DeFi exit would call a function on a token that LumenWipe does not use to leave a protocol."
             );
           }
@@ -1219,6 +1350,7 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
           // plain-transfer branch checks `args.length !== 3` before indexing into it.
           if (sub.args.length !== shape.argCount) {
             throw new VerificationError(
+              "exit_token_argument_count",
               "A DeFi exit would call a token function with an argument count that does not match its real signature."
             );
           }
@@ -1228,6 +1360,7 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
             sub.args[shape.recipientArg] !== op.contract
           ) {
             throw new VerificationError(
+              "exit_token_recipient_mismatch",
               "A DeFi exit would move a token balance to an address other than this account or the protocol it is exiting."
             );
           }
@@ -1241,7 +1374,10 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
       case "unknown":
         // normalizeOp preserves any unrecognized operation as `unknown` so it cannot be
         // silently dropped; verification refuses to sign a transaction that carries one.
-        throw new VerificationError("The transaction contains an unrecognized operation.");
+        throw new VerificationError(
+          "operation_unknown",
+          "The transaction contains an unrecognized operation."
+        );
       // Stryker disable next-line ConditionalExpression: this case's entire body is a no-op
       // `break` (see the comment below for why revoke_sponsorship needs no check). Collapsing it
       // just falls through to the next case, which is also a no-op `break` - unobservable either
@@ -1269,7 +1405,10 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
         // (normalizeOp maps anything it does not recognize to `unknown`), so it doubles as a
         // backstop for an intent that reached here from some other producer.
         const _exhaustive: never = op;
-        throw new VerificationError("The transaction contains an unrecognized operation.");
+        throw new VerificationError(
+          "operation_unknown",
+          "The transaction contains an unrecognized operation."
+        );
       }
     }
     // A signature covers every operation whose source lists the key, so each operation is held to
@@ -1277,6 +1416,7 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
     // to the account the merge paid into.
     if (op !== forward && op.source !== expected.source) {
       throw new VerificationError(
+        "operation_source_mismatch",
         "The transaction would act for an account other than the one being closed."
       );
     }
@@ -1309,24 +1449,32 @@ function assertMemo(intent: TxIntent, expected: CloseExpectation): void {
 
   if (!deliversBalance || expected.memo === null) {
     if (carriesMemo) {
-      throw new VerificationError("The transaction carries a memo you did not set.");
+      throw new VerificationError(
+        "memo_unexpected",
+        "The transaction carries a memo you did not set."
+      );
     }
   } else {
     if (expected.memoType === null) {
       throw new VerificationError(
+        "memo_type_unreadable",
         "The memo type you confirmed could not be read, so this close cannot be checked."
       );
     }
     if (!carriesMemo) {
-      throw new VerificationError("The transaction is missing the memo you set.");
+      throw new VerificationError("memo_missing", "The transaction is missing the memo you set.");
     }
     if (intent.memo !== expected.memo) {
-      throw new VerificationError("The transaction carries a memo you did not set.");
+      throw new VerificationError(
+        "memo_value_mismatch",
+        "The transaction carries a memo you did not set."
+      );
     }
     if (intent.memoType !== expected.memoType) {
       const sent =
         intent.memoType === null ? "an unreadable" : MEMO_TYPE_WITH_ARTICLE[intent.memoType];
       throw new VerificationError(
+        "memo_type_mismatch",
         `The transaction would send your memo as ${sent} memo, not the ${expected.memoType} memo you confirmed.`
       );
     }
@@ -1338,7 +1486,7 @@ function assertMemo(intent: TxIntent, expected: CloseExpectation): void {
     intent.guarantees.mergeDestination === expected.destination ||
     intent.guarantees.paymentsOnlyTo.includes(expected.destination);
   if (paysDestination && expected.memoRequired && (!deliversBalance || expected.memo === null)) {
-    throw new VerificationError("This destination requires a deposit memo.");
+    throw new VerificationError("memo_required", "This destination requires a deposit memo.");
   }
 }
 
@@ -1410,6 +1558,7 @@ export function verifyCloseTransaction(opts: {
   // nobody.
   if (exchange !== null && !isRegistryUsable()) {
     throw new VerificationError(
+      "registry_expired",
       "The exchange deposit rules have expired and have not been re-verified, so this close " +
         "cannot be checked. Refresh the page; if it persists, the registry needs updating."
     );

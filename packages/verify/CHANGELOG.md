@@ -16,4 +16,7 @@ release is cut.
   intermediary according to the bundled exchange registry.
 - `VerificationError`, and the documented input types `VerifyCloseInput`,
   `CloseExpectationInput` and `ExitExpectations`.
+- `VerificationError.code`, one stable `VerificationErrorCode` per refusal reason, alongside the
+  message. Branch on the code: the message is English wording and may change. The constructor
+  takes the code first, `new VerificationError(code, message)`.
 - `vectors/close-v1.json`, the conformance vector set (schema 1).

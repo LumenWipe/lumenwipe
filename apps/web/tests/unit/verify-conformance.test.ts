@@ -36,7 +36,10 @@ test("refuses the vector that carries an operation it cannot describe", () => {
   expect(vector?.verdict).toBe("reject");
   setSystemTime(new Date(vector!.nowSeconds * 1000));
   expect(() => verifyCloseTransaction(vector!.input)).toThrow(
-    new VerificationError("The transaction contains an unrecognized operation.")
+    new VerificationError(
+      "operation_unknown",
+      "The transaction contains an unrecognized operation."
+    )
   );
 });
 

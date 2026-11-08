@@ -521,7 +521,10 @@ const IN_FLIGHT: Store = { phase: "STEP_UNCONFIRMED", unconfirmedSubmission: SUB
 
 const declined = new WalletSigningError(-4, VARIAL_ID, "User declined access");
 const timedOut = new WalletSigningTimeoutError(VARIAL_ID, 120_000);
-const mismatch = new VerificationError("op 2 pays to an unexpected destination");
+const mismatch = new VerificationError(
+  "transfer_not_chosen",
+  "op 2 pays to an unexpected destination"
+);
 const unavailable = new ApiRequestError(503, "");
 
 const MATRIX: Surface[] = [
