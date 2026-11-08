@@ -23,8 +23,9 @@ export interface WalletApiError {
 }
 
 export type WalletSignBehavior =
-  /** Signs the requested transaction with `keypair`. A keypair other than the reported address is
-   *  a wallet signing with a different account. `signerAddress` defaults to the keypair's. */
+  /** Signs the requested transaction, or a SEP-53 message, with `keypair`. A keypair other than
+   *  the reported address is a wallet signing with a different account. `signerAddress` defaults
+   *  to the keypair's. */
   | { kind: "approve"; keypair: Keypair; signerAddress?: string; delayMs?: number }
   /** Refuses with a wallet error. Defaults to Freighter's user rejection, code -4. */
   | { kind: "reject"; code?: number; message?: string; delayMs?: number }
@@ -46,6 +47,8 @@ export interface WalletRequest {
   transactionXdr?: string;
   networkPassphrase?: string;
   accountToSign?: string;
+  /** The message of a SEP-53 message signing request. */
+  blob?: string;
 }
 
 export interface WalletStub {
@@ -115,6 +118,8 @@ export async function installWalletStub(
           : { apiError: network.error };
       case "SUBMIT_TRANSACTION":
         return answerSign(request);
+      case "SUBMIT_BLOB":
+        return answerSignMessage(request);
       default:
         return {};
     }
@@ -142,6 +147,27 @@ export async function installWalletStub(
     };
   }
 
+  async function answerSignMessage(
+    request: WalletRequest
+  ): Promise<Record<string, unknown> | null> {
+    const behavior = options.sign ?? { kind: "reject" };
+    if (behavior.kind === "never") return null;
+    if (behavior.delayMs) await sleep(behavior.delayMs);
+    if (behavior.kind === "reject") {
+      return {
+        signedBlob: null,
+        apiError: {
+          code: behavior.code ?? USER_REJECTED.code,
+          message: behavior.message ?? USER_REJECTED.message,
+        },
+      };
+    }
+    return {
+      signedBlob: Buffer.from(behavior.keypair.signMessage(request.blob ?? "")).toString("base64"),
+      signerAddress: behavior.signerAddress ?? behavior.keypair.publicKey(),
+    };
+  }
+
   await page.exposeFunction(BINDING, async (request: WalletRequest) => {
     requests.push(request);
     if (request.type === "SUBMIT_TRANSACTION") signWaiters.splice(0).forEach((w) => w(request));
@@ -158,6 +184,7 @@ export async function installWalletStub(
         transactionXdr?: string;
         networkPassphrase?: string;
         accountToSign?: string;
+        blob?: string;
       } | null;
       if (event.source !== window || data?.source !== "FREIGHTER_EXTERNAL_MSG_REQUEST") return;
       void relay({
@@ -165,6 +192,7 @@ export async function installWalletStub(
         transactionXdr: data.transactionXdr,
         networkPassphrase: data.networkPassphrase,
         accountToSign: data.accountToSign,
+        blob: data.blob,
       }).then((reply) => {
         if (reply === null) return;
         window.postMessage(

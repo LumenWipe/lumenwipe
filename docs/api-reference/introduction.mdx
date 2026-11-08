@@ -39,7 +39,17 @@ curl https://api.lumenwipe.com/v1/testnet/account/G... \
   -H "Authorization: Bearer $LUMENWIPE_API_KEY"
 ```
 
-`GET /`, the health routes, and `GET /v1/config/exchange-registry` need no key. Everything else does. [Get an API key](https://lumenwipe.com/api-keys) with the self-service page.
+`GET /`, the health routes, and `GET /v1/config/exchange-registry` need no key. Everything else does.
+
+### Get an API key
+
+Create one on the [API keys page](https://lumenwipe.com/api-keys):
+
+1. Sign in with a Stellar wallet that can sign a message: Varial (formerly Freighter), xBull or Hana, or WalletConnect with a phone wallet that supports message signing. The wallet signs a one-time SEP-53 message, not a transaction: it moves no funds and costs no fee. Google and GitHub sign-in are offered there too when they are enabled.
+2. Select **Create key**. The key is shown once, so copy it to your server's secrets before you dismiss it.
+3. Call the API with it, or start from the [SDK quickstart](/sdk/overview#quickstart).
+
+The sign-in lasts 30 minutes and survives a page reload in the same browser; after that, sign in again. A contract account (an address starting with `C`, such as a passkey smart wallet) cannot sign in yet, because the sign-in needs a signature from a single account key; sign in with a regular `G` account instead. The key it owns works for any account you analyze or close.
 
 <Warning>
   Keep the key on your server. A browser application should call the API through its own backend, as
