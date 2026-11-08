@@ -1,4 +1,5 @@
 export { LumenWipeClient } from "./client";
+export { LumenWipeIntegratorClient } from "./integrator-client";
 export {
   LumenWipeAbortError,
   LumenWipeApiError,
@@ -7,7 +8,13 @@ export {
   isApiErrorCode,
   type ApiErrorCode,
 } from "./errors";
-export type { FetchLike, LumenWipeClientOptions, RequestOptions, RetryOptions } from "./options";
+export type {
+  FetchLike,
+  LumenWipeClientOptions,
+  LumenWipeIntegratorClientOptions,
+  RequestOptions,
+  RetryOptions,
+} from "./options";
 
 // Re-export the API contract types for convenience.
 export type * from "@lumenwipe/types";

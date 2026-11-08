@@ -1,18 +1,25 @@
 import type {
   AccountState,
   AllowancesResult,
+  BatchPlanRequest,
+  BatchPlanResponse,
   ClosePlanRequest,
   CloseDeliveredResponse,
   CloseStatusResponse,
   CloseTransactionsRequest,
   FeeBumpSponsorResponse,
+  HealthDeepResponse,
   HealthResponse,
   MediatorCheckResult,
   MediatorSignResponse,
   Network,
   PathResponse,
   PlanResponse,
+  RecordMergeResponse,
   RevokeAllowanceResponse,
+  ServedExchangeRegistry,
+  StatsFeed,
+  StatsTotals,
   SubmitResponse,
   TransactionLookupResponse,
   TransactionsResponse,
@@ -23,7 +30,7 @@ import type { LumenWipeClientOptions, RequestOptions } from "./options";
 
 const NETWORKS: readonly unknown[] = ["mainnet", "testnet"] satisfies Network[];
 
-function isPlaintextRemote(baseUrl: string): boolean {
+export function isPlaintextRemote(baseUrl: string): boolean {
   try {
     const url = new URL(baseUrl);
     if (url.protocol !== "http:") return false;
@@ -93,6 +100,26 @@ export class LumenWipeClient {
     });
   }
 
+  /** Whether Stellar RPC is reachable on every network, and the days left on the exchange registry.
+   *  A degraded service answers 503, thrown as a `LumenWipeApiError` whose `body` is a
+   *  `HealthDeepResponse` with `status: "error"`. Never retried: the 503 is the answer. */
+  healthDeep(options?: RequestOptions): Promise<HealthDeepResponse> {
+    return this.http.request<HealthDeepResponse>("GET", "/health/deep", undefined, {
+      ...options,
+      retry: "never",
+    });
+  }
+
+  /** The exchange registry the API closes against. Do not rely on it past `validUntil`. */
+  getExchangeRegistry(options?: RequestOptions): Promise<ServedExchangeRegistry> {
+    return this.http.request<ServedExchangeRegistry>(
+      "GET",
+      "/v1/config/exchange-registry",
+      undefined,
+      { ...options, retry: "transient" }
+    );
+  }
+
   async getAccount(
     address: string,
     network?: Network,
@@ -129,6 +156,25 @@ export class LumenWipeClient {
       ...options,
       retry: "throttle",
     });
+  }
+
+  /** Plans up to 20 accounts into one shared destination in one call. Read-only: no decisions are
+   *  applied, so plan each account with `closePlan` before closing it. An address that cannot be
+   *  read or planned comes back as a `blocked` plan, never as a missing entry. */
+  async batchPlan(
+    body: BatchPlanRequest,
+    network?: Network,
+    options?: RequestOptions
+  ): Promise<BatchPlanResponse> {
+    return this.http.request<BatchPlanResponse>(
+      "POST",
+      this.v1(network, "/close/batch-plan"),
+      body,
+      {
+        ...options,
+        retry: "throttle",
+      }
+    );
   }
 
   /**
@@ -286,6 +332,39 @@ export class LumenWipeClient {
       "POST",
       this.v1(network, "/allowances/revoke"),
       params,
+      { ...options, retry: "throttle" }
+    );
+  }
+
+  /** Accounts closed and XLM recovered through LumenWipe on the network. */
+  async getStats(network?: Network, options?: RequestOptions): Promise<StatsTotals> {
+    return this.http.request<StatsTotals>("GET", this.v1(network, "/stats"), undefined, {
+      ...options,
+      retry: "transient",
+    });
+  }
+
+  /** The totals, the most recent closes and the daily activity on the network. */
+  async getStatsFeed(network?: Network, options?: RequestOptions): Promise<StatsFeed> {
+    return this.http.request<StatsFeed>("GET", this.v1(network, "/stats/feed"), undefined, {
+      ...options,
+      retry: "transient",
+    });
+  }
+
+  /** Counts a confirmed close that was submitted outside this API. The API re-reads the
+   *  transaction and counts it only if it built it, it confirmed and it merged an account;
+   *  `counted` is false for a hash already counted. Closes sent through `submit()` are counted
+   *  without this. */
+  async recordMerge(
+    txHash: string,
+    network?: Network,
+    options?: RequestOptions
+  ): Promise<RecordMergeResponse> {
+    return this.http.request<RecordMergeResponse>(
+      "POST",
+      this.v1(network, "/stats/merges"),
+      { txHash },
       { ...options, retry: "throttle" }
     );
   }

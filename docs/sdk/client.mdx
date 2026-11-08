@@ -34,25 +34,60 @@ Keep the API key server-side. Never ship it to a browser.
 
 ## Methods
 
-Every method takes an optional trailing `network` that overrides the client default, then an optional `{ signal }` (an `AbortSignal`) to cancel the request.
+Every method on a network route takes an optional trailing `network` that overrides the client default. Every method then takes an optional `{ signal }` (an `AbortSignal`) to cancel the request. All of them call the `/v1` paths; `health()` and `healthDeep()` call the unversioned operational routes.
 
-| Method                                               | Description                                                                                     |
-| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `health()`                                           | Service health check.                                                                           |
-| `getAccount(address)`                                | Current on-chain state of an account.                                                           |
-| `getPaths({ fromAsset, amount })`                    | Conversion path quote for a source asset.                                                       |
-| [`closePlan(body)`](/sdk/close-plan)                 | Preview of the full close plan, with blockers if a step cannot close safely.                    |
-| [`closeTransactions(body)`](/sdk/close-transactions) | Builds the next round of unsigned transactions.                                                 |
-| [`submit(signedXdr)`](/sdk/submit)                   | Submits a signed transaction.                                                                   |
-| `mediatorCheck(address)`                             | Checks the exchange mediator state for an address.                                              |
-| `mediatorSign(transaction)`                          | Co-signs the mediator forward payment for an exchange close.                                    |
-| `feeBumpSponsor(transaction)`                        | Wraps a zero-fee transaction in a fee-bump envelope for an account that cannot pay its own fee. |
-| `getAllowances(address)`                             | Every live SEP-41 allowance the account has granted.                                            |
-| `getTransaction(hash)`                               | Looks a transaction up by hash: `confirmed`, `failed` or `not_found`. Sends nothing.            |
-| `closeStatus(source)`                                | The phase of a close and its remaining work, from live state. Informational.                    |
-| `closeDelivered(destination, hashes)`                | The XLM confirmed close transactions delivered to the destination, from the ledger's result.    |
-| `revokeAllowance({ owner, token, spender })`         | Builds the unsigned transaction that revokes one allowance.                                     |
+| Method                                               | Description                                                                                                |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `health()`                                           | Service health check.                                                                                      |
+| `healthDeep()`                                       | Whether Stellar RPC is reachable on every network. A degraded service throws its 503, unretried.           |
+| `getExchangeRegistry()`                              | The exchange registry the API closes against. Do not rely on it past `validUntil`.                         |
+| `getAccount(address)`                                | Current on-chain state of an account.                                                                      |
+| `getPaths({ fromAsset, amount })`                    | Conversion path quote for a source asset.                                                                  |
+| [`closePlan(body)`](/sdk/close-plan)                 | Preview of the full close plan, with blockers if a step cannot close safely.                               |
+| `batchPlan({ addresses, destination })`              | Plans up to 20 accounts into one destination. Read-only; plan each one with `closePlan` before closing it. |
+| [`closeTransactions(body)`](/sdk/close-transactions) | Builds the next round of unsigned transactions.                                                            |
+| [`submit(signedXdr)`](/sdk/submit)                   | Submits a signed transaction.                                                                              |
+| `mediatorCheck(address)`                             | Checks the exchange mediator state for an address.                                                         |
+| `mediatorSign(transaction)`                          | Co-signs the mediator forward payment for an exchange close.                                               |
+| `feeBumpSponsor(transaction)`                        | Wraps a zero-fee transaction in a fee-bump envelope for an account that cannot pay its own fee.            |
+| `getAllowances(address)`                             | Every live SEP-41 allowance the account has granted.                                                       |
+| `getTransaction(hash)`                               | Looks a transaction up by hash: `confirmed`, `failed` or `not_found`. Sends nothing.                       |
+| `closeStatus(source)`                                | The phase of a close and its remaining work, from live state. Informational.                               |
+| `closeDelivered(destination, hashes)`                | The XLM confirmed close transactions delivered to the destination, from the ledger's result.               |
+| `revokeAllowance({ owner, token, spender })`         | Builds the unsigned transaction that revokes one allowance.                                                |
+| `getStats()` / `getStatsFeed()`                      | Accounts closed and XLM recovered on the network; the feed adds recent closes and daily activity.          |
+| `recordMerge(txHash)`                                | Counts a confirmed close submitted outside this API. Closes sent through `submit` are counted already.     |
 
 `runClose` is a standalone function, not a client method. See [runClose](/sdk/run-close).
+
+## Integrator client
+
+`LumenWipeIntegratorClient` manages a wallet's own API keys. It takes `baseUrl` and the optional `fetch`, `timeout`, `retry` and `logger`, and no API key: it never sends one. Sign in by signing the challenge message with the wallet (SEP-53) and exchanging it for a session token, valid for 30 minutes. The key methods send only that token.
+
+```ts
+import { LumenWipeIntegratorClient } from "@lumenwipe/sdk";
+
+const integrator = new LumenWipeIntegratorClient({ baseUrl: "https://api.lumenwipe.com" });
+
+const { message } = await integrator.challenge(address);
+const { token } = await integrator.session({
+  address,
+  message,
+  signature: await signMessage(message),
+});
+
+const { key } = await integrator.createKey(token, { label: "production", networks: ["mainnet"] });
+```
+
+| Method                                     | Description                                                                                              |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| `challenge(address)`                       | A SEP-53 message for the wallet to sign.                                                                 |
+| `session({ address, message, signature })` | Exchanges the signed challenge for a session token.                                                      |
+| `listKeys(token)`                          | The wallet's keys, each with its label, networks, last use and request counts, plus the wallet's totals. |
+| `createKey(token, { label?, networks? })`  | Creates a key. The raw `key` is in this response only.                                                   |
+| `revokeKey(token, id)`                     | Revokes one of the wallet's keys.                                                                        |
+| `rotateKey(token, id)`                     | Revokes a key and issues its replacement with the same label and networks.                               |
+
+Creating, revoking and rotating a key are never retried.
 
 Each method maps to an endpoint in the [API reference](/api-reference/introduction).

@@ -7,6 +7,13 @@ export interface ClosePlanRequest {
   decisions?: DecisionAnswer[];
 }
 
+/** Body for `POST /v1/:network/close/batch-plan`: up to 20 accounts planned into one shared
+ *  destination, read-only, with no decisions applied. */
+export interface BatchPlanRequest {
+  addresses: string[];
+  destination?: string;
+}
+
 /** Body for `POST /v1/:network/close/transactions`. */
 export interface CloseTransactionsRequest {
   source: string;
@@ -36,4 +43,9 @@ export interface CloseTransactionsRequest {
 /** Body for `POST /v1/:network/submit`. */
 export interface SubmitRequest {
   signedXdr: string;
+}
+
+/** Body for `POST /v1/:network/stats/merges`. */
+export interface RecordMergeRequest {
+  txHash: string;
 }

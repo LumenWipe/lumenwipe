@@ -217,6 +217,10 @@ const NETWORK_CALLS: [string, (client: LumenWipeClient, network: Network) => Pro
   ["feeBumpSponsor", (c, n) => c.feeBumpSponsor("xdr", n)],
   ["getAllowances", (c, n) => c.getAllowances("G", n)],
   ["revokeAllowance", (c, n) => c.revokeAllowance({ owner: "G", token: "C", spender: "G" }, n)],
+  ["batchPlan", (c, n) => c.batchPlan({ addresses: ["G"] }, n)],
+  ["getStats", (c, n) => c.getStats(n)],
+  ["getStatsFeed", (c, n) => c.getStatsFeed(n)],
+  ["recordMerge", (c, n) => c.recordMerge("a", n)],
 ];
 
 const UNKNOWN_NETWORKS = ["../admin", "testnet/../admin", "testnet?x=1#", "..", "", "TESTNET"];
@@ -321,4 +325,120 @@ test("getTransaction retries a 503 like every other read", async () => {
   });
   await client.getTransaction("ab", "testnet");
   expect(calls).toBe(2);
+});
+
+function retryingClient(status: (call: number) => number, body: unknown = {}) {
+  let calls = 0;
+  const urls: string[] = [];
+  const fetch: FetchLike = (url) => {
+    urls.push(url);
+    const code = status(++calls);
+    return Promise.resolve(
+      new Response(JSON.stringify(body), {
+        status: code,
+        headers: code === 503 ? { "Retry-After": "0" } : {},
+      })
+    );
+  };
+  const client = new LumenWipeClient({
+    baseUrl: "https://api.example.com",
+    apiKey: "k",
+    network: "testnet",
+    fetch,
+    retry: { attempts: 3, baseDelayMs: 0 },
+  });
+  return { client, urls, count: () => calls };
+}
+
+test("batchPlan posts the addresses and destination to the v1 batch-plan path", async () => {
+  const { fetch, calls } = mockFetch(200, { results: [] });
+  const client = new LumenWipeClient({ baseUrl: "https://x", apiKey: "k", fetch });
+  const res = await client.batchPlan({ addresses: ["GA", "GB"], destination: "GD" }, "mainnet");
+  expect(res).toEqual({ results: [] });
+  expect(calls[0].url).toBe("https://x/v1/mainnet/close/batch-plan");
+  expect(calls[0].init?.method).toBe("POST");
+  expect(calls[0].init?.body).toBe('{"addresses":["GA","GB"],"destination":"GD"}');
+});
+
+test("getExchangeRegistry reads the unscoped v1 config path and retries a 503", async () => {
+  const registry = { version: "1", lastVerified: "", validUntil: "", source: "", entries: [] };
+  const { client, urls, count } = retryingClient((n) => (n === 1 ? 503 : 200), registry);
+  expect(await client.getExchangeRegistry()).toEqual(registry);
+  expect(count()).toBe(2);
+  expect(urls[0]).toBe("https://api.example.com/v1/config/exchange-registry");
+});
+
+test("healthDeep returns the indicators when every network is up", async () => {
+  const body = {
+    status: "ok",
+    info: { rpc_testnet: { status: "up", responseTime: 3 } },
+    error: {},
+    details: { rpc_testnet: { status: "up", responseTime: 3 } },
+  };
+  const { client, urls } = retryingClient(() => 200, body);
+  expect(await client.healthDeep()).toEqual(body as never);
+  expect(urls).toEqual(["https://api.example.com/health/deep"]);
+});
+
+test("healthDeep throws the degraded 503 once, with the terminus body, and never retries", async () => {
+  // The body the API sends when one network's RPC is down: Terminus's result passed through the
+  // error filter verbatim, with Retry-After 30 (checked against HealthController and
+  // ErrorEnvelopeFilter).
+  const degraded = {
+    status: "error",
+    info: {
+      rpc_testnet: { responseTime: 4, status: "up" },
+      exchange_registry: { daysRemaining: 61, status: "up" },
+    },
+    error: { rpc_mainnet: { message: "unreachable", responseTime: 2, status: "down" } },
+    details: {
+      rpc_testnet: { responseTime: 4, status: "up" },
+      exchange_registry: { daysRemaining: 61, status: "up" },
+      rpc_mainnet: { message: "unreachable", responseTime: 2, status: "down" },
+    },
+  };
+  const { client, count } = retryingClient(() => 503, degraded);
+  const error = await client.healthDeep().catch((e: unknown) => e);
+  expect(error).toBeInstanceOf(LumenWipeApiError);
+  const apiError = error as LumenWipeApiError;
+  expect(apiError.status).toBe(503);
+  expect(apiError.body).toEqual(degraded);
+  expect(apiError.code).toBe("upstream_error");
+  expect(count()).toBe(1);
+});
+
+test("getStats and getStatsFeed read the network's v1 stats paths", async () => {
+  const { fetch, calls } = mockFetch(200, {});
+  const client = new LumenWipeClient({ baseUrl: "https://x", apiKey: "k", fetch });
+  await client.getStats("mainnet");
+  await client.getStatsFeed("testnet");
+  expect(calls.map((c) => [c.init?.method, c.url, c.init?.body])).toEqual([
+    ["GET", "https://x/v1/mainnet/stats", undefined],
+    ["GET", "https://x/v1/testnet/stats/feed", undefined],
+  ]);
+});
+
+test("recordMerge posts only the hash and is retried on a 503 like other stateless posts", async () => {
+  const { client, urls, count } = retryingClient((n) => (n === 1 ? 503 : 200), { counted: true });
+  expect(await client.recordMerge("ab")).toEqual({ counted: true });
+  expect(count()).toBe(2);
+  expect(urls[0]).toBe("https://api.example.com/v1/testnet/stats/merges");
+
+  const { fetch, calls } = mockFetch(200, { counted: false });
+  await new LumenWipeClient({ baseUrl: "https://x", apiKey: "k", fetch }).recordMerge(
+    "ab",
+    "testnet"
+  );
+  expect(calls[0].init?.body).toBe('{"txHash":"ab"}');
+});
+
+test("a path segment is percent-encoded and the network is checked before the path is built", async () => {
+  const { fetch, calls } = mockFetch(200, {});
+  const client = new LumenWipeClient({ baseUrl: "https://x", apiKey: "k", fetch });
+  await client.getAccount("G/../admin?x=1#y", "testnet");
+  await client.mediatorCheck("G B", "mainnet");
+  expect(calls.map((c) => c.url)).toEqual([
+    "https://x/v1/testnet/account/G%2F..%2Fadmin%3Fx%3D1%23y",
+    "https://x/v1/mainnet/mediator/check/G%20B",
+  ]);
 });

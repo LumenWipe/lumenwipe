@@ -11,6 +11,8 @@ export type RetryPolicy = "transient" | "throttle" | "never";
 
 export interface TransportRequest extends RequestOptions {
   retry: RetryPolicy;
+  /** Sent as `Authorization: Bearer <bearer>` in place of the transport's API key. */
+  bearer?: string;
 }
 
 const MAX_DELAY_MS = 30_000;
@@ -18,14 +20,15 @@ const TRANSIENT_STATUSES = new Set([429, 502, 503, 504]);
 const THROTTLE_STATUSES = new Set([429, 503]);
 
 /**
- * Low-level transport: sends `Authorization: Bearer <key>`, applies the request
+ * Low-level transport: sends `Authorization: Bearer <key>` (the request's own `bearer`, else the
+ * transport's API key, else no `Authorization` at all), applies the request
  * timeout, and turns responses into typed results or errors. Kept separate from
  * the endpoint-facing client so the HTTP concerns live in one place.
  */
 export class HttpTransport {
   constructor(
     private readonly baseUrl: string,
-    private readonly apiKey: string,
+    private readonly apiKey: string | undefined,
     private readonly timeout: number,
     private readonly doFetch: FetchLike,
     private readonly retry?: RetryOptions
@@ -41,7 +44,7 @@ export class HttpTransport {
       opts.retry === "never" ? 1 : Math.max(1, Math.floor(this.retry?.attempts ?? 1));
     for (let attempt = 1; ; attempt++) {
       try {
-        return await this.once<T>(method, path, body, opts.signal);
+        return await this.once<T>(method, path, body, opts.bearer ?? this.apiKey, opts.signal);
       } catch (e) {
         if (attempt >= attempts || !this.shouldRetry(opts.retry, e)) throw e;
         await this.sleep(this.delayMs(e, attempt), opts.signal);
@@ -88,14 +91,14 @@ export class HttpTransport {
     method: string,
     path: string,
     body: unknown,
+    bearer: string | undefined,
     callerSignal?: AbortSignal
   ): Promise<T> {
     if (callerSignal?.aborted) throw new LumenWipeAbortError(callerSignal.reason);
 
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${this.apiKey}`,
-      "X-LumenWipe-SDK": `sdk/${SDK_VERSION}`,
-    };
+    const headers: Record<string, string> = {};
+    if (bearer !== undefined) headers.Authorization = `Bearer ${bearer}`;
+    headers["X-LumenWipe-SDK"] = `sdk/${SDK_VERSION}`;
     if (body !== undefined) headers["Content-Type"] = "application/json";
 
     const controller = new AbortController();
