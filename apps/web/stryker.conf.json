@@ -4,9 +4,13 @@
   "reporters": ["clear-text", "progress", "json"],
   "testRunner": "command",
   "commandRunner": {
-    "command": "bun test tests/unit/verify.test.ts tests/unit/verify-conformance.test.ts"
+    "command": "bun test tests/unit/verify.test.ts tests/unit/verify-conformance.test.ts tests/unit/exchange-registry-merge.test.ts"
   },
-  "mutate": ["lib/stellar/verify.ts", "lib/stellar/verification-error.ts"],
+  "mutate": [
+    "lib/stellar/verify.ts",
+    "lib/stellar/verification-error.ts",
+    "lib/exchange-registry/merge.ts"
+  ],
   "ignoreStatic": true,
   "concurrency": 4,
   "timeoutMS": 15000

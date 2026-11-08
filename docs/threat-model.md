@@ -189,8 +189,12 @@ A check that pins the mediator's address in place of step 4 proves which account
 that the payment moves the balance on. The reference implementation is `assertCloseIntent` in
 [`apps/web/lib/stellar/verify.ts`](https://github.com/LumenWipe/lumenwipe/blob/main/apps/web/lib/stellar/verify.ts).
 `@lumenwipe/verify` (`packages/verify`) packages that same code for integrators, with a shared conformance vector
-set. It decides steps 1 and 8 from the exchange registry bundled in its release only, never from the served copy,
-so an exchange listed after that release is checked as a plain wallet until the integrator upgrades.
+set. It decides whether the mediated shape is allowed (step 1) from the exchange registry bundled in its release
+only. An integrator may pass the served registry as `servedRegistry`; it is merged stricter-only, as in the web
+client, so it can refuse a direct merge into an address it lists as needing the mediator, require a memo and set its
+type (step 8), and move the registry's validity later by at most 120 days, but it never enables the mediated shape:
+the API that serves it also builds the transaction and reports the balance step 7 is checked against. Without one,
+an exchange listed after that release is checked as a plain wallet until the integrator upgrades.
 
 ## 6. Surface 4b: backend signing key (fee-bump sponsor)
 

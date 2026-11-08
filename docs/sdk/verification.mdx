@@ -74,6 +74,7 @@ try {
 | Group         | Code                                    | Refused because                                                                                            |
 | ------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | Transaction   | `registry_expired`                      | The destination is a listed exchange and the bundled registry is past its validity date.                   |
+| Transaction   | `registry_snapshot_invalid`             | The `servedRegistry` passed in is not a registry: no `entries` list, or no `lastVerified` or `validUntil`. |
 | Transaction   | `transaction_source_mismatch`           | The transaction is not sourced from the account being closed.                                              |
 | Transaction   | `expiry_missing`                        | The transaction has no upper time bound.                                                                   |
 | Transaction   | `expiry_too_far`                        | The transaction stays valid more than 15 minutes past verification.                                        |
@@ -157,16 +158,38 @@ Never take an input from the transaction under verification or from its `intent`
 
 ### What the package decides on its own
 
-Whether the destination is a listed exchange, whether it needs a memo and of which type, and whether the merge must go through the shared mediator are not inputs. The package derives them from the exchange registry bundled in its release. It never fetches the copy the API serves:
+Whether the destination is a listed exchange, whether it needs a memo and of which type, and whether the merge must go through the shared mediator are not inputs. The package derives them from the exchange registry bundled in its release. It never fetches the copy the API serves itself. Without a snapshot:
 
 - An exchange listed after the release you installed is checked as a plain wallet, so a direct merge to it passes with whatever memo the user typed. Upgrade on every release.
 - Once the bundled registry's `validUntil` date passes, every close to a listed exchange is refused until you upgrade.
+
+### Passing the served registry
+
+Pass the body of `GET /v1/config/exchange-registry` as `servedRegistry` to narrow both gaps:
+
+```ts
+const servedRegistry = await client.getExchangeRegistry();
+verifyCloseTransaction({ unsignedXdr, network, expected, servedRegistry });
+```
+
+The snapshot is merged over the bundled registry with the same stricter-only rule the web client applies to the copy it is served. It is not authenticated, and it comes from the same API that builds the transaction, so it is trusted only for what can make verification stricter:
+
+| Field of an entry  | What the snapshot can do                                                                                                                               |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `address`          | Add an exchange. A bundled exchange it leaves out is kept.                                                                                             |
+| `requiresMediator` | Refuse a direct merge into an address. It never turns that refusal off, and never enables the mediated hand-off (see below).                           |
+| `requiresMemo`     | Require a deposit memo. It never turns a bundled requirement off.                                                                                      |
+| `memoType`         | Set the memo type the close must carry. Taken as served, since exchanges do change it: a wrong type can leave a deposit uncredited, never redirect it. |
+| `name`, `domain`   | Only the name appears, in refusal messages.                                                                                                            |
+| `validUntil`       | Move the bundled expiry later, by at most 120 days. Never earlier.                                                                                     |
+
+The mediated hand-off stays limited to the exchanges bundled in the package, and `requiresMediator(address)` takes no snapshot. An address only the snapshot lists as needing the mediator refuses both a direct merge and the hand-off until you upgrade: accepting the hand-off on served data would let the API, which also reports the balance the forward is checked against, route any close through an intermediary it names. An entry that is not well formed is dropped; a snapshot that is not a registry is refused with `registry_snapshot_invalid`.
 
 It also reads the system clock: a transaction valid for more than 900 seconds from now is refused.
 
 ### Conformance vectors
 
-The package ships `vectors/close-v1.json`: accepted and rejected transactions with the full input for each, the clock to set, and for each rejection the `VerificationError` code and exact message. Match on `error.code`; the message is asserted too, as the current wording. Every rejection is one named mutation of an accepted vector, and every key in the file is public. Run them against your own verifier, or against a wrapper around this one.
+The package ships `vectors/close-v1.json`: accepted and rejected transactions with the full input for each, the clock to set, and for each rejection the `VerificationError` code and exact message. Match on `error.code`; the message is asserted too, as the current wording. Every rejection is one named mutation of an accepted vector (its transaction, its `servedRegistry` snapshot, or both), and every key in the file is public. Pass `input.servedRegistry` to the verifier when a vector carries one. Run them against your own verifier, or against a wrapper around this one.
 
 ## Why
 
@@ -189,7 +212,7 @@ Decode the XDR yourself and compare it against **your own inputs**, never agains
 
 The API's co-sign endpoint checks the **structure** of the mediated pair, not where it pays. It caps the forward at the merged balance it reads at co-sign time, but it accepts a forward to any address other than the mediator, because it cannot know which exchange address the user meant. It does refuse a forward without a memo to a listed exchange that requires one or to an account whose `config.memo_required` data entry is set (SEP-29), and a memo of the wrong type to a listed exchange, but it cannot know which memo value the user meant. In the LumenWipe web client, `verify()` makes that check with the address the user typed. An integration that calls the API or the SDK directly has no such check unless it writes one, so for a mediated close confirm, from your own inputs:
 
-1. The destination the user entered needs the mediator (a known exchange that cannot receive a merge): `requiresMediator(destination)` from `@lumenwipe/verify` answers this from its bundled registry. Otherwise the merge must go straight to the user's address and the mediated shape is refused, so an intermediary the API names cannot be slipped into a close to a plain wallet.
+1. The destination the user entered needs the mediator (a known exchange that cannot receive a merge): `requiresMediator(destination)` from `@lumenwipe/verify` answers this from its bundled registry, never from a served one. Otherwise the merge must go straight to the user's address and the mediated shape is refused, so an intermediary the API names cannot be slipped into a close to a plain wallet.
 2. The transaction source is the account being closed, with exactly two operations: an `accountMerge`, then a `payment`.
 3. The merge is sourced from the account being closed (explicitly, or by inheriting the transaction source).
 4. The payment is sourced from the merge's destination, the account the merge pays into.

@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "name": "close-v1",
-  "description": "Conformance vectors for verifyCloseTransaction. Set the clock to nowSeconds, call the verifier with input, and expect it to return (accept) or to throw a VerificationError with exactly error.code and error.message (reject). The code is the stable reason to branch on; the message is the current English wording. Each reject is one named mutation of the accept named in base. Every key is public.",
+  "description": "Conformance vectors for verifyCloseTransaction. Set the clock to nowSeconds, call the verifier with input, and expect it to return (accept) or to throw a VerificationError with exactly error.code and error.message (reject). The code is the stable reason to branch on; the message is the current English wording. Each reject is one named mutation of the accept named in base: its transaction, its served registry snapshot, or both. Pass input.servedRegistry to the verifier when it is present. Every key is public.",
   "generator": "packages/verify/scripts/generate-vectors.ts",
   "vectors": [
     {
@@ -496,6 +496,394 @@
           "repayTokensByPool": {},
           "shareTokenContracts": [],
           "debtTokenContracts": []
+        }
+      }
+    },
+    {
+      "name": "exchange-close-under-relaxing-snapshot",
+      "verdict": "accept",
+      "description": "The exchange close through the intermediary, with a served snapshot that lists the exchange as needing neither the intermediary nor a memo. A bundled exchange's rules cannot be relaxed, so the close stands as it is.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAAMgAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAQAAAAlkZXBvc2l0LTEAAAAAAAACAAAAAAAAAAgAAAAA3rHiv//lEtGqV1AcBCOq1tI1xY1Kye4rLiOHkHguhdEAAAABAAAAAN6x4r//5RLRqldQHAQjqtbSNcWNSsnuKy4jh5B4LoXRAAAAAQAAAAB6JcbUEGHhlVpce5ZZP4CqQO7qY+cKYENGA8HHKQkt5gAAAAAAAAAAO5rKAAAAAAAAAAAA",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GB5CLRWUCBQ6DFK2LR5ZMWJ7QCVEB3XKMPTQUYCDIYB4DRZJBEW6M26D",
+          "nativeBalance": "100.0000000",
+          "memo": "deposit-1",
+          "memoType": "text",
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV",
+            "CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": []
+        },
+        "servedRegistry": {
+          "entries": [
+            {
+              "address": "GB5CLRWUCBQ6DFK2LR5ZMWJ7QCVEB3XKMPTQUYCDIYB4DRZJBEW6M26D",
+              "name": "Coinbase",
+              "domain": "coinbase.com",
+              "requiresMediator": false,
+              "requiresMemo": false,
+              "memoType": "text"
+            }
+          ],
+          "lastVerified": "2026-10-25",
+          "validUntil": "2027-01-08"
+        }
+      }
+    },
+    {
+      "name": "exchange-close-under-emptied-snapshot",
+      "verdict": "accept",
+      "description": "The exchange close through the intermediary, with a served snapshot that lists no exchange at all. A bundled exchange cannot be removed.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAAMgAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAQAAAAlkZXBvc2l0LTEAAAAAAAACAAAAAAAAAAgAAAAA3rHiv//lEtGqV1AcBCOq1tI1xY1Kye4rLiOHkHguhdEAAAABAAAAAN6x4r//5RLRqldQHAQjqtbSNcWNSsnuKy4jh5B4LoXRAAAAAQAAAAB6JcbUEGHhlVpce5ZZP4CqQO7qY+cKYENGA8HHKQkt5gAAAAAAAAAAO5rKAAAAAAAAAAAA",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GB5CLRWUCBQ6DFK2LR5ZMWJ7QCVEB3XKMPTQUYCDIYB4DRZJBEW6M26D",
+          "nativeBalance": "100.0000000",
+          "memo": "deposit-1",
+          "memoType": "text",
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV",
+            "CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": []
+        },
+        "servedRegistry": {
+          "entries": [],
+          "lastVerified": "2026-10-25",
+          "validUntil": "2027-01-08"
+        }
+      }
+    },
+    {
+      "name": "close-to-exchange-listed-by-snapshot",
+      "verdict": "accept",
+      "description": "A direct merge to an exchange only the served snapshot lists, which accepts a merge but needs an id memo. The memo goes as an id memo, the snapshot's type, though the user confirmed text.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAAGQAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAgAAAAAAABE7AAAAAQAAAAAAAAAIAAAAAGZLzDt3k23vuVrzAa/r74xkVDQxpYZJyZREMZR2YOYYAAAAAAAAAAA=",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GBTEXTB3O6JW335ZLLZQDL7L56GGIVBUGGSYMSOJSRCDDFDWMDTBQL3I",
+          "nativeBalance": "100.0000000",
+          "memo": "4411",
+          "memoType": "text",
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV",
+            "CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": []
+        },
+        "servedRegistry": {
+          "entries": [
+            {
+              "address": "GBTEXTB3O6JW335ZLLZQDL7L56GGIVBUGGSYMSOJSRCDDFDWMDTBQL3I",
+              "name": "Newly Listed",
+              "domain": "newly-listed.example",
+              "requiresMediator": false,
+              "requiresMemo": true,
+              "memoType": "id"
+            }
+          ],
+          "lastVerified": "2026-10-25",
+          "validUntil": "2027-01-08"
+        }
+      }
+    },
+    {
+      "name": "exchange-close-under-snapshot-with-earlier-expiry",
+      "verdict": "accept",
+      "description": "The exchange close through the intermediary, with a snapshot valid only until 2026-10-15, before the clock. A snapshot cannot move the bundled expiry earlier, so the bundled date stands.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAAMgAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAQAAAAlkZXBvc2l0LTEAAAAAAAACAAAAAAAAAAgAAAAA3rHiv//lEtGqV1AcBCOq1tI1xY1Kye4rLiOHkHguhdEAAAABAAAAAN6x4r//5RLRqldQHAQjqtbSNcWNSsnuKy4jh5B4LoXRAAAAAQAAAAB6JcbUEGHhlVpce5ZZP4CqQO7qY+cKYENGA8HHKQkt5gAAAAAAAAAAO5rKAAAAAAAAAAAA",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GB5CLRWUCBQ6DFK2LR5ZMWJ7QCVEB3XKMPTQUYCDIYB4DRZJBEW6M26D",
+          "nativeBalance": "100.0000000",
+          "memo": "deposit-1",
+          "memoType": "text",
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV",
+            "CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": []
+        },
+        "servedRegistry": {
+          "entries": [],
+          "lastVerified": "2026-10-25",
+          "validUntil": "2026-10-15"
+        }
+      }
+    },
+    {
+      "name": "exchange-close-past-bundled-expiry-extended-by-snapshot",
+      "verdict": "accept",
+      "description": "The exchange close through the intermediary on 2027-02-01, past the bundled registry's validity, with a snapshot valid until 2027-03-01: within 120 days of the bundled date, so it extends it.",
+      "nowSeconds": 1801440000,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAAMgAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABrX8wsAAAAAQAAAAlkZXBvc2l0LTEAAAAAAAACAAAAAAAAAAgAAAAA3rHiv//lEtGqV1AcBCOq1tI1xY1Kye4rLiOHkHguhdEAAAABAAAAAN6x4r//5RLRqldQHAQjqtbSNcWNSsnuKy4jh5B4LoXRAAAAAQAAAAB6JcbUEGHhlVpce5ZZP4CqQO7qY+cKYENGA8HHKQkt5gAAAAAAAAAAO5rKAAAAAAAAAAAA",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GB5CLRWUCBQ6DFK2LR5ZMWJ7QCVEB3XKMPTQUYCDIYB4DRZJBEW6M26D",
+          "nativeBalance": "100.0000000",
+          "memo": "deposit-1",
+          "memoType": "text",
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV",
+            "CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": []
+        },
+        "servedRegistry": {
+          "entries": [],
+          "lastVerified": "2026-10-25",
+          "validUntil": "2027-03-01"
         }
       }
     },
@@ -2814,6 +3202,785 @@
         "name": "VerificationError",
         "code": "transfer_amount_short",
         "message": "The transaction would send less USDC than you approved."
+      }
+    },
+    {
+      "name": "direct-merge-into-exchange-under-relaxing-snapshot",
+      "verdict": "reject",
+      "base": "exchange-close-under-relaxing-snapshot",
+      "mutation": "Merges straight into the exchange, which the snapshot claims can be merged into.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAAGQAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAQAAAAlkZXBvc2l0LTEAAAAAAAABAAAAAAAAAAgAAAAAeiXG1BBh4ZVaXHuWWT+AqkDu6mPnCmBDRgPBxykJLeYAAAAAAAAAAA==",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GB5CLRWUCBQ6DFK2LR5ZMWJ7QCVEB3XKMPTQUYCDIYB4DRZJBEW6M26D",
+          "nativeBalance": "100.0000000",
+          "memo": "deposit-1",
+          "memoType": "text",
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV",
+            "CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": []
+        },
+        "servedRegistry": {
+          "entries": [
+            {
+              "address": "GB5CLRWUCBQ6DFK2LR5ZMWJ7QCVEB3XKMPTQUYCDIYB4DRZJBEW6M26D",
+              "name": "Coinbase",
+              "domain": "coinbase.com",
+              "requiresMediator": false,
+              "requiresMemo": false,
+              "memoType": "text"
+            }
+          ],
+          "lastVerified": "2026-10-25",
+          "validUntil": "2027-01-08"
+        }
+      },
+      "error": {
+        "name": "VerificationError",
+        "code": "merge_direct_refused",
+        "message": "This exchange cannot credit an account merge, so the balance has to reach it as a payment. This transaction would merge your account straight into it."
+      }
+    },
+    {
+      "name": "direct-merge-into-exchange-under-emptied-snapshot",
+      "verdict": "reject",
+      "base": "exchange-close-under-emptied-snapshot",
+      "mutation": "Merges straight into the exchange the snapshot leaves out.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAAGQAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAQAAAAlkZXBvc2l0LTEAAAAAAAABAAAAAAAAAAgAAAAAeiXG1BBh4ZVaXHuWWT+AqkDu6mPnCmBDRgPBxykJLeYAAAAAAAAAAA==",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GB5CLRWUCBQ6DFK2LR5ZMWJ7QCVEB3XKMPTQUYCDIYB4DRZJBEW6M26D",
+          "nativeBalance": "100.0000000",
+          "memo": "deposit-1",
+          "memoType": "text",
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV",
+            "CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": []
+        },
+        "servedRegistry": {
+          "entries": [],
+          "lastVerified": "2026-10-25",
+          "validUntil": "2027-01-08"
+        }
+      },
+      "error": {
+        "name": "VerificationError",
+        "code": "merge_direct_refused",
+        "message": "This exchange cannot credit an account merge, so the balance has to reach it as a payment. This transaction would merge your account straight into it."
+      }
+    },
+    {
+      "name": "snapshot-lists-destination-as-needing-intermediary",
+      "verdict": "reject",
+      "base": "minimal-direct-merge",
+      "mutation": "Passes a snapshot listing the destination as an exchange that needs the intermediary.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAAGQAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAEAAAAAAAAACAAAAACphYESRCuwKH2Ob1Uuvi5wVMKJM9AcnORXQ8k++Y2sWwAAAAAAAAAA",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+          "nativeBalance": "100.0000000",
+          "memo": null,
+          "memoType": null,
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV",
+            "CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": []
+        },
+        "servedRegistry": {
+          "entries": [
+            {
+              "address": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+              "name": "Newly Listed",
+              "domain": "newly-listed.example",
+              "requiresMediator": true,
+              "requiresMemo": false,
+              "memoType": "text"
+            }
+          ],
+          "lastVerified": "2026-10-25",
+          "validUntil": "2027-01-08"
+        }
+      },
+      "error": {
+        "name": "VerificationError",
+        "code": "merge_direct_refused",
+        "message": "This exchange cannot credit an account merge, so the balance has to reach it as a payment. This transaction would merge your account straight into it."
+      }
+    },
+    {
+      "name": "snapshot-enables-intermediary-for-destination",
+      "verdict": "reject",
+      "base": "minimal-direct-merge",
+      "mutation": "Routes the merge through an intermediary that forwards the balance to the destination, with a snapshot listing the destination as needing the intermediary. A snapshot never enables the hand-off.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAAMgAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAIAAAAAAAAACAAAAADeseK//+US0apXUBwEI6rW0jXFjUrJ7isuI4eQeC6F0QAAAAEAAAAA3rHiv//lEtGqV1AcBCOq1tI1xY1Kye4rLiOHkHguhdEAAAABAAAAAKmFgRJEK7AofY5vVS6+LnBUwokz0Byc5FdDyT75jaxbAAAAAAAAAAA7msoAAAAAAAAAAAA=",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+          "nativeBalance": "100.0000000",
+          "memo": null,
+          "memoType": null,
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV",
+            "CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": []
+        },
+        "servedRegistry": {
+          "entries": [
+            {
+              "address": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+              "name": "Newly Listed",
+              "domain": "newly-listed.example",
+              "requiresMediator": true,
+              "requiresMemo": false,
+              "memoType": "text"
+            }
+          ],
+          "lastVerified": "2026-10-25",
+          "validUntil": "2027-01-08"
+        }
+      },
+      "error": {
+        "name": "VerificationError",
+        "code": "merge_destination_mismatch",
+        "message": "The account would be merged to an address you did not choose."
+      }
+    },
+    {
+      "name": "snapshot-requires-memo-for-destination",
+      "verdict": "reject",
+      "base": "minimal-direct-merge",
+      "mutation": "Passes a snapshot listing the destination as needing a deposit memo; the close carries none.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAAGQAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAEAAAAAAAAACAAAAACphYESRCuwKH2Ob1Uuvi5wVMKJM9AcnORXQ8k++Y2sWwAAAAAAAAAA",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+          "nativeBalance": "100.0000000",
+          "memo": null,
+          "memoType": null,
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV",
+            "CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": []
+        },
+        "servedRegistry": {
+          "entries": [
+            {
+              "address": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+              "name": "Newly Listed",
+              "domain": "newly-listed.example",
+              "requiresMediator": false,
+              "requiresMemo": true,
+              "memoType": "text"
+            }
+          ],
+          "lastVerified": "2026-10-25",
+          "validUntil": "2027-01-08"
+        }
+      },
+      "error": {
+        "name": "VerificationError",
+        "code": "memo_required",
+        "message": "This destination requires a deposit memo."
+      }
+    },
+    {
+      "name": "snapshot-lists-transfer-destination-as-deposit-address",
+      "verdict": "reject",
+      "base": "transfer-to-chosen-account",
+      "mutation": "Passes a snapshot listing the USDC transfer's destination as an exchange deposit address.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAASwAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAMAAAAAAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAFVU0RDAAAAAHgrQWPLBOQ+K+Sh6cVtVcdDZ7BJpiU2uheYsBesSECTAAAAAA7msoAAAAAAAAAABgAAAAFVU0RDAAAAAHgrQWPLBOQ+K+Sh6cVtVcdDZ7BJpiU2uheYsBesSECTAAAAAAAAAAAAAAAAAAAACAAAAACphYESRCuwKH2Ob1Uuvi5wVMKJM9AcnORXQ8k++Y2sWwAAAAAAAAAA",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+          "nativeBalance": "100.0000000",
+          "memo": null,
+          "memoType": null,
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {
+            "USDC:GB4CWQLDZMCOIPRL4SQ6TRLNKXDUGZ5QJGTCKNV2C6MLAF5MJBAJHZJY": {
+              "destination": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "amount": "25.0000000"
+            }
+          },
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV",
+            "CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": []
+        },
+        "servedRegistry": {
+          "entries": [
+            {
+              "address": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "name": "Newly Listed",
+              "domain": "newly-listed.example",
+              "requiresMediator": false,
+              "requiresMemo": true,
+              "memoType": "text"
+            }
+          ],
+          "lastVerified": "2026-10-25",
+          "validUntil": "2027-01-08"
+        }
+      },
+      "error": {
+        "name": "VerificationError",
+        "code": "transfer_to_deposit_address",
+        "message": "The transaction would send USDC to a Newly Listed deposit address. A transfer in a close carries no deposit memo, so Newly Listed could not credit it. Go back to the plan and choose a wallet you control."
+      }
+    },
+    {
+      "name": "memo-type-other-than-snapshot",
+      "verdict": "reject",
+      "base": "close-to-exchange-listed-by-snapshot",
+      "mutation": "Sends the memo as text, the type the user confirmed, instead of the snapshot's id.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAAGQAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAQAAAAQ0NDExAAAAAQAAAAAAAAAIAAAAAGZLzDt3k23vuVrzAa/r74xkVDQxpYZJyZREMZR2YOYYAAAAAAAAAAA=",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GBTEXTB3O6JW335ZLLZQDL7L56GGIVBUGGSYMSOJSRCDDFDWMDTBQL3I",
+          "nativeBalance": "100.0000000",
+          "memo": "4411",
+          "memoType": "text",
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV",
+            "CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": []
+        },
+        "servedRegistry": {
+          "entries": [
+            {
+              "address": "GBTEXTB3O6JW335ZLLZQDL7L56GGIVBUGGSYMSOJSRCDDFDWMDTBQL3I",
+              "name": "Newly Listed",
+              "domain": "newly-listed.example",
+              "requiresMediator": false,
+              "requiresMemo": true,
+              "memoType": "id"
+            }
+          ],
+          "lastVerified": "2026-10-25",
+          "validUntil": "2027-01-08"
+        }
+      },
+      "error": {
+        "name": "VerificationError",
+        "code": "memo_type_mismatch",
+        "message": "The transaction would send your memo as a text memo, not the id memo you confirmed."
+      }
+    },
+    {
+      "name": "snapshot-extends-expiry-past-cap",
+      "verdict": "reject",
+      "base": "exchange-close-past-bundled-expiry-extended-by-snapshot",
+      "mutation": "Passes a snapshot valid until 2027-06-01, more than 120 days past the bundled date, so the bundled date stands and has passed.",
+      "nowSeconds": 1801440000,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAAMgAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABrX8wsAAAAAQAAAAlkZXBvc2l0LTEAAAAAAAACAAAAAAAAAAgAAAAA3rHiv//lEtGqV1AcBCOq1tI1xY1Kye4rLiOHkHguhdEAAAABAAAAAN6x4r//5RLRqldQHAQjqtbSNcWNSsnuKy4jh5B4LoXRAAAAAQAAAAB6JcbUEGHhlVpce5ZZP4CqQO7qY+cKYENGA8HHKQkt5gAAAAAAAAAAO5rKAAAAAAAAAAAA",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GB5CLRWUCBQ6DFK2LR5ZMWJ7QCVEB3XKMPTQUYCDIYB4DRZJBEW6M26D",
+          "nativeBalance": "100.0000000",
+          "memo": "deposit-1",
+          "memoType": "text",
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV",
+            "CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": []
+        },
+        "servedRegistry": {
+          "entries": [],
+          "lastVerified": "2026-10-25",
+          "validUntil": "2027-06-01"
+        }
+      },
+      "error": {
+        "name": "VerificationError",
+        "code": "registry_expired",
+        "message": "The exchange deposit rules have expired and have not been re-verified, so this close cannot be checked. Refresh the page; if it persists, the registry needs updating."
+      }
+    },
+    {
+      "name": "snapshot-not-a-registry",
+      "verdict": "reject",
+      "base": "minimal-direct-merge",
+      "mutation": "Passes a snapshot whose entries are not a list.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAAGQAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAEAAAAAAAAACAAAAACphYESRCuwKH2Ob1Uuvi5wVMKJM9AcnORXQ8k++Y2sWwAAAAAAAAAA",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+          "nativeBalance": "100.0000000",
+          "memo": null,
+          "memoType": null,
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV",
+            "CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": []
+        },
+        "servedRegistry": {
+          "entries": "none",
+          "lastVerified": "2026-10-25",
+          "validUntil": "2027-01-08"
+        }
+      },
+      "error": {
+        "name": "VerificationError",
+        "code": "registry_snapshot_invalid",
+        "message": "The exchange registry passed to the verifier is not a registry (it needs an entries list, lastVerified and validUntil), so this close cannot be checked against it."
       }
     },
     {

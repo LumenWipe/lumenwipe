@@ -28,6 +28,7 @@ import {
   exitExpectations,
   type AccountState,
   type CloseExpectationInput,
+  type ServedRegistry,
   type VerificationErrorCode,
   type VerifyCloseInput,
 } from "../src/index";
@@ -157,7 +158,7 @@ function accept(
   description: string,
   unsignedXdr: string,
   expected: CloseExpectationInput,
-  extra: { nowSeconds?: number; provenance?: Provenance } = {}
+  extra: { nowSeconds?: number; provenance?: Provenance; servedRegistry?: ServedRegistry } = {}
 ): AcceptVector {
   const vector: AcceptVector = {
     name,
@@ -165,7 +166,12 @@ function accept(
     description,
     nowSeconds: extra.nowSeconds ?? NOW,
     ...(extra.provenance ? { provenance: extra.provenance } : {}),
-    input: { unsignedXdr, network: "testnet", expected },
+    input: {
+      unsignedXdr,
+      network: "testnet",
+      expected,
+      ...(extra.servedRegistry ? { servedRegistry: extra.servedRegistry } : {}),
+    },
   };
   accepts.push(vector);
   return vector;
@@ -186,6 +192,28 @@ function reject(
     mutation,
     nowSeconds: base.nowSeconds,
     input: { ...base.input, unsignedXdr },
+    error: { name: "VerificationError", code, message },
+  });
+}
+
+/** A rejection whose mutation is the served registry snapshot, alone or together with the
+ *  transaction (`unsignedXdr`, when given). The expectation and the clock stay the base's. */
+function rejectUnderSnapshot(
+  base: AcceptVector,
+  name: string,
+  mutation: string,
+  servedRegistry: ServedRegistry,
+  code: VerificationErrorCode,
+  message: string,
+  unsignedXdr: string = base.input.unsignedXdr
+): void {
+  rejects.push({
+    name,
+    verdict: "reject",
+    base: base.name,
+    mutation,
+    nowSeconds: base.nowSeconds,
+    input: { ...base.input, unsignedXdr, servedRegistry },
     error: { name: "VerificationError", code, message },
   });
 }
@@ -584,6 +612,166 @@ reject(
   "The transaction would send less USDC than you approved."
 );
 
+// --- A served registry snapshot ------------------------------------------------------------
+// The snapshot is the integrator's copy of `GET /v1/config/exchange-registry`. It is merged over
+// the bundled registry and can only tighten; it never enables the intermediary.
+
+/** The date the bundled exchange registry is valid until, and 2027-02-01T00:00:00Z, past it. */
+const BUNDLED_UNTIL = "2027-01-08";
+const PAST_BUNDLED_EXPIRY = 1_801_440_000;
+const NEW_EXCHANGE = publicKey("newly listed exchange");
+
+const listing = (
+  address: string,
+  rules: { requiresMediator: boolean; requiresMemo: boolean; memoType: "text" | "id" | "hash" }
+) => ({ address, name: "Newly Listed", domain: "newly-listed.example", ...rules });
+const snapshot = (
+  entries: ServedRegistry["entries"],
+  validUntil = BUNDLED_UNTIL
+): ServedRegistry => ({ entries, lastVerified: "2026-10-25", validUntil });
+
+const DIRECT_MERGE_REFUSED =
+  "This exchange cannot credit an account merge, so the balance has to reach it as a payment. This transaction would merge your account straight into it.";
+
+// A snapshot that tries to relax a bundled exchange, or to forget it, changes nothing.
+const relaxingSnapshot = snapshot([
+  {
+    ...listing(COINBASE, { requiresMediator: false, requiresMemo: false, memoType: "text" }),
+    name: "Coinbase",
+    domain: "coinbase.com",
+  },
+]);
+const underRelaxing = accept(
+  "exchange-close-under-relaxing-snapshot",
+  "The exchange close through the intermediary, with a served snapshot that lists the exchange as needing neither the intermediary nor a memo. A bundled exchange's rules cannot be relaxed, so the close stands as it is.",
+  build([merge(INTERMEDIARY), forward()], { memo: deposit }),
+  expectation({ destination: COINBASE, memo: "deposit-1", memoType: "text" }),
+  { servedRegistry: relaxingSnapshot }
+);
+reject(
+  underRelaxing,
+  "direct-merge-into-exchange-under-relaxing-snapshot",
+  "Merges straight into the exchange, which the snapshot claims can be merged into.",
+  build([merge(COINBASE)], { memo: deposit }),
+  "merge_direct_refused",
+  DIRECT_MERGE_REFUSED
+);
+const underEmptied = accept(
+  "exchange-close-under-emptied-snapshot",
+  "The exchange close through the intermediary, with a served snapshot that lists no exchange at all. A bundled exchange cannot be removed.",
+  build([merge(INTERMEDIARY), forward()], { memo: deposit }),
+  expectation({ destination: COINBASE, memo: "deposit-1", memoType: "text" }),
+  { servedRegistry: snapshot([]) }
+);
+reject(
+  underEmptied,
+  "direct-merge-into-exchange-under-emptied-snapshot",
+  "Merges straight into the exchange the snapshot leaves out.",
+  build([merge(COINBASE)], { memo: deposit }),
+  "merge_direct_refused",
+  DIRECT_MERGE_REFUSED
+);
+
+// A snapshot that lists the user's plain wallet as an exchange needing the intermediary: a direct
+// merge is refused, and the hand-off is refused too, since served data never enables it.
+const walletAsExchange = snapshot([
+  listing(DESTINATION, { requiresMediator: true, requiresMemo: false, memoType: "text" }),
+]);
+rejectUnderSnapshot(
+  minimal,
+  "snapshot-lists-destination-as-needing-intermediary",
+  "Passes a snapshot listing the destination as an exchange that needs the intermediary.",
+  walletAsExchange,
+  "merge_direct_refused",
+  DIRECT_MERGE_REFUSED
+);
+rejectUnderSnapshot(
+  minimal,
+  "snapshot-enables-intermediary-for-destination",
+  "Routes the merge through an intermediary that forwards the balance to the destination, with a snapshot listing the destination as needing the intermediary. A snapshot never enables the hand-off.",
+  walletAsExchange,
+  "merge_destination_mismatch",
+  "The account would be merged to an address you did not choose.",
+  build([merge(INTERMEDIARY), forward({ destination: DESTINATION })])
+);
+
+// Tightening is honored.
+rejectUnderSnapshot(
+  minimal,
+  "snapshot-requires-memo-for-destination",
+  "Passes a snapshot listing the destination as needing a deposit memo; the close carries none.",
+  snapshot([
+    listing(DESTINATION, { requiresMediator: false, requiresMemo: true, memoType: "text" }),
+  ]),
+  "memo_required",
+  "This destination requires a deposit memo."
+);
+rejectUnderSnapshot(
+  transfer,
+  "snapshot-lists-transfer-destination-as-deposit-address",
+  "Passes a snapshot listing the USDC transfer's destination as an exchange deposit address.",
+  snapshot([listing(FRIEND, { requiresMediator: false, requiresMemo: true, memoType: "text" })]),
+  "transfer_to_deposit_address",
+  "The transaction would send USDC to a Newly Listed deposit address. A transfer in a close carries no deposit memo, so Newly Listed could not credit it. Go back to the plan and choose a wallet you control."
+);
+const listedBySnapshot = accept(
+  "close-to-exchange-listed-by-snapshot",
+  "A direct merge to an exchange only the served snapshot lists, which accepts a merge but needs an id memo. The memo goes as an id memo, the snapshot's type, though the user confirmed text.",
+  build([merge(NEW_EXCHANGE)], { memo: Memo.id("4411") }),
+  expectation({ destination: NEW_EXCHANGE, memo: "4411", memoType: "text" }),
+  {
+    servedRegistry: snapshot([
+      listing(NEW_EXCHANGE, { requiresMediator: false, requiresMemo: true, memoType: "id" }),
+    ]),
+  }
+);
+reject(
+  listedBySnapshot,
+  "memo-type-other-than-snapshot",
+  "Sends the memo as text, the type the user confirmed, instead of the snapshot's id.",
+  build([merge(NEW_EXCHANGE)], { memo: Memo.text("4411") }),
+  "memo_type_mismatch",
+  "The transaction would send your memo as a text memo, not the id memo you confirmed."
+);
+
+// Validity only moves later, within the cap, never earlier.
+accept(
+  "exchange-close-under-snapshot-with-earlier-expiry",
+  "The exchange close through the intermediary, with a snapshot valid only until 2026-10-15, before the clock. A snapshot cannot move the bundled expiry earlier, so the bundled date stands.",
+  build([merge(INTERMEDIARY), forward()], { memo: deposit }),
+  expectation({ destination: COINBASE, memo: "deposit-1", memoType: "text" }),
+  { servedRegistry: snapshot([], "2026-10-15") }
+);
+const extended = accept(
+  "exchange-close-past-bundled-expiry-extended-by-snapshot",
+  "The exchange close through the intermediary on 2027-02-01, past the bundled registry's validity, with a snapshot valid until 2027-03-01: within 120 days of the bundled date, so it extends it.",
+  build([merge(INTERMEDIARY), forward()], { memo: deposit, maxTime: PAST_BUNDLED_EXPIRY + 300 }),
+  expectation({ destination: COINBASE, memo: "deposit-1", memoType: "text" }),
+  { nowSeconds: PAST_BUNDLED_EXPIRY, servedRegistry: snapshot([], "2027-03-01") }
+);
+rejectUnderSnapshot(
+  extended,
+  "snapshot-extends-expiry-past-cap",
+  "Passes a snapshot valid until 2027-06-01, more than 120 days past the bundled date, so the bundled date stands and has passed.",
+  snapshot([], "2027-06-01"),
+  "registry_expired",
+  "The exchange deposit rules have expired and have not been re-verified, so this close cannot be checked. Refresh the page; if it persists, the registry needs updating."
+);
+
+// A snapshot that is not a registry is refused, not ignored.
+rejectUnderSnapshot(
+  minimal,
+  "snapshot-not-a-registry",
+  "Passes a snapshot whose entries are not a list.",
+  {
+    entries: "none",
+    lastVerified: "2026-10-25",
+    validUntil: BUNDLED_UNTIL,
+  } as unknown as ServedRegistry,
+  "registry_snapshot_invalid",
+  "The exchange registry passed to the verifier is not a registry (it needs an entries list, lastVerified and validUntil), so this close cannot be checked against it."
+);
+
 // --- A classic conversion -------------------------------------------------------------------
 
 const conversionOps = (destination: string, destMin: string) => [
@@ -672,7 +860,7 @@ export function buildVectorFile(): VectorFile {
     schema: 1,
     name: "close-v1",
     description:
-      "Conformance vectors for verifyCloseTransaction. Set the clock to nowSeconds, call the verifier with input, and expect it to return (accept) or to throw a VerificationError with exactly error.code and error.message (reject). The code is the stable reason to branch on; the message is the current English wording. Each reject is one named mutation of the accept named in base. Every key is public.",
+      "Conformance vectors for verifyCloseTransaction. Set the clock to nowSeconds, call the verifier with input, and expect it to return (accept) or to throw a VerificationError with exactly error.code and error.message (reject). The code is the stable reason to branch on; the message is the current English wording. Each reject is one named mutation of the accept named in base: its transaction, its served registry snapshot, or both. Pass input.servedRegistry to the verifier when it is present. Every key is public.",
     generator: "packages/verify/scripts/generate-vectors.ts",
     vectors: [...accepts, ...rejects],
   };

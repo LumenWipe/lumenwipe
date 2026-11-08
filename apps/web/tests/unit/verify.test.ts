@@ -4561,6 +4561,263 @@ describe("a transfer is never sent to an exchange deposit address", () => {
   });
 });
 
+// --- A served registry snapshot passed per call ----------------------------------------------
+// The integrator's path: the snapshot is an argument, merged over the bundled copy only, and it
+// can only tighten. Never over module state, and never a way to enable the mediated hand-off.
+
+const NEW_EXCHANGE = Keypair.random().publicKey();
+const BUNDLED_UNTIL = "2027-01-08";
+
+function servedEntry(address: string, over: Record<string, unknown> = {}) {
+  return {
+    address,
+    name: "Newly Listed",
+    domain: "newly-listed.example",
+    requiresMediator: false,
+    requiresMemo: false,
+    memoType: "text" as const,
+    ...over,
+  };
+}
+
+function snapshot(entries: unknown[], validUntil = BUNDLED_UNTIL) {
+  return { entries, lastVerified: "2026-11-01", validUntil } as unknown as NonNullable<
+    Parameters<typeof verifyCloseTransaction>[0]["servedRegistry"]
+  >;
+}
+
+function closeTo(
+  destination: string,
+  shape: "direct" | "mediated",
+  over: {
+    memo?: string | null;
+    memoType?: "text" | "id" | null;
+    sentMemo?: Memo;
+    served?: unknown;
+    transfers?: Record<string, { destination: string; amount: string }>;
+    extraOps?: xdr.Operation[];
+  } = {}
+): () => void {
+  const memo = over.memo ?? null;
+  const memoType = over.memoType ?? null;
+  const intermediary = Keypair.random().publicKey();
+  const ops =
+    shape === "direct"
+      ? [Operation.accountMerge({ destination })]
+      : [
+          Operation.accountMerge({ destination: intermediary }),
+          Operation.payment({
+            destination,
+            asset: Asset.native(),
+            amount: "100",
+            source: intermediary,
+          }),
+        ];
+  const sent =
+    over.sentMemo ??
+    (memo === null ? undefined : memoType === "id" ? Memo.id(memo) : Memo.text(memo));
+  const unsignedXdr = buildXdr([...(over.extraOps ?? []), ...ops], sent);
+  const input = {
+    unsignedXdr,
+    network: "testnet" as const,
+    expected: {
+      ...expectation({ destination, memo, memoType }),
+      transfers: over.transfers ?? {},
+    },
+  };
+  return () =>
+    verifyCloseTransaction(
+      "served" in over
+        ? { ...input, servedRegistry: over.served as ReturnType<typeof snapshot> }
+        : input
+    );
+}
+
+describe("a served registry snapshot passed to verifyCloseTransaction", () => {
+  afterEach(() => setSystemTime());
+
+  test("without one, a newly listed address is still a plain wallet", () => {
+    expect(closeTo(NEW_EXCHANGE, "direct")).not.toThrow();
+  });
+
+  test("an address it lists as needing the intermediary refuses a direct merge", () => {
+    const served = snapshot([servedEntry(NEW_EXCHANGE, { requiresMediator: true })]);
+    expectRefusal(
+      closeTo(NEW_EXCHANGE, "direct", { served }),
+      "merge_direct_refused",
+      DIRECT_MERGE_REFUSED
+    );
+  });
+
+  test("and refuses the mediated hand-off too: a snapshot never enables the intermediary", () => {
+    const served = snapshot([servedEntry(NEW_EXCHANGE, { requiresMediator: true })]);
+    expectRefusal(
+      closeTo(NEW_EXCHANGE, "mediated", { served }),
+      "merge_destination_mismatch",
+      "merged to an address you did not choose"
+    );
+  });
+
+  test("an address it lists as needing a memo refuses a close without one", () => {
+    const served = snapshot([servedEntry(NEW_EXCHANGE, { requiresMemo: true })]);
+    expectRefusal(
+      closeTo(NEW_EXCHANGE, "direct", { served }),
+      "memo_required",
+      "requires a deposit memo"
+    );
+    expect(
+      closeTo(NEW_EXCHANGE, "direct", { served, memo: "deposit-1", memoType: "text" })
+    ).not.toThrow();
+  });
+
+  test("its memo type replaces the one the user confirmed for an address it lists", () => {
+    const served = snapshot([servedEntry(NEW_EXCHANGE, { requiresMemo: true, memoType: "id" })]);
+    expectRefusal(
+      closeTo(NEW_EXCHANGE, "direct", { served, memo: "4411", memoType: "text" }),
+      "memo_type_mismatch",
+      "not the id memo"
+    );
+  });
+
+  test("a transfer to a deposit address it lists is refused", () => {
+    const usdc = new Asset("USDC", ISSUER);
+    const key = `USDC:${ISSUER}`;
+    const transfers = { [key]: { destination: NEW_EXCHANGE, amount: "5.0000000" } };
+    const extraOps = [
+      Operation.payment({ destination: NEW_EXCHANGE, asset: usdc, amount: "5" }),
+      Operation.changeTrust({ asset: usdc, limit: "0" }),
+    ];
+    expect(closeTo(DEST, "direct", { transfers, extraOps })).not.toThrow();
+    expectRefusal(
+      closeTo(DEST, "direct", {
+        transfers,
+        extraOps,
+        served: snapshot([servedEntry(NEW_EXCHANGE)]),
+      }),
+      "transfer_to_deposit_address",
+      "Newly Listed deposit address"
+    );
+  });
+
+  test("relaxing a bundled exchange is ignored: the mediated close stands and a direct merge is refused", () => {
+    const served = snapshot([
+      servedEntry(COINBASE, { requiresMediator: false, requiresMemo: false }),
+    ]);
+    const memo = { memo: "deposit-1", memoType: "text" as const };
+    expect(closeTo(COINBASE, "mediated", { ...memo, served })).not.toThrow();
+    expectRefusal(
+      closeTo(COINBASE, "direct", { ...memo, served }),
+      "merge_direct_refused",
+      DIRECT_MERGE_REFUSED
+    );
+    expectRefusal(
+      closeTo(COINBASE, "mediated", { served }),
+      "memo_required",
+      "requires a deposit memo"
+    );
+  });
+
+  test("leaving a bundled exchange out removes nothing", () => {
+    const served = snapshot([]);
+    expect(
+      closeTo(COINBASE, "mediated", { memo: "deposit-1", memoType: "text", served })
+    ).not.toThrow();
+    expectRefusal(
+      closeTo(COINBASE, "direct", { served }),
+      "merge_direct_refused",
+      DIRECT_MERGE_REFUSED
+    );
+  });
+
+  test("it is applied over the bundled copy, not over what the web holds in module state", () => {
+    const before = activeRegistry();
+    setRegistry({
+      ...before,
+      entries: [...before.entries, servedEntry(NEW_EXCHANGE, { requiresMediator: true })],
+    });
+    try {
+      expectRefusal(closeTo(NEW_EXCHANGE, "direct"), "merge_direct_refused", DIRECT_MERGE_REFUSED);
+      expect(closeTo(NEW_EXCHANGE, "direct", { served: snapshot([]) })).not.toThrow();
+    } finally {
+      setRegistry(before);
+    }
+  });
+
+  test("it may extend validity past the bundled date, within the cap", () => {
+    setSystemTime(new Date("2027-02-01T12:00:00Z"));
+    const memo = { memo: "deposit-1", memoType: "text" as const };
+    expectRefusal(
+      closeTo(COINBASE, "mediated", { ...memo, served: snapshot([]) }),
+      "registry_expired",
+      "have expired"
+    );
+    expect(
+      closeTo(COINBASE, "mediated", { ...memo, served: snapshot([], "2027-03-01") })
+    ).not.toThrow();
+    // Past the cap (120 days after the bundled date) the bundled date stands.
+    expectRefusal(
+      closeTo(COINBASE, "mediated", { ...memo, served: snapshot([], "2027-06-01") }),
+      "registry_expired",
+      "have expired"
+    );
+  });
+
+  test("it cannot move validity earlier than the bundled date", () => {
+    setSystemTime(new Date("2026-12-15T12:00:00Z"));
+    const memo = { memo: "deposit-1", memoType: "text" as const };
+    expect(
+      closeTo(COINBASE, "mediated", { ...memo, served: snapshot([], "2026-12-01") })
+    ).not.toThrow();
+  });
+
+  test("an address only the snapshot lists is held to its expiry like any listed exchange", () => {
+    setSystemTime(new Date("2027-02-01T12:00:00Z"));
+    expect(closeTo(NEW_EXCHANGE, "direct")).not.toThrow();
+    expectRefusal(
+      closeTo(NEW_EXCHANGE, "direct", { served: snapshot([servedEntry(NEW_EXCHANGE)]) }),
+      "registry_expired",
+      "have expired"
+    );
+  });
+
+  test("a malformed entry is dropped, the rest of the snapshot still applies", () => {
+    const served = snapshot([
+      null,
+      { address: 5 },
+      servedEntry(NEW_EXCHANGE, { requiresMediator: true }),
+    ]);
+    expectRefusal(
+      closeTo(NEW_EXCHANGE, "direct", { served }),
+      "merge_direct_refused",
+      DIRECT_MERGE_REFUSED
+    );
+  });
+
+  for (const [what, served] of [
+    ["null", null],
+    ["a string", "registry"],
+    ["no entries list", { lastVerified: "2026-11-01", validUntil: BUNDLED_UNTIL }],
+    [
+      "entries that are not a list",
+      { entries: {}, lastVerified: "2026-11-01", validUntil: BUNDLED_UNTIL },
+    ],
+    ["no lastVerified", { entries: [], validUntil: BUNDLED_UNTIL }],
+    ["no validUntil", { entries: [], lastVerified: "2026-11-01" }],
+  ] as const) {
+    test(`a snapshot with ${what} is refused rather than ignored`, () => {
+      expectRefusal(
+        closeTo(DEST, "direct", { served }),
+        "registry_snapshot_invalid",
+        "The exchange registry passed to the verifier is not a registry (it needs an entries list, lastVerified and validUntil), so this close cannot be checked against it."
+      );
+    });
+  }
+
+  test("passing undefined is the same as passing nothing", () => {
+    expect(closeTo(NEW_EXCHANGE, "direct", { served: undefined })).not.toThrow();
+  });
+});
+
 // Last in the file: the tests above reached every refusal through expectRefusal, so the codes
 // they saw are exactly the registry. A code nothing throws, or a refusal with no test, fails here.
 test("the refusal tests cover every registered code, and nothing outside the registry", () => {

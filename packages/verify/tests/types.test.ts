@@ -18,6 +18,7 @@ import type {
   requiresMediator,
   verifyCloseTransaction,
   VerifyCloseInput,
+  ServedRegistry,
 } from "../src/index";
 
 type Assignable<A, B> = [A] extends [B] ? true : false;
@@ -38,6 +39,11 @@ type Value<T> = T[keyof T];
 const pins = {
   input: true satisfies Pinned<VerifyCloseInput, WebInput>,
   expected: true satisfies Pinned<CloseExpectationInput, WebExpected>,
+  servedRegistry: true satisfies Pinned<ServedRegistry, NonNullable<WebInput["servedRegistry"]>>,
+  servedEntry: true satisfies Pinned<
+    ServedRegistry["entries"][number],
+    NonNullable<WebInput["servedRegistry"]>["entries"][number]
+  >,
   transfer: true satisfies Pinned<
     Value<CloseExpectationInput["transfers"]>,
     Value<WebExpected["transfers"]>
