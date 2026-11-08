@@ -1,7 +1,8 @@
 "use client";
 
 import { PollarProvider } from "@pollar/react";
-import ApiKeysPanel from "./ApiKeysPanel";
+import ApiKeysPanel, { API_DOCS_URL, QUICKSTART_URL } from "./ApiKeysPanel";
+import PollarSignIn from "./PollarSignIn";
 
 const POLLAR_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_POLLAR_PUBLISHABLE_KEY;
 
@@ -14,19 +15,26 @@ export default function ApiKeysClient() {
       </span>
       <h1 className="mkt-display mt-3 text-3xl font-bold text-white sm:text-4xl">API keys</h1>
       <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/65">
-        Sign in, create a key, and start calling the LumenWipe API or SDK right away. Your key is
-        shown once when you create it, so store it somewhere safe.
+        Sign in with a Stellar wallet, create a key, and start calling the LumenWipe API or SDK
+        right away. Your key is shown once when you create it, so store it somewhere safe. New here?
+        Start with the{" "}
+        <a className="underline" href={QUICKSTART_URL}>
+          SDK quickstart
+        </a>{" "}
+        or the{" "}
+        <a className="underline" href={API_DOCS_URL}>
+          API reference
+        </a>
+        .
       </p>
 
       <div className="mt-8">
         {POLLAR_PUBLISHABLE_KEY ? (
           <PollarProvider client={{ apiKey: POLLAR_PUBLISHABLE_KEY }}>
-            <ApiKeysPanel />
+            <ApiKeysPanel pollar={PollarSignIn} />
           </PollarProvider>
         ) : (
-          <p role="alert" className="rounded-xl border border-warning/30 bg-warning/5 p-5 text-sm">
-            Sign-in is not available right now. Please try again later.
-          </p>
+          <ApiKeysPanel />
         )}
       </div>
     </div>
