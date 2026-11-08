@@ -7,7 +7,7 @@ release is cut.
 
 ## [Unreleased]
 
-Not released yet; the first release will be 0.1.0.
+## [0.1.0] - 2026-11-08
 
 ### Added
 
@@ -33,3 +33,6 @@ Not released yet; the first release will be 0.1.0.
 - Vectors for a served snapshot in `vectors/close-v1.json`, still schema 1: `input.servedRegistry`
   is optional, and a rejection may mutate the snapshot instead of, or with, the transaction.
 - The package ships its `LICENSE` and this `CHANGELOG.md`.
+
+[Unreleased]: https://github.com/LumenWipe/lumenwipe/compare/verify-v0.1.0...HEAD
+[0.1.0]: https://github.com/LumenWipe/lumenwipe/tree/verify-v0.1.0
