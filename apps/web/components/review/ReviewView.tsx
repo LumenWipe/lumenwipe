@@ -26,6 +26,7 @@ import { totalFeeStroops, transactionCountLine } from "@/lib/plan/review-fees";
 import { assetOutcomes } from "@/lib/plan/asset-outcomes";
 import { confirmedMemo } from "@/lib/plan/memo-field";
 import { destinationKind, memoLine, relayRoute } from "@/lib/plan/destination-kind";
+import { cosignRequirement, cosignStatement } from "@/lib/stellar/cosign-requirement";
 import PlanStepList from "@/components/review/PlanStepList";
 import ReviewHero, { MemoValue } from "@/components/review/ReviewHero";
 import AssetOutcomeTable from "@/components/review/AssetOutcomeTable";
@@ -107,6 +108,7 @@ export default function ReviewView({ network }: ReviewViewProps) {
     resumedClose,
     expectedReceive,
     estimatedTransactionCount,
+    planTransactions,
     assetDispositions,
     transferDestinations,
     tokenConversionFloors,
@@ -141,6 +143,15 @@ export default function ReviewView({ network }: ReviewViewProps) {
 
   // The relay is said where verify() holds the close to it, never from the stored flag.
   const viaRelay = destinationAddress !== null && relayRoute(destinationAddress) === "relay";
+  const cosign =
+    accountState &&
+    cosignRequirement({
+      account: accountState.address,
+      signers: accountState.signers,
+      thresholds: accountState.thresholds,
+      transactions: planTransactions,
+      viaRelay,
+    });
   const memoShown = memoLine(
     destinationAddress ? confirmedMemo(destinationAddress, memo, memoType) : null
   );
@@ -264,6 +275,11 @@ export default function ReviewView({ network }: ReviewViewProps) {
           memo={memoShown}
           expected={expected}
         />
+      )}
+      {cosign && (
+        <Callout tone="warning" announce={false} data-testid="multisig-statement">
+          {cosignStatement(cosign).join(" ")}
+        </Callout>
       )}
       <div className="flex flex-wrap items-center justify-between gap-2">
         {planPreparedAt !== null && (

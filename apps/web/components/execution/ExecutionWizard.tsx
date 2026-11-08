@@ -26,6 +26,8 @@ import SigningProgress from "./SigningProgress";
 import StatusMessage from "@/components/a11y/StatusMessage";
 import { SecretKeySigner, SignerReleasedError, type TransactionSigner } from "@/lib/stellar/signer";
 import { signerStanding, signerStandingText } from "@/lib/stellar/signer-standing";
+import { cosignRequirement, cosignStatement } from "@/lib/stellar/cosign-requirement";
+import { relayRoute } from "@/lib/plan/destination-kind";
 import { walletKitSigner } from "@/lib/wallet-kit/client";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
@@ -90,6 +92,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   const progressNotSaved = useDemolishStore((s) => s.progressNotSaved);
   const signingRun = useDemolishStore((s) => s.signingRun);
   const estimatedTransactionCount = useDemolishStore((s) => s.estimatedTransactionCount);
+  const planTransactions = useDemolishStore((s) => s.planTransactions);
 
   const {
     run,
@@ -450,6 +453,15 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
           requiredWeight: accountState?.thresholds.high ?? 1,
           signers,
           transactionCount: estimatedTransactionCount,
+          cosign:
+            accountState &&
+            cosignRequirement({
+              account: accountState.address,
+              signers,
+              thresholds: accountState.thresholds,
+              transactions: planTransactions,
+              viaRelay: relayRoute(destinationAddress) === "relay",
+            }),
         }
       : null;
 
@@ -746,18 +758,34 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
             <>
               {multisigNotice && (
                 <Card data-testid="multisig-notice" className="flex flex-col gap-2 p-4">
-                  <p className="text-sm text-white/70">
-                    This is a multisig account: completing the close needs a total signing weight of{" "}
-                    {multisigNotice.requiredWeight}. Sign with one signer, then the next. A step
-                    that removes signers before the merge must include the account&apos;s master
-                    key, and a preimage is only used on a step that removes its own signer.
-                  </p>
-                  <p className="text-sm text-white/70">
-                    Each transaction needs that full weight on its own
-                    {multisigNotice.transactionCount !== null
-                      ? `, so expect to sign up to ${multisigNotice.transactionCount} time${multisigNotice.transactionCount === 1 ? "" : "s"} with each signer.`
-                      : ", so expect to sign once per transaction with each signer."}
-                  </p>
+                  {multisigNotice.cosign ? (
+                    <>
+                      <p data-testid="multisig-statement" className="text-sm text-white/70">
+                        {cosignStatement(multisigNotice.cosign).join(" ")}
+                      </p>
+                      <p className="text-sm text-white/70">
+                        This is a multisig account: completing the close needs a total signing
+                        weight of {multisigNotice.requiredWeight}. Sign with one signer, then the
+                        next.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm text-white/70">
+                        This is a multisig account: completing the close needs a total signing
+                        weight of {multisigNotice.requiredWeight}. Sign with one signer, then the
+                        next. A step that removes signers before the merge must include the
+                        account&apos;s master key, and a preimage is only used on a step that
+                        removes its own signer.
+                      </p>
+                      <p className="text-sm text-white/70">
+                        Each transaction needs that full weight on its own
+                        {multisigNotice.transactionCount !== null
+                          ? `, so expect to sign up to ${multisigNotice.transactionCount} time${multisigNotice.transactionCount === 1 ? "" : "s"} with each signer.`
+                          : ", so expect to sign once per transaction with each signer."}
+                      </p>
+                    </>
+                  )}
                   <ul className="space-y-1">
                     {multisigNotice.signers.map((s) => (
                       <li key={s.key} className="font-mono-address text-xs text-fg-muted">

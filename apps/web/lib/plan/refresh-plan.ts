@@ -8,6 +8,7 @@ import {
   decisionPointsToConversions,
   planFeeStroopsOf,
   planTransactionCountOf,
+  planTransactionsOf,
 } from "@/lib/api/plan-adapters";
 import { expectedReceive } from "@/lib/plan/expected-receive";
 import {
@@ -166,7 +167,7 @@ function install(
   // screen describes the account the build will read.
   now.setAccountState(account);
   // The build is checked against the hash of the plan it was answered from: the fresh one.
-  now.setPlan(steps, plan.planHash, count, fresh);
+  now.setPlan(steps, plan.planHash, count, fresh, planTransactionsOf(plan));
   if (changes.length === 0) {
     // The figure the user consented to stays as shown.
     return { kind: "unchanged" };

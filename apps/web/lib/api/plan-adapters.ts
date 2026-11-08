@@ -1,8 +1,8 @@
 import type { PlanResponse } from "@lumenwipe/sdk";
-import type { ClaimableBalanceSelection, PlannedStep } from "@/types/plan";
+import type { ClaimableBalanceSelection, PlannedStep, StepType } from "@/types/plan";
 import type { ClaimPredicate } from "@/types/account";
 import type { TokenQuoteFlag, TokenUnquotedReason } from "@lumenwipe/types";
-import type { ClassicConversionQuote } from "@/types/close-api";
+import type { ClassicConversionQuote, ExecutionTxBreakdown } from "@/types/close-api";
 
 /**
  * Per-asset convertibility consumed by the analyze UI. Relocated here from the old
@@ -156,6 +156,42 @@ export function planTransactionCountOf(plan: PlanResponse): number | null {
   const count: unknown = (plan as { execution?: { estimatedTransactionCount?: unknown } }).execution
     ?.estimatedTransactionCount;
   return typeof count === "number" && Number.isSafeInteger(count) && count > 0 ? count : null;
+}
+
+const STEP_TYPES: ReadonlySet<string> = new Set<StepType>([
+  "NORMALIZE_SIGNERS",
+  "REVOKE_SPONSORSHIP",
+  "REMOVE_DATA_ENTRIES",
+  "CANCEL_OFFERS",
+  "ADD_TRUSTLINE_FOR_CLAIM",
+  "CLAIM_BALANCES",
+  "EXIT_POSITIONS",
+  "HANDLE_ASSETS",
+  "REMOVE_TRUSTLINES",
+  "CLOSE_ACCOUNT",
+  "MERGE",
+]);
+
+function isBreakdown(value: unknown): value is ExecutionTxBreakdown {
+  if (typeof value !== "object" || value === null) return false;
+  const { order, covers } = value as Record<string, unknown>;
+  return (
+    typeof order === "number" &&
+    Number.isSafeInteger(order) &&
+    order >= 0 &&
+    Array.isArray(covers) &&
+    covers.every((c) => typeof c === "string" && STEP_TYPES.has(c))
+  );
+}
+
+/** The plan's transactions in build order, for the multisig statement. Display only. Null unless
+ *  every entry is well formed and there is at least one. */
+export function planTransactionsOf(plan: PlanResponse): ExecutionTxBreakdown[] | null {
+  const txs: unknown = (plan as { execution?: { transactions?: unknown } }).execution?.transactions;
+  if (!Array.isArray(txs) || txs.length === 0 || !txs.every(isBreakdown)) return null;
+  return txs
+    .map((t) => ({ order: t.order, covers: [...t.covers] }))
+    .sort((a, b) => a.order - b.order);
 }
 
 /** Stroops rendered as XLM with the trailing zeros dropped. */

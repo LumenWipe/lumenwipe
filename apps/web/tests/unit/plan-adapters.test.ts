@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { decisionPointsToClaimableBalances } from "@/lib/api/plan-adapters";
+import { decisionPointsToClaimableBalances, planTransactionsOf } from "@/lib/api/plan-adapters";
 import type { PlanResponse } from "@/types/close-api";
 
 function plan(decisionPoints: PlanResponse["decisionPoints"]): PlanResponse {
@@ -469,4 +469,35 @@ test("planFeeStroopsOf › reads the plan's fee and refuses one that is not whol
   expect(
     planFeeStroopsOf({ ...plan([]), estimate: undefined } as unknown as PlanResponse)
   ).toBeNull();
+});
+
+function withTransactions(transactions: unknown): PlanResponse {
+  return {
+    ...plan([]),
+    execution: { estimatedTransactionCount: null, transactions: transactions as never },
+  };
+}
+
+test("planTransactionsOf › returns the transactions sorted by their order", () => {
+  expect(
+    planTransactionsOf(
+      withTransactions([
+        { order: 1, covers: ["MERGE"], reason: "op_batch" },
+        { order: 0, covers: ["NORMALIZE_SIGNERS", "REMOVE_TRUSTLINES"] },
+      ])
+    )
+  ).toEqual([
+    { order: 0, covers: ["NORMALIZE_SIGNERS", "REMOVE_TRUSTLINES"] },
+    { order: 1, covers: ["MERGE"] },
+  ]);
+});
+
+test("planTransactionsOf › gives nothing for a breakdown it cannot trust whole", () => {
+  expect(planTransactionsOf(withTransactions([]))).toBeNull();
+  expect(planTransactionsOf(withTransactions("x"))).toBeNull();
+  expect(planTransactionsOf(withTransactions([{ order: 0, covers: ["NOT_A_STEP"] }]))).toBeNull();
+  expect(planTransactionsOf(withTransactions([{ order: 0.5, covers: ["MERGE"] }]))).toBeNull();
+  expect(planTransactionsOf(withTransactions([{ order: -1, covers: ["MERGE"] }]))).toBeNull();
+  expect(planTransactionsOf(withTransactions([{ order: 0, covers: "MERGE" }]))).toBeNull();
+  expect(planTransactionsOf(withTransactions([null]))).toBeNull();
 });

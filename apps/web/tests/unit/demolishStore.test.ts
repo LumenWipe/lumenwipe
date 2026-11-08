@@ -837,3 +837,24 @@ describe("plan transaction count", () => {
     expect(useDemolishStore.getState().estimatedTransactionCount).toBeNull();
   });
 });
+
+describe("plan transaction breakdown", () => {
+  const breakdown = [{ order: 0, covers: ["NORMALIZE_SIGNERS" as const, "MERGE" as const] }];
+
+  test("setPlan keeps the plan's transactions", () => {
+    useDemolishStore.getState().setPlan([step(0)], "hash", 1, undefined, breakdown);
+    expect(useDemolishStore.getState().planTransactions).toEqual(breakdown);
+  });
+
+  test("a plan installed without transactions clears the previous ones", () => {
+    useDemolishStore.getState().setPlan([step(0)], "hash", 1, undefined, breakdown);
+    useDemolishStore.getState().setPlan([step(0)], "other", 1);
+    expect(useDemolishStore.getState().planTransactions).toBeNull();
+  });
+
+  test("a discarded plan takes its transactions with it", () => {
+    useDemolishStore.getState().setPlan([step(0)], "hash", 1, undefined, breakdown);
+    useDemolishStore.getState().discardPlan("changed");
+    expect(useDemolishStore.getState().planTransactions).toBeNull();
+  });
+});

@@ -52,6 +52,7 @@ import { VARIAL_ID } from "@creit-tech/stellar-wallets-kit/modules/varial";
 // must be one its state allows, and each state's required statements must be there.
 
 const SOURCE = Keypair.random().publicKey();
+const COSIGNER = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
 const HASH = "c".repeat(64);
 const SUBMISSION = { hash: HASH, covers: ["MERGE"], validUntil: 5 };
@@ -234,6 +235,37 @@ function executeSecretKey(state: "signing" | "partial"): Cell {
       await act(async () => {
         fireEvent.click(screen.getByRole("tab", { name: "Use secret key (advanced)" }));
       });
+      return storeJourney();
+    },
+  };
+}
+
+/** A two-of-two account whose plan removes the co-signer in its merge transaction. */
+function multisig(): Store {
+  return {
+    accountState: {
+      ...analyzedAccount(),
+      network: "testnet",
+      signers: [
+        { key: SOURCE, weight: 1, type: "ed25519_public_key" },
+        { key: COSIGNER, weight: 1, type: "ed25519_public_key" },
+      ],
+      thresholds: { low: 2, med: 2, high: 2 },
+    },
+    planTransactions: [{ order: 0, covers: ["NORMALIZE_SIGNERS", "MERGE"] }],
+  };
+}
+
+/** The review of a multisig close, with its statement of who signs where. */
+function multisigReview(state: "reviewed" | "unknown"): Cell {
+  return {
+    state,
+    required: ["each-tx-checked", "same-browser-signing"],
+    show: async () => {
+      seed({ ...(state === "reviewed" ? STORE.reviewed : RESUMED_REVIEW), ...multisig() });
+      spyOn(recovery, "readUnresolved").mockResolvedValue(null);
+      stubUnchangedRefresh();
+      await show(<ReviewView network="testnet" />);
       return storeJourney();
     },
   };
@@ -563,6 +595,17 @@ const MATRIX: Surface[] = [
     cells: [executeSecretKey("signing"), executeSecretKey("partial")],
   },
   {
+    name: "review multisig statement",
+    cells: [multisigReview("reviewed"), multisigReview("unknown")],
+  },
+  {
+    name: "execute multisig notice",
+    cells: [
+      executeSetup("signing", multisig(), ["same-browser-signing"]),
+      executeSetup("partial", multisig(), ["same-browser-signing"]),
+    ],
+  },
+  {
     name: "review trust note",
     cells: [review("reviewed"), review("unknown")],
   },
@@ -817,6 +860,12 @@ const SANCTIONED: Record<string, Partial<Record<ClaimKey, Site>>> = {
   },
   "components/plan/ResumedCloseNotice.tsx": {
     "recorded-progress": { count: 2, shownBy: "resumed analyze notice" },
+  },
+  "lib/stellar/cosign-requirement.ts": {
+    "same-browser-signing": {
+      count: 3,
+      shownBy: "review multisig statement; execute multisig notice",
+    },
   },
   "lib/stellar/signing-guards.ts": {
     "this-tx-not-sent": { count: 1, shownBy: "execute failure panel" },
