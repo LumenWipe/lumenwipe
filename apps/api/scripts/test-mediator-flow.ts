@@ -8,10 +8,11 @@
  * It also checks that the endpoint REFUSES to co-sign a standalone mediator
  * payment (a theft attempt).
  *
- * Requires the app running with MEDIATOR_SECRET_TESTNET +
- * NEXT_PUBLIC_MEDIATOR_PUBLIC_TESTNET set (see scripts/setup-mediator.ts).
+ * Requires the API running with MEDIATOR_PUBLIC_TESTNET + MEDIATOR_SECRET_TESTNET set (see
+ * scripts/setup-mediator.ts) and the web app in front of it at APP_URL, whose proxy it calls.
+ * Run it with the same MEDIATOR_PUBLIC_TESTNET in its environment, from apps/api:
  *
- *   APP_URL=http://localhost:3000 bun scripts/test-mediator-flow.ts
+ *   APP_URL=http://localhost:3000 bun run test:mediator
  */
 import {
   Keypair,
@@ -28,9 +29,9 @@ const HORIZON = "https://horizon-testnet.stellar.org";
 const FRIENDBOT = "https://friendbot.stellar.org";
 const PASSPHRASE = Networks.TESTNET;
 
-const mediatorPub = process.env.NEXT_PUBLIC_MEDIATOR_PUBLIC_TESTNET;
+const mediatorPub = process.env.MEDIATOR_PUBLIC_TESTNET;
 if (!mediatorPub) {
-  process.stderr.write("Set NEXT_PUBLIC_MEDIATOR_PUBLIC_TESTNET (run setup-mediator first).\n");
+  process.stderr.write("Set MEDIATOR_PUBLIC_TESTNET (run setup:mediator first).\n");
   process.exit(1);
 }
 

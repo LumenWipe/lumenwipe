@@ -32,6 +32,11 @@ const UNLIMITED = ["/health/route.ts", "/stats/route.ts", "/stats/feed/route.ts"
 
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
 
+/** Routes whose limiter guards only some requests: the rest are refused or ignored uncounted. */
+const LIMITED_REQUESTS: Record<string, { methods: readonly string[]; contentType: string }> = {
+  "/csp-report/route.ts": { methods: ["POST"], contentType: "application/reports+json" },
+};
+
 type Handler = (
   req: NextRequest,
   context: { params: Promise<Record<string, string>> }
@@ -98,15 +103,21 @@ describe("route handlers over the rate limit", () => {
 
   test.each(LIMITED)(
     "%s answers 429 with Retry-After and no-store, and never calls the API",
-    async (_, file) => {
+    async (route, file) => {
       const mod = (await import(file)) as Partial<Record<(typeof METHODS)[number], Handler>>;
-      const methods = METHODS.filter((method) => typeof mod[method] === "function");
+      const only = LIMITED_REQUESTS[route];
+      const methods = METHODS.filter(
+        (method) => typeof mod[method] === "function" && (!only || only.methods.includes(method))
+      );
       expect(methods.length).toBeGreaterThan(0);
       for (const method of methods) {
         fetchSpy.mockClear();
         const req = new NextRequest("https://www.lumenwipe.com/api/route", {
           method,
-          headers: { "content-type": "application/json", origin: "https://www.lumenwipe.com" },
+          headers: {
+            "content-type": only?.contentType ?? "application/json",
+            origin: "https://www.lumenwipe.com",
+          },
           body: method === "GET" || method === "DELETE" ? undefined : "{}",
         });
         const res = await mod[method]!(req, {

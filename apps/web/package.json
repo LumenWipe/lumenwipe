@@ -14,8 +14,7 @@
     "test:e2e": "playwright test",
     "test:a11y": "NEXT_PUBLIC_STELLAR_WALLET_CONNECT_PROJECT_ID=00000000000000000000000000000000 next build && playwright test -c playwright.a11y.config.ts",
     "test:all": "bun test tests/unit && playwright test",
-    "setup:mediator": "bun scripts/setup-mediator.ts",
-    "test:mediator": "bun scripts/test-mediator-flow.ts",
+    "check:env": "bun scripts/check-env-template.ts",
     "mutation": "stryker run"
   },
   "dependencies": {

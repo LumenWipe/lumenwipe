@@ -3,7 +3,7 @@
  * then prints the env vars to configure. For testnet/dev only - for mainnet,
  * generate the keypair offline and fund it from a real account.
  *
- *   bun scripts/setup-mediator.ts
+ *   bun run setup:mediator   (from apps/api)
  */
 import { Keypair } from "@stellar/stellar-sdk";
 
@@ -19,6 +19,8 @@ if (!res.ok) {
 }
 
 process.stdout.write("\n✓ Shared mediator funded on TESTNET.\n\n");
-process.stdout.write("Add these to .env.local (the secret is server-only; never commit it):\n\n");
-process.stdout.write(`NEXT_PUBLIC_MEDIATOR_PUBLIC_TESTNET=${kp.publicKey()}\n`);
+process.stdout.write(
+  "Add these to apps/api/.env.local (the secret is server-only; never commit it):\n\n"
+);
+process.stdout.write(`MEDIATOR_PUBLIC_TESTNET=${kp.publicKey()}\n`);
 process.stdout.write(`MEDIATOR_SECRET_TESTNET=${kp.secret()}\n`);

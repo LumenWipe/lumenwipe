@@ -145,3 +145,6 @@ The shared mediator account exists to receive exchange-bound merges and forward 
 
 **Strict Content Security Policy.**
 In production a script runs only with the per-request nonce or when loaded by one that has it (`strict-dynamic`), with no `unsafe-eval` and no `unsafe-inline` for scripts. Any XSS payload that cannot execute JavaScript cannot intercept the in-memory key or signing operations.
+
+**Security response headers on every route.**
+Pages and the `/api` routes alike carry HSTS (two years, including subdomains, not preloaded), `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, a `Permissions-Policy` that allows only clipboard writes and the video embed's fullscreen, and `Cross-Origin-Opener-Policy: same-origin-allow-popups`, which keeps the popup wallets working. CSP violations are reported to `/api/csp-report`, which logs only the violated directive and the blocked origin, never the page URL or any sample ([`apps/web/config/security-headers.mjs`](apps/web/config/security-headers.mjs)).

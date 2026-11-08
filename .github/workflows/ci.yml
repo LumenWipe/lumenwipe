@@ -49,7 +49,12 @@ jobs:
           # its own, though - a change that relocates the emitted entrypoint (#81) still exits
           # 0 here, because tsc emits happily to the wrong path. Only booting the image catches
           # that, which is what the `docker` job below is for.
-          - { name: "web", pkg: "@lumenwipe/web", checks: "type-check lint test:coverage build" }
+          # check:env fails when apps/web/.env.example and the variables the app reads disagree.
+          - {
+              name: "web",
+              pkg: "@lumenwipe/web",
+              checks: "type-check lint test:coverage check:env build",
+            }
           - {
               name: "api",
               pkg: "@lumenwipe/api",
