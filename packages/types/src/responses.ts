@@ -86,22 +86,22 @@ export interface CloseDeliveredResponse {
   totalStroops?: string;
 }
 
-/** Response from `GET /:network/paths`. */
+/** Response from `GET /v1/:network/paths`. */
 export interface PathResponse {
   path: ConversionPath | null;
 }
 
-/** Response from `POST /:network/mediator/sign`. */
+/** Response from `POST /v1/:network/mediator/sign`. */
 export interface MediatorSignResponse {
   transaction: string;
 }
 
-/** Response from `POST /:network/fee-bump/sponsor`. */
+/** Response from `POST /v1/:network/fee-bump/sponsor`. */
 export interface FeeBumpSponsorResponse {
   transaction: string;
 }
 
-/** Response from `POST /:network/allowances/revoke`. */
+/** Response from `POST /v1/:network/allowances/revoke`. */
 export interface RevokeAllowanceResponse {
   transaction: string;
 }

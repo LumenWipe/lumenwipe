@@ -129,13 +129,13 @@ test("every $ref in the document resolves", () => {
 });
 
 test("every integrator operation documents its responses and any request body", () => {
-  const integrator = operations().filter(({ id }) => id.includes(" /integrator/"));
+  const integrator = operations().filter(({ id }) => id.includes(" /v1/integrator/"));
   expect(integrator).toHaveLength(6);
   const bodyless = new Set([
-    "GET /integrator/keys",
-    "POST /integrator/keys",
-    "POST /integrator/keys/{id}/revoke",
-    "POST /integrator/keys/{id}/rotate",
+    "GET /v1/integrator/keys",
+    "POST /v1/integrator/keys",
+    "POST /v1/integrator/keys/{id}/revoke",
+    "POST /v1/integrator/keys/{id}/rotate",
   ]);
   const problems = integrator.flatMap(({ id, operation }) => {
     const found: string[] = [];

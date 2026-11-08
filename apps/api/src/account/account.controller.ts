@@ -51,7 +51,7 @@ import { AccountStateDto } from "./dto/account-state-response.dto";
 @ApiParam({ name: "network", enum: ["testnet", "mainnet"] })
 @ApiErrorResponse(401, "Missing or invalid API key.", ["unauthorized"])
 @ApiErrorResponse(429, "Rate limit exceeded for this key.", ["rate_limited"])
-@Controller(":network")
+@Controller("v1/:network")
 export class AccountController {
   private readonly logger = new Logger(AccountController.name);
 

@@ -35,7 +35,7 @@ export function buildOpenApiConfig(): Omit<OpenAPIObject, "paths"> {
         type: "http",
         scheme: "bearer",
         bearerFormat: "opaque",
-        description: "Short-lived wallet session token from POST /integrator/auth/session",
+        description: "Short-lived wallet session token from POST /v1/integrator/auth/session",
       },
       "integrator-session"
     )

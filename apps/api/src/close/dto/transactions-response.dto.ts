@@ -123,7 +123,7 @@ export class CloseTransactionDto implements CloseTransaction {
     description:
       "True when the account cannot pay this transaction's own fee without dropping below " +
       "its reserve - the client must route the signed envelope through " +
-      "POST /:network/fee-bump/sponsor before submitting it. Absent (not false) otherwise.",
+      "POST /v1/:network/fee-bump/sponsor before submitting it. Absent (not false) otherwise.",
     enum: [true],
   })
   needsSponsoredFee?: true;

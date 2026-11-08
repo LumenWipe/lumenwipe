@@ -92,6 +92,7 @@ export function requestContextMiddleware(deadlineMs: number = REQUEST_DEADLINE_M
         latencyMs: Math.round(Number(process.hrtime.bigint() - startedAt) / 1e6),
         keyLabel: (req as AuthedRequest).apiKeyLabel,
         network: params?.network,
+        ...(res.locals?.deprecatedAlias === true && { deprecatedAlias: true }),
         ...(upstreamCalls.size > 0 && { upstreamCalls: Object.fromEntries(upstreamCalls) }),
       });
     });

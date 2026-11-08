@@ -58,7 +58,7 @@ function toDto(record: ApiKeyRecord) {
 @ApiTags("integrator")
 @Public()
 @ApiErrorResponse(429, "Rate limit exceeded for this key.", ["rate_limited"])
-@Controller("integrator")
+@Controller("v1/integrator")
 export class IntegratorController {
   constructor(
     @Inject(API_KEY_STORE) private readonly store: ApiKeyStore,

@@ -40,18 +40,18 @@ function expectBudget(headers: Record<string, string>, remaining?: number): void
 
 test("a successful response carries the three RateLimit headers, counting down", async () => {
   const first = await request(http)
-    .get("/config/exchange-registry")
+    .get("/v1/config/exchange-registry")
     .set("Authorization", `Bearer ${KEY}`);
   expect(first.status).toBe(200);
   expectBudget(first.headers, LIMIT - 1);
   const second = await request(http)
-    .get("/config/exchange-registry")
+    .get("/v1/config/exchange-registry")
     .set("Authorization", `Bearer ${KEY}`);
   expect(second.headers["ratelimit-remaining"]).toBe(String(LIMIT - 2));
 });
 
 test("error responses, unknown routes and rejected bodies carry them too", async () => {
-  const unauthorized = await request(http).get("/testnet/account/G").set(ip("198.51.100.1"));
+  const unauthorized = await request(http).get("/v1/testnet/account/G").set(ip("198.51.100.1"));
   expect(unauthorized.status).toBe(401);
   expectBudget(unauthorized.headers, LIMIT - 1);
 
@@ -85,7 +85,7 @@ test("error responses, unknown routes and rejected bodies carry them too", async
 
 test("a 503 carries Retry-After", async () => {
   const res = await request(http)
-    .post("/integrator/auth/challenge")
+    .post("/v1/integrator/auth/challenge")
     .set(ip("198.51.100.6"))
     .send({});
   expect(res.status).toBe(503);
@@ -105,9 +105,9 @@ test("the service index and the health checks are not counted and send no budget
 
 test("an exhausted budget answers 429 with Retry-After before the body is read or the key is checked", async () => {
   const caller = ip("198.51.100.8");
-  for (let i = 0; i < LIMIT; i++) await request(http).get("/testnet/account/G").set(caller);
+  for (let i = 0; i < LIMIT; i++) await request(http).get("/v1/testnet/account/G").set(caller);
 
-  const blocked = await request(http).get("/testnet/account/G").set(caller);
+  const blocked = await request(http).get("/v1/testnet/account/G").set(caller);
   expect(blocked.status).toBe(429);
   expect(blocked.body.error.code).toBe("rate_limited");
   expect(Number(blocked.headers["retry-after"])).toBeGreaterThan(0);
@@ -129,9 +129,11 @@ test("a 429 is the same whether the key is valid or not", async () => {
   const bodies: unknown[] = [];
   for (const key of [KEY, "not_a_real_key"]) {
     for (let i = 0; i < LIMIT; i++) {
-      await request(http).get("/testnet/account/G").set("Authorization", `Bearer ${key}`);
+      await request(http).get("/v1/testnet/account/G").set("Authorization", `Bearer ${key}`);
     }
-    const res = await request(http).get("/testnet/account/G").set("Authorization", `Bearer ${key}`);
+    const res = await request(http)
+      .get("/v1/testnet/account/G")
+      .set("Authorization", `Bearer ${key}`);
     expect(res.status).toBe(429);
     bodies.push({ ...res.body.error, requestId: undefined });
   }

@@ -109,14 +109,14 @@ test("an exchange close that fails at every step logs no address, memo, secret o
 test("access lines name the route pattern and never the raw path", async () => {
   written.length = 0;
   await request(http)
-    .get(`/testnet/account/${OTHER}`)
+    .get(`/v1/testnet/account/${OTHER}`)
     .set("Authorization", `Bearer ${KEY}`)
     .set("X-Forwarded-For", "203.0.113.23");
   const access = written
     .map((l) => JSON.parse(l) as Record<string, unknown>)
     .find((r) => r.message === "request");
   expect(access).toMatchObject({
-    route: "/:network/account/:address",
+    route: "/v1/:network/account/:address",
     keyLabel: "test",
     network: "testnet",
   });

@@ -199,7 +199,7 @@ asks the cosigner to type the destination and memo, and checks transfers mechani
 | j   | After signing, the approved-hash check: the signed transaction's hash equals the hash computed before signing. Then the weight check: weight rises, and it rises by the named signer's own signature (#733).                                                                                                                                                                              | "The signed transaction does not match what you approved."                          |
 
 The station's account read sends the API the network and the account address, through the same endpoint
-the hub uses (`GET /{network}/account/{address}`). Nothing else leaves the device: the envelope, the
+the hub uses (`GET /v1/{network}/account/{address}`). Nothing else leaves the device: the envelope, the
 artifact and the cosigner's inputs are never sent anywhere. The station makes no quote or build request.
 
 ### 7.2 What the station accepts and verifies against

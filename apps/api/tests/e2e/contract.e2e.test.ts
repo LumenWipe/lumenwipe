@@ -58,7 +58,7 @@ test("the service index at / is public and points at the docs", async () => {
 });
 
 test("an authenticated route without a key is rejected 401", async () => {
-  const res = await request(http).get("/testnet/account/NOPE");
+  const res = await request(http).get("/v1/testnet/account/NOPE");
   expect(res.status).toBe(401);
   expect(res.body).toMatchObject({
     error: { code: "unauthorized", message: "A valid API key is required." },
@@ -66,7 +66,9 @@ test("an authenticated route without a key is rejected 401", async () => {
 });
 
 test("an authenticated route with an unknown key is rejected 401", async () => {
-  const res = await request(http).get("/testnet/account/NOPE").set("Authorization", "Bearer nope");
+  const res = await request(http)
+    .get("/v1/testnet/account/NOPE")
+    .set("Authorization", "Bearer nope");
   expect(res.status).toBe(401);
   expect(res.body).toMatchObject({
     error: { code: "unauthorized", message: "A valid API key is required." },
@@ -151,32 +153,32 @@ test("submit rejects a missing signedXdr", async () => {
 // structured form, which is why apps/web/lib/api/close-client.ts still carries a ternary that
 // checks whether `error` is an object or a string before it can find the message.
 test("paths rejects an invalid network with the unified error envelope", async () => {
-  const res = await authGet("/badnet/paths");
+  const res = await authGet("/v1/badnet/paths");
   expect(res.status).toBe(400);
   expect(res.body.error.code).toBe("invalid_network");
   expect(typeof res.body.error.message).toBe("string");
 });
 
 test("paths rejects missing query params", async () => {
-  const res = await authGet("/testnet/paths");
+  const res = await authGet("/v1/testnet/paths");
   expect(res.status).toBe(400);
   expect(res.body.error.code).toBe("missing_parameters");
 });
 
 test("account rejects an invalid address", async () => {
-  const res = await authGet("/testnet/account/NOPE");
+  const res = await authGet("/v1/testnet/account/NOPE");
   expect(res.status).toBe(400);
   expect(res.body.error.code).toBe("invalid_address");
 });
 
 test("mediator/check rejects an invalid network before the address", async () => {
-  const res = await authGet("/badnet/mediator/check/NOPE");
+  const res = await authGet("/v1/badnet/mediator/check/NOPE");
   expect(res.status).toBe(400);
   expect(res.body.error.code).toBe("invalid_network");
 });
 
 test("mediator/check rejects an invalid address", async () => {
-  const res = await authGet("/testnet/mediator/check/NOPE");
+  const res = await authGet("/v1/testnet/mediator/check/NOPE");
   expect(res.status).toBe(400);
   expect(res.body.error.code).toBe("invalid_address");
 });
@@ -192,7 +194,7 @@ test("malformed JSON on a v1 endpoint returns the invalid_body contract", async 
 });
 
 test("malformed JSON on mediator/sign returns its plain error contract", async () => {
-  const res = await authPost("/testnet/mediator/sign")
+  const res = await authPost("/v1/testnet/mediator/sign")
     .set("Content-Type", "application/json")
     .send("{ not json");
   expect(res.status).toBe(400);
@@ -210,7 +212,7 @@ test("fee-bump/sponsor is unavailable with no fee account secret configured, rat
   const original = process.env.FEE_ACCOUNT_SECRET_TESTNET;
   delete process.env.FEE_ACCOUNT_SECRET_TESTNET;
   try {
-    const res = await authPost("/testnet/fee-bump/sponsor").send({ transaction: "AAAA" });
+    const res = await authPost("/v1/testnet/fee-bump/sponsor").send({ transaction: "AAAA" });
     expect(res.status).toBe(503);
     expect(res.body.error.code).toBe("fee_bump_not_configured");
   } finally {
@@ -220,7 +222,7 @@ test("fee-bump/sponsor is unavailable with no fee account secret configured, rat
 });
 
 test("malformed JSON on fee-bump/sponsor returns the same error contract as every other route", async () => {
-  const res = await authPost("/testnet/fee-bump/sponsor")
+  const res = await authPost("/v1/testnet/fee-bump/sponsor")
     .set("Content-Type", "application/json")
     .send("{ not json");
   expect(res.status).toBe(400);
@@ -350,7 +352,7 @@ test("admin/api-keys create/list/revoke/rotate work end-to-end", async () =>
 test("responses carry Cache-Control: no-store (success and error)", async () => {
   const ok = await request(http).get("/health");
   expect(ok.headers["cache-control"]).toBe("no-store");
-  const err = await authGet("/testnet/account/NOPE");
+  const err = await authGet("/v1/testnet/account/NOPE");
   expect(err.status).toBe(400);
   expect(err.headers["cache-control"]).toBe("no-store");
 });
@@ -481,7 +483,7 @@ test("an unknown route answers in the same envelope as everything else", async (
 
 test("a controller's own envelope is passed through, not re-wrapped", async () => {
   // The filter must not rewrite a code a controller deliberately chose.
-  const res = await authGet("/badnet/paths");
+  const res = await authGet("/v1/badnet/paths");
   expect(res.status).toBe(400);
   expect(res.body.error.code).toBe("invalid_network");
 });

@@ -47,11 +47,17 @@ Two different "versions" exist for the API and they answer different questions:
   a `rootDir` boundary issue with the build) and it is **not** a deploy gate - bump it by hand when
   a change is worth calling out in the spec, roughly semver-flavored (minor for a new capability,
   patch for a fix), but nothing enforces this today and a missed bump breaks nothing.
-- **The `/v1` route prefix** - this is the real, external contract. A breaking change to the close
-  API's request/response shapes gets a new prefix (`/v2`) rather than breaking `/v1` out from under
-  existing integrators. `/v1` has not needed to move yet. Endpoints outside `/v1` (`/health`,
-  `/:network/account/...`, etc.) are still expected to be additive-only for the same reason, just
-  without a prefix to bump if that ever stops being true.
+- **The `/v1` route prefix** - this is the real, external contract. Every integrator route lives
+  under `/v1`, and a breaking change to a request or response shape gets a new prefix (`/v2`)
+  rather than breaking `/v1` out from under existing integrators. `/v1` has not needed to move yet.
+  Only the operational routes (`/`, `/health`, `/health/deep`, `/health/dependencies`) and the
+  operator-only `/admin/api-keys` routes stay unversioned; the admin routes are excluded from the
+  public spec and are not a contract with integrators. The pre-`/v1` paths (`/:network/account/...`,
+  `/:network/mediator/...`, `/config/exchange-registry`, `/integrator/...`, and so on) are aliases
+  rewritten to their `/v1` route in `apps/api/src/common/legacy-aliases.ts`, and answer with
+  `Deprecation`, `Sunset: Tue, 01 Jun 2027 00:00:00 GMT` and a `successor-version` `Link`. They
+  stay until a release after the sunset date removes them; access log lines for them carry
+  `deprecatedAlias: true`, which is how to check nobody still depends on them first.
 
 **Rollback**: `gcloud run services update-traffic lumenwipe-api --to-revisions=<previous-revision>=100`
 routes traffic back to the last known-good revision without a new deploy. Cloud Run keeps prior

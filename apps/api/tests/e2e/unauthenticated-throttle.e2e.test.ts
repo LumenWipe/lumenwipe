@@ -41,7 +41,7 @@ test("an unauthenticated flood eventually gets 429, not endless 401s", async () 
   const statuses: number[] = [];
   for (let i = 0; i < THROTTLE_LIMIT + 2; i++) {
     const res = await request(http)
-      .get("/testnet/account/GABC")
+      .get("/v1/testnet/account/GABC")
       .set("X-Forwarded-For", "203.0.113.9");
     statuses.push(res.status);
   }
@@ -60,7 +60,7 @@ test("trust proxy is honored: X-Forwarded-For, not the raw socket address, is th
   // this caller would already be throttled by the previous test's budget. This asserts trust
   // proxy is honored directly: a fresh X-Forwarded-For value gets its own fresh budget.
   const fresh = await request(http)
-    .get("/testnet/account/GABC")
+    .get("/v1/testnet/account/GABC")
     .set("X-Forwarded-For", "203.0.113.21");
   expect(fresh.status).toBe(401);
 });
@@ -69,7 +69,7 @@ test("only the last X-Forwarded-For entry identifies the client", async () => {
   const statuses: number[] = [];
   for (let i = 0; i < THROTTLE_LIMIT + 2; i++) {
     const res = await request(http)
-      .get("/testnet/account/GABC")
+      .get("/v1/testnet/account/GABC")
       .set("X-Forwarded-For", `198.51.100.${i % 250}, 203.0.113.30`);
     statuses.push(res.status);
   }
@@ -80,7 +80,7 @@ test("a different bearer on every request does not earn a fresh budget", async (
   const statuses: number[] = [];
   for (let i = 0; i < THROTTLE_LIMIT + 2; i++) {
     const res = await request(http)
-      .get("/testnet/account/GABC")
+      .get("/v1/testnet/account/GABC")
       .set("Authorization", `Bearer ${i % 2 === 0 ? `invented-${i}` : generateApiKey()}`)
       .set("X-Forwarded-For", "203.0.113.31");
     statuses.push(res.status);

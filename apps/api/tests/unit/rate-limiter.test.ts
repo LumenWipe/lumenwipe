@@ -177,11 +177,11 @@ describe("isUnthrottledPath", () => {
   );
   test.each([
     "/v1/testnet/stats",
-    "/testnet/account/G",
-    "/config/exchange-registry",
+    "/v1/testnet/account/G",
+    "/v1/config/exchange-registry",
     "/nope",
     "/healthz",
     "/docsx",
-    "/integrator/keys",
+    "/v1/integrator/keys",
   ])("%s is counted", (path) => expect(isUnthrottledPath(path)).toBe(false));
 });
