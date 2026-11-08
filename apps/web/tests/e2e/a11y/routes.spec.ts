@@ -47,6 +47,28 @@ test("allowances", async ({ page }) => {
   await expectNoAxeViolations(page, "allowances");
 });
 
+test("close steps carry their own server title", async ({ page }) => {
+  // Read from the HTML the server sends, without navigating: review and execute replace the URL
+  // when no close is open, and that navigation would race a title read off the live page.
+  for (const [step, title] of [
+    ["analyze", "Plan the close"],
+    ["review", "Review the plan"],
+    ["execute", "Sign the close"],
+    ["complete", "Close result"],
+  ]) {
+    const html = await (await page.request.get(`/testnet/${step}`)).text();
+    expect(html, step).toMatch(new RegExp(`<title[^>]*>${title} \\| LumenWipe</title>`));
+  }
+});
+
+test("complete with no close open", async ({ page }) => {
+  await page.goto("/testnet/complete");
+  await dismissRiskModal(page);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("No close to show here");
+  await expect(page).toHaveTitle("Close result | LumenWipe");
+  await expectNoAxeViolations(page, "complete, no close open");
+});
+
 test("history", async ({ page }) => {
   await openTestnetHome(page);
   await page.getByRole("button", { name: "Merge history" }).click();
