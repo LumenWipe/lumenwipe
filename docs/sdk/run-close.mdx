@@ -61,7 +61,7 @@ Every transaction event carries:
 | `covers`             | The plan steps the transaction covers. API metadata until `confirmed`, which carries what `onConfirmed` gets: with `reconcile`, a merge only when the client parsed one.                                                                 |
 | `moreRoundsExpected` | The API asked for another round after this one. Each round is planned from live state, so the whole close then holds at least `txCount` transactions, and its total is not known. Never show `txCount` as the total when this is `true`. |
 
-A resumed transaction (see [Multisig and partial signing](#multisig-and-partial-signing)) starts at `awaiting-signature`, since it is not verified again, and keeps the round and position it had. A transaction short of signing weight stops at `awaiting-signature`; a failed `verify` stops at `verifying`. Settling a left-over `unresolved` submission reports no event: `onResolved` covers it.
+A resumed transaction (see [Multisig and partial signing](#multisig-and-partial-signing)) starts at `awaiting-signature`, since it is not verified again, and keeps the round and position it had. A pinned resume whose weight is already met starts at `submitting` and emits the same events as a signed round from there on. A transaction short of signing weight stops at `awaiting-signature`; a failed `verify` stops at `verifying`. Settling a left-over `unresolved` submission reports no event: `onResolved` covers it.
 
 The callback is an observer. Each event is a fresh object, nothing it returns is awaited, and anything it throws or rejects with is ignored, so it cannot stop or change the close. `onProgress` keeps its messages, and both callbacks can be used together.
 
@@ -109,6 +109,21 @@ try {
   }
 }
 ```
+
+### Pinning the approved hash
+
+Pass `transactionHash` and `runClose` pins the hash of each transaction once `verify` passes. The pin is stored as `pending.approvedHash`:
+
+```ts
+await runClose({
+  ...deps,
+  transactionHash: (xdr) => TransactionBuilder.fromXDR(xdr, passphrase).hash().toString("hex"),
+});
+```
+
+Hash the envelope's own transaction, on your side, with your own network passphrase, and never take the hash from the API. Do not unwrap a fee-bump envelope: a resumed fee bump must fail the check. The function must not throw for a valid plain envelope. If it throws, `runClose` rethrows that error and submits nothing.
+
+With a pin, `runClose` refuses with `ApprovedHashMismatchError` and submits nothing when the envelope `sign` returns, or a resumed `pending.xdr`, hashes to anything else. A pinned round resumed without `transactionHash` is refused the same way, with `actualHash` set to `null`. The hash covers the transaction and not its signatures, so signatures collected elsewhere can be added to `pending.xdr`. Set `accumulatedWeight` to the weight of the verified signatures it then carries, and keep `approvedHash`. When that weight already meets `requiredWeight`, the resume goes to `prepare` without calling `sign`. The check runs on the envelope handed to `prepare`, so a `prepare` that co-signs or fee-bumps must keep that transaction. Without a pin, a resume always calls `sign`.
 
 If the API refuses a round as `state_changed` (the account changed between its read and its build), `runClose` asks for that round again, at most `STATE_CHANGED_REFETCHES` (2) times and each time after waiting `STATE_CHANGED_REFETCH_DELAY_MS` (3 seconds, about one ledger close), because each call re-reads the account and a read provider can lag a transaction that just confirmed by a ledger or two. If the round is still refused, or it was refused against the reviewed `planHash` (the plan itself is stale, so it is not asked for again), it throws `CloseStateChangedError`. Nothing was submitted for that round: plan the close again, have the user review the new plan, and run the close from it.
 
