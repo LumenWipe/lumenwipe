@@ -114,6 +114,31 @@ describe("the API keys panel", () => {
     expect(screen.getByText(NEW_KEY)).toBeTruthy();
   });
 
+  test("signing out after a wallet sign-in keeps the wallet connected", async () => {
+    const session = signedIn();
+    routes = {
+      "GET auth/session": unauthorized,
+      "POST auth/challenge": { status: 200, body: { message: "challenge text" } },
+      "POST auth/session": session["GET auth/session"],
+      "GET keys": session["GET keys"],
+      "DELETE auth/session": { status: 204 },
+    };
+    render(<ApiKeysPanel />);
+    fireEvent.click(await signInButton());
+    fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
+    await expectFocused(await signInButton(), "sign in after sign out");
+    expect(requests).toContain("DELETE auth/session");
+    expect(kit.disconnect).not.toHaveBeenCalled();
+  });
+
+  test("signing out of a restored session keeps the wallet connected", async () => {
+    routes = signedIn();
+    render(<ApiKeysPanel />);
+    fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
+    await expectFocused(await signInButton(), "sign in after sign out");
+    expect(kit.disconnect).not.toHaveBeenCalled();
+  });
+
   test("a 401 from the API returns to signed-out and says why", async () => {
     routes = { ...signedIn(), "POST keys": unauthorized };
     render(<ApiKeysPanel />);

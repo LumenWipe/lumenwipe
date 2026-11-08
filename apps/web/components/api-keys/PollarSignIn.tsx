@@ -49,6 +49,9 @@ export default function PollarSignIn({
 
   useEffect(() => {
     if (!isAuthenticated) handled.current = null;
+    // An account already signed in here when the key session ends is offered again, never signed
+    // with on its own.
+    if (signedIn && isAuthenticated && address) handled.current = address;
     if (!isAuthenticated || !address || signedIn || handled.current === address) return;
     handled.current = address;
     onAccount({ address, smart, sign });

@@ -100,7 +100,7 @@ export default function ApiKeysPanel({ pollar: PollarSlot }: ApiKeysPanelProps) 
   const signInRef = useRef<HTMLButtonElement>(null);
   const revealedRef = useRef<HTMLHeadingElement>(null);
   const pollarLogout = useRef<(() => Promise<void> | void) | null>(null);
-  const signedInWithWallet = useRef(false);
+  const signedInWithPollar = useRef(false);
 
   const endLocally = useCallback((message: string) => {
     setView("signed-out");
@@ -206,7 +206,7 @@ export default function ApiKeysPanel({ pollar: PollarSlot }: ApiKeysPanelProps) 
       const passphrase = await walletNetworkPassphrase(kit);
       const signature = await signChallenge(kit, walletId, address, message, passphrase);
       await finishSignIn(address, message, signature);
-      signedInWithWallet.current = true;
+      signedInWithPollar.current = false;
     });
 
   const onPollarAccount = useCallback(
@@ -222,7 +222,7 @@ export default function ApiKeysPanel({ pollar: PollarSlot }: ApiKeysPanelProps) 
           throw new WalletSignInError("bad_signature");
         }
         await finishSignIn(account.address, message, signature);
-        signedInWithWallet.current = false;
+        signedInWithPollar.current = true;
       }),
     [guarded, finishSignIn]
   );
@@ -234,14 +234,17 @@ export default function ApiKeysPanel({ pollar: PollarSlot }: ApiKeysPanelProps) 
   const signOut = () =>
     guarded("signout", async () => {
       await endSession();
-      try {
-        await pollarLogout.current?.();
-        if (signedInWithWallet.current) await ensureWalletKitInitialized(KIT_NETWORK).disconnect();
-      } catch {
-        // The key-management session is already gone; a provider that fails to log out keeps
-        // only its own sign-in, which grants nothing here without a new signature.
+      // The wallet kit stays connected: its remembered wallet is shared with the close flow, which
+      // may be running in another tab.
+      if (signedInWithPollar.current) {
+        try {
+          await pollarLogout.current?.();
+        } catch {
+          // The key session is already gone; Pollar's own sign-in grants nothing here without a
+          // new signature.
+        }
       }
-      signedInWithWallet.current = false;
+      signedInWithPollar.current = false;
       endLocally(SIGNED_OUT);
     });
 
