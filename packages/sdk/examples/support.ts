@@ -202,12 +202,16 @@ export function assertCosignOnlyAddedSignature(
   if (hex(after) !== hex(before)) {
     throw new Error("The co-signed transaction does not match the one that was signed.");
   }
-  const key = (sig: (typeof before.signatures)[number]): string => sig.toXDR("base64");
-  const kept = new Set(after.signatures.map(key));
-  if (!before.signatures.every((sig) => kept.has(key(sig)))) {
+  // Distinct signatures, each identified by its hint and signature bytes, so a repeated copy of
+  // one already there never counts as the intermediary's.
+  const distinct = (tx: Transaction): Set<string> =>
+    new Set(tx.signatures.map((sig) => sig.toXDR("base64")));
+  const approved = distinct(before);
+  const cosigned = distinct(after);
+  if (![...approved].every((sig) => cosigned.has(sig))) {
     throw new Error("The co-signed transaction dropped a signature.");
   }
-  if (after.signatures.length <= before.signatures.length) {
+  if (cosigned.size <= approved.size) {
     throw new Error("The intermediary did not add its signature.");
   }
 }

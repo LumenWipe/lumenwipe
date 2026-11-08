@@ -156,6 +156,23 @@ describe("assertCosignOnlyAddedSignature", () => {
     );
   });
 
+  test("refuses an envelope whose only change is a repeated user signature", () => {
+    const tx = TransactionBuilder.fromXdr(signed, passphrase);
+    tx.signatures.push(tx.signatures[0]!);
+    expect(() =>
+      assertCosignOnlyAddedSignature(signed, tx.toEnvelope().toXdr("base64"), passphrase)
+    ).toThrow("did not add its signature");
+  });
+
+  test("accepts a genuine extra signature next to a repeated one", () => {
+    const tx = TransactionBuilder.fromXdr(signed, passphrase);
+    tx.signatures.push(tx.signatures[0]!);
+    tx.sign(mediator);
+    expect(() =>
+      assertCosignOnlyAddedSignature(signed, tx.toEnvelope().toXdr("base64"), passphrase)
+    ).not.toThrow();
+  });
+
   test("refuses an envelope that swapped the user's signature for others", () => {
     const tx = TransactionBuilder.fromXdr(signed, passphrase);
     tx.signatures.splice(0, tx.signatures.length);
