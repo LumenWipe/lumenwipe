@@ -22,6 +22,7 @@ export type * from "@lumenwipe/types";
 export {
   runClose,
   InsufficientSignatureWeightError,
+  ApprovedHashMismatchError,
   CloseDidNotConvergeError,
   CloseStateChangedError,
   CloseOutcomeUnknownError,

@@ -13,6 +13,15 @@ version number before 0.4.0. Neither has a git tag.
 
 ### Added
 
+- `CloseEngineDeps.transactionHash`, opt-in: the hash of an envelope's transaction, computed on
+  your side over your own network passphrase. With it, `runClose` pins each transaction's hash
+  once `verify` passes, as the new `PendingRound.approvedHash`, and checks the signed envelope and
+  a resumed one against it, throwing the new `ApprovedHashMismatchError` with nothing submitted on
+  a mismatch. A pinned resume whose `accumulatedWeight` already meets `requiredWeight`, for
+  example after signatures from another device were added to its `xdr`, goes to `prepare` without
+  calling `sign` and starts its progress events at `submitting`. Without `transactionHash`, nothing
+  changes.
+
 - `ErrorCode` gains `exchange_forward_paused`, `fee_sponsorship_paused` and `defi_exit_paused`:
   an exchange close, fee sponsorship or one protocol's exits paused on the server. Each is a plan
   blocker and a 503 from `close/transactions` before any transaction is built; the first two also

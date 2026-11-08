@@ -110,6 +110,17 @@ export type ApiErrorBody = StructuredApiError;
 // @public
 export type ApiErrorCode = ErrorCode | "upstream_error" | (string & {});
 
+// @public
+export class ApprovedHashMismatchError extends Error {
+    constructor(tx: CloseTransaction, approvedHash: string, actualHash: string | null);
+    // (undocumented)
+    readonly actualHash: string | null;
+    // (undocumented)
+    readonly approvedHash: string;
+    // (undocumented)
+    readonly tx: CloseTransaction;
+}
+
 // Warning: (ae-forgotten-export) The symbol "DefiPositionBase" needs to be exported by the entry point index.d.ts
 //
 // @public (undocumented)
@@ -292,6 +303,7 @@ export interface CloseEngineDeps {
     }>;
     sleep?: (ms: number) => Promise<void>;
     submit: (tx: CloseTransaction, xdr: string) => Promise<string>;
+    transactionHash?: (xdr: string) => string;
     verify: (tx: CloseTransaction) => void | Promise<void>;
 }
 
@@ -997,6 +1009,7 @@ export interface PathResponse {
 export interface PendingRound {
     // (undocumented)
     accumulatedWeight: number;
+    approvedHash?: string;
     // (undocumented)
     queue: CloseTransaction[];
     // (undocumented)
