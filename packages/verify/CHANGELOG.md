@@ -20,3 +20,4 @@ release is cut.
   message. Branch on the code: the message is English wording and may change. The constructor
   takes the code first, `new VerificationError(code, message)`.
 - `vectors/close-v1.json`, the conformance vector set (schema 1).
+- Each rejection in `vectors/close-v1.json` carries `error.code` next to `error.message`.

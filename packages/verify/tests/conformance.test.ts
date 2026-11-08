@@ -42,6 +42,9 @@ for (const [format, load] of formats) {
         }
         expect(thrown).toBeInstanceOf(verifier.VerificationError);
         expect((thrown as Error).name).toBe(vector.error.name);
+        expect((thrown as InstanceType<Verifier["VerificationError"]>).code).toBe(
+          vector.error.code
+        );
         expect((thrown as Error).message).toBe(vector.error.message);
       });
     }

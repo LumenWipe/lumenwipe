@@ -56,6 +56,93 @@ await runClose({
 
 `verifyCloseTransaction` returns only when the transaction may be signed, and throws `VerificationError` otherwise. It is synchronous and reads no network.
 
+### Refusal codes
+
+Every `VerificationError` carries a `code` (type `VerificationErrorCode`) next to its `message`. Branch on the code: it names the reason and stays stable across releases, while the message is English wording that may change. A rule that applies to several kinds of operation, such as the fee cap or the operation source, has one code for all of them.
+
+```ts
+try {
+  verifyCloseTransaction(input);
+} catch (error) {
+  if (error instanceof VerificationError && error.code === "registry_expired") {
+    // Upgrade @lumenwipe/verify: its bundled exchange registry is past its validity date.
+  }
+  throw error;
+}
+```
+
+| Group         | Code                                    | Refused because                                                                                            |
+| ------------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Transaction   | `registry_expired`                      | The destination is a listed exchange and the bundled registry is past its validity date.                   |
+| Transaction   | `transaction_source_mismatch`           | The transaction is not sourced from the account being closed.                                              |
+| Transaction   | `expiry_missing`                        | The transaction has no upper time bound.                                                                   |
+| Transaction   | `expiry_too_far`                        | The transaction stays valid more than 15 minutes past verification.                                        |
+| Transaction   | `fee_unreadable`                        | The network fee cannot be read.                                                                            |
+| Transaction   | `fee_above_cap`                         | The fee is above the cap for its kind: 1,000 stroops per classic operation, 1 XLM for a contract call.     |
+| Transaction   | `operation_unknown`                     | An operation is of a type the verifier cannot describe.                                                    |
+| Transaction   | `operation_source_mismatch`             | An operation, the merge included, is sourced from another account.                                         |
+| Merge         | `merge_multiple`                        | The transaction merges more than one account.                                                              |
+| Merge         | `merge_direct_refused`                  | The destination is an exchange that cannot credit a merge, and the transaction merges straight into it.    |
+| Merge         | `merge_destination_mismatch`            | The merge goes to an address the user did not choose, and no intermediary is allowed for this destination. |
+| Mediator      | `mediator_handoff_shape`                | The merge goes to the intermediary, but the transaction is not exactly the merge followed by its forward.  |
+| Mediator      | `mediator_forward_source_mismatch`      | The forward is sent by an account other than the one the merge paid.                                       |
+| Mediator      | `mediator_forward_destination_mismatch` | The forward pays an address other than the user's destination.                                             |
+| Mediator      | `mediator_forward_not_native`           | The forward is not in XLM.                                                                                 |
+| Mediator      | `mediator_forward_short`                | The forward passes on less than the balance.                                                               |
+| Transfer      | `transfer_not_chosen`                   | A payment moves an asset the user did not choose to transfer.                                              |
+| Transfer      | `transfer_destination_mismatch`         | A classic or token transfer goes to an address other than the one chosen.                                  |
+| Transfer      | `transfer_to_deposit_address`           | A transfer goes to an exchange deposit address, which cannot credit it without a memo.                     |
+| Transfer      | `transfer_duplicate`                    | The same asset is transferred more than once.                                                              |
+| Transfer      | `transfer_amount_short`                 | A transfer sends less than the balance the user approved.                                                  |
+| Transfer      | `token_transfer_function_invalid`       | A token call is not a plain three-argument `transfer`.                                                     |
+| Transfer      | `token_transfer_from_mismatch`          | A token transfer moves a balance other than the account's own.                                             |
+| Transfer      | `token_transfer_foreign_contract`       | A token transfer reaches a contract other than the token.                                                  |
+| Conversion    | `conversion_recipient_mismatch`         | A conversion or swap pays its proceeds to another account.                                                 |
+| Conversion    | `conversion_not_to_xlm`                 | A conversion or swap does not settle in XLM.                                                               |
+| Conversion    | `conversion_min_out_missing`            | A classic conversion has no minimum-received floor.                                                        |
+| Conversion    | `conversion_asset_not_chosen`           | A conversion or swap sells an asset the user did not choose to convert.                                    |
+| Conversion    | `conversion_duplicate`                  | The same asset is converted more than once.                                                                |
+| Conversion    | `conversion_min_out_below_floor`        | A conversion or swap accepts less XLM than the minimum the user was shown.                                 |
+| Conversion    | `conversion_amount_short`               | A swap sells less than the balance the user was shown.                                                     |
+| Conversion    | `swap_quote_missing`                    | A swap has no quote to check its floor against.                                                            |
+| Conversion    | `swap_args_unreadable`                  | A swap's arguments cannot be read.                                                                         |
+| Conversion    | `swap_referral_recipient`               | A swap pays a referral fee to an address the user never agreed to.                                         |
+| Conversion    | `swap_route_asset_unknown`              | A swap's route names an asset the bundled table cannot identify.                                           |
+| Conversion    | `swap_auth_unexpected_call`             | A swap authorizes something other than paying in the token it sells.                                       |
+| Conversion    | `swap_auth_exceeds_amount`              | A swap authorizes spending more than the amount it sells.                                                  |
+| Removal       | `trustline_not_removal`                 | A trustline is created or raised.                                                                          |
+| Removal       | `data_entry_not_removal`                | A data entry is written.                                                                                   |
+| Removal       | `offer_not_cancellation`                | An offer is created.                                                                                       |
+| SetOptions    | `signer_added`                          | A signer is added or given more weight.                                                                    |
+| SetOptions    | `signer_unknown`                        | A signer is touched that was not on the account at the last read.                                          |
+| SetOptions    | `master_weight_changed`                 | The master key's weight changes.                                                                           |
+| SetOptions    | `thresholds_raised`                     | An account threshold is raised.                                                                            |
+| SetOptions    | `account_settings_changed`              | Flags, the home domain or the inflation destination change.                                                |
+| Contract call | `invocation_not_alone`                  | A swap, token transfer or DeFi exit shares its transaction with another operation.                         |
+| Contract call | `invocation_auth_beyond_self`           | A contract call authorizes actions beyond its own call tree.                                               |
+| Contract call | `invocation_address_unsupported`        | A contract call names an address form that cannot be verified.                                             |
+| Contract call | `invocation_foreign_account`            | A contract call sends funds to, or acts for, an account outside the close.                                 |
+| DeFi exit     | `exit_contract_not_position`            | The exit calls a contract that is not one of the account's detected positions.                             |
+| DeFi exit     | `exit_expectation_inconsistent`         | The expectation names an asset the account holds as a position's share or debt token.                      |
+| DeFi exit     | `exit_function_not_allowed`             | The exit calls a function LumenWipe does not use to leave that protocol.                                   |
+| DeFi exit     | `exit_foreign_contract`                 | The exit references a contract the account has no position, balance or pool token in.                      |
+| DeFi exit     | `exit_argument_party_mismatch`          | An exit argument acts for, or pays, an address other than the account.                                     |
+| DeFi exit     | `exit_request_not_allowed`              | A lending-pool request is not an exit request.                                                             |
+| DeFi exit     | `exit_unverified_spend`                 | The exit spends the account's assets through a contract the registry has not verified.                     |
+| DeFi exit     | `exit_spend_not_repay`                  | The exit spends XLM or a classic asset other than to repay a debt in the analysis.                         |
+| DeFi exit     | `exit_liquidity_auth_invalid`           | A liquidity removal authorizes something other than paying its share into its pair.                        |
+| DeFi exit     | `exit_auth_foreign_contract`            | The exit authorizes a call on a contract that is not one of the account's tokens.                          |
+| DeFi exit     | `exit_token_function_not_allowed`       | The exit calls a token function LumenWipe does not use.                                                    |
+| DeFi exit     | `exit_token_argument_count`             | A token call's argument count does not match the function's signature.                                     |
+| DeFi exit     | `exit_token_recipient_mismatch`         | A token call moves a balance to an address other than the account or the protocol.                         |
+| Memo          | `memo_unexpected`                       | The transaction carries a memo the user did not set.                                                       |
+| Memo          | `memo_type_unreadable`                  | The memo type the user confirmed cannot be read.                                                           |
+| Memo          | `memo_missing`                          | The memo the user set is missing.                                                                          |
+| Memo          | `memo_value_mismatch`                   | The memo differs from the one the user confirmed.                                                          |
+| Memo          | `memo_type_mismatch`                    | The memo is sent in a different type from the one confirmed.                                               |
+| Memo          | `memo_required`                         | The destination requires a deposit memo and the transaction pays it without one.                           |
+| Memo          | `memo_invalid_text`                     | A text memo is not valid UTF-8.                                                                            |
+
 ### Where each input comes from
 
 | Input                                                                   | Source                                                                                                                                     |
@@ -79,7 +166,7 @@ It also reads the system clock: a transaction valid for more than 900 seconds fr
 
 ### Conformance vectors
 
-The package ships `vectors/close-v1.json`: accepted and rejected transactions with the full input for each, the clock to set, and the exact `VerificationError` message for each rejection. Every rejection is one named mutation of an accepted vector, and every key in the file is public. Run them against your own verifier, or against a wrapper around this one.
+The package ships `vectors/close-v1.json`: accepted and rejected transactions with the full input for each, the clock to set, and for each rejection the `VerificationError` code and exact message. Match on `error.code`; the message is asserted too, as the current wording. Every rejection is one named mutation of an accepted vector, and every key in the file is public. Run them against your own verifier, or against a wrapper around this one.
 
 ## Why
 

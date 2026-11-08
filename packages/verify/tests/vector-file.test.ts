@@ -2,6 +2,7 @@
  *  it is exactly what the generator builds. */
 import { describe, expect, test } from "bun:test";
 import { StrKey, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
+import { VERIFICATION_ERROR_CODES } from "../../../apps/web/lib/stellar/verification-error";
 import { VECTOR_FILE, VECTOR_FILE_TEXT } from "./vectors";
 
 const { vectors } = VECTOR_FILE;
@@ -50,6 +51,14 @@ describe("close-v1.json", () => {
       // Only the transaction is mutated: the expectation and the clock stay the base's.
       expect(vector.input.expected).toEqual(base!.input.expected);
       expect(vector.nowSeconds).toBe(base!.nowSeconds);
+    }
+  });
+
+  test("gives every rejection a registered code", () => {
+    const registered = new Set<string>(VERIFICATION_ERROR_CODES);
+    for (const vector of rejects) {
+      if (vector.verdict !== "reject") continue;
+      expect(registered.has(vector.error.code)).toBe(true);
     }
   });
 
