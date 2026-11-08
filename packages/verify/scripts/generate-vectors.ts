@@ -495,6 +495,36 @@ reject(
   "The master key's weight would be changed."
 );
 
+const normalizationFirst = accept(
+  "multisig-normalization-first",
+  "The first transaction of a 2-of-2 close: removes the co-signer and lowers the thresholds to 0/1/1, with no merge.",
+  build([removeCosigner, lowerThresholds]),
+  multisigExpected
+);
+reject(
+  normalizationFirst,
+  "normalization-first-threshold-raised",
+  "Sets the high threshold to 2 instead of 1 in the normalization transaction.",
+  build([
+    removeCosigner,
+    Operation.setOptions({ lowThreshold: 0, medThreshold: 1, highThreshold: 2 }),
+  ]),
+  "thresholds_raised",
+  "Account thresholds would be raised."
+);
+reject(
+  normalizationFirst,
+  "normalization-first-signer-added",
+  "Adds a new signer with weight 1 in the normalization transaction.",
+  build([
+    removeCosigner,
+    Operation.setOptions({ signer: { ed25519PublicKey: NEW_SIGNER, weight: 1 } }),
+    lowerThresholds,
+  ]),
+  "signer_added",
+  "A signer would be added or empowered."
+);
+
 // --- A memo the user confirmed --------------------------------------------------------------
 
 const memoId = accept(

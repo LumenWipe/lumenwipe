@@ -7,6 +7,12 @@ release is cut.
 
 ## [Unreleased]
 
+### Added
+
+- Three vectors in `vectors/close-v1.json` for a multisig close's first transaction, signer
+  normalization with no merge: `multisig-normalization-first`, accepted, and its rejected
+  mutations `normalization-first-threshold-raised` and `normalization-first-signer-added`.
+
 ## [0.1.0] - 2026-11-08
 
 ### Added

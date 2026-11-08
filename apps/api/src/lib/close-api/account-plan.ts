@@ -3,7 +3,7 @@ import type { Network } from "@/config/networks";
 import { stroopsToFixedXlm, xlmToStroops } from "@/lib/utils/amounts";
 import { readAccountState } from "@/lib/close-api/read-account";
 import { fetchConversionPath } from "@/lib/stellar/path-finding";
-import { buildPlan, heldSorobanTokens } from "@/lib/stellar/tx-builder";
+import { buildPlan, heldSorobanTokens, normalizesSignersFirst } from "@/lib/stellar/tx-builder";
 import {
   assessSponsorshipAffordability,
   type SponsorshipAffordability,
@@ -483,6 +483,7 @@ export async function buildAccountPlan(
       decided:
         destination !== null &&
         heldSorobanTokens(accountState).every((t) => planDispositions[t.contract] !== undefined),
+      normalizationFirst: normalizesSignersFirst(accountState),
     },
   });
 }

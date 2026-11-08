@@ -48,6 +48,8 @@ export interface ExecutionBreakdownInput {
   /** False when a fact the count depends on is not settled yet: no destination, or a held token
    *  the caller has not decided about. */
   decided: boolean;
+  /** Signer normalization is the close's own first transaction (`normalizesSignersFirst`). */
+  normalizationFirst: boolean;
 }
 
 const CLAIM_STEPS: ReadonlySet<StepType> = new Set(["ADD_TRUSTLINE_FOR_CLAIM", "CLAIM_BALANCES"]);
@@ -66,7 +68,8 @@ function splitGroup(ops: StepType[]): ExecutionTxBreakdown[] {
 
 /**
  * The transactions the close will take, in the order `buildCloseTransactions` produces them
- * across its rounds: each Soroban token move on its own, the claim round, the classic close
+ * across its rounds: a multisig close's signer normalization on its own, each Soroban token move
+ * on its own, the claim round, the classic close
  * split by the same `splitCloseOps` the builder packs with, and the mediator transaction last.
  *
  * A DeFi exit takes as many transactions as its live debt and simulation need, so a plan with one
@@ -75,7 +78,7 @@ function splitGroup(ops: StepType[]): ExecutionTxBreakdown[] {
  */
 export function toExecutionBreakdown(
   steps: PlannedStep[],
-  { viaMediator, decided }: ExecutionBreakdownInput
+  { viaMediator, decided, normalizationFirst }: ExecutionBreakdownInput
 ): PlanResponse["execution"] {
   if (steps.length === 0) return { estimatedTransactionCount: 0, transactions: [] };
   if (!decided || steps.some((s) => s.type === "EXIT_POSITIONS" || s.type === "CLOSE_ACCOUNT")) {
@@ -84,6 +87,10 @@ export function toExecutionBreakdown(
   const isToken = (s: PlannedStep): boolean =>
     s.type === "HANDLE_ASSETS" && s.affectedAsset !== undefined && isTokenContract(s.affectedAsset);
 
+  const isFirstNormalization = (s: PlannedStep): boolean =>
+    normalizationFirst && s.type === "NORMALIZE_SIGNERS";
+
+  const normalization = splitGroup(expandOps(steps.filter(isFirstNormalization)));
   const tokenMoves = steps
     .filter((s) => isToken(s) && s.operationCount > 0)
     .map((): ExecutionTxBreakdown => ({ order: 0, covers: ["HANDLE_ASSETS"] }));
@@ -91,16 +98,22 @@ export function toExecutionBreakdown(
   const close = splitGroup(
     expandOps(
       steps.filter(
-        (s) => !isToken(s) && !CLAIM_STEPS.has(s.type) && (s.type !== "MERGE" || !viaMediator)
+        (s) =>
+          !isFirstNormalization(s) &&
+          !isToken(s) &&
+          !CLAIM_STEPS.has(s.type) &&
+          (s.type !== "MERGE" || !viaMediator)
       )
     )
   );
   const mediator: ExecutionTxBreakdown[] = viaMediator ? [{ order: 0, covers: ["MERGE"] }] : [];
 
-  const transactions = [...tokenMoves, ...claims, ...close, ...mediator].map((t, order) => ({
-    ...t,
-    order,
-  }));
+  const transactions = [...normalization, ...tokenMoves, ...claims, ...close, ...mediator].map(
+    (t, order) => ({
+      ...t,
+      order,
+    })
+  );
   return { estimatedTransactionCount: transactions.length, transactions };
 }
 

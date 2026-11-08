@@ -72,8 +72,8 @@ test("computePlanHash ignores decision ordering", () => {
   expect(a).toBe(b);
 });
 
-const DIRECT = { viaMediator: false, decided: true };
-const EXCHANGE = { viaMediator: true, decided: true };
+const DIRECT = { viaMediator: false, decided: true, normalizationFirst: false };
+const EXCHANGE = { viaMediator: true, decided: true, normalizationFirst: false };
 
 function steps(...groups: [StepType, number, Partial<PlannedStep>?][]): PlannedStep[] {
   return groups.map(([type, operationCount, extra], index) => ({
@@ -151,9 +151,38 @@ test("a plan with a DeFi exit has no knowable count", () => {
 });
 
 test("a count that depends on an undecided input is unknown, not a guess", () => {
-  expect(toExecutionBreakdown(steps(["MERGE", 1]), { viaMediator: false, decided: false })).toEqual(
-    { estimatedTransactionCount: null, transactions: [] }
+  expect(
+    toExecutionBreakdown(steps(["MERGE", 1]), {
+      viaMediator: false,
+      decided: false,
+      normalizationFirst: false,
+    })
+  ).toEqual({ estimatedTransactionCount: null, transactions: [] });
+});
+
+test("a multisig close counts its signer normalization as its own first transaction", () => {
+  const plan = steps(
+    ["NORMALIZE_SIGNERS", 3],
+    ["HANDLE_ASSETS", 1, { affectedAsset: TOKEN }],
+    ["CLAIM_BALANCES", 1],
+    ["HANDLE_ASSETS", 1],
+    ["REMOVE_TRUSTLINES", 1],
+    ["MERGE", 2]
   );
+  expect(toExecutionBreakdown(plan, { ...EXCHANGE, normalizationFirst: true })).toEqual({
+    estimatedTransactionCount: 5,
+    transactions: [
+      { order: 0, covers: ["NORMALIZE_SIGNERS"] },
+      { order: 1, covers: ["HANDLE_ASSETS"] },
+      { order: 2, covers: ["CLAIM_BALANCES"] },
+      { order: 3, covers: ["HANDLE_ASSETS", "REMOVE_TRUSTLINES"] },
+      { order: 4, covers: ["MERGE"] },
+    ],
+  });
+  expect(toExecutionBreakdown(plan, EXCHANGE).transactions[2]).toEqual({
+    order: 2,
+    covers: ["NORMALIZE_SIGNERS", "HANDLE_ASSETS", "REMOVE_TRUSTLINES"],
+  });
 });
 
 test("toExecutionBreakdown reports zero transactions for an empty plan", () => {

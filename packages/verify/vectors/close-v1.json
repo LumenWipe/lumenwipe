@@ -288,6 +288,80 @@
       }
     },
     {
+      "name": "multisig-normalization-first",
+      "verdict": "accept",
+      "description": "The first transaction of a 2-of-2 close: removes the co-signer and lowers the thresholds to 0/1/1, with no merge.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAAMgAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAIAAAAAAAAABQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAADTfLs7c2gD8hSjRB1xY6D3PugzSn2HMocPLXX1KHwLCwAAAAAAAAAAAAAABQAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAEAAAABAAAAAQAAAAEAAAAAAAAAAAAAAAAAAAAA",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+          "nativeBalance": "100.0000000",
+          "memo": null,
+          "memoType": null,
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            },
+            {
+              "key": "GDJXZOZ3ONUAH4QUUNCB24LDUD3T52BTJJ6YOMUHB4WXL5JIPQFQXBNT",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 1,
+            "med": 2,
+            "high": 2
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV",
+            "CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": []
+        }
+      }
+    },
+    {
       "name": "direct-merge-with-id-memo",
       "verdict": "accept",
       "description": "Merges to a wallet the user typed with the id memo they confirmed.",
@@ -2517,6 +2591,166 @@
         "name": "VerificationError",
         "code": "master_weight_changed",
         "message": "The master key's weight would be changed."
+      }
+    },
+    {
+      "name": "normalization-first-threshold-raised",
+      "verdict": "reject",
+      "base": "multisig-normalization-first",
+      "mutation": "Sets the high threshold to 2 instead of 1 in the normalization transaction.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAAMgAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAIAAAAAAAAABQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAADTfLs7c2gD8hSjRB1xY6D3PugzSn2HMocPLXX1KHwLCwAAAAAAAAAAAAAABQAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAEAAAABAAAAAQAAAAIAAAAAAAAAAAAAAAAAAAAA",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+          "nativeBalance": "100.0000000",
+          "memo": null,
+          "memoType": null,
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            },
+            {
+              "key": "GDJXZOZ3ONUAH4QUUNCB24LDUD3T52BTJJ6YOMUHB4WXL5JIPQFQXBNT",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 1,
+            "med": 2,
+            "high": 2
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV",
+            "CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": []
+        }
+      },
+      "error": {
+        "name": "VerificationError",
+        "code": "thresholds_raised",
+        "message": "Account thresholds would be raised."
+      }
+    },
+    {
+      "name": "normalization-first-signer-added",
+      "verdict": "reject",
+      "base": "multisig-normalization-first",
+      "mutation": "Adds a new signer with weight 1 in the normalization transaction.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAASwAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAMAAAAAAAAABQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAADTfLs7c2gD8hSjRB1xY6D3PugzSn2HMocPLXX1KHwLCwAAAAAAAAAAAAAABQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAABqQOxqD5sSe5Gt9wgsuZ4W2t3xpScCUBHxTgsvkF+mQQAAAAEAAAAAAAAABQAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAEAAAABAAAAAQAAAAEAAAAAAAAAAAAAAAAAAAAA",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+          "nativeBalance": "100.0000000",
+          "memo": null,
+          "memoType": null,
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            },
+            {
+              "key": "GDJXZOZ3ONUAH4QUUNCB24LDUD3T52BTJJ6YOMUHB4WXL5JIPQFQXBNT",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 1,
+            "med": 2,
+            "high": 2
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV",
+            "CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": []
+        }
+      },
+      "error": {
+        "name": "VerificationError",
+        "code": "signer_added",
+        "message": "A signer would be added or empowered."
       }
     },
     {

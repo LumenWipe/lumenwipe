@@ -47,9 +47,12 @@ import {
 import { fetchConversionPath, routeOrNull } from "@/lib/stellar/path-finding";
 import { lookupExchange, requiresMediatorForAddress } from "@/lib/exchange-registry";
 import {
+  buildPlan,
   computeNeedsSignerNormalization,
   assessSignerNormalizationSafety,
   assessTrustlineAuthorizationBlockers,
+  heldSorobanTokens,
+  normalizesSignersFirst,
 } from "@/lib/stellar/tx-builder";
 import { assessSponsorshipAffordability } from "@/lib/stellar/sponsorship-affordability";
 import {
@@ -79,6 +82,7 @@ import type { TransferDestinationProblem } from "@/lib/close-api/transfer-destin
 import { findTransferProblems, type TransferCheck } from "@/lib/close-api/transfer-revalidation";
 import {
   TokenTransferBlockedError,
+  assertTokenDestination,
   buildTokenTransferRound,
   type TokenTransferRoundDeps,
 } from "@/lib/close-api/token-transfer-round";
@@ -140,6 +144,20 @@ function buildSummary(input: CloseOperationsInput): string {
   const joined = parts.length > 0 ? parts.join(", ") : "close the account";
   return `${joined.charAt(0).toUpperCase()}${joined.slice(1)}.`;
 }
+
+function trustlineCannotBeLeftMessage(code: string): string {
+  return (
+    `${code} is a classic asset held in a trustline; a trustline with a balance cannot be ` +
+    "left behind, or the account cannot be merged. Convert it, send it to another account, " +
+    "or return it to its issuer."
+  );
+}
+
+/** Plan blockers a later round of the build raises from state already known at round 0. */
+const LATER_ROUND_PLAN_REFUSALS: ReadonlySet<string> = new Set([
+  "claimable_balance_reserve_short",
+  "claimable_balances_too_many",
+]);
 
 function feeBalanceShortError(shortStroops: bigint): CloseBuildError {
   return new CloseBuildError("close_fee_balance_short", closeFeeShortMessage(shortStroops), 422);
@@ -294,6 +312,105 @@ export async function buildCloseTransactions(
   const needsMediator = requiresMediatorForAddress(destinationAddress);
   const sponsorConfigured = switches.feeSponsorship && getFeeAccountKeypair(network) !== null;
 
+  // Round 0 for an account no single key can close: signer normalization alone, ahead of every
+  // other round, so each later one needs only the master key (docs/multisig-cosigning.md 3.1).
+  // It does not close the account, so it is refused while a later round is already known to be.
+  if (normalizesSignersFirst(accountState)) {
+    const ledgerCloseTime = parseLedgerCloseTime(latest.closeTime);
+    const plan = buildPlan(
+      switches,
+      { ...accountState, ledgerCloseTime: ledgerCloseTime ?? undefined },
+      needsMediator,
+      false,
+      claimableBalanceSelections,
+      undefined,
+      dispositions,
+      transferDestinations,
+      accountState.defiPositions,
+      userVerifiedNoDefiPositions
+    );
+    const laterRefusal = plan.blockers.find(
+      (b) => b.code !== undefined && LATER_ROUND_PLAN_REFUSALS.has(b.code)
+    );
+    if (laterRefusal && isErrorCode(laterRefusal.code)) {
+      throw new CloseBuildError(laterRefusal.code, laterRefusal.message, 422);
+    }
+    for (const tl of accountState.trustlines) {
+      if (dispositions[tl.asset] === "leave") {
+        throw new CloseBuildError(
+          "trustline_cannot_be_left",
+          trustlineCannotBeLeftMessage(tl.code),
+          422
+        );
+      }
+      if (
+        dispositions[tl.asset] === "transfer" &&
+        !transferDestinations[tl.asset] &&
+        BigInt(xlmToStroops(tl.balance)) > 0n
+      ) {
+        throw new MissingTransferDestinationError(tl.asset);
+      }
+    }
+    for (const token of heldSorobanTokens(accountState)) {
+      if (dispositions[token.contract] !== "transfer") continue;
+      try {
+        assertTokenDestination(accountState, token.contract, transferDestinations);
+      } catch (e) {
+        if (e instanceof TokenTransferBlockedError)
+          throw new CloseBuildError(e.code, e.message, 422);
+        throw e;
+      }
+    }
+    const normalization = packCloseTransactions(
+      sdkAccount,
+      {
+        needsSignerNormalization: true,
+        signers: accountState.signers,
+        revokeSponsorshipEntries: [],
+        dataEntries: [],
+        openOffers: [],
+        claimableBalances: [],
+        trustlinesToAddForClaim: [],
+        assetActions: [],
+        trustlines: [],
+        destinationAddress,
+        memo: null,
+        memoType: null,
+        includeMerge: false,
+      },
+      network,
+      validUntilLedger,
+      accountState,
+      sponsorConfigured
+    )[0]!;
+    const sorobanRounds =
+      2 * accountState.defiPositions.positions.length +
+      tokenRoundsAhead(accountState, dispositions);
+    if (sorobanRounds > 0) {
+      assertOwnFeesFit(accountState, normalization, sorobanRounds, needsMediator);
+    }
+    const removed = normalization.intent.operations.length - 1;
+    return {
+      transactions: [
+        {
+          ...normalization,
+          intent: {
+            ...normalization.intent,
+            summary:
+              `Remove ${removed} other signer${removed === 1 ? "" : "s"} and reset the thresholds, ` +
+              "so the master key alone signs the rest of the close. This does not close the account.",
+          },
+        },
+      ],
+      requiresAnotherCall: true,
+      remainingSteps:
+        sorobanRounds +
+        (plan.steps.some((s) => s.type === "CLAIM_BALANCES") ? 1 : 0) +
+        1 +
+        (needsMediator ? 1 : 0),
+    };
+  }
+
   // Round 0 for accounts with DeFi positions: leave every protocol first, one Soroban transaction
   // per step (a repay, then a withdraw...), each simulated against the current ledger. Proceeds
   // land in trustlines the later rounds dispose of and remove. The client submits, waits, and
@@ -337,9 +454,7 @@ export async function buildCloseTransactions(
       if (dispositions[tl.asset] === "leave") {
         throw new TokenTransferBlockedError(
           "trustline_cannot_be_left",
-          `${tl.code} is a classic asset held in a trustline; a trustline with a balance cannot be ` +
-            "left behind, or the account cannot be merged. Convert it, send it to another account, " +
-            "or return it to its issuer."
+          trustlineCannotBeLeftMessage(tl.code)
         );
       }
     }
@@ -532,9 +647,7 @@ export async function buildCloseTransactions(
       if (disposition === "leave") {
         throw new CloseBuildError(
           "trustline_cannot_be_left",
-          `${tl.code} is a classic asset held in a trustline; a trustline with a balance cannot be ` +
-            "left behind, or the account cannot be merged. Convert it, send it to another account, " +
-            "or return it to its issuer.",
+          trustlineCannotBeLeftMessage(tl.code),
           422
         );
       }
