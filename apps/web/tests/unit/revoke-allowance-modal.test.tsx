@@ -16,6 +16,7 @@ import RevokeAllowanceModal from "@/components/allowances/RevokeAllowanceModal";
 import * as walletKitClient from "@/lib/wallet-kit/client";
 import { WalletKitSigner, WalletNotUsableError } from "@/lib/stellar/signer";
 import type { Allowance } from "@/types/allowance";
+import { expectFocused, expectNotFocused, expectSameElement } from "./fixtures/focus";
 
 function stubWalletKit(
   address: string | null = null,
@@ -306,7 +307,7 @@ function confirmButton(): HTMLButtonElement {
   return screen.getByRole("button", { name: /revoke allowance/i }) as HTMLButtonElement;
 }
 
-test("RevokeAllowanceModal › arrow keys switch the signer inside the dialog, and only they do", () => {
+test("RevokeAllowanceModal › arrow keys switch the signer inside the dialog, and only they do", async () => {
   stubWalletKit();
   renderModal();
   const wallet = screen.getByRole("tab", { name: /wallet/i });
@@ -315,12 +316,12 @@ test("RevokeAllowanceModal › arrow keys switch the signer inside the dialog, a
 
   fireEvent.keyDown(wallet, { key: "ArrowRight" });
   expect(secret.getAttribute("aria-selected")).toBe("true");
-  expect(document.activeElement).toBe(secret);
+  await expectFocused(secret);
   expect(screen.getByPlaceholderText("S...")).toBeTruthy();
 
   fireEvent.keyDown(secret, { key: "Home" });
   expect(wallet.getAttribute("aria-selected")).toBe("true");
-  expect(document.activeElement).toBe(wallet);
+  await expectFocused(wallet);
   expect(screen.queryByPlaceholderText("S...")).toBeNull();
 });
 
@@ -383,7 +384,7 @@ test("RevokeAllowanceModal › the tablist goes inert with the dialog while the 
   const dialog = document.querySelector("dialog") as HTMLDialogElement;
   expect(dialog.hasAttribute("inert")).toBe(true);
   expect(dialog.contains(document.querySelector("[role='tablist']"))).toBe(true);
-  expect(document.activeElement).not.toBe(screen.getAllByRole("tab", { hidden: true })[0]);
+  expectNotFocused(screen.getAllByRole("tab", { hidden: true })[0]);
 });
 
 test("RevokeAllowanceModal › reselecting the secret key tab keeps the field, the key and confirm", () => {
@@ -394,7 +395,7 @@ test("RevokeAllowanceModal › reselecting the secret key tab keeps the field, t
 
   fireEvent.click(screen.getByRole("tab", { name: /secret key/i }));
 
-  expect(screen.getByPlaceholderText("S...")).toBe(input);
+  expectSameElement(screen.getByPlaceholderText("S..."), input);
   expect(input.value).toBe(OWNER_KP.secret());
   expect(confirmButton().disabled).toBe(false);
 });
@@ -436,7 +437,7 @@ test("RevokeAllowanceModal › leaving the key tab forgets the key, so coming ba
   expect(screen.queryByRole("button", { name: /revoking/i })).toBeNull();
 });
 
-test("RevokeAllowanceModal › Tab stays inside with the key panel open and confirm disabled", () => {
+test("RevokeAllowanceModal › Tab stays inside with the key panel open and confirm disabled", async () => {
   stubWalletKit();
   renderModal();
   const secret = screen.getByRole("tab", { name: /secret key/i });
@@ -447,10 +448,10 @@ test("RevokeAllowanceModal › Tab stays inside with the key panel open and conf
 
   reveal.focus();
   fireEvent.keyDown(reveal, { key: "Tab" });
-  expect(document.activeElement).toBe(close);
+  await expectFocused(close);
 
   fireEvent.keyDown(close, { key: "Tab", shiftKey: true });
-  expect(document.activeElement).toBe(reveal);
+  await expectFocused(reveal);
 });
 
 function pressEscape(): void {
@@ -540,7 +541,7 @@ test("RevokeAllowanceModal › while the wallet picker is open the dialog hands 
   const dialog = screen.getByRole("dialog", { hidden: true });
   expect(dialog.hasAttribute("inert")).toBe(true);
   const close = dialog.querySelector('button[aria-label="Close"]') as HTMLElement;
-  expect(close.closest("[inert]")).toBe(dialog);
+  expectSameElement(close.closest("[inert]"), dialog);
   expect(fireEvent.keyDown(document.body, { key: "Tab" })).toBe(true);
   expect(dialog.contains(document.activeElement) && document.activeElement !== dialog).toBe(false);
   fireEvent.keyDown(document.body, { key: "Escape" });

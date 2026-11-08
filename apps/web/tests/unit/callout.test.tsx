@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { createRef } from "react";
 import { render, screen } from "@testing-library/react";
 import { Callout } from "@/components/ui/callout";
+import { expectSameElement } from "./fixtures/focus";
 
 const RAW = /(amber|red|emerald|green|yellow)-\d|destructive/;
 
@@ -90,7 +91,7 @@ test("the ref, tabIndex and className reach the root for focus management", () =
       Body
     </Callout>
   );
-  expect(ref.current).toBe(screen.getByRole("alert") as HTMLDivElement);
+  expectSameElement(ref.current, screen.getByRole("alert"));
   expect(ref.current?.getAttribute("tabindex")).toBe("-1");
   expect(ref.current?.className.split(" ")).toContain("outline-none");
 });

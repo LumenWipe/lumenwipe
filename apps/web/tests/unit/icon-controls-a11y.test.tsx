@@ -16,6 +16,7 @@ import type { AccountState } from "@/types/account";
 import type { PlannedStep } from "@/types/plan";
 import type { SessionRecord } from "@/types/session";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { expectFocused } from "./fixtures/focus";
 
 const ADDRESS = Keypair.random().publicKey();
 
@@ -82,7 +83,7 @@ async function renderPage(ui: ReactElement): Promise<void> {
   });
 }
 
-function expectIconControl(control: HTMLElement): void {
+async function expectIconControl(control: HTMLElement): Promise<void> {
   expect(control.hasAttribute("tabindex")).toBe(false);
   expect(control.getAttribute("aria-hidden")).toBeNull();
   expect(control.className.split(" ")).toContain("size-6");
@@ -90,7 +91,7 @@ function expectIconControl(control: HTMLElement): void {
     expect(icon.getAttribute("aria-hidden")).toBe("true");
   }
   control.focus();
-  expect(document.activeElement).toBe(control);
+  await expectFocused(control);
 }
 
 beforeEach(() => {
@@ -117,7 +118,7 @@ test("the analyze back link is named after where it goes", async () => {
   await renderPage(<AnalyzePage params={params} />);
   const back = await screen.findByRole("link", { name: "Back to account entry" });
   expect(back.getAttribute("href")).toBe("/testnet");
-  expectIconControl(back);
+  await expectIconControl(back);
 });
 
 test("the plan refresh button is named and reachable", async () => {
@@ -140,7 +141,7 @@ test("the allowance inspector back link is named after where it goes", async () 
   await renderPage(<AllowancesPage params={params} />);
   const back = screen.getByRole("link", { name: "Back to account entry" });
   expect(back.getAttribute("href")).toBe("/testnet");
-  expectIconControl(back);
+  await expectIconControl(back);
 });
 
 test("the execute back link is named after where it goes", async () => {
@@ -152,7 +153,7 @@ test("the execute back link is named after where it goes", async () => {
   await renderPage(<ExecutePage params={params} />);
   const back = screen.getByRole("link", { name: "Back to analyze" });
   expect(back.getAttribute("href")).toBe("/testnet/analyze");
-  expectIconControl(back);
+  await expectIconControl(back);
 });
 
 test("the review back button keeps its name and gains a 24px target", async () => {
@@ -165,7 +166,7 @@ test("the review back button keeps its name and gains a 24px target", async () =
   const back = screen.getByRole("button", { name: "Back to analyze" });
   expect(back.getAttribute("type")).toBe("button");
   expect(back.className).not.toMatch(/outline-none/);
-  expectIconControl(back);
+  await expectIconControl(back);
 });
 
 test("the resume banner's buttons say what they do", async () => {

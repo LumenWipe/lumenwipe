@@ -4,6 +4,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import HistoryPanel from "@/components/history/HistoryPanel";
 import * as history from "@/lib/session/history";
 import type { ReceiptRecord } from "@/types/history";
+import { expectFocused } from "./fixtures/focus";
 
 afterEach(() => {
   mock.restore();
@@ -36,14 +37,14 @@ test("HistoryPanel › is a named, described dialog with focus on its close butt
   expect(
     document.getElementById(dialog.getAttribute("aria-describedby") as string)?.textContent
   ).toBe("History is stored locally in your browser and never leaves your device.");
-  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Close" }));
+  await expectFocused(screen.getByRole("button", { name: "Close" }));
 });
 
 test("HistoryPanel › Escape closes it and focus returns to the trigger", async () => {
   const trigger = await openPanel();
   fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
   expect(screen.queryByRole("dialog")).toBeNull();
-  expect(document.activeElement).toBe(trigger);
+  await expectFocused(trigger);
 });
 
 test("HistoryPanel › the scrim closes it", async () => {

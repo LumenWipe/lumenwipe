@@ -16,6 +16,7 @@ import * as analyzeClient from "@/lib/api/analyze-client";
 import type { AccountState } from "@/types/account";
 import type { PlannedStep, StepStatus, StepType } from "@/types/plan";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { expectFocused } from "./fixtures/focus";
 
 const VALID_ADDRESS = Keypair.random().publicKey();
 const ADDRESS = "GSOURCE0000000000000000000000000000000000000000000000000";
@@ -122,7 +123,7 @@ test("the receipt has one h1, a valid outline and focus on its heading", async (
   expectValidOutline();
   const h1 = screen.getByRole("heading", { level: 1 });
   expect(h1.textContent).toBe("Account successfully merged");
-  expect(document.activeElement).toBe(h1);
+  await expectFocused(h1);
   // The banner is the status that holds the heading; the copy button has a status of its own.
   expect(screen.getAllByRole("status").some((status) => status.contains(h1))).toBe(true);
 });
@@ -136,7 +137,7 @@ test("an incomplete close focuses its own heading", async () => {
   });
   await renderPage(<CompletionReceipt network="testnet" />);
   expectValidOutline();
-  expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1 }));
+  await expectFocused(screen.getByRole("heading", { level: 1 }));
   expect(document.activeElement?.textContent).toBe("Close not finished");
 });
 
@@ -156,7 +157,7 @@ test("review focuses the page heading and announces the plan once", async () => 
   });
   await renderPage(<ReviewPage params={settled({ network: "testnet" as const })} />);
   expectValidOutline();
-  expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1 }));
+  await expectFocused(screen.getByRole("heading", { level: 1 }));
   // Each copy button keeps an empty status region for its own result; only one says anything.
   const statuses = screen.getAllByRole("status").filter((s) => s.textContent !== "");
   expect(statuses).toHaveLength(1);
@@ -180,7 +181,7 @@ test("analyze announces the load through one status region and focuses the h1", 
   await renderPage(<AnalyzePage params={settled({ network: "testnet" as const })} />);
   await waitFor(() => expect(screen.getByRole("heading", { level: 1 })).toBeDefined());
   expectValidOutline();
-  expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1 }));
+  await expectFocused(screen.getByRole("heading", { level: 1 }));
   const statuses = screen.getAllByRole("status");
   expect(statuses).toHaveLength(1);
   expect(statuses[0].textContent).toBe("Account analyzed");
