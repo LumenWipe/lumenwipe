@@ -4,6 +4,7 @@ import {
   isRegistryUsable,
   lookupExchange,
   mediatorAllowedFor,
+  memoTypeInDispute,
   type RegistryEntry,
 } from "@/lib/exchange-registry";
 import { isUsableAt, mergeServedRegistry } from "@/lib/exchange-registry/merge";
@@ -1512,10 +1513,12 @@ export interface ServedRegistryInput {
   validUntil: string;
 }
 
-/** The exchange registry one verification reads: its entries and whether it is still usable. */
+/** The exchange registry one verification reads: its entries, whether it is still usable, and
+ *  whether the served copy disputes an address's bundled memo type. */
 interface RegistryView {
   lookup: (address: string) => RegistryEntry | null;
   usable: () => boolean;
+  memoTypeInDispute: (address: string) => boolean;
 }
 
 /**
@@ -1532,7 +1535,7 @@ interface RegistryView {
  */
 function registryView(served: ServedRegistryInput | undefined): RegistryView {
   if (served === undefined) {
-    return { lookup: lookupExchange, usable: () => isRegistryUsable() };
+    return { lookup: lookupExchange, usable: () => isRegistryUsable(), memoTypeInDispute };
   }
   const merged = mergeServedRegistry(bundledRegistry(), served);
   if (merged === null) {
@@ -1543,10 +1546,50 @@ function registryView(served: ServedRegistryInput | undefined): RegistryView {
     );
   }
   const byAddress = new Map(merged.entries.map((e) => [e.address, e]));
+  const disputes = new Set(merged.memoTypeDisputes);
   return {
     lookup: (address) => byAddress.get(address) ?? null,
     usable: () => isUsableAt(merged.validUntil, new Date()),
+    memoTypeInDispute: (address) => disputes.has(address),
   };
+}
+
+/**
+ * The memo type a close to a listed exchange is held to, or a refusal when the sources disagree.
+ *
+ * A memo sent under the wrong type reaches the exchange's address and is credited to nobody, and
+ * the served registry is not authenticated, so it never decides the type on its own:
+ * - for an exchange the bundled copy lists, the bundled type stands, and a served copy that gives
+ *   another one stops the close: one of the two is out of date and nothing here says which;
+ * - for an address only the served copy lists, the type the user confirmed stands, and a served
+ *   type that differs from it stops the close rather than replacing it.
+ */
+function listedMemoType(
+  exchange: RegistryEntry,
+  registry: RegistryView,
+  expected: { destination: string; memo: string | null; memoType: "text" | "id" | "hash" | null }
+): "text" | "id" | "hash" | null {
+  if (registry.memoTypeInDispute(expected.destination)) {
+    throw new VerificationError(
+      "registry_memo_type_conflict",
+      `The served exchange registry gives ${exchange.name} a different memo type than the ` +
+        "bundled one, so the memo this close needs cannot be checked."
+    );
+  }
+  const bundled = bundledRegistry().entries.some((e) => e.address === expected.destination);
+  if (bundled) return exchange.memoType;
+  if (
+    expected.memo !== null &&
+    expected.memoType !== null &&
+    expected.memoType !== exchange.memoType
+  ) {
+    throw new VerificationError(
+      "registry_memo_type_unconfirmed",
+      `The served exchange registry lists ${exchange.name} with ${MEMO_TYPE_WITH_ARTICLE[exchange.memoType]} ` +
+        `memo, not the ${expected.memoType} memo you confirmed.`
+    );
+  }
+  return expected.memoType;
 }
 
 /**
@@ -1568,8 +1611,9 @@ export function verifyCloseTransaction(opts: {
     destination: string;
     nativeBalance: string;
     memo: string | null;
-    /** The type the user confirmed for `memo` (`confirmedMemo`), or null with no memo. A listed
-     *  exchange's registry type replaces it. */
+    /** The type the user confirmed for `memo` (`confirmedMemo`), or null with no memo. The
+     *  bundled registry's type replaces it for an exchange the bundle lists; a served registry's
+     *  type that differs from it is refused, never adopted. */
     memoType: "text" | "id" | "hash" | null;
     claimTrustlineAssets: string[];
     accountSigners: AccountSigner[];
@@ -1629,7 +1673,10 @@ export function verifyCloseTransaction(opts: {
     mediatorRequired: mediatorAllowedFor(opts.expected.destination),
     directMergeRefused: exchange?.requiresMediator ?? false,
     memoRequired: exchange?.requiresMemo ?? false,
-    memoType: exchange?.memoType ?? opts.expected.memoType,
+    memoType:
+      exchange === null
+        ? opts.expected.memoType
+        : listedMemoType(exchange, registry, opts.expected),
     nowSeconds: Math.floor(Date.now() / 1000),
     preAuthorized: opts.preAuthorized === true,
   });

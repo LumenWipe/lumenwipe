@@ -37,13 +37,15 @@ describe("close-v1.json", () => {
       expect(byName.get(name)?.verdict).toBe("reject");
     }
     // A served registry snapshot: an exchange it adds, a relaxation and a removal it cannot
-    // make, the intermediary it cannot enable, and the validity it can only move later.
+    // make, the intermediary it cannot enable, the memo type it cannot change, and the validity
+    // it can only move later.
     for (const name of [
       "exchange-close-under-relaxing-snapshot",
       "exchange-close-under-emptied-snapshot",
       "close-to-exchange-listed-by-snapshot",
       "exchange-close-under-snapshot-with-earlier-expiry",
       "exchange-close-past-bundled-expiry-extended-by-snapshot",
+      "exchange-close-with-numeric-text-memo",
     ]) {
       expect(byName.get(name)?.verdict).toBe("accept");
     }
@@ -54,6 +56,9 @@ describe("close-v1.json", () => {
       "snapshot-lists-transfer-destination-as-deposit-address",
       "snapshot-extends-expiry-past-cap",
       "snapshot-not-a-registry",
+      "snapshot-changes-exchange-memo-type",
+      "snapshot-disputes-exchange-memo-type",
+      "snapshot-memo-type-other-than-confirmed",
     ]) {
       expect(byName.get(name)?.verdict).toBe("reject");
     }

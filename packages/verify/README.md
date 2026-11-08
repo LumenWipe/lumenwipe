@@ -92,8 +92,7 @@ because it can only make verification stricter:
 - A bundled exchange is never removed, and its memo requirement and its refusal of a direct
   merge are never turned off.
 - An address the snapshot adds is checked as an exchange: a direct merge into it is refused if it
-  needs the intermediary, a memo is required if it needs one (in the snapshot's memo type), and a
-  transfer to it is refused.
+  needs the intermediary, a memo is required if it needs one, and a transfer to it is refused.
 - It never enables the mediated hand-off: that stays limited to the exchanges bundled here
   (`requiresMediator`, which takes no snapshot). An address only the snapshot lists as needing the
   intermediary refuses both a direct merge and the hand-off until you upgrade. Accepting the
@@ -104,10 +103,13 @@ because it can only make verification stricter:
   `entries` list, or no `lastVerified` or `validUntil` string) is refused with
   `registry_snapshot_invalid` rather than ignored.
 
-Two fields are taken from it rather than tightened, as in the web app: an entry's `memoType`
-(exchanges do move from text to id memos) and its `name`, used only in refusal messages. A
-wrong memo type can leave a deposit uncredited; it cannot send funds anywhere the user did not
-choose.
+- It never decides a memo type, because a memo sent under the wrong type reaches the exchange
+  and is credited to nobody. A bundled exchange it lists with a different `memoType` refuses the
+  close with `registry_memo_type_conflict` until you upgrade. For an address only the snapshot
+  lists, the type the user confirmed is the one checked, and a snapshot type that differs from
+  it refuses the close with `registry_memo_type_unconfirmed`.
+
+An entry's `name` is taken from it, as in the web app, and used only in refusal messages.
 
 Without a snapshot:
 

@@ -186,8 +186,8 @@ must confirm, from its own inputs and never from the API response:
 6. The payment's asset is native XLM.
 7. The payment's amount is at least the native balance the integrator observed for the account, less a small
    fee tolerance (the web client allows 0.01 XLM).
-8. The memo, and its type, match what the user confirmed: the registry's type for a listed exchange, the user's
-   choice for any other destination. A close with no memo carries none, and no other transaction of the close
+8. The memo, and its type, match what the user confirmed: the bundled registry's type for an exchange it lists, the
+   user's choice for any other destination. A close with no memo carries none, and no other transaction of the close
    carries a memo.
 
 A check that pins the mediator's address in place of step 4 proves which account receives the merge, but not
@@ -196,9 +196,11 @@ that the payment moves the balance on. The reference implementation is `assertCl
 `@lumenwipe/verify` (`packages/verify`) packages that same code for integrators, with a shared conformance vector
 set. It decides whether the mediated shape is allowed (step 1) from the exchange registry bundled in its release
 only. An integrator may pass the served registry as `servedRegistry`; it is merged stricter-only, as in the web
-client, so it can refuse a direct merge into an address it lists as needing the mediator, require a memo and set its
-type (step 8), and move the registry's validity later by at most 120 days, but it never enables the mediated shape:
-the API that serves it also builds the transaction and reports the balance step 7 is checked against. Without one,
+client, so it can refuse a direct merge into an address it lists as needing the mediator, require a memo (step 8),
+and move the registry's validity later by at most 120 days, but it never enables the mediated shape: the API that
+serves it also builds the transaction and reports the balance step 7 is checked against. It never sets a memo type
+either: a type that differs from the bundled one, or from the one the user confirmed for an address only the
+snapshot lists, refuses the close. Without one,
 an exchange listed after that release is checked as a plain wallet until the integrator upgrades.
 
 ## 6. Surface 4b: backend signing key (fee-bump sponsor)

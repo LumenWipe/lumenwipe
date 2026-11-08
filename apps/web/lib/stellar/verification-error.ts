@@ -8,6 +8,8 @@ export const VERIFICATION_ERROR_CODES = [
   // The transaction as a whole
   "registry_expired",
   "registry_snapshot_invalid",
+  "registry_memo_type_conflict",
+  "registry_memo_type_unconfirmed",
   "transaction_source_mismatch",
   "expiry_missing",
   "expiry_too_far",

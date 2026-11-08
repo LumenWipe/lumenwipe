@@ -53,9 +53,10 @@ function tightenedOver(embeddedEntry: RegistryEntry, servedEntry: RegistryEntry)
     ...servedEntry,
     requiresMemo: embeddedEntry.requiresMemo || servedEntry.requiresMemo,
     requiresMediator: embeddedEntry.requiresMediator || servedEntry.requiresMediator,
-    // A memo type may be corrected (text -> id is a real, common change) but only while the
-    // requirement itself stands; it cannot be used to smuggle in "no memo".
-    memoType: servedEntry.memoType,
+    // Never taken from the served copy. A memo sent under the wrong type reaches the right
+    // address and is credited to nobody, so a served type that differs is recorded as a dispute
+    // (`mergeServedRegistry`) and the close is refused until the bundled copy is updated.
+    memoType: embeddedEntry.memoType,
   };
 }
 
@@ -87,6 +88,8 @@ export interface MergedRegistry {
   entries: RegistryEntry[];
   lastVerified: string;
   validUntil: string;
+  /** Bundled addresses the served copy lists with a different memo type. */
+  memoTypeDisputes: string[];
 }
 
 /**
@@ -96,7 +99,8 @@ export interface MergedRegistry {
  *
  * Every bundled address survives with rules at least as strict as its own, a served address the
  * bundle does not know is added as served, a malformed entry is dropped, and the validity date
- * only moves later, by at most {@link MAX_EXTENSION_DAYS}.
+ * only moves later, by at most {@link MAX_EXTENSION_DAYS}. A bundled address the served copy
+ * lists with another memo type keeps the bundled type and is listed in `memoTypeDisputes`.
  */
 export function mergeServedRegistry(floor: RegistryFloor, body: unknown): MergedRegistry | null {
   if (typeof body !== "object" || body === null) return null;
@@ -111,8 +115,12 @@ export function mergeServedRegistry(floor: RegistryFloor, body: unknown): Merged
 
   const embeddedByAddress = new Map(floor.entries.map((e) => [e.address, e]));
   const merged = new Map(embeddedByAddress);
+  const disputes = new Set<string>();
   for (const servedEntry of served.entries.filter(isUsableEntry)) {
     const embeddedEntry = embeddedByAddress.get(servedEntry.address);
+    if (embeddedEntry && embeddedEntry.memoType !== servedEntry.memoType) {
+      disputes.add(servedEntry.address);
+    }
     merged.set(
       servedEntry.address,
       embeddedEntry ? tightenedOver(embeddedEntry, servedEntry) : servedEntry
@@ -123,6 +131,7 @@ export function mergeServedRegistry(floor: RegistryFloor, body: unknown): Merged
     entries: [...merged.values()],
     lastVerified: served.lastVerified,
     validUntil: boundedValidUntil(floor.validUntil, served.validUntil),
+    memoTypeDisputes: [...disputes],
   };
 }
 

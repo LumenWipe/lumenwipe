@@ -3,7 +3,12 @@
 import { useState, type ClipboardEvent } from "react";
 import { AlertTriangle } from "lucide-react";
 import { containsSecretKey, isValidGAddress, SECRET_KEY_WARNING } from "@/lib/utils/validation";
-import { activeRegistry, isCexAddress, isRegistryUsable } from "@/lib/exchange-registry";
+import {
+  activeRegistry,
+  isCexAddress,
+  isRegistryUsable,
+  memoTypeInDispute,
+} from "@/lib/exchange-registry";
 import {
   memoField,
   refusesIdMemoEdit,
@@ -190,6 +195,14 @@ export default function DestinationInput({
                 These deposit rules expired on {activeRegistry().validUntil} and have not been
                 re-checked. Closing into an exchange on unverified rules can send the funds
                 somewhere nobody can credit them, so this is blocked until they are refreshed.
+              </p>
+            )}
+            {isCexAddress(destination) && isRegistryUsable() && memoTypeInDispute(destination) && (
+              <p role="alert" className="text-xs text-danger-fg">
+                We could not confirm which kind of memo {field.exchangeName} expects: our two copies
+                of its deposit rules disagree. A memo of the wrong kind can leave the funds
+                uncredited, so closing into this exchange is blocked for now. Try again later, or
+                choose another destination.
               </p>
             )}
           </div>

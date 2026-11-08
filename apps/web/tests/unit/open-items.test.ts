@@ -24,6 +24,7 @@ const READY: ProceedFacts = {
   openItems: [],
   destination: "ok",
   registryStale: false,
+  registryMemoTypeDisputed: false,
   memo: "ok",
   destinationUnacknowledged: false,
 };
@@ -57,6 +58,16 @@ for (const [facts, expected] of [
   [{ destination: "self" }, ["The destination cannot be the account being closed"]],
   [
     { registryStale: true },
+    ["This exchange's deposit rules have expired, so it cannot be used as the destination"],
+  ],
+  [
+    { registryMemoTypeDisputed: true },
+    [
+      "This exchange's memo rules could not be confirmed right now. Try again later or choose another destination",
+    ],
+  ],
+  [
+    { registryStale: true, registryMemoTypeDisputed: true },
     ["This exchange's deposit rules have expired, so it cannot be used as the destination"],
   ],
   [{ memo: "missing" }, ["Memo is required by this exchange"]],
@@ -109,6 +120,7 @@ test("the reasons are empty exactly when the old gate passes, over every combina
                     openItems,
                     destination,
                     registryStale,
+                    registryMemoTypeDisputed: false,
                     memo,
                     destinationUnacknowledged,
                   };

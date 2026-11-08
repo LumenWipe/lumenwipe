@@ -12,6 +12,26 @@ release is cut.
 - Three vectors in `vectors/close-v1.json` for a multisig close's first transaction, signer
   normalization with no merge: `multisig-normalization-first`, accepted, and its rejected
   mutations `normalization-first-threshold-raised` and `normalization-first-signer-added`.
+- Two `VerificationErrorCode` values: `registry_memo_type_conflict` and
+  `registry_memo_type_unconfirmed`.
+- Vectors for a snapshot that changes a memo type: `exchange-close-with-numeric-text-memo`,
+  accepted, its rejected mutations `snapshot-changes-exchange-memo-type` and
+  `snapshot-disputes-exchange-memo-type`, and
+  `snapshot-memo-type-other-than-confirmed`, a rejected mutation of
+  `close-to-exchange-listed-by-snapshot`.
+
+### Changed
+
+- A served registry snapshot no longer decides a memo type. A bundled exchange the snapshot
+  lists with a different `memoType` is refused with `registry_memo_type_conflict`, where the
+  snapshot's type used to be adopted. For an address only the snapshot lists, the type the user
+  confirmed is checked, and a snapshot type that differs from it is refused with
+  `registry_memo_type_unconfirmed`, where it used to replace the confirmed type. A memo with
+  no readable confirmed type to such an address is refused with `memo_type_unreadable`, where
+  the snapshot's type used to be filled in.
+- The vector `close-to-exchange-listed-by-snapshot` now confirms an id memo, the snapshot's
+  type, instead of text, and the description of its mutation `memo-type-other-than-snapshot`
+  says so. Its code and message are unchanged.
 
 ## [0.1.0] - 2026-11-08
 

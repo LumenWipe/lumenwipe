@@ -38,6 +38,7 @@ import { memoField, type ChosenMemoType } from "@/lib/plan/memo-field";
 import {
   isCexAddress,
   isRegistryUsable,
+  memoTypeInDispute,
   requiresMediatorForAddress,
   mediatorAllowedFor,
 } from "@/lib/exchange-registry";
@@ -469,6 +470,8 @@ export default function PlanView({
     openItems,
     destination: destinationFact,
     registryStale: registryBlocksExchange,
+    // The verifier refuses this close at signing; say so here, before the user gets that far.
+    registryMemoTypeDisputed: isCexAddress(destination) && memoTypeInDispute(destination),
     memo: memoFact,
     destinationUnacknowledged: !destinationAcknowledged,
   });

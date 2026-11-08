@@ -746,9 +746,9 @@ rejectUnderSnapshot(
 );
 const listedBySnapshot = accept(
   "close-to-exchange-listed-by-snapshot",
-  "A direct merge to an exchange only the served snapshot lists, which accepts a merge but needs an id memo. The memo goes as an id memo, the snapshot's type, though the user confirmed text.",
+  "A direct merge to an exchange only the served snapshot lists, which accepts a merge but needs an id memo. The user confirmed an id memo, the snapshot's type.",
   build([merge(NEW_EXCHANGE)], { memo: Memo.id("4411") }),
-  expectation({ destination: NEW_EXCHANGE, memo: "4411", memoType: "text" }),
+  expectation({ destination: NEW_EXCHANGE, memo: "4411", memoType: "id" }),
   {
     servedRegistry: snapshot([
       listing(NEW_EXCHANGE, { requiresMediator: false, requiresMemo: true, memoType: "id" }),
@@ -758,10 +758,56 @@ const listedBySnapshot = accept(
 reject(
   listedBySnapshot,
   "memo-type-other-than-snapshot",
-  "Sends the memo as text, the type the user confirmed, instead of the snapshot's id.",
+  "Sends the memo as text instead of the id the user confirmed and the snapshot lists.",
   build([merge(NEW_EXCHANGE)], { memo: Memo.text("4411") }),
   "memo_type_mismatch",
   "The transaction would send your memo as a text memo, not the id memo you confirmed."
+);
+rejectUnderSnapshot(
+  listedBySnapshot,
+  "snapshot-memo-type-other-than-confirmed",
+  "Passes a snapshot listing the exchange with a text memo, though the user confirmed an id memo. A served type never replaces the confirmed one.",
+  snapshot([
+    listing(NEW_EXCHANGE, { requiresMediator: false, requiresMemo: true, memoType: "text" }),
+  ]),
+  "registry_memo_type_unconfirmed",
+  "The served exchange registry lists Newly Listed with a text memo, not the id memo you confirmed."
+);
+
+// A snapshot never changes the memo type of a bundled exchange: the close is refused instead.
+const numericTextMemo = Memo.text("4411");
+const exchangeNumericTextMemo = accept(
+  "exchange-close-with-numeric-text-memo",
+  "The exchange close through the intermediary, with a text memo of digits, the type the bundled registry gives the exchange.",
+  build([merge(INTERMEDIARY), forward()], { memo: numericTextMemo }),
+  expectation({ destination: COINBASE, memo: "4411", memoType: "text" })
+);
+rejectUnderSnapshot(
+  exchangeNumericTextMemo,
+  "snapshot-changes-exchange-memo-type",
+  "Passes a snapshot listing the exchange with an id memo and sends the memo as an id memo. A snapshot cannot change a bundled exchange's memo type.",
+  snapshot([
+    {
+      ...listing(COINBASE, { requiresMediator: true, requiresMemo: true, memoType: "id" }),
+      name: "Coinbase",
+    },
+  ]),
+  "registry_memo_type_conflict",
+  "The served exchange registry gives Coinbase a different memo type than the bundled one, so the memo this close needs cannot be checked.",
+  build([merge(INTERMEDIARY), forward()], { memo: Memo.id("4411") })
+);
+rejectUnderSnapshot(
+  exchangeNumericTextMemo,
+  "snapshot-disputes-exchange-memo-type",
+  "Passes a snapshot listing the exchange with an id memo; the close still sends the bundled text memo. A disputed memo type refuses the close whatever memo it carries.",
+  snapshot([
+    {
+      ...listing(COINBASE, { requiresMediator: true, requiresMemo: true, memoType: "id" }),
+      name: "Coinbase",
+    },
+  ]),
+  "registry_memo_type_conflict",
+  "The served exchange registry gives Coinbase a different memo type than the bundled one, so the memo this close needs cannot be checked."
 );
 
 // Validity only moves later, within the cap, never earlier.
