@@ -51,6 +51,7 @@ test("the service index at / is public and points at the docs", async () => {
   expect(res.body).toEqual({
     name: "LumenWipe API",
     version: API_VERSION,
+    gitSha: null,
     docs: "/docs",
     openapi: "/docs-json",
     health: "/health",

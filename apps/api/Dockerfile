@@ -57,6 +57,10 @@ WORKDIR /app/apps/api
 # overlay the compiled output. Node resolves modules by walking up from apps/api.
 COPY --from=prod-deps --chown=node:node /app /app
 COPY --from=builder --chown=node:node /app/apps/api/dist /app/apps/api/dist
+# The commit this image was built from, reported at `/`. Declared last so a new commit
+# invalidates no earlier layer.
+ARG GIT_SHA=""
+ENV GIT_SHA=${GIT_SHA}
 USER node
 # Cloud Run injects PORT (default 8080); main.ts binds 0.0.0.0. EXPOSE is doc-only.
 ENTRYPOINT ["dumb-init", "--"]

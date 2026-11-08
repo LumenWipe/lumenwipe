@@ -270,25 +270,33 @@ jobs:
           password: ${{ env.DOCKERHUB_TOKEN }}
 
       - name: Build the API image
-        run: docker build --platform linux/amd64 --provenance=false -f apps/api/Dockerfile -t lumenwipe-api:ci .
+        run: docker build --platform linux/amd64 --provenance=false --build-arg GIT_SHA="$GITHUB_SHA" -f apps/api/Dockerfile -t lumenwipe-api:ci .
 
       # API_KEYS is the only variable the startup check treats as fatal (src/config/validate-env.ts)
       # and boot makes no network calls, so a throwaway value is enough to reach /health. No route
       # is exercised with it. Container logs are printed on failure - the interesting output is
       # the crash, and it is not visible anywhere else.
-      - name: Boot the image and check /health
+      - name: Boot the image and check /health and the commit at /
         run: |
           docker run -d --name api-smoke -e API_KEYS=ci=ci-smoke -e PORT=8080 -p 8080:8080 lumenwipe-api:ci
           for i in $(seq 1 30); do
             if curl -fs http://127.0.0.1:8080/health > /dev/null 2>&1; then
               echo "healthy after ${i}s"
-              exit 0
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "the image never answered /health:"
+              docker logs api-smoke
+              exit 1
             fi
             sleep 1
           done
-          echo "the image never answered /health:"
-          docker logs api-smoke
-          exit 1
+          # deploy-api.sh promotes a revision only when / reports the commit it was built from.
+          reported="$(curl -fsS http://127.0.0.1:8080/ | jq -r .gitSha)"
+          if [ "$reported" != "$GITHUB_SHA" ]; then
+            echo "/ reports gitSha ${reported}, expected ${GITHUB_SHA}"
+            exit 1
+          fi
 
   # The version only moves in a release PR (RELEASING.md), so a change to what a published package
   # ships records itself under [Unreleased] instead (scripts/package-release.ts, changelog mode).
@@ -508,6 +516,9 @@ jobs:
 
       - name: Test the download script
         run: bun test scripts/download.test.ts
+
+      - name: Test the API deploy script
+        run: bun test scripts/deploy-api.test.ts
 
       - name: Audit dependencies
         run: bun run scripts/audit-gate.ts

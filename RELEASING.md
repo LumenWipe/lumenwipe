@@ -67,9 +67,59 @@ months with `Deprecation` and `Sunset` headers on a deprecated route, and nothin
 release that introduces its replacement. A deprecation gets a row in its "Deprecated today" table
 and a changelog entry.
 
-**Rollback**: `gcloud run services update-traffic lumenwipe-api --to-revisions=<previous-revision>=100`
-routes traffic back to the last known-good revision without a new deploy. Cloud Run keeps prior
-revisions around; nothing needs to be rebuilt.
+### How a deploy moves traffic
+
+`scripts/deploy-api.sh`, run by the workflow, never puts an unchecked revision on traffic:
+
+1. It records the revision serving 100 percent and that revision's image digest. Split traffic
+   stops the run before anything is deployed.
+2. It deploys the new image as `lumenwipe-api-<sha7>-<run id>-<attempt>` with `--no-traffic` and the
+   tag `candidate`, so the recorded revision keeps all traffic, pinned by name.
+3. It smoke tests the candidate on its tagged URL: `/health`, `/` reporting the commit being
+   deployed (`gitSha`), `/health/deep`, `/v1/config/exchange-registry`, and an analyze of the
+   registry's first address on mainnet when the `API_SMOKE_KEY` repository secret is set (skipped
+   with a warning otherwise).
+4. Only then does it run `update-traffic --to-latest`, and it verifies that the candidate serves
+   100 percent and that `/` on the service URL reports the commit.
+5. A failure after promotion routes traffic back to the revision recorded in step 1, by name,
+   never to "the previous one" by position.
+6. Whenever traffic stays on or returns to the recorded revision, a restore phase redeploys that
+   revision's image by digest as `<candidate>-restore`, checks its `/health`, and moves traffic to
+   it with `--to-latest`, so traffic follows the latest revision again and the kill switches below
+   take effect. If the restore fails, the recorded revision stays pinned at 100 percent and the
+   run says so.
+
+Every outcome fails the run except a verified promotion, and the job summary lists the commit,
+both revisions and each check. The `candidate` and `restore` tags are removed at the end. A run
+that is cancelled or times out is finished by the workflow's recovery step. A manual run with
+`drill: fail-smoke` forces the smoke test to fail: the candidate never takes traffic, and the run
+ends restored, serving the recorded revision's image under a new `-restore` revision name.
+
+**Rollback** by hand routes traffic to a named, known-good revision without a new deploy. Cloud Run
+keeps prior revisions; nothing needs to be rebuilt. List them, newest first, with the one serving
+now marked in the traffic column:
+
+```bash
+gcloud run revisions list --service lumenwipe-api --region us-central1
+gcloud run services update-traffic lumenwipe-api --region us-central1 --to-revisions=<revision-name>=100
+```
+
+This pins traffic to that revision. The next successful deploy undoes the pin.
+
+**While traffic is pinned** (after a manual rollback, after a failed restore, or during a deploy run
+between the candidate deploy and its promotion), a configuration update creates a revision that
+receives no traffic, and it is built from the service's current image, which after a failed run can
+be the image that failed. While a deploy run is in progress, let it finish (it ends following the latest
+revision unless its restore fails) and then set the switch. Otherwise, check `status.traffic`
+first and, if it is pinned, set the switch on the serving revision's image and then follow the
+latest revision again:
+
+```bash
+gcloud run services describe lumenwipe-api --region us-central1 --format='value(status.traffic)'
+gcloud run revisions describe <serving-revision> --region us-central1 --format='value(status.imageDigest)'
+gcloud run services update lumenwipe-api --region us-central1 --image=<serving image> --update-env-vars=FEE_SPONSORSHIP_ENABLED=false
+gcloud run services update-traffic lumenwipe-api --region us-central1 --to-latest
+```
 
 ### Kill switches
 
@@ -111,7 +161,9 @@ API on 2026-11-08 (`deploy-api.yml` runs 42463701811, 42472457028, 42473699224, 
 42486620587 and 42492993210) the new revision served all traffic 36 to 54 seconds after the
 update began, median about 42 seconds. Requests already in flight on the old revision finish with
 the old value. Environment variables are set on the service and inherited by every revision
-(`deploy-api.yml` sets none), so a switch stays as set across later deploys.
+(`deploy-api.yml` sets none), so a switch stays as set across later deploys. This holds while traffic
+follows the latest revision, which is the state every deploy run ends in unless its restore fails;
+see "While traffic is pinned" above.
 
 ## SDK: releasing to npm
 
