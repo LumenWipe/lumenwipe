@@ -75,7 +75,7 @@ matches (`apps/web/hooks/useWalletKitConnection.ts`), a wallet that cannot repor
 by the user, and `WalletKitSigner` refuses a signature the wallet reports making with another account, or one that
 verifies only for the other network, before it is used. The session is read again right before each signature of a
 run (`beforeSigning`), so a wallet that went stale or changed network since the run started is not asked to sign.
-These are pre-checks; the approved-hash and weight checks
+These are pre-checks; the approved-hash, own-signature and weight checks
 in `useCloseExecution` stay the authority.
 
 ## 3. Surface 2: the client-side session layer

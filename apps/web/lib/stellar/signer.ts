@@ -103,8 +103,9 @@ export class WalletSigningTimeoutError extends Error {
 /**
  * The wallet reported that it signed with an account other than the one it was asked to sign
  * with. Thrown before the signed transaction is returned, so nothing it signed is used. A pre-check
- * only: a wallet that reports nothing is still held to the approved-hash and weight checks after
- * signing, which stay the authority.
+ * only: a wallet that reports nothing is still held to the approved-hash, own-signature and weight
+ * checks after signing, which stay the authority. The own-signature check throws this error too,
+ * naming the account key whose signature the wallet added instead.
  */
 export class WalletSignerMismatchError extends Error {
   constructor(
