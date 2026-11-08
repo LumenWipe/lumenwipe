@@ -6,7 +6,9 @@ API-built, unsigned close transaction and asserts it does exactly what the user 
 
 It is not a port. The bundle is compiled from the web's own
 [`apps/web/lib/stellar/verify.ts`](https://github.com/LumenWipe/lumenwipe/blob/main/apps/web/lib/stellar/verify.ts),
-`exit-expectations.ts` and `verification-error.ts`, so there is one implementation.
+`exit-expectations.ts` and `verification-error.ts`, so there is one implementation. A shared
+conformance vector set (`vectors/close-v1.json`) runs against this package and against the web
+verifier in CI.
 
 ## Install
 
@@ -80,6 +82,18 @@ this package does not. So:
 
 `verifyCloseTransaction` also reads the system clock for the transaction's expiry: a transaction
 valid for more than 900 seconds from now is refused.
+
+## Conformance vectors
+
+`vectors/close-v1.json` (schema 1) lists accepted and rejected transactions with the full
+`VerifyCloseInput` for each, the clock to set (`nowSeconds`), and for a rejection the exact
+`VerificationError` message. Each rejection is one named mutation of an accepted vector. Every
+key in it is public; no secret is stored. Use it to test your own verifier, or a wrapper around
+this one:
+
+```ts
+import vectors from "@lumenwipe/verify/vectors/close-v1.json" with { type: "json" };
+```
 
 ## License
 

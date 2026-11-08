@@ -14,3 +14,4 @@ release is cut.
 - `exitExpectations(accountState, network)`, the DeFi half of the expectation.
 - `VerificationError`, and the documented input types `VerifyCloseInput`,
   `CloseExpectationInput` and `ExitExpectations`.
+- `vectors/close-v1.json`, the conformance vector set (schema 1).

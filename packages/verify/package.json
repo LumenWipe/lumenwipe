@@ -17,10 +17,12 @@
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
       }
-    }
+    },
+    "./vectors/close-v1.json": "./vectors/close-v1.json"
   },
   "files": [
     "dist",
+    "vectors",
     "README.md"
   ],
   "sideEffects": false,
@@ -47,8 +49,10 @@
     "build:types": "bun run --filter '@lumenwipe/types' build && tsup && tsc -p tsconfig.build.json",
     "check-api": "api-extractor run",
     "type-check": "tsc --noEmit && tsc -p tests/tsconfig.json --noEmit",
-    "lint": "eslint src tests",
-    "test": "bun run build:js && bun test tests"
+    "lint": "eslint src scripts tests",
+    "test": "bun run build:js && bun test tests",
+    "vectors": "bun scripts/generate-vectors.ts",
+    "vectors:check": "bun scripts/generate-vectors.ts --check"
   },
   "peerDependencies": {
     "@stellar/stellar-sdk": "17.4.0"
