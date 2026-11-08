@@ -73,7 +73,7 @@ jobs:
       - name: Check the release agrees with the repository and npm
         env:
           TAG: ${{ steps.tag.outputs.tag }}
-        run: bun scripts/sdk-release.ts publish
+        run: bun scripts/package-release.ts sdk publish
 
       # Same gate as CI's sdk matrix entry, run again here since a tag push does not
       # depend on the CI workflow having run against this exact ref.

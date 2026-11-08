@@ -1,0 +1,130 @@
+name: Publish verify (npm)
+
+# Publishes @lumenwipe/verify, the reference verifier, from a version tag (verify-vX.Y.Z), so a
+# publish is always a deliberate, versioned release. workflow_dispatch is a manual escape hatch for
+# a re-run (the tag was pushed but the run failed before npm publish completed). It never runs on a
+# pull request, and it writes nothing to the repository: no release, no tag, no write permission.
+# The same gates as publish-sdk.yml; see RELEASING.md.
+on:
+  push:
+    tags:
+      - "verify-v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing verify-vX.Y.Z tag to publish from"
+        required: true
+
+permissions: {}
+
+# One run per tag at a time, and a publish in progress is never cancelled halfway.
+concurrency:
+  group: publish-verify-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write # required for npm provenance attestation
+    environment: npm-publish
+    steps:
+      # The tag reaches the shell through env only, and must be exactly verify-vX.Y.Z before
+      # anything uses it: the glob above also matches verify-v1.2.3-rc.1, and a dispatch input is
+      # free text.
+      - name: Validate the tag
+        id: tag
+        env:
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          if ! [[ "$TAG" =~ ^verify-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::the tag is not of the form verify-vX.Y.Z"
+            exit 1
+          fi
+          {
+            echo "tag=$TAG"
+            echo "version=${TAG#verify-v}"
+          } >> "$GITHUB_OUTPUT"
+
+      # Full history so the agreement check can prove the tag's commit is on main.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ steps.tag.outputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.4
+
+      - name: Set up Node for npm
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # Cheapest gate first. Fails when the tag is not on main, is not the checked-out commit, or
+      # disagrees with package.json or CHANGELOG.md, and when the version is already on npm or not
+      # above npm latest.
+      - name: Check the release agrees with the repository and npm
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: bun scripts/package-release.ts verify publish
+
+      # Same gate as CI's verify matrix entry, run again here since a tag push does not depend on
+      # the CI workflow having run against this exact ref. `test` builds the bundle and runs the
+      # conformance vectors against it in both module formats, and checks the vectors are current.
+      - name: Type-check, lint, test
+        run: |
+          bun run --filter '@lumenwipe/verify' type-check
+          bun run --filter '@lumenwipe/verify' lint
+          bun run --filter '@lumenwipe/verify' test
+
+      - name: Build verify types
+        run: bun run --filter '@lumenwipe/verify' build:types
+
+      # `build:dist` rolls up the API report in --local/auto-fix mode, which would silently
+      # rewrite etc/verify.api.md instead of catching drift, so the strict check runs first.
+      - name: Verify the public API report matches
+        run: bun run --filter '@lumenwipe/verify' check-api
+
+      - name: Build
+        run: bun run --filter '@lumenwipe/verify' build:dist
+
+      # Packs the tarball, checks its exact file list, publint and attw. The tarball it checked is
+      # the one published below, not a fresh pack of the directory.
+      - name: Pack and check the tarball
+        id: pack
+        env:
+          PACK_OUT_DIR: ${{ runner.temp }}/verify-pack
+        run: bun run --filter '@lumenwipe/verify' pack:check
+
+      - name: Publish to npm
+        env:
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish "$TARBALL" --provenance --access public
+
+      # The registry can take a while to serve a new version; the run is green only once
+      # `latest` is the version just published.
+      - name: Wait for npm latest to be the new version
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          for attempt in $(seq 1 20); do
+            latest="$(npm view @lumenwipe/verify dist-tags.latest 2>/dev/null || true)"
+            if [ "$latest" = "$VERSION" ]; then
+              echo "npm latest is $VERSION."
+              exit 0
+            fi
+            echo "npm latest is \"$latest\", waiting for $VERSION (attempt $attempt of 20)"
+            sleep 15
+          done
+          echo "::error::npm latest never became $VERSION"
+          exit 1

@@ -23,7 +23,9 @@
   "files": [
     "dist",
     "vectors",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "sideEffects": false,
   "publishConfig": {
@@ -44,10 +46,13 @@
     "conformance"
   ],
   "scripts": {
-    "build": "bun run build:types && api-extractor run --local && cp dist/index.d.ts dist/index.d.cts",
+    "build": "bun run build:types && bun run build:dist",
     "build:js": "tsup",
     "build:types": "bun run --filter '@lumenwipe/types' build && tsup && tsc -p tsconfig.build.json",
+    "build:dist": "api-extractor run --local && cp dist/index.d.ts dist/index.d.cts",
     "check-api": "api-extractor run",
+    "pack:check": "bun scripts/pack-check.ts",
+    "release:check": "bun ../../scripts/package-release.ts verify offline",
     "type-check": "tsc --noEmit && tsc -p tests/tsconfig.json --noEmit",
     "lint": "eslint src scripts tests",
     "test": "bun run build:js && bun test tests",
@@ -58,6 +63,7 @@
     "@stellar/stellar-sdk": "17.4.0"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "0.18.5",
     "@eslint/js": "^10.0.1",
     "@lumenwipe/types": "workspace:*",
     "@microsoft/api-extractor": "^7.59.4",
@@ -68,6 +74,7 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "eslint": "^10.12.0",
     "globals": "^17.13.0",
+    "publint": "0.3.25",
     "tsup": "^9.0.0",
     "typescript": "^6.0.3"
   }

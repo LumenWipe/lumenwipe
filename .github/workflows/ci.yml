@@ -34,11 +34,13 @@ jobs:
             }
           # The reference verifier, compiled from the web's verify(). `test` builds the bundle
           # first and runs the conformance vectors against it in both module formats; the web
-          # row runs the same vectors against the source. check-api holds its public types.
+          # row runs the same vectors against the source. check-api holds its public types,
+          # before build:dist rolls them up in --local mode. pack:check checks the packed tarball
+          # (file list, publint, attw) and release:check that the version and changelog agree.
           - {
               name: "verify",
               pkg: "@lumenwipe/verify",
-              checks: "type-check lint test build:types check-api",
+              checks: "type-check lint test build:types check-api build:dist pack:check release:check",
             }
           # test:coverage runs the same suite as `test` with a coverage report printed to the
           # log - same pass/fail outcome, no threshold gate, just visibility into what's covered.
@@ -280,11 +282,15 @@ jobs:
           docker logs api-smoke
           exit 1
 
-  # The version only moves in a release PR (RELEASING.md), so an SDK change records itself under
-  # [Unreleased] instead. sdk.api.md is compared by content: it reflects packages/types surface
-  # changes too. Skipped on push, which the aggregate gate treats as passing.
-  sdk-changelog:
-    name: sdk changelog
+  # The version only moves in a release PR (RELEASING.md), so a change to what a published package
+  # ships records itself under [Unreleased] instead (scripts/package-release.ts, changelog mode).
+  # sdk: packages/sdk/src and, by content, etc/sdk.api.md, which reflects packages/types surface
+  # changes too. verify: every file tsup compiles into the bundle (the web's verify.ts and what it
+  # imports, the bundled registries), the vectors, the API report, tsup.config.ts and the
+  # consumer-visible package.json fields. Skipped on push, which the aggregate gate treats as
+  # passing.
+  changelog:
+    name: changelog (sdk, verify)
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -294,41 +300,32 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
-      - name: Require an Unreleased changelog entry when the SDK's source or public surface changed
-        run: |
-          BASE="origin/${{ github.base_ref }}"
-          REASON=""
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.4
 
-          if git diff --name-only "$BASE"...HEAD | grep -qE '^packages/sdk/src/'; then
-            REASON="packages/sdk/src/"
-          fi
-          if git cat-file -e "$BASE:packages/sdk/etc/sdk.api.md" 2>/dev/null &&
-            ! git diff --quiet "$BASE"...HEAD -- packages/sdk/etc/sdk.api.md; then
-            REASON="${REASON:+$REASON, }packages/sdk/etc/sdk.api.md"
-          fi
+      - name: Require an [Unreleased] entry when what the SDK ships changed
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: bun scripts/package-release.ts sdk changelog
 
-          if [ -z "$REASON" ]; then
-            echo "No packages/sdk/src change and no packages/sdk/etc/sdk.api.md content change - nothing to check."
-            exit 0
-          fi
+      - name: Require an [Unreleased] entry when what the verifier ships changed
+        if: ${{ !cancelled() }}
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: bun scripts/package-release.ts verify changelog
 
-          unreleased() { awk '/^## \[Unreleased\]/ { f = 1; next } /^## \[/ { f = 0 } f'; }
-          BEFORE=$(git show "$BASE:packages/sdk/CHANGELOG.md" | unreleased)
-          AFTER=$(unreleased < packages/sdk/CHANGELOG.md)
-          if [ "$BEFORE" = "$AFTER" ]; then
-            echo "::error::$REASON changed, but packages/sdk/CHANGELOG.md has no new entry under [Unreleased]. Add one - see RELEASING.md."
-            exit 1
-          fi
-          echo "[Unreleased] entry added for: $REASON"
-
-  # The SDK's version, SDK_VERSION, CHANGELOG.md headings and links and the docs pin must agree
-  # with each other, with the sdk-v* tags and with npm (scripts/sdk-release.ts). A merged release
-  # that is not on npm yet is only a warning, so no PR waits on a publish; a release PR whose
-  # version is already on npm, or not above npm latest or the base branch, fails. Read-only:
-  # npm view and git ls-remote, retried.
-  sdk-release-agreement:
-    name: sdk release agreement
+  # Each published package's version, CHANGELOG.md headings and links (and, for the SDK,
+  # SDK_VERSION and the docs pin) must agree with each other, with its tags (sdk-v*, verify-v*) and
+  # with npm (scripts/package-release.ts). A merged release that is not on npm yet, or a package
+  # whose first release is not cut yet, is only a warning, so no PR waits on a publish; a release
+  # PR whose version is already on npm, or not above npm latest or the base branch, fails.
+  # Read-only: npm view and git ls-remote, retried.
+  release-agreement:
+    name: release agreement
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -343,13 +340,19 @@ jobs:
         with:
           bun-version: 1.4.4
 
-      - name: Test the release agreement check
-        run: bun test ./scripts/sdk-release.test.ts
+      - name: Test the release checks
+        run: bun test ./scripts/package-release.test.ts
 
       - name: Check the SDK release agrees with its tags and npm
         env:
           BASE_REF: ${{ github.base_ref }}
-        run: bun scripts/sdk-release.ts pr
+        run: bun scripts/package-release.ts sdk pr
+
+      - name: Check the verifier release agrees with its tags and npm
+        if: ${{ !cancelled() }}
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: bun scripts/package-release.ts verify pr
 
   # Findings go to the Security tab and do not fail the job. The repo's CodeQL default setup
   # must stay off, or GitHub rejects this upload as a conflicting configuration.
@@ -661,8 +664,8 @@ jobs:
         integration-funded,
         docker,
         prettier,
-        sdk-changelog,
-        sdk-release-agreement,
+        changelog,
+        release-agreement,
         codeql,
         semgrep,
         gitleaks,
@@ -729,12 +732,12 @@ jobs:
             exit 1
           fi
           # skipped (not run on a push event) counts as passing - only a real failure blocks.
-          if [ "${{ needs.sdk-changelog.result }}" != "success" ] && [ "${{ needs.sdk-changelog.result }}" != "skipped" ]; then
-            echo "SDK changed without an [Unreleased] changelog entry - see RELEASING.md."
+          if [ "${{ needs.changelog.result }}" != "success" ] && [ "${{ needs.changelog.result }}" != "skipped" ]; then
+            echo "What the SDK or the verifier ships changed without an [Unreleased] changelog entry - see RELEASING.md."
             exit 1
           fi
-          if [ "${{ needs.sdk-release-agreement.result }}" != "success" ]; then
-            echo "The SDK's version, changelog, docs pin, tags and npm disagree - see the sdk release agreement job."
+          if [ "${{ needs.release-agreement.result }}" != "success" ]; then
+            echo "A published package's version, changelog, tags and npm disagree - see the release agreement job."
             exit 1
           fi
           echo "All package checks passed."
