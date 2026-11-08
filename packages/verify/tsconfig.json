@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM"],
+    "types": [],
+    "noEmit": true,
+    // Only for the web modules the facade compiles: they import through apps/web's own aliases.
+    // The facade itself reaches the web by relative path, and eslint allows only verify,
+    // exit-expectations and verification-error.
+    "paths": {
+      "@/*": ["../../apps/web/*"],
+      "@registry/*": ["../../apps/api/src/config/*"],
+      "@lumenwipe/types": ["../types/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "dist-types"]
+}
