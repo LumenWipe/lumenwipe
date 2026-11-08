@@ -1,4 +1,5 @@
 import embedded from "@registry/exchange-registry.json";
+import { isUsableAt, mergeServedRegistry, type RegistryEntry } from "./merge";
 
 /**
  * The exchange registry, as the browser sees it.
@@ -16,14 +17,7 @@ import embedded from "@registry/exchange-registry.json";
  * on the same date.
  */
 
-export interface RegistryEntry {
-  address: string;
-  name: string;
-  domain: string;
-  requiresMediator: boolean;
-  requiresMemo: boolean;
-  memoType: "text" | "id" | "hash";
-}
+export type { RegistryEntry };
 
 export interface RegistrySnapshot {
   entries: RegistryEntry[];
@@ -62,6 +56,12 @@ export function activeRegistry(): RegistrySnapshot {
   return current;
 }
 
+/** The bundled floor, whatever has been served since. What a per-call served snapshot merges
+ *  over, so the verifier never depends on what an earlier fetch left in module state. */
+export function bundledRegistry(): RegistrySnapshot {
+  return EMBEDDED;
+}
+
 /**
  * Whether the active registry may still be relied on.
  *
@@ -71,75 +71,12 @@ export function activeRegistry(): RegistrySnapshot {
  * investigate from, which is precisely the outcome worth refusing over.
  */
 export function isRegistryUsable(now: Date = new Date()): boolean {
-  const until = Date.parse(`${current.validUntil}T23:59:59Z`);
-  return Number.isFinite(until) && now.getTime() <= until;
+  return isUsableAt(current.validUntil, now);
 }
-
-/** Shape-checks one served entry. An `as` cast would let `entries: [null]` reach the render
- *  path and throw a TypeError there instead. */
-function isUsableEntry(e: unknown): e is RegistryEntry {
-  if (typeof e !== "object" || e === null) return false;
-  const r = e as Record<string, unknown>;
-  return (
-    typeof r.address === "string" &&
-    r.address.startsWith("G") &&
-    r.address.length === 56 &&
-    typeof r.name === "string" &&
-    typeof r.requiresMediator === "boolean" &&
-    typeof r.requiresMemo === "boolean" &&
-    (r.memoType === "text" || r.memoType === "id" || r.memoType === "hash")
-  );
-}
-
-/**
- * Merges a served entry over its embedded counterpart, allowing only tightening.
- *
- * This is the heart of the thing. Serving the registry moved `verify()`'s memo expectation -
- * previously the one input that came from neither the user nor the API - onto the API itself,
- * which is exactly the circularity the trust anchor exists to avoid. A hostile response could
- * return the real Coinbase entry with `requiresMemo: false`: the UI would ask for no memo,
- * `isCexAddress` would still be true so the unrecognized-destination confirmation would not
- * appear either, and `verify()` would compute `memoRequired: false` and demand nothing. The
- * user signs, the exchange receives an unattributable payment, and the source account is gone.
- *
- * So the served copy is an upper bound on trust, not a replacement: for an address the bundle
- * already knows, a served entry may only make the rules STRICTER. Relaxing one is refused and
- * the embedded entry stands. Addresses the bundle does not know are purely additive - that is
- * the whole point of serving it: a new address gains its memo rule and the
- * unrecognized-destination confirmation stops applying, but it never enables the mediated
- * hand-off (`mediatorAllowedFor`).
- */
-function tightenedOver(embeddedEntry: RegistryEntry, servedEntry: RegistryEntry): RegistryEntry {
-  return {
-    ...servedEntry,
-    requiresMemo: embeddedEntry.requiresMemo || servedEntry.requiresMemo,
-    requiresMediator: embeddedEntry.requiresMediator || servedEntry.requiresMediator,
-    // A memo type may be corrected (text -> id is a real, common change) but only while the
-    // requirement itself stands; it cannot be used to smuggle in "no memo".
-    memoType: servedEntry.memoType,
-  };
-}
-
-/** How far past the embedded copy's own expiry a served payload may extend validity. Without
- *  this the endpoint self-attests its freshness and the expiry gate constrains nobody. */
-const MAX_EXTENSION_DAYS = 120;
 
 /** The registry is small and served from our own API; anything slower than this is a stall,
  *  not a slow response. */
 const REGISTRY_FETCH_TIMEOUT_MS = 8_000;
-
-function boundedValidUntil(embeddedUntil: string, servedUntil: string): string {
-  const embedded = Date.parse(`${embeddedUntil}T23:59:59Z`);
-  const served = Date.parse(`${servedUntil}T23:59:59Z`);
-  if (!Number.isFinite(served)) return embeddedUntil;
-  // Never adopt an expiry EARLIER than the bundle's own. The two deploy independently, so the
-  // web can ship a freshly re-verified registry while the API still serves the previous one;
-  // taking the older date would block exchange closes using rules the page in front of the
-  // user has current. Bounded above so the endpoint cannot extend its own validity forever.
-  const cap = embedded + MAX_EXTENSION_DAYS * 86_400_000;
-  if (served < embedded) return embeddedUntil;
-  return served <= cap ? servedUntil : embeddedUntil;
-}
 
 /**
  * Fetches the served registry and merges it over the bundled floor.
@@ -162,33 +99,16 @@ export async function loadServedRegistry(
     // error, no retry and no way out but a reload.
     const res = await fetchImpl("/api/config/exchange-registry");
     if (!res.ok) return current;
-    const body = (await res.json()) as Partial<RegistrySnapshot>;
-    if (
-      !Array.isArray(body.entries) ||
-      typeof body.lastVerified !== "string" ||
-      typeof body.validUntil !== "string"
-    ) {
-      return current;
-    }
-
-    const servedEntries = body.entries.filter(isUsableEntry);
-    const embeddedByAddress = new Map(EMBEDDED.entries.map((e) => [e.address, e]));
-    const merged = new Map(embeddedByAddress);
-    for (const servedEntry of servedEntries) {
-      const embeddedEntry = embeddedByAddress.get(servedEntry.address);
-      merged.set(
-        servedEntry.address,
-        embeddedEntry ? tightenedOver(embeddedEntry, servedEntry) : servedEntry
-      );
-    }
+    const merged = mergeServedRegistry(EMBEDDED, await res.json());
+    if (merged === null) return current;
 
     current = {
       // Every embedded address survives: a served payload cannot make the client forget an
       // exchange it already knew, which would turn a known deposit address back into an
       // "unrecognized" one and route it through a confirmation instead of the mediator.
-      entries: [...merged.values()],
-      lastVerified: body.lastVerified,
-      validUntil: boundedValidUntil(EMBEDDED.validUntil, body.validUntil),
+      entries: merged.entries,
+      lastVerified: merged.lastVerified,
+      validUntil: merged.validUntil,
       served: true,
     };
     return current;

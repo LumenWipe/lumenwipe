@@ -103,6 +103,21 @@ export interface CloseExpectationInput extends ExitExpectations {
 }
 
 // @public
+export interface ExchangeRegistryEntry {
+    // (undocumented)
+    address: string;
+    // (undocumented)
+    domain: string;
+    memoType: "text" | "id" | "hash";
+    // (undocumented)
+    name: string;
+    // (undocumented)
+    requiresMediator: boolean;
+    // (undocumented)
+    requiresMemo: boolean;
+}
+
+// @public
 export interface ExitExpectations {
     conversionContracts: string[];
     debtTokenContracts: string[];
@@ -127,6 +142,13 @@ export type Network = "mainnet" | "testnet";
 
 // @public
 export function requiresMediator(address: string): boolean;
+
+// @public
+export interface ServedRegistry {
+    entries: ExchangeRegistryEntry[];
+    lastVerified: string;
+    validUntil: string;
+}
 
 // @public
 export interface TokenConversionChoice {
@@ -158,6 +180,7 @@ export interface VerifyCloseInput {
     expected: CloseExpectationInput;
     network: Network;
     preAuthorized?: boolean;
+    servedRegistry?: ServedRegistry;
     unsignedXdr: string;
 }
 

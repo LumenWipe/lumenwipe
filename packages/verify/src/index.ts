@@ -6,7 +6,12 @@
  *
  * @packageDocumentation
  */
-import type { AccountSigner, AccountState, AccountThresholds } from "@lumenwipe/types";
+import type {
+  AccountSigner,
+  AccountState,
+  AccountThresholds,
+  ExchangeRegistryEntry,
+} from "@lumenwipe/types";
 import { verifyCloseTransaction as webVerifyCloseTransaction } from "../../../apps/web/lib/stellar/verify";
 import { exitExpectations as webExitExpectations } from "../../../apps/web/lib/stellar/exit-expectations";
 import { mediatorAllowedFor } from "../../../apps/web/lib/exchange-registry";
@@ -15,7 +20,7 @@ export {
   VerificationError,
   type VerificationErrorCode,
 } from "../../../apps/web/lib/stellar/verification-error";
-export type { AccountSigner, AccountState, AccountThresholds };
+export type { AccountSigner, AccountState, AccountThresholds, ExchangeRegistryEntry };
 
 /** The Stellar network a transaction is verified for. Selects the network passphrase the XDR is
  *  decoded with and the bundled registry entries that apply. */
@@ -101,7 +106,8 @@ export interface ExitExpectations {
  *
  * The memo policy for a listed exchange (whether a memo is required, its type, whether the merge
  * must go through the shared intermediary) is not an input: the verifier derives it from the
- * exchange registry bundled in this package.
+ * exchange registry bundled in this package, tightened by a served snapshot when one is passed
+ * ({@link VerifyCloseInput.servedRegistry}).
  */
 export interface CloseExpectationInput extends ExitExpectations {
   /** The account being closed. */
@@ -133,6 +139,35 @@ export interface CloseExpectationInput extends ExitExpectations {
   tokenConversions: Record<string, TokenConversionChoice>;
 }
 
+/**
+ * A served exchange registry: the body of `GET /v1/config/exchange-registry` (the SDK's
+ * `client.getExchangeRegistry()`), passed as is. Only these three fields are read.
+ *
+ * It is not authenticated, and it does not need to be for what it can do: it is merged over the
+ * registry bundled in this package and can only make verification stricter.
+ *
+ * - A bundled exchange is never removed, and its memo requirement and its refusal of a direct
+ *   merge are never turned off.
+ * - An address it adds is checked as an exchange: a direct merge into it is refused when it
+ *   needs the intermediary, a memo is required when it needs one, and a transfer to it is refused.
+ * - It never enables the mediated hand-off. That stays limited to the exchanges the bundled
+ *   registry lists ({@link requiresMediator}), so an address only the snapshot lists as needing
+ *   the intermediary refuses both shapes until this package is updated.
+ * - Its `validUntil` may move the bundled expiry later, by at most 120 days, never earlier.
+ *
+ * Two fields are taken from it rather than tightened: an entry's `memoType` (exchanges do change
+ * text to id) and `name` (only used in refusal messages). A wrong memo type can make a deposit
+ * uncreditable, but it cannot change where funds go.
+ */
+export interface ServedRegistry {
+  /** The listed exchanges. An entry that is not well formed is dropped. */
+  entries: ExchangeRegistryEntry[];
+  /** When the entries were last checked (YYYY-MM-DD). Not used to decide anything. */
+  lastVerified: string;
+  /** The date (YYYY-MM-DD) after which the registry is not relied on. */
+  validUntil: string;
+}
+
 /** The input to {@link verifyCloseTransaction}. */
 export interface VerifyCloseInput {
   /** The unsigned transaction envelope as returned by the API (`CloseTransaction.xdr`), base64. */
@@ -143,6 +178,11 @@ export interface VerifyCloseInput {
   preAuthorized?: boolean;
   /** What the transaction must do, from the user's inputs and the reviewed account read. */
   expected: CloseExpectationInput;
+  /** A served exchange registry to apply over the bundled one, stricter-only. Omit it to use the
+   *  bundled registry alone. A value that is not a registry (no `entries` list, no
+   *  `lastVerified` or `validUntil` string) is refused with `registry_snapshot_invalid` rather
+   *  than ignored. */
+  servedRegistry?: ServedRegistry;
 }
 
 /**
@@ -150,9 +190,10 @@ export interface VerifyCloseInput {
  * says, using the exchange and contract registries bundled in this package. Returns only when the
  * transaction may be signed; throws {@link VerificationError} on any mismatch.
  *
- * Synchronous and offline: it reads no network and no page state. It reads the system clock
- * twice: for the transaction's expiry (at most 900 seconds ahead) and for the bundled exchange
- * registry's `validUntil`, past which an exchange close is refused until this package is updated.
+ * Synchronous and offline: it reads no network and no page state, and keeps no state between
+ * calls. It reads the system clock twice: for the transaction's expiry (at most 900 seconds
+ * ahead) and for the exchange registry's `validUntil`, past which an exchange close is refused
+ * until this package is updated or a served snapshot extends it.
  * Run it once per transaction, immediately before each signature.
  */
 export function verifyCloseTransaction(input: VerifyCloseInput): void {
@@ -175,7 +216,8 @@ export function exitExpectations(
  * Whether a close to `address` goes through the shared intermediary: true only for an exchange
  * the registry bundled in this package lists as unable to receive an account merge. The same
  * rule `verifyCloseTransaction` applies, so an integrator decides from it, never from the API's
- * response, whether a transaction needs the intermediary's co-signature.
+ * response, whether a transaction needs the intermediary's co-signature. A served snapshot never
+ * changes this answer, so it takes none.
  */
 export function requiresMediator(address: string): boolean {
   return mediatorAllowedFor(address);

@@ -1,10 +1,12 @@
 import { NETWORK_PASSPHRASES, type Network } from "@/config/networks";
 import {
+  bundledRegistry,
   isRegistryUsable,
   lookupExchange,
   mediatorAllowedFor,
-  requiresMediatorForAddress,
+  type RegistryEntry,
 } from "@/lib/exchange-registry";
+import { isUsableAt, mergeServedRegistry } from "@/lib/exchange-registry/merge";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import { VerificationError } from "@/lib/stellar/verification-error";
 import { xlmToStroops } from "@/lib/utils/amounts";
@@ -39,8 +41,8 @@ export interface CloseExpectation {
   mediatorRequired: boolean;
   /** Whether the destination cannot be merged into directly: an exchange the registry lists as
    *  needing the intermediary, which credits a payment carrying a memo but not an account merge.
-   *  `verifyCloseTransaction` derives it from the active registry, whose served entries can
-   *  only add to the bundled ones. */
+   *  `verifyCloseTransaction` derives it from the active registry (or the served snapshot passed
+   *  to it), whose served entries can only add to the bundled ones. */
   directMergeRefused: boolean;
   /** The account's native balance in XLM as the client last read it. The floor under the
    *  forwarded amount: the intermediary is only a conduit if what leaves it is what arrived. */
@@ -1490,13 +1492,61 @@ function assertMemo(intent: TxIntent, expected: CloseExpectation): void {
   }
 }
 
-function depositAddressesOf(transfers: { destination: string }[]): Record<string, string> {
+function depositAddressesOf(
+  transfers: { destination: string }[],
+  lookup: (address: string) => RegistryEntry | null
+): Record<string, string> {
   const listed: Record<string, string> = {};
   for (const { destination } of transfers) {
-    const exchange = lookupExchange(destination);
+    const exchange = lookup(destination);
     if (exchange) listed[destination] = exchange.name;
   }
   return listed;
+}
+
+/** A served exchange registry payload, as `GET /v1/config/exchange-registry` returns it. Only these
+ *  fields are read, and none is trusted: every one is shape-checked and merged stricter-only. */
+export interface ServedRegistryInput {
+  entries: RegistryEntry[];
+  lastVerified: string;
+  validUntil: string;
+}
+
+/** The exchange registry one verification reads: its entries and whether it is still usable. */
+interface RegistryView {
+  lookup: (address: string) => RegistryEntry | null;
+  usable: () => boolean;
+}
+
+/**
+ * The registry for one call. With no snapshot, the one the web holds in module state, exactly as
+ * before. With one, that snapshot merged over the bundled copy, never over module state, so a
+ * call depends on its arguments alone. A snapshot that is not a registry at all is refused: the
+ * caller asked for it to be applied, and quietly verifying without it would check a newly listed
+ * exchange as a plain wallet.
+ *
+ * The mediated hand-off is not part of the view. It stays decided by the bundled copy alone
+ * (`mediatorAllowedFor`): enabling it from served data would let the party that builds the
+ * transaction and reports the balance also choose which closes may route through an
+ * intermediary it names.
+ */
+function registryView(served: ServedRegistryInput | undefined): RegistryView {
+  if (served === undefined) {
+    return { lookup: lookupExchange, usable: () => isRegistryUsable() };
+  }
+  const merged = mergeServedRegistry(bundledRegistry(), served);
+  if (merged === null) {
+    throw new VerificationError(
+      "registry_snapshot_invalid",
+      "The exchange registry passed to the verifier is not a registry (it needs an entries list, " +
+        "lastVerified and validUntil), so this close cannot be checked against it."
+    );
+  }
+  const byAddress = new Map(merged.entries.map((e) => [e.address, e]));
+  return {
+    lookup: (address) => byAddress.get(address) ?? null,
+    usable: () => isUsableAt(merged.validUntil, new Date()),
+  };
 }
 
 /**
@@ -1510,6 +1560,9 @@ export function verifyCloseTransaction(opts: {
   unsignedXdr: string;
   network: Network;
   preAuthorized?: boolean;
+  /** A served exchange registry to apply over the bundled one, stricter-only. Omitted, the
+   *  registry the web holds is read. */
+  servedRegistry?: ServedRegistryInput;
   expected: {
     source: string;
     destination: string;
@@ -1548,7 +1601,8 @@ export function verifyCloseTransaction(opts: {
   };
 }): void {
   const intent = intentFromXdr(opts.unsignedXdr, NETWORK_PASSPHRASES[opts.network]);
-  const exchange = lookupExchange(opts.expected.destination);
+  const registry = registryView(opts.servedRegistry);
+  const exchange = registry.lookup(opts.expected.destination);
 
   // Asserted here, not only in the UI. The plan view disables its button on an expired
   // registry, but that is a boolean feeding a control - it does not survive a refactor, a new
@@ -1556,7 +1610,7 @@ export function verifyCloseTransaction(opts: {
   // again. This is the last thing that runs before a signature, so the invariant belongs here:
   // an exchange close on memo rules nobody has re-checked succeeds on-chain and is credited to
   // nobody.
-  if (exchange !== null && !isRegistryUsable()) {
+  if (exchange !== null && !registry.usable()) {
     throw new VerificationError(
       "registry_expired",
       "The exchange deposit rules have expired and have not been re-verified, so this close " +
@@ -1567,12 +1621,13 @@ export function verifyCloseTransaction(opts: {
   // close that needs the intermediary must use it whatever the session or the store says.
   assertCloseIntent(intent, {
     ...opts.expected,
-    depositAddresses: depositAddressesOf([
-      ...Object.values(opts.expected.transfers),
-      ...Object.values(opts.expected.tokenTransfers),
-    ]),
+    depositAddresses: depositAddressesOf(
+      [...Object.values(opts.expected.transfers), ...Object.values(opts.expected.tokenTransfers)],
+      registry.lookup
+    ),
+    // From the bundled copy alone, whatever was served: see `registryView`.
     mediatorRequired: mediatorAllowedFor(opts.expected.destination),
-    directMergeRefused: requiresMediatorForAddress(opts.expected.destination),
+    directMergeRefused: exchange?.requiresMediator ?? false,
     memoRequired: exchange?.requiresMemo ?? false,
     memoType: exchange?.memoType ?? opts.expected.memoType,
     nowSeconds: Math.floor(Date.now() / 1000),

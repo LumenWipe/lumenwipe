@@ -36,6 +36,27 @@ describe("close-v1.json", () => {
     ]) {
       expect(byName.get(name)?.verdict).toBe("reject");
     }
+    // A served registry snapshot: an exchange it adds, a relaxation and a removal it cannot
+    // make, the intermediary it cannot enable, and the validity it can only move later.
+    for (const name of [
+      "exchange-close-under-relaxing-snapshot",
+      "exchange-close-under-emptied-snapshot",
+      "close-to-exchange-listed-by-snapshot",
+      "exchange-close-under-snapshot-with-earlier-expiry",
+      "exchange-close-past-bundled-expiry-extended-by-snapshot",
+    ]) {
+      expect(byName.get(name)?.verdict).toBe("accept");
+    }
+    for (const name of [
+      "snapshot-lists-destination-as-needing-intermediary",
+      "snapshot-enables-intermediary-for-destination",
+      "snapshot-requires-memo-for-destination",
+      "snapshot-lists-transfer-destination-as-deposit-address",
+      "snapshot-extends-expiry-past-cap",
+      "snapshot-not-a-registry",
+    ]) {
+      expect(byName.get(name)?.verdict).toBe("reject");
+    }
     expect(rejects.length).toBeGreaterThanOrEqual(10);
     expect(vectors.filter((v) => v.verdict === "accept" && v.provenance).length).toBe(2);
   });
@@ -47,8 +68,12 @@ describe("close-v1.json", () => {
       expect(base?.verdict).toBe("accept");
       expect(vector.mutation.length).toBeGreaterThan(0);
       expect(vector.error.message.length).toBeGreaterThan(0);
-      expect(vector.input.unsignedXdr).not.toBe(base!.input.unsignedXdr);
-      // Only the transaction is mutated: the expectation and the clock stay the base's.
+      // The transaction, the served snapshot, or both are mutated: the expectation and the clock
+      // stay the base's.
+      const sameTransaction = vector.input.unsignedXdr === base!.input.unsignedXdr;
+      const sameSnapshot =
+        JSON.stringify(vector.input.servedRegistry) === JSON.stringify(base!.input.servedRegistry);
+      expect(sameTransaction && sameSnapshot).toBe(false);
       expect(vector.input.expected).toEqual(base!.input.expected);
       expect(vector.nowSeconds).toBe(base!.nowSeconds);
     }
