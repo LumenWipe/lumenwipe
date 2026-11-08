@@ -119,8 +119,9 @@ export interface CloseExpectationInput extends ExitExpectations {
   nativeBalance: string;
   /** The memo the user confirmed, or null. */
   memo: string | null;
-  /** The type the user confirmed for `memo`, or null with no memo. A listed exchange's registry
-   *  type replaces it. */
+  /** The type the user confirmed for `memo`, or null with no memo. The bundled registry's type
+   *  replaces it for an exchange the bundle lists; a served registry's type that differs from it
+   *  is refused (`registry_memo_type_unconfirmed`), never adopted. */
   memoType: "text" | "id" | "hash" | null;
   /** Canonical `CODE:ISSUER` of each trustline a claimable balance claim may add and remove. */
   claimTrustlineAssets: string[];
@@ -154,10 +155,12 @@ export interface CloseExpectationInput extends ExitExpectations {
  *   registry lists ({@link requiresMediator}), so an address only the snapshot lists as needing
  *   the intermediary refuses both shapes until this package is updated.
  * - Its `validUntil` may move the bundled expiry later, by at most 120 days, never earlier.
+ * - It never decides a memo type. A different type for a bundled exchange is refused with
+ *   `registry_memo_type_conflict`, and a type for an address it adds that differs from the one
+ *   the user confirmed is refused with `registry_memo_type_unconfirmed`. A memo sent under the
+ *   wrong type reaches the exchange and is credited to nobody.
  *
- * Two fields are taken from it rather than tightened: an entry's `memoType` (exchanges do change
- * text to id) and `name` (only used in refusal messages). A wrong memo type can make a deposit
- * uncreditable, but it cannot change where funds go.
+ * An entry's `name` is taken from it, and only used in refusal messages.
  */
 export interface ServedRegistry {
   /** The listed exchanges. An entry that is not well formed is dropped. */

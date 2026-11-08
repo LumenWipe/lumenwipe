@@ -4301,10 +4301,14 @@ describe("memo value and type", () => {
     const xdrOf = (memo?: Memo) => buildXdr([Operation.accountMerge({ destination: DEST })], memo);
     withServedEntry({ requiresMemo: false, memoType: "id" }, () => {
       expect(() => verifyMemo(xdrOf(Memo.id(MEMO)), DEST, MEMO, "id")).not.toThrow();
-      // The registry's type replaces whatever the caller passed.
-      expect(() => verifyMemo(xdrOf(Memo.id(MEMO)), DEST, MEMO, "text")).not.toThrow();
+      // A type only the served copy lists never replaces the one the caller confirmed.
       expectRefusal(
-        () => verifyMemo(xdrOf(Memo.text(MEMO)), DEST, MEMO, "text"),
+        () => verifyMemo(xdrOf(Memo.id(MEMO)), DEST, MEMO, "text"),
+        "registry_memo_type_unconfirmed",
+        "not the text memo you confirmed"
+      );
+      expectRefusal(
+        () => verifyMemo(xdrOf(Memo.text(MEMO)), DEST, MEMO, "id"),
         "memo_type_mismatch",
         "The transaction would send your memo as a text memo, not the id memo you confirmed."
       );
@@ -4670,12 +4674,78 @@ describe("a served registry snapshot passed to verifyCloseTransaction", () => {
     ).not.toThrow();
   });
 
-  test("its memo type replaces the one the user confirmed for an address it lists", () => {
+  test("a memo sent under another type than the one confirmed and listed is refused", () => {
     const served = snapshot([servedEntry(NEW_EXCHANGE, { requiresMemo: true, memoType: "id" })]);
+    expect(closeTo(NEW_EXCHANGE, "direct", { served, memo: "4411", memoType: "id" })).not.toThrow();
     expectRefusal(
-      closeTo(NEW_EXCHANGE, "direct", { served, memo: "4411", memoType: "text" }),
+      closeTo(NEW_EXCHANGE, "direct", {
+        served,
+        memo: "4411",
+        memoType: "id",
+        sentMemo: Memo.text("4411"),
+      }),
       "memo_type_mismatch",
       "not the id memo"
+    );
+  });
+
+  test("it cannot give a bundled exchange another memo type", () => {
+    const served = snapshot([
+      servedEntry(COINBASE, { requiresMediator: true, requiresMemo: true, memoType: "id" }),
+    ]);
+    const memo = { memo: "4411", memoType: "text" as const };
+    expectRefusal(
+      closeTo(COINBASE, "mediated", { ...memo, served, sentMemo: Memo.id("4411") }),
+      "registry_memo_type_conflict",
+      "different memo type"
+    );
+    expectRefusal(
+      closeTo(COINBASE, "mediated", { ...memo, served }),
+      "registry_memo_type_conflict",
+      "different memo type"
+    );
+  });
+
+  test("its memo type never silently replaces the one the user confirmed", () => {
+    const served = snapshot([servedEntry(NEW_EXCHANGE, { requiresMemo: true, memoType: "id" })]);
+    expectRefusal(
+      closeTo(NEW_EXCHANGE, "direct", {
+        served,
+        memo: "4411",
+        memoType: "text",
+        sentMemo: Memo.id("4411"),
+      }),
+      "registry_memo_type_unconfirmed",
+      "not the text memo you confirmed"
+    );
+  });
+
+  test("the registry the web holds refuses an exchange whose memo type it disputes", () => {
+    const before = activeRegistry();
+    setRegistry({ ...before, memoTypeDisputes: [COINBASE] });
+    try {
+      expectRefusal(
+        closeTo(COINBASE, "mediated", { memo: "deposit-1", memoType: "text" }),
+        "registry_memo_type_conflict",
+        "different memo type"
+      );
+    } finally {
+      setRegistry(before);
+    }
+    expect(closeTo(COINBASE, "mediated", { memo: "deposit-1", memoType: "text" })).not.toThrow();
+  });
+
+  test("a type passed with no memo is not held against its memo type", () => {
+    const served = snapshot([servedEntry(NEW_EXCHANGE, { memoType: "id" })]);
+    expect(closeTo(NEW_EXCHANGE, "direct", { served, memoType: "text" })).not.toThrow();
+  });
+
+  test("its memo type is never used in place of a confirmed type that could not be read", () => {
+    const served = snapshot([servedEntry(NEW_EXCHANGE, { requiresMemo: true, memoType: "text" })]);
+    expectRefusal(
+      closeTo(NEW_EXCHANGE, "direct", { served, memo: "deposit-1", memoType: null }),
+      "memo_type_unreadable",
+      "could not be read"
     );
   });
 

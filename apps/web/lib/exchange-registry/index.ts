@@ -25,6 +25,9 @@ export interface RegistrySnapshot {
   validUntil: string;
   /** True when this came from the API; false when it is the bundled floor. */
   served: boolean;
+  /** Listed addresses whose memo type the served copy disputes (see `mergeServedRegistry`).
+   *  Absent means none. */
+  memoTypeDisputes?: readonly string[];
 }
 
 function snapshotFrom(
@@ -110,6 +113,7 @@ export async function loadServedRegistry(
       lastVerified: merged.lastVerified,
       validUntil: merged.validUntil,
       served: true,
+      memoTypeDisputes: merged.memoTypeDisputes,
     };
     return current;
   } catch {
@@ -139,6 +143,15 @@ export function requiresMediatorForAddress(address: string): boolean {
  */
 export function mediatorAllowedFor(address: string): boolean {
   return EMBEDDED.entries.find((e) => e.address === address)?.requiresMediator === true;
+}
+
+/**
+ * Whether the served registry gives this listed address a memo type other than the bundled one.
+ * Neither copy can be trusted to be the current one, and a memo of the wrong type is credited to
+ * nobody, so a close into it is refused until the two agree.
+ */
+export function memoTypeInDispute(address: string): boolean {
+  return current.memoTypeDisputes?.includes(address) ?? false;
 }
 
 export function getMemoRequirement(address: string): {

@@ -4,6 +4,7 @@ import {
   isRegistryUsable,
   loadServedRegistry,
   lookupExchange,
+  memoTypeInDispute,
   setRegistry,
   type RegistrySnapshot,
 } from "@/lib/exchange-registry";
@@ -183,6 +184,34 @@ test("a served entry may tighten a rule", async () => {
   );
   // Adding an exchange can only ever add protection, so served-only addresses are adoptable.
   expect(lookupExchange(NEW_ADDR)?.memoType).toBe("id");
+});
+
+test("a served entry cannot change the memo type of an exchange the bundle knows", async () => {
+  await loadServedRegistry(
+    serve({
+      lastVerified: "2026-08-19",
+      validUntil: "2026-11-17",
+      entries: [
+        {
+          address: COINBASE,
+          name: "Coinbase",
+          domain: "coinbase.com",
+          requiresMediator: true,
+          requiresMemo: true,
+          memoType: "id",
+        },
+      ],
+    })
+  );
+  expect(lookupExchange(COINBASE)?.memoType).toBe("text");
+  expect(memoTypeInDispute(COINBASE)).toBe(true);
+});
+
+test("no address is in dispute when the served copy agrees on every memo type", async () => {
+  await loadServedRegistry(
+    serve({ lastVerified: "2026-08-19", validUntil: "2026-11-17", entries: [] })
+  );
+  expect(memoTypeInDispute(COINBASE)).toBe(false);
 });
 
 test("an empty served payload cannot make the client forget every exchange", async () => {

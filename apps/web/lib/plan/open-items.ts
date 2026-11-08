@@ -65,6 +65,8 @@ export interface ProceedFacts {
   destination: DestinationFact;
   /** An exchange destination with deposit rules past their expiry. */
   registryStale: boolean;
+  /** An exchange destination whose memo type the served and bundled registries disagree on. */
+  registryMemoTypeDisputed: boolean;
   memo: MemoFact;
   destinationUnacknowledged: boolean;
 }
@@ -173,6 +175,12 @@ export function proceedReasons(facts: ProceedFacts): ProceedReason[] {
     reasons.push({
       key: "registry",
       text: "This exchange's deposit rules have expired, so it cannot be used as the destination",
+      target: address,
+    });
+  } else if (facts.registryMemoTypeDisputed) {
+    reasons.push({
+      key: "registry",
+      text: "This exchange's memo rules could not be confirmed right now. Try again later or choose another destination",
       target: address,
     });
   }

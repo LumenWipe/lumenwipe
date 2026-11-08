@@ -59,14 +59,12 @@ describe("tightenedOver", () => {
     expect(both.requiresMediator).toBe(false);
   });
 
-  test("the memo type, name and domain are the served ones", () => {
+  test("the name and domain are the served ones, the memo type the bundled one", () => {
     const merged = tightenedOver(
       entry(A),
       entry(A, { memoType: "id", name: "Renamed", domain: "renamed.example" })
     );
-    expect(merged).toEqual(
-      entry(A, { memoType: "id", name: "Renamed", domain: "renamed.example" })
-    );
+    expect(merged).toEqual(entry(A, { name: "Renamed", domain: "renamed.example" }));
   });
 });
 
@@ -159,6 +157,7 @@ describe("mergeServedRegistry", () => {
       entries: [entry(A)],
       lastVerified: "2026-11-01",
       validUntil: "2027-01-08",
+      memoTypeDisputes: [],
     });
   });
 
@@ -167,7 +166,7 @@ describe("mergeServedRegistry", () => {
       FLOOR,
       body([entry(A, { requiresMemo: false, requiresMediator: false, memoType: "id" })])
     );
-    expect(merged?.entries).toEqual([entry(A, { memoType: "id" })]);
+    expect(merged?.entries).toEqual([entry(A)]);
   });
 
   test("adds an address the bundle does not know, as served", () => {
@@ -188,13 +187,25 @@ describe("mergeServedRegistry", () => {
       FLOOR,
       body([entry(A, { memoType: "id" }), entry(A, { requiresMemo: false, memoType: "hash" })])
     );
-    expect(merged?.entries).toEqual([entry(A, { memoType: "hash" })]);
+    expect(merged?.entries).toEqual([entry(A)]);
+    expect(merged?.memoTypeDisputes).toEqual([A]);
   });
 
   test("bounds the validity date", () => {
     expect(mergeServedRegistry(FLOOR, body([], "2026-12-01"))?.validUntil).toBe("2027-01-08");
     expect(mergeServedRegistry(FLOOR, body([], "2027-03-01"))?.validUntil).toBe("2027-03-01");
     expect(mergeServedRegistry(FLOOR, body([], "2030-01-01"))?.validUntil).toBe("2027-01-08");
+  });
+
+  test("never takes a served memo type for a bundled entry, and records the dispute", () => {
+    const merged = mergeServedRegistry(FLOOR, body([entry(A, { memoType: "id" }), entry(B)]));
+    expect(merged?.entries).toEqual([entry(A), entry(B)]);
+    expect(merged?.memoTypeDisputes).toEqual([A]);
+  });
+
+  test("records no dispute when the served type matches the bundled one", () => {
+    const merged = mergeServedRegistry(FLOOR, body([entry(A, { requiresMediator: false })]));
+    expect(merged?.memoTypeDisputes).toEqual([]);
   });
 
   test("leaves the floor it was given untouched", () => {

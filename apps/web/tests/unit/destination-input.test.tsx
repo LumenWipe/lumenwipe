@@ -3,7 +3,7 @@ import { useState, type ReactElement } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { Keypair } from "@stellar/stellar-sdk";
 import DestinationInput from "@/components/account-entry/DestinationInput";
-import { activeRegistry } from "@/lib/exchange-registry";
+import { activeRegistry, setRegistry } from "@/lib/exchange-registry";
 import type { ChosenMemoType } from "@/lib/plan/memo-field";
 
 const noop = (): void => {};
@@ -190,4 +190,18 @@ test.each([
   fireEvent.change(input, { target: { value: "SALARY 2026" } });
   expect(input.value).toBe("SALARY 2026");
   expect(screen.queryByText(/That looks like a secret key/)).toBeNull();
+});
+
+test("a listed exchange whose memo type is in dispute is blocked with a way forward", () => {
+  const before = activeRegistry();
+  const disputed = exchange("text");
+  setRegistry({ ...before, memoTypeDisputes: [disputed.address] });
+  try {
+    render(<Controlled destination={disputed.address} />);
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Try again later, or choose another destination."
+    );
+  } finally {
+    setRegistry(before);
+  }
 });
