@@ -1,4 +1,6 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, mock, spyOn, test } from "bun:test";
+import { Keypair } from "@stellar/stellar-sdk";
+import * as feeAccount from "@/lib/stellar/fee-account";
 import { EXIT_FLAGS, flagOn, isMalformedFlag, readKillSwitches } from "@/config/kill-switches";
 
 const NAMES = [
@@ -10,6 +12,7 @@ const saved = Object.fromEntries(NAMES.map((n) => [n, process.env[n]]));
 const configured = (): boolean => true;
 
 afterEach(() => {
+  mock.restore();
   for (const name of NAMES) {
     if (saved[name] === undefined) delete process.env[name];
     else process.env[name] = saved[name];
@@ -70,6 +73,19 @@ test("the conversion switches keep their opt-in meaning: off unless set to true"
 test("the relay account counts as configured only when its key is", () => {
   expect(readKillSwitches("mainnet", {}, (n) => n === "testnet").mediatorConfigured).toBe(false);
   expect(readKillSwitches("testnet", {}, (n) => n === "testnet").mediatorConfigured).toBe(true);
+});
+
+test("the fee sponsor counts as configured only on the network its key is set for", () => {
+  const onTestnet = (n: string): boolean => n === "testnet";
+  expect(readKillSwitches("mainnet", {}, configured, onTestnet).feeSponsorConfigured).toBe(false);
+  expect(readKillSwitches("testnet", {}, configured, onTestnet).feeSponsorConfigured).toBe(true);
+});
+
+test("by default the fee sponsor is configured when its keypair can be read", () => {
+  const keypair = spyOn(feeAccount, "getFeeAccountKeypair").mockReturnValue(null);
+  expect(readKillSwitches("testnet", {}, configured).feeSponsorConfigured).toBe(false);
+  keypair.mockReturnValue(Keypair.random());
+  expect(readKillSwitches("testnet", {}, configured).feeSponsorConfigured).toBe(true);
 });
 
 test("each call reads the environment again, so a flip shows on the next request", () => {

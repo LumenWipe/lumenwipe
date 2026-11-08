@@ -1,6 +1,7 @@
 import type { AccountState, ErrorCode } from "@lumenwipe/types";
 import type { KillSwitches } from "@/config/kill-switches";
 import {
+  closeFeeShortMessage,
   laterOwnFeesStroops,
   ownFeeShortfallStroops,
   tokenRoundsAhead,
@@ -99,7 +100,7 @@ function sponsorshipBlocker(
   switches: KillSwitches,
   ctx: KillSwitchContext
 ): KillSwitchBlocker | null {
-  if (switches.feeSponsorship) return null;
+  if (switches.feeSponsorConfigured && switches.feeSponsorship) return null;
   const sorobanRounds =
     2 * state.defiPositions.positions.length + tokenRoundsAhead(state, ctx.dispositions);
   // With Soroban rounds ahead no sponsor could pay anyway, and the fee shortfall says so itself.
@@ -109,6 +110,9 @@ function sponsorshipBlocker(
     laterOwnFeesStroops(state, sorobanRounds, ctx.viaMediator)
   );
   if (short <= 0n) return null;
+  if (!switches.feeSponsorConfigured) {
+    return { code: "close_fee_balance_short", message: closeFeeShortMessage(short), status: 422 };
+  }
   return {
     code: "fee_sponsorship_paused",
     message:
