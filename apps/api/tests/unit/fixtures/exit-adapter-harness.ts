@@ -74,6 +74,7 @@ export function harnessContext(overrides: Partial<ExitContext> = {}): ExitContex
     account: Keypair.random().publicKey(),
     sequence: "1",
     tokenBalances: {},
+    sorobanTokenBalances: {},
     now: new Date("2026-09-02T12:00:00Z"),
     slippageBps: 50,
     ...overrides,

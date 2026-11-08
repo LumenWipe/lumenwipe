@@ -13,7 +13,7 @@ import {
   type ExitTargetBlock,
 } from "./plan-exits";
 import { runExitAdapter, type ExitRunResult } from "./run-exit";
-import { tokenBalancesFor } from "./token-balances";
+import { sorobanTokenBalancesFor, tokenBalancesFor } from "./token-balances";
 
 /**
  * The exit round of a close: before any classic cleanup, every DeFi position leaves its protocol
@@ -105,6 +105,7 @@ function exitContext(
     account: accountState.address,
     sequence,
     tokenBalances: tokenBalancesFor(accountState),
+    sorobanTokenBalances: sorobanTokenBalancesFor(accountState),
     now: now ?? new Date(),
     slippageBps: SLIPPAGE_BPS,
   };

@@ -5,9 +5,11 @@
  * `VaultKey`/`OptionalVaultKey` argument encoding `pay_debt` actually needs.
  */
 import { describe, expect, test } from "bun:test";
-import { Asset, xdr } from "@stellar/stellar-sdk";
-import type { FxdaoCdpPosition } from "@lumenwipe/types";
+import { Asset, StrKey, xdr } from "@stellar/stellar-sdk";
+import type { AccountState, FxdaoCdpPosition, SorobanTokensResult } from "@lumenwipe/types";
 import { EXIT_POSITION_GONE, fxdaoExitAdapter, runExitAdapter } from "@/lib/defi-exits";
+import { buildExitRound, preflightExitTargets } from "@/lib/defi-exits/exit-round";
+import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import {
   createContractRegistryLookup,
@@ -91,7 +93,7 @@ function rpc(over: Partial<FakeFxdaoOptions> = {}) {
 
 const ctx = harnessContext({
   account: ACCOUNT,
-  tokenBalances: { [STABLE_ASSET]: TOTAL_DEBT.toString() },
+  sorobanTokenBalances: { [STABLE_ASSET]: TOTAL_DEBT.toString() },
 });
 
 describeExitAdapterInvariants("fxdao vault", {
@@ -164,7 +166,15 @@ describeExitAdapterInvariants("fxdao vault", {
       position,
       rpc: rpc(),
       registry: KNOWN,
-      ctx: { tokenBalances: {} },
+      ctx: { sorobanTokenBalances: {} },
+      expectCodes: ["fxdao_repay_asset_balance_unknown"],
+    },
+    {
+      name: "the account's stablecoin balance is not a base-unit amount",
+      position,
+      rpc: rpc(),
+      registry: KNOWN,
+      ctx: { sorobanTokenBalances: { [STABLE_ASSET]: "100.5" } },
       expectCodes: ["fxdao_repay_asset_balance_unknown"],
     },
     {
@@ -172,7 +182,7 @@ describeExitAdapterInvariants("fxdao vault", {
       position,
       rpc: rpc(),
       registry: KNOWN,
-      ctx: { tokenBalances: { [STABLE_ASSET]: (TOTAL_DEBT - 1n).toString() } },
+      ctx: { sorobanTokenBalances: { [STABLE_ASSET]: (TOTAL_DEBT - 1n).toString() } },
       expectCodes: ["fxdao_repay_asset_missing"],
     },
   ],
@@ -285,5 +295,105 @@ describe("fxdao exit adapter", () => {
     // Regression guard: a real reference deployment proved these two addresses differ, so a plan
     // that accidentally fell back to the classic-asset derivation would spend the wrong token.
     expect(result.plan[0]!.asset).not.toBe(WRONG_STABLE_ISSUER_DERIVED_ASSET);
+  });
+});
+
+describe("the exit round repays from the account's ledger-confirmed Soroban token balance", () => {
+  const OTHER_TOKEN = StrKey.encodeContract(Buffer.alloc(32, 14));
+
+  function sorobanTokens(
+    tokens: Array<{ contract: string; balance: string }>,
+    unreadable: string[] = []
+  ): SorobanTokensResult {
+    return {
+      tokens: tokens.map((t) => ({ ...t, symbol: "USDx", decimals: 7, sources: ["positions"] })),
+      unreadable,
+      // The explorer did not answer: the balance below is still the ledger's `balance()` read.
+      coverage: [
+        { source: "explorer", status: "failed" },
+        { source: "positions", status: "ok" },
+      ],
+      eventsScanned: null,
+      warnings: [],
+    };
+  }
+
+  function accountWith(
+    tokens: SorobanTokensResult | undefined,
+    held: FxdaoCdpPosition = position
+  ): AccountState {
+    return {
+      address: ACCOUNT,
+      network: "testnet",
+      sequence: "100",
+      nativeBalanceLumens: "50.0000000",
+      dataEntries: [],
+      signers: [{ key: ACCOUNT, weight: 1, type: "ed25519_public_key" }],
+      thresholds: { low: 0, med: 1, high: 1 },
+      numSubEntries: 0,
+      numSponsoring: 0,
+      sponsoredBy: null,
+      authImmutable: false,
+      trustlines: [],
+      openOffers: [],
+      poolShares: [],
+      claimableBalances: [],
+      subEntryMismatch: false,
+      sponsoredEntries: [],
+      sponsorshipEnumerationIncomplete: false,
+      defiPositions: { ...emptyDefiPositionsResult(ACCOUNT), positions: [held] },
+      defiPositionsWarnings: [],
+      sorobanTokens: tokens,
+    };
+  }
+
+  const deps = {
+    rpc: rpc(),
+    runExitAdapter: ((a, p, c, d) =>
+      runExitAdapter(a, p, c, {
+        ...d,
+        resolveWasmHash: KNOWN.resolveWasmHash,
+        isRegistryFresh: () => true,
+      })) as typeof runExitAdapter,
+  };
+
+  /** The plan's preflight builds the same context the round does and keeps the adapter's code. */
+  async function refusal(state: AccountState): Promise<string | undefined> {
+    return (await preflightExitTargets(state, "testnet", deps)).get(VAULT)?.code;
+  }
+
+  test("a sufficient balance of the vault's Wasm stablecoin builds the full repay", async () => {
+    const state = accountWith(
+      sorobanTokens([{ contract: CURRENCY_CONTRACT, balance: TOTAL_DEBT.toString() }])
+    );
+    expect(await refusal(state)).toBeUndefined();
+    const built = await buildExitRound(state, "testnet", "100", 1000, deps);
+    if (!built) throw new Error("expected a round");
+    const op = built.transaction.intent.operations[0]!;
+    if (op.type !== "invoke_host_function") throw new Error("expected an invocation intent");
+    expect(op.contract).toBe(VAULT);
+    expect(op.function).toBe("pay_debt");
+  });
+
+  test("a short balance refuses as missing", async () => {
+    const state = accountWith(
+      sorobanTokens([{ contract: CURRENCY_CONTRACT, balance: (TOTAL_DEBT - 1n).toString() }])
+    );
+    expect(await refusal(state)).toBe("fxdao_repay_asset_missing");
+  });
+
+  test("an unread balance refuses as unknown", async () => {
+    expect(await refusal(accountWith(sorobanTokens([], [CURRENCY_CONTRACT])))).toBe(
+      "fxdao_repay_asset_balance_unknown"
+    );
+    expect(await refusal(accountWith(undefined))).toBe("fxdao_repay_asset_balance_unknown");
+  });
+
+  test("only a balance under the vault's live currency counts, never the position's debtToken", async () => {
+    const state = accountWith(
+      sorobanTokens([{ contract: OTHER_TOKEN, balance: (TOTAL_DEBT * 10n).toString() }]),
+      { ...position, debtToken: OTHER_TOKEN }
+    );
+    expect(await refusal(state)).toBe("fxdao_repay_asset_balance_unknown");
   });
 });

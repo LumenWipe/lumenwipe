@@ -42,6 +42,7 @@ test.skipIf(!RUN_INTEGRATION)(
         account,
         sequence: "1",
         tokenBalances: {},
+        sorobanTokenBalances: {},
         now: new Date(),
         slippageBps: 50,
       },
