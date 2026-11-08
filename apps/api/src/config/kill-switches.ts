@@ -1,6 +1,7 @@
 import type { DefiProtocol } from "@lumenwipe/types";
 import { getMediatorPublicKey, type Network } from "@/config/networks";
 import { getMediatorKeypair } from "@/lib/stellar/mediator-server";
+import { getFeeAccountKeypair } from "@/lib/stellar/fee-account";
 import { isConversionEnabled, readSoroswapEnv } from "@/lib/soroswap/conversion-quotes";
 import { isXBullEnabled, readXBullEnv } from "@/lib/xbull/conversion-quotes";
 
@@ -13,6 +14,8 @@ export interface KillSwitches {
   mediatorForward: boolean;
   /** Whether the relay account's key is set for the network, so its forward can be co-signed. */
   mediatorConfigured: boolean;
+  /** Whether the fee sponsor's key is set for the network, so it can pay a fee the account cannot. */
+  feeSponsorConfigured: boolean;
   sorobanConversion: boolean;
   xbullConversion: boolean;
   pausedExits: ReadonlySet<DefiProtocol>;
@@ -40,6 +43,7 @@ export const ALL_ON: KillSwitches = {
   feeSponsorship: true,
   mediatorForward: true,
   mediatorConfigured: true,
+  feeSponsorConfigured: true,
   sorobanConversion: true,
   xbullConversion: true,
   pausedExits: new Set(),
@@ -64,15 +68,21 @@ function relayKeyConfigured(network: Network): boolean {
   }
 }
 
+function sponsorKeyConfigured(network: Network): boolean {
+  return getFeeAccountKeypair(network) !== null;
+}
+
 export function readKillSwitches(
   network: Network,
   env: NodeJS.ProcessEnv = process.env,
-  mediatorConfigured: (network: Network) => boolean = relayKeyConfigured
+  mediatorConfigured: (network: Network) => boolean = relayKeyConfigured,
+  feeSponsorConfigured: (network: Network) => boolean = sponsorKeyConfigured
 ): KillSwitches {
   return {
     feeSponsorship: flagOn(env[FEE_SPONSORSHIP_FLAG]),
     mediatorForward: flagOn(env[MEDIATOR_FORWARD_FLAG]),
     mediatorConfigured: mediatorConfigured(network),
+    feeSponsorConfigured: feeSponsorConfigured(network),
     sorobanConversion: isConversionEnabled(readSoroswapEnv(env)),
     xbullConversion: isXBullEnabled(readXBullEnv(env)),
     pausedExits: new Set(

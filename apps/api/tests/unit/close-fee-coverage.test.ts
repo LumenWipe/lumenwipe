@@ -4,7 +4,6 @@ import * as rpcModule from "@/lib/stellar/rpc";
 import * as pathFinding from "@/lib/stellar/path-finding";
 import * as registry from "@/lib/exchange-registry";
 import * as networks from "@/config/networks";
-import * as feeAccount from "@/lib/stellar/fee-account";
 import {
   Account,
   Address,
@@ -143,10 +142,6 @@ function tokenRpc(): { simulateTransaction: rpc.Server["simulateTransaction"] } 
 
 /** 100 stroops for each classic operation the close may still need: the signer and the merge. */
 const CLASSIC_FEES = 200n;
-
-function sponsorConfigured(): void {
-  spyOn(feeAccount, "getFeeAccountKeypair").mockReturnValue(Keypair.random());
-}
 
 function withPosition(balanceStroops: bigint): AccountState {
   return state(balanceStroops, {
@@ -427,7 +422,6 @@ test("exchange cleanup › refused before anything is built when the merge after
 
 test("exchange cleanup › a conversion's destination minimum counts toward what the merge will have", async () => {
   viaExchange();
-  sponsorConfigured();
   const route = (destMin: string) =>
     spyOn(pathFinding, "fetchConversionPath").mockResolvedValue({
       kind: "route",
@@ -447,7 +441,6 @@ test("exchange cleanup › a conversion's destination minimum counts toward what
   spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
     rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
   viaExchange();
-  sponsorConfigured();
   route("0.0000199");
   const short = await refusal(
     buildCloseTransactions(ALL_ON, state(ONE_XLM, funded), DEST, {}, "testnet")
@@ -458,11 +451,16 @@ test("exchange cleanup › a conversion's destination minimum counts toward what
 test("classic round › refused, not flagged, when no sponsor is configured to pay its fee", async () => {
   const atMinimum = { trustlines: [trustline("0")], numSubEntries: 1 };
   const short = await refusal(
-    buildCloseTransactions(ALL_ON, state(ONE_XLM + HALF_XLM, atMinimum), DEST, {}, "testnet")
+    buildCloseTransactions(
+      { ...ALL_ON, feeSponsorConfigured: false },
+      state(ONE_XLM + HALF_XLM, atMinimum),
+      DEST,
+      {},
+      "testnet"
+    )
   );
   expect(short.code).toBe("close_fee_balance_short");
 
-  sponsorConfigured();
   const built = await buildCloseTransactions(
     ALL_ON,
     state(ONE_XLM + HALF_XLM, atMinimum),

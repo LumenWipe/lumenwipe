@@ -18,7 +18,6 @@ import { stroopsToFixedXlm } from "@/lib/utils/amounts";
 import * as rpcModule from "@/lib/stellar/rpc";
 import * as registry from "@/lib/exchange-registry";
 import * as networks from "@/config/networks";
-import * as feeAccount from "@/lib/stellar/fee-account";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { mirrorSnapshot } from "./fixtures/ledger-trustlines";
 import { stubIssuance } from "./fixtures/issuance";
@@ -31,6 +30,9 @@ const TOKEN = Address.contract(Buffer.alloc(32, 7)).toString();
 const POOL = "CAJJZSGMMM3PD7N33TAPHGBUGTB43OC73HVIK2L2G6BNGGGYOSSYBXBD";
 const POOL_ASSET = "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA";
 const ONE_XLM = 10_000_000n;
+const HALF_XLM = 5_000_000n;
+const COSIGNER = Keypair.random().publicKey();
+const NO_SPONSOR: KillSwitches = { ...ALL_ON, feeSponsorConfigured: false };
 
 function state(balanceStroops: bigint, over: Partial<AccountState> = {}): AccountState {
   return {
@@ -87,6 +89,31 @@ function withToken(): AccountState {
       eventsScanned: null,
       warnings: [],
     },
+  });
+}
+
+/** At its minimum balance, so it has nothing above the reserve to pay a fee with. */
+function atMinimum(): AccountState {
+  return state(ONE_XLM);
+}
+
+/** No single key reaches the thresholds, so signer normalization is its own first round. */
+function multisigAtMinimum(): AccountState {
+  return state(ONE_XLM + HALF_XLM, {
+    signers: [
+      { key: SOURCE, weight: 1, type: "ed25519_public_key" },
+      { key: COSIGNER, weight: 1, type: "ed25519_public_key" },
+    ],
+    thresholds: { low: 2, med: 2, high: 2 },
+    numSubEntries: 1,
+  });
+}
+
+/** A data entry, so an exchange close has a cleanup round ahead of the relay merge. */
+function withDataAtMinimum(): AccountState {
+  return state(ONE_XLM + HALF_XLM, {
+    dataEntries: [{ key: "k", value: "dg==" }],
+    numSubEntries: 1,
   });
 }
 
@@ -170,6 +197,33 @@ const CASES: Case[] = [
     status: 503,
   },
   {
+    name: "no fee sponsor is configured and a classic close cannot pay its own fees",
+    switches: NO_SPONSOR,
+    account: atMinimum,
+    exchange: false,
+    dispositions: {},
+    code: "close_fee_balance_short",
+    status: 422,
+  },
+  {
+    name: "no fee sponsor is configured and signer normalization comes first",
+    switches: NO_SPONSOR,
+    account: multisigAtMinimum,
+    exchange: false,
+    dispositions: {},
+    code: "close_fee_balance_short",
+    status: 422,
+  },
+  {
+    name: "no fee sponsor is configured and an exchange close has cleanup ahead",
+    switches: NO_SPONSOR,
+    account: withDataAtMinimum,
+    exchange: true,
+    dispositions: {},
+    code: "close_fee_balance_short",
+    status: 422,
+  },
+  {
     name: "the protocol's exits are paused",
     switches: { ...ALL_ON, pausedExits: new Set(["blend"]) },
     account: withPosition,
@@ -217,7 +271,6 @@ beforeEach(() => {
     rpcReads++;
   }) as unknown as typeof rpcModule.pinRpcProvider);
   spyOn(networks, "getMediatorPublicKey").mockReturnValue(MEDIATOR);
-  spyOn(feeAccount, "getFeeAccountKeypair").mockReturnValue(Keypair.random());
 });
 
 afterEach(() => mock.restore());
@@ -430,5 +483,58 @@ describe("fee sponsorship paused", () => {
       { viaMediator: false, dispositions: {}, conversionProviders: {} }
     );
     expect(blocker!.message).toContain("0.0000200 XLM");
+  });
+});
+
+describe("no fee sponsor configured for the network", () => {
+  test("not configured takes precedence over paused", () => {
+    const codes = killSwitchBlockers(
+      atMinimum(),
+      { ...NO_SPONSOR, feeSponsorship: false },
+      { viaMediator: false, dispositions: {}, conversionProviders: {} }
+    ).map((b) => b.code);
+    expect(codes).toEqual(["close_fee_balance_short"]);
+  });
+
+  test("an account that can pay its own fees is not blocked", () => {
+    expect(
+      killSwitchBlockers(state(2n * ONE_XLM), NO_SPONSOR, {
+        viaMediator: false,
+        dispositions: {},
+        conversionProviders: {},
+      })
+    ).toEqual([]);
+  });
+
+  test("a close with Soroban rounds ahead keeps the plan's own Soroban shortfall", () => {
+    const account = withPosition();
+    const short = { ...account, nativeBalanceLumens: stroopsToFixedXlm(ONE_XLM) };
+    const blockers = buildPlan(
+      NO_SPONSOR,
+      short,
+      false,
+      false,
+      {},
+      undefined,
+      {},
+      {},
+      short.defiPositions
+    ).blockers.filter((b) => b.code === "close_fee_balance_short");
+    expect(blockers).toHaveLength(1);
+  });
+});
+
+describe("a fee sponsor configured for the network", () => {
+  test.each([
+    ["a classic close", atMinimum],
+    ["a signer normalization first", multisigAtMinimum],
+  ] as const)("leaves the plan unchanged and sponsors the fee, for %s", async (_, account) => {
+    spyOn(registry, "requiresMediatorForAddress").mockReturnValue(false);
+    const codes = buildPlan(ALL_ON, account(), false, false, {}, undefined, {}, {}).blockers.map(
+      (b) => b.code
+    );
+    expect(codes).not.toContain("close_fee_balance_short");
+    const built = await buildCloseTransactions(ALL_ON, account(), DEST, {}, "testnet");
+    expect(built.transactions[0]!.needsSponsoredFee).toBe(true);
   });
 });

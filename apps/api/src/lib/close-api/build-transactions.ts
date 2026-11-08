@@ -27,7 +27,6 @@ import {
   trustlineReserveShortfallStroops,
   type FeeAffordability,
 } from "@/lib/stellar/claim-reserve";
-import { getFeeAccountKeypair } from "@/lib/stellar/fee-account";
 import { actsForOneAccount, isAllowedWindDownOperation } from "@/fee-bump/fee-bump-validation";
 import {
   CLAIM_ANSWER_STALE_MESSAGE,
@@ -310,7 +309,7 @@ export async function buildCloseTransactions(
   // Ledgers close roughly every 5s; surface an approximate ledger bound for the tx time bound.
   const validUntilLedger = latest.sequence + Math.ceil(TX_TIMEOUT_SECONDS / 5);
   const needsMediator = requiresMediatorForAddress(destinationAddress);
-  const sponsorConfigured = switches.feeSponsorship && getFeeAccountKeypair(network) !== null;
+  const sponsorConfigured = switches.feeSponsorship && switches.feeSponsorConfigured;
 
   // Round 0 for an account no single key can close: signer normalization alone, ahead of every
   // other round, so each later one needs only the master key (docs/multisig-cosigning.md 3.1).
