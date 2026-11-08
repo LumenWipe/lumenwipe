@@ -76,6 +76,16 @@ const VERIFICATION_FAILED =
  *  dropped, so the user is told to decline it rather than wonder whether it was used. */
 export const WALLET_TIMED_OUT =
   "Your wallet didn't respond in time, so this transaction was not signed or sent. Close the earlier prompt in your wallet before you try again: a signature given there now will not be used. You can also change wallet or key.";
+/** A wallet declined to sign a partly signed transaction, which is kept for the next attempt. */
+export const KEPT_ROUND_DECLINED =
+  "You declined the request in your wallet, so this transaction was not sent. The signatures already collected on it are kept: sign again or connect another signer to continue.";
+/** A wallet did not answer in time on a partly signed transaction, which is kept for the next
+ *  attempt. Its prompt may still be open, so the user is told to close it. */
+export const KEPT_ROUND_TIMED_OUT =
+  "Your wallet didn't respond in time, so this transaction was not sent. The signatures already collected on it are kept. Close the earlier prompt in your wallet before you sign again: a signature given there now will not be used.";
+/** A partly signed transaction passed its time limit before it had enough signing weight. */
+export const PENDING_ROUND_EXPIRED =
+  "The partly signed transaction expired before it had enough signing weight, so it was not sent. Retry to build a new transaction: each signer will be asked to sign it again.";
 /** A run whose signer the screen dropped, stopped before its next signature. */
 export const SIGNER_RELEASED =
   "Signing stopped because the signer was cleared. Enter or connect a signer to continue.";

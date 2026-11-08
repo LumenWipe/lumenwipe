@@ -374,12 +374,15 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   const retryRef = useRef<HTMLButtonElement>(null);
   const previousView = useRef(view);
 
-  // After a wallet prompt timed out, Retry waits for that prompt to answer or for
-  // STALE_PROMPT_HOLD_MS, whichever comes first, so it does not stack a second prompt. The hold is
-  // read from the prompt itself at each render, so a signer dropped and picked up again (the same
-  // instance, see walletKitSigner) is held again at once, and only that prompt's release ends it.
+  // After a wallet prompt timed out, Retry (or Add signature, when the partly signed round was
+  // kept) waits for that prompt to answer or for STALE_PROMPT_HOLD_MS, whichever comes first, so
+  // it does not stack a second prompt. The hold is read from the prompt itself at each render, so
+  // a signer dropped and picked up again (the same instance, see walletKitSigner) is held again at
+  // once, and only that prompt's release ends it.
   const stalePrompt =
-    view === "failed" && activeWalletSigner ? activeWalletSigner.stalePrompt() : null;
+    (view === "failed" || view === "signatures") && activeWalletSigner
+      ? activeWalletSigner.stalePrompt()
+      : null;
   const [releasedPrompt, setReleasedPrompt] = useState<Promise<void> | null>(null);
   useEffect(() => {
     if (!stalePrompt) return;
@@ -660,6 +663,11 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
             />
           ) : pendingMoreSignatures ? (
             <div className="flex flex-col gap-4">
+              {signatureStatus.notice && (
+                <Callout tone="warning" icon={<AlertCircle className="h-4 w-4" />}>
+                  {signatureStatus.notice}
+                </Callout>
+              )}
               <SigningProgress
                 status={signatureStatus}
                 onApplyHashX={applyHashXPreimage}
@@ -671,7 +679,9 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
               {blockedReasonLine}
               <Button
                 onClick={execute}
-                disabled={!signerReady || locked || walletHeld || signerBlockedReason !== null}
+                disabled={
+                  !signerReady || locked || walletHeld || retryHeld || signerBlockedReason !== null
+                }
                 aria-describedby={signerBlockedReason ? "signer-blocked-reason" : undefined}
                 className="w-full"
               >
