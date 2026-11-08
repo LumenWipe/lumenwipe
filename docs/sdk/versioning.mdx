@@ -9,11 +9,16 @@ icon: "tag"
 ```json
 {
   "dependencies": {
-    "@lumenwipe/sdk": "~0.3.0"
+    "@lumenwipe/sdk": "~0.8.0"
   }
 }
 ```
 
 - The SDK re-exports the request and response types from `@lumenwipe/types`, which ship with it. You never install the types package separately.
 - The SDK tracks the REST API. The [API reference](/api-reference/introduction) is the authoritative description of each endpoint.
-- Read the release notes on [GitHub](https://github.com/LumenWipe/lumenwipe/releases) before upgrading. Re-run your integration against testnet after every upgrade, and re-check your `verify` implementation if new operation types appear.
+- Read the [changelog](https://github.com/LumenWipe/lumenwipe/blob/main/packages/sdk/CHANGELOG.md) before upgrading. Re-run your integration against testnet after every upgrade, and re-check your `verify` implementation if new operation types appear.
+
+## Requirements
+
+- Node.js 22 or later. The package declares `engines.node` `>=22`; Node 18 and 20 are end-of-life and not tested. It has no runtime dependencies, and works in any runtime with a global `fetch` or with a `fetch` you pass to the client.
+- TypeScript 4.7 or later, with `moduleResolution` set to `node16`, `nodenext` or `bundler` (`bundler` needs TypeScript 5.0). Both the `import` and the `require` entry points ship their own declarations. Every release is type-checked against TypeScript 4.7 and the current release before it is published.

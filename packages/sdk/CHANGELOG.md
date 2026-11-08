@@ -135,6 +135,9 @@ version number before 0.4.0. Neither has a git tag.
 
 ### Changed
 
+- The package declares `engines.node` `>=22` (Node 18 and 20 are end-of-life and untested) and
+  `sideEffects: false`, and ships its `LICENSE` (Apache-2.0) and this `CHANGELOG.md`. TypeScript
+  consumers need 4.7 or later, with `moduleResolution` set to `node16`, `nodenext` or `bundler`.
 - `getAccount`, `getPaths`, `getAllowances`, `revokeAllowance`, `mediatorCheck`, `mediatorSign`
   and `feeBumpSponsor` call their `/v1/{network}/...` paths. The SDK no longer calls any legacy
   unversioned path; those answer with `Deprecation` and `Sunset` headers until 2027-06-01.
