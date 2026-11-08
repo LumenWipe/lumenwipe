@@ -1,5 +1,20 @@
 import { afterAll, afterEach } from "bun:test";
-import { ClientRequest } from "node:http";
+import { readFileSync } from "node:fs";
+import { Agent, type ClientRequest } from "node:http";
+import { Socket } from "node:net";
+
+// The node:http(s) refusal below relies on the Node http client that Bun 1.4 ships; older Bun
+// sends those requests through a path no hook here sees, so the guard would prove nothing.
+const { packageManager = "" } = JSON.parse(
+  readFileSync(new URL("../../../package.json", import.meta.url), "utf8")
+) as { packageManager?: string };
+const pinned = /^bun@(\d+\.\d+\.\d+)$/.exec(packageManager)?.[1];
+if (!pinned) throw new Error(`the root package.json pins no Bun version: "${packageManager}"`);
+if (Bun.semver.order(Bun.version, pinned) < 0) {
+  throw new Error(
+    `the unit suite needs Bun ${pinned} (packageManager in the root package.json), not ${Bun.version}: run it with \`bunx bun@${pinned} run test\` or upgrade Bun.`
+  );
+}
 
 const LOOPBACK = new Set(["localhost", "::1", "[::1]"]);
 
@@ -48,23 +63,49 @@ globalThis.fetch = Object.assign(
   realFetch
 );
 
-// @stellar/stellar-sdk reaches the network through fetch under Bun; this covers axios and any
-// other node:http(s) client, whose requests all go out through ClientRequest.prototype.end.
-type Sender = (this: ClientRequest, ...args: unknown[]) => ClientRequest;
-const proto = ClientRequest.prototype as unknown as Record<string, Sender>;
-for (const method of ["write", "end", "flushHeaders"]) {
-  const send = proto[method];
-  if (!send) continue;
-  proto[method] = function (this: ClientRequest, ...args: unknown[]): ClientRequest {
-    if (this.destroyed) return this;
-    if (!isLoopback(this.host)) {
-      const target = `${this.method} ${this.protocol}//${this.host}${this.path}`;
-      this.destroy(refuse(`node:http ${target}`));
-      return this;
-    }
-    return send.apply(this, args);
-  };
+// @stellar/stellar-sdk reaches the network through fetch under Bun. Every node:http(s) client (axios
+// included) gets its socket from Agent.prototype.addRequest, which the ClientRequest constructor
+// calls before any write or end and which starts the DNS lookup, TCP connect and TLS handshake at
+// once. Refusing there means none of them happen. Handing the error to onSocket is how an agent
+// reports a failed connection, so the request still emits error and close.
+type AgentWithAddRequest = Agent & {
+  addRequest(req: ClientRequest, options: unknown): void;
+};
+type RequestWithOnSocket = ClientRequest & { onSocket(socket: null, err: Error): void };
+const agentProto = Agent.prototype as AgentWithAddRequest;
+const addRequest = agentProto.addRequest;
+agentProto.addRequest = function (this: AgentWithAddRequest, req, options) {
+  if (isLoopback(req.host)) return addRequest.call(this, req, options);
+  const target = `${req.method} ${req.protocol}//${req.host}${req.path}`;
+  (req as RequestWithOnSocket).onSocket(null, refuse(`node:http ${target}`));
+};
+
+// The backstop for anything that opens a TCP socket without an agent: node:net, node:tls, or a
+// request given its own createConnection.
+interface ConnectTarget {
+  host?: string;
+  port?: unknown;
+  // An IPC socket path; Node's own callers set it to null for TCP connections.
+  path?: string | null;
 }
+
+function connectTarget(args: unknown[]): ConnectTarget {
+  // Node's own callers pass the normalized arguments as an array in the first position.
+  const first: unknown = Array.isArray(args[0]) ? args[0][0] : args[0];
+  if (typeof first === "object" && first !== null) return first as ConnectTarget;
+  if (typeof first === "number" || /^\d+$/.test(String(first))) {
+    return { port: first, host: typeof args[1] === "string" ? args[1] : undefined };
+  }
+  return { path: String(first) };
+}
+
+const connect = Socket.prototype.connect as (this: Socket, ...args: unknown[]) => Socket;
+Socket.prototype.connect = function (this: Socket, ...args: unknown[]): Socket {
+  const { host = "localhost", port, path } = connectTarget(args);
+  if (path || isLoopback(host)) return connect.apply(this, args);
+  this.destroy(refuse(`node:net ${host}:${String(port)}`));
+  return this;
+} as typeof Socket.prototype.connect;
 
 // Code under test often catches a failed read and degrades, so the refusal alone may not fail it.
 afterEach(() => {
