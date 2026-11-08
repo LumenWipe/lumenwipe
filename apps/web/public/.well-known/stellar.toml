@@ -27,10 +27,9 @@ ORG_GITHUB = "https://github.com/LumenWipe/lumenwipe"
 # The intermediary account is intentionally NOT listed yet: mainnet exchange closes are not
 # enabled, so there is no mainnet intermediary to attest to. Publishing a placeholder would be
 # worse than publishing nothing - a reader checking our behaviour against it would be checking
-# against a value that means nothing. Add the [[ACCOUNTS]] block in the same change that
+# against a value that means nothing. Add the SEP-1 ACCOUNTS list in the same change that
 # configures MEDIATOR_SECRET_MAINNET, so the published attestation and the live account come
-# into existence together.
+# into existence together. The on-chain monitors fail until it matches MEDIATOR_ADDRESS_MAINNET
+# and docs/monitoring-plan.md. It goes above [DOCUMENTATION], as a top-level key.
 #
-# [[ACCOUNTS]]
-# address = "G..."   # the shared intermediary for exchange closes
-# name = "Exchange close intermediary"
+# ACCOUNTS = ["G..."]   # the shared intermediary for exchange closes
