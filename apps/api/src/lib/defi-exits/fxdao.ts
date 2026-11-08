@@ -26,7 +26,9 @@ import { contractAddressOf, contractDataEntry, instanceOfEntry } from "@/lib/ste
 /**
  * The FxDAO exit (architecture.md §9.7): a CDP vault locks XLM collateral and mints one of three
  * stablecoins (USDx/EURx/GBPx, one vault per denomination). Closing it means fully repaying the
- * stablecoin debt through `pay_debt`.
+ * stablecoin debt through `pay_debt`. A denomination is the symbol the vault contract keys its
+ * storage by (`USD` on mainnet, `usd` on the testnet reference deployment), not the stablecoin's
+ * ticker.
  *
  * Ground truth for this adapter came from three cross-checked sources, because the vault contract
  * this codebase's registry already tracks is not independently readable right now: the testnet
@@ -300,6 +302,32 @@ export function fxdaoCurrencyContract(
   } catch {
     return null;
   }
+}
+
+/**
+ * The denominations a vault instance has registered, read from its own storage: the symbol in
+ * every `Currency(denomination)` and `VaultsInfo(denomination)` key, sorted, never a throw. These
+ * symbols are what `Vault(account, denomination)` is keyed by, and they differ per deployment (the
+ * mainnet vault stores `USD`/`EUR`/`GBP`, the testnet reference deployment `usd`), so they are
+ * never pinned. Only a symbol counts: a string key would encode to a different ledger key.
+ */
+export function fxdaoDenominations(instanceEntry: xdr.LedgerEntryData): string[] {
+  const out = new Set<string>();
+  try {
+    for (const entry of instanceOfEntry(instanceEntry).storage ?? []) {
+      const key = entry.key;
+      if (key.type !== "scvVec") continue;
+      const parts = key.vec ?? [];
+      const tag = asSymbol(parts[0]);
+      const denomination = asSymbol(parts[1]);
+      if ((tag === "Currency" || tag === "VaultsInfo") && denomination !== null) {
+        out.add(denomination);
+      }
+    }
+  } catch {
+    return [];
+  }
+  return [...out].sort();
 }
 
 async function readEntries(
