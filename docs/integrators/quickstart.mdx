@@ -1,0 +1,211 @@
+---
+title: "Quickstart"
+description: "From an API key to a verified testnet close: install the published SDK, make a first read, and close a throwaway testnet account."
+icon: "rocket"
+---
+
+This page takes you from nothing to a closed testnet account in four steps. Every transaction is checked with the published verifier before it is signed, which is the pattern a production integration keeps. Everything here runs on testnet with throwaway accounts funded by Friendbot, so no real funds are involved.
+
+You need Node.js 22 or later.
+
+## Get an API key
+
+Create a key on the [API keys page](https://lumenwipe.com/api-keys): sign in with a Stellar wallet, choose testnet as the network, and copy the key when it is shown. It is shown once. Then export it in your shell:
+
+```bash
+export LUMENWIPE_API_KEY=<your key>
+```
+
+Keep the key on a server. See [Authentication](/api-reference/introduction#authentication) for the sign-in options and [Limits](/integrators/limits) for what one key allows.
+
+## Install
+
+Create a project with this `package.json`. These are the versions the documentation is written against; `@lumenwipe/verify` needs exactly the `@stellar/stellar-sdk` version shown.
+
+```json package.json
+{
+  "type": "module",
+  "dependencies": {
+    "@lumenwipe/sdk": "~0.9.0",
+    "@lumenwipe/verify": "~0.1.0",
+    "@stellar/stellar-sdk": "17.4.0"
+  }
+}
+```
+
+```bash
+npm install
+```
+
+## Make a first read
+
+Create a testnet account with Friendbot, then read it through the API:
+
+```bash
+ADDRESS=$(node -e 'import("@stellar/stellar-sdk").then(({ Keypair }) => console.log(Keypair.random().publicKey()))')
+curl -fsS "https://friendbot.stellar.org/?addr=$ADDRESS" > /dev/null
+curl -sS "https://api.lumenwipe.com/v1/testnet/account/$ADDRESS" \
+  -H "Authorization: Bearer $LUMENWIPE_API_KEY"
+```
+
+The answer is the account as the API reads it: balance, sub-entries, signers and thresholds. The same read with the SDK:
+
+```js read.mjs
+import { LumenWipeClient } from "@lumenwipe/sdk";
+
+const client = new LumenWipeClient({
+  baseUrl: process.env.LUMENWIPE_API_URL ?? "https://api.lumenwipe.com",
+  apiKey: process.env.LUMENWIPE_API_KEY,
+  network: "testnet",
+});
+
+const account = await client.getAccount(process.argv[2]);
+console.log(
+  `${account.address}: ${account.nativeBalanceLumens} XLM, ${account.numSubEntries} sub-entries`
+);
+```
+
+```bash
+node read.mjs "$ADDRESS"
+```
+
+## Close a testnet account
+
+This script funds two throwaway accounts, adds a data entry to the first so there is something to remove, then closes it into the second. It plans the close, answers the one decision it can answer on its own (acknowledging a destination it controls), and runs the close with [`runClose`](/sdk/run-close): fetch, verify, sign, submit, repeat until the account is merged. It ends by reading what the destination received from the ledger.
+
+```js close.mjs
+import {
+  Account,
+  BASE_FEE,
+  Keypair,
+  Networks,
+  Operation,
+  TransactionBuilder,
+} from "@stellar/stellar-sdk";
+import { LumenWipeClient, runClose } from "@lumenwipe/sdk";
+import { exitExpectations, verifyCloseTransaction } from "@lumenwipe/verify";
+
+const network = "testnet";
+const client = new LumenWipeClient({
+  baseUrl: process.env.LUMENWIPE_API_URL ?? "https://api.lumenwipe.com",
+  apiKey: process.env.LUMENWIPE_API_KEY,
+  network,
+});
+
+async function fund(address) {
+  const res = await fetch(`https://friendbot.stellar.org/?addr=${address}`);
+  if (!res.ok) throw new Error(`Friendbot answered ${res.status}`);
+  for (let i = 0; i < 20; i++) {
+    try {
+      return await client.getAccount(address);
+    } catch (error) {
+      if (error.code !== "account_not_found") throw error;
+      await new Promise((done) => setTimeout(done, 3000));
+    }
+  }
+  throw new Error(`${address} did not appear on testnet`);
+}
+
+const source = Keypair.random();
+const destination = Keypair.random();
+await fund(source.publicKey());
+await fund(destination.publicKey());
+
+// One data entry, so the close has a sub-entry to remove before the merge.
+const funded = await client.getAccount(source.publicKey());
+const setup = new TransactionBuilder(new Account(source.publicKey(), funded.sequence), {
+  fee: BASE_FEE,
+  networkPassphrase: Networks.TESTNET,
+})
+  .addOperation(Operation.manageData({ name: "quickstart", value: "1" }))
+  .setTimeout(60)
+  .build();
+setup.sign(source);
+await client.submit(setup.toEnvelope().toXdr("base64"));
+
+const account = await client.getAccount(source.publicKey());
+const plan = await client.closePlan({
+  source: source.publicKey(),
+  destination: destination.publicKey(),
+});
+if (plan.blockers.length > 0) throw new Error(plan.blockers.map((b) => b.message).join("; "));
+
+// A destination LumenWipe does not recognize must be acknowledged. Any other required
+// decision is a choice about the user's assets: stop and ask the user instead.
+const ack = `destination:${destination.publicKey()}`;
+const open = plan.decisionPoints.filter((d) => d.required && d.id !== ack);
+if (open.length > 0) throw new Error(`Ask the user: ${open.map((d) => d.id).join(", ")}`);
+const decisions = plan.decisionPoints.some((d) => d.id === ack)
+  ? [{ id: ack, choice: "i_control_this_address" }]
+  : [];
+
+const hashes = [];
+await runClose({
+  getTransactions: () =>
+    client.closeTransactions({
+      source: source.publicKey(),
+      destination: destination.publicKey(),
+      decisions,
+    }),
+  verify: (tx) =>
+    verifyCloseTransaction({
+      unsignedXdr: tx.xdr,
+      network,
+      expected: {
+        source: account.address,
+        destination: destination.publicKey(),
+        nativeBalance: account.nativeBalanceLumens,
+        memo: null,
+        memoType: null,
+        claimTrustlineAssets: [],
+        accountSigners: account.signers,
+        accountThresholds: account.thresholds,
+        transfers: {},
+        tokenTransfers: {},
+        classicConversions: {},
+        tokenConversions: {},
+        ...exitExpectations(account, network),
+      },
+    }),
+  requiredWeight: () => Math.max(1, account.thresholds.high),
+  sign: async (_tx, xdr) => {
+    const tx = TransactionBuilder.fromXdr(xdr, Networks.TESTNET);
+    tx.sign(source);
+    const weight = account.signers.find((s) => s.key === source.publicKey())?.weight ?? 0;
+    return { xdr: tx.toEnvelope().toXdr("base64"), weight };
+  },
+  submit: async (_tx, xdr) => (await client.submit(xdr)).hash,
+  onConfirmed: (tx, hash) => {
+    hashes.push(hash);
+    console.log(`Confirmed ${tx.intent.summary}: ${hash}`);
+  },
+});
+
+const delivered = await client.closeDelivered(destination.publicKey(), hashes);
+console.log(`Closed ${source.publicKey()}. Delivered ${delivered.totalStroops} stroops.`);
+```
+
+```bash
+node close.mjs
+```
+
+The verifier is given the account read and the script's own inputs: the destination it chose, no memo, and no transfers or conversions. Any transaction that does something else is refused before it is signed, and the script stops. A real account usually needs more: decisions about its assets, conversions, protocol exits, or more than one signer. Those are answers your user gives, and they go to both `closeTransactions` and the verifier. See [Verification](/sdk/verification).
+
+To run any of these against an API you host yourself, set `LUMENWIPE_API_URL`, for example `http://localhost:3001`, and use that base URL in the `curl` command.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Headless example" icon="terminal" href="/sdk/headless-example">
+    The reference integration, with signing weight, exchange closes and a mainnet rehearsal.
+  </Card>
+  <Card title="Networks" icon="network-wired" href="/integrators/networks">
+    What differs on mainnet, and the checklist before going live.
+  </Card>
+  <Card title="Limits" icon="gauge" href="/integrators/limits">
+    Request rate, keys, sessions, batches and bodies.
+  </Card>
+  <Card title="Compatibility and deprecation" icon="code-compare" href="/integrators/compatibility">
+    What can change, how much notice you get, and what defines SDK 1.0.
+  </Card>
+</CardGroup>

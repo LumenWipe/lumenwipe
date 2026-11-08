@@ -47,7 +47,7 @@ Create one on the [API keys page](https://lumenwipe.com/api-keys):
 
 1. Sign in with a Stellar wallet that can sign a message: Varial (formerly Freighter), xBull or Hana, or WalletConnect with a phone wallet that supports message signing. The wallet signs a one-time SEP-53 message, not a transaction: it moves no funds and costs no fee. Google and GitHub sign-in are offered there too when they are enabled.
 2. Optionally give the key a label and limit it to mainnet or testnet (both are fixed once it is created, and rotating keeps them; a key limited to one network is refused on routes that take no network), then select **Create key**. The key is shown once, so copy it to your server's secrets before you dismiss it.
-3. Call the API with it, or start from the [SDK quickstart](/sdk/overview#quickstart).
+3. Call the API with it, or follow the [Quickstart](/integrators/quickstart) to a first testnet close.
 
 The sign-in lasts 30 minutes and survives a page reload in the same browser; after that, sign in again. A contract account (an address starting with `C`, such as a passkey smart wallet) cannot sign in yet, because the sign-in needs a signature from a single account key; sign in with a regular `G` account instead. The key it owns works for any account you analyze or close.
 
@@ -247,7 +247,7 @@ Every limited response carries the state of the budget:
 | `RateLimit-Reset`     | Seconds until the window resets. On a `429`, seconds until the key is served again. |
 | `Retry-After`         | Seconds to wait before retrying. Sent on every `429` and every `503`.               |
 
-Exceeding the limit returns `429 rate_limited`. The legacy `X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset` headers carry the same values and are deprecated: they are sent for one more release and then removed, so read the `RateLimit-*` names.
+Exceeding the limit returns `429 rate_limited`. The legacy `X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset` headers carry the same values and are deprecated. They are not removed before 2027-06-01 (see [Compatibility and deprecation](/integrators/compatibility#deprecated-today)), so read the `RateLimit-*` names.
 
 A single `runClose` over a multi-round account shares this budget with any polling you do, so size your concurrency from `RateLimit-Remaining` rather than guessing.
 

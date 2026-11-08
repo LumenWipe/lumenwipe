@@ -1,0 +1,45 @@
+---
+title: "Networks"
+description: "What differs between mainnet and testnet on the LumenWipe API, and the checklist to work through before your first mainnet close."
+icon: "network-wired"
+---
+
+The API serves both networks from the same deployment, with the network in the path: `/v1/mainnet/...` or `/v1/testnet/...`. Most behavior is identical. The rows below are the ones that are not, so a close that works on testnet is not proof it will run the same way on mainnet.
+
+## Parity by network
+
+| Area                                 | Mainnet                                                                                                                                                                                                                                                             | Testnet                                                                                                   |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Protocol exits                       | Blend, Aquarius, Soroswap and Phoenix. FxDAO is registered, but no exit is built                                                                                                                                                                                    | Blend, Aquarius, Soroswap, Phoenix and FxDAO                                                              |
+| Conversion quotes                    | SDEX paths for classic assets. For Soroban tokens, when the operator enables them: the Soroswap router and aggregator, and the xBull router                                                                                                                         | SDEX paths for classic assets. For Soroban tokens, when the operator enables it: the Soroswap router only |
+| Exchange closes through the mediator | Not available on mainnet. `GET /v1/mainnet/mediator/check/{address}` reports `available: false`, the plan shows a `mediator_not_configured` blocker, and `close/transactions` refuses the close with `503 mediator_not_configured` before it builds any transaction | Available                                                                                                 |
+| Sponsored fees                       | Not available on mainnet. `POST /v1/mainnet/fee-bump/sponsor` answers `503 fee_bump_not_configured`                                                                                                                                                                 | Available, within the [daily budgets](/integrators/limits#sponsored-fees)                                 |
+| DeFi position detection              | Read from an indexer, then completed from the ledger. When the indexer is down or does not track the account, the API reads the contracts directly and the plan warns that the positions could not be confirmed                                                     | Read from the contracts directly                                                                          |
+| Account state                        | Read live on every plan and every round, and cross-checked against RPC before each build                                                                                                                                                                            | The same                                                                                                  |
+| Exchange and contract registries     | Bundled with the API, `@lumenwipe/verify` and the web app, each with a last-verified date. The exchange registry is also served at `GET /v1/config/exchange-registry`                                                                                               | The same registries. Testnet entries are test deployments                                                 |
+| API keys                             | A key works on both networks unless it was created for one. A key limited to testnet is refused on mainnet with `403 key_network_not_allowed`                                                                                                                       | The same                                                                                                  |
+| Limits                               | The [limits](/integrators/limits) apply unchanged. One rate budget per key covers both networks                                                                                                                                                                     | The same limits and the same budget                                                                       |
+
+The full per-protocol table, generated from the contract registry, is in [Supported](/reference/supported#protocols).
+
+## Paths an operator can pause
+
+On either network, the operator can turn off fee sponsorship, exchange closes through the relay account, Soroban token conversion, or the exit of one protocol while the API keeps running. While a path is off, the plan shows it as a blocker with a code such as `exchange_forward_paused`, `fee_sponsorship_paused` or `defi_exit_paused`, all `503`, and `close/transactions` refuses it before it builds any transaction, so a close is never left half done. A paused Soroban token conversion is reported as `soroban_token_conversion_unavailable`. Plan again later: nothing about the account changes while a path is paused.
+
+## Mainnet go-live checklist
+
+Work through this list with the account types you expect to close. Each item is something the API and the published packages already do.
+
+1. **Use a key made for mainnet.** Create a key limited to mainnet on the [API keys page](https://lumenwipe.com/api-keys), and keep your testnet key for testing. Store it on your server only.
+2. **Pin the packages.** Install with the ranges in the [Quickstart](/integrators/quickstart#install), and read the [compatibility policy](/integrators/compatibility) before each upgrade.
+3. **Rehearse the real accounts.** Run the [plan-only example](/sdk/headless-example#rehearse-a-mainnet-account) against each mainnet account first. It reads and plans without building or signing anything, and prints every blocker and decision.
+4. **Verify every transaction before signing.** Check each one with `@lumenwipe/verify` against the user's own inputs and the account read, never against the API's `intent` summary. See [Verification](/sdk/verification).
+5. **Let the user answer decisions.** A plan's `decisionPoints` are choices about the user's assets and destination. Show them, plan again with the answers, and close with the same answers.
+6. **Treat exchanges as unavailable.** Exchange closes are not available on mainnet: the plan blocks a close to a listed exchange before anything is built. Check `mediatorCheck` before offering one, and close to a wallet the user controls instead.
+7. **Do not rely on sponsored fees.** They are not available on mainnet, so the account must hold the XLM for its own fees.
+8. **Check signing weight.** Use the account's signers and thresholds from each round, so a multisig account stops with `InsufficientSignatureWeightError` before anything is submitted. See [runClose](/sdk/run-close).
+9. **Handle an unknown submit outcome.** A `504` from `submit` means the outcome is unknown. Resolve it by hash with `GET /v1/mainnet/transactions/{hash}` before you build anything new. See [Retrying each endpoint](/api-reference/introduction#retrying-each-endpoint).
+10. **Record what arrived from the ledger.** Read the delivered XLM with `close/delivered` after the transactions confirm, never from the plan.
+11. **Stay within the budget.** Size concurrency from `RateLimit-Remaining`, and wait for `Retry-After` on every `429` and `503`.
+12. **Branch on codes, log request ids.** Branch on `error.code`, never on the message, and keep `X-Request-Id` from every failed call.
+13. **Call `/v1` paths only.** Paths without the prefix are deprecated aliases with a sunset date. See [Compatibility and deprecation](/integrators/compatibility).

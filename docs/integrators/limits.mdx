@@ -1,0 +1,47 @@
+---
+title: "Limits"
+description: "Every limit the LumenWipe API enforces, with the constant in the code that sets it, and how to ask for a higher one."
+icon: "gauge"
+---
+
+The table is generated from the code: each value is read from the constant named beside it, and a test fails when this page and the code disagree. The same limits apply on mainnet and on testnet.
+
+{/* generated:limits:start */}
+
+| Limit                                | Value                                    | Where it is enforced                                                                                                                      |
+| ------------------------------------ | ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Default request rate                 | 120 requests per 60 seconds, per API key | `THROTTLE_LIMIT` and `THROTTLE_TTL` defaults in `apps/api/src/app.module.ts`, overridable per deployment, and per key for self-serve keys |
+| Active keys per wallet               | 5                                        | `MAX_ACTIVE_KEYS_PER_OWNER` in `apps/api/src/integrator/integrator.controller.ts`                                                         |
+| Key label                            | 1 to 64 characters                       | `MAX_LABEL_LENGTH` in `apps/api/src/integrator/key-options.ts`                                                                            |
+| Sign-in challenge lifetime           | 5 minutes                                | `CHALLENGE_TTL_SECONDS` in `apps/api/src/integrator/wallet-auth.ts`                                                                       |
+| Key management session lifetime      | 30 minutes                               | `SESSION_TTL_SECONDS` in `apps/api/src/integrator/wallet-auth.ts`                                                                         |
+| Operations per transaction           | 100                                      | `OP_BATCH_LIMIT` in `apps/api/src/config/constants.ts`                                                                                    |
+| Addresses per batch plan request     | 20                                       | `BATCH_PLAN_MAX_ADDRESSES` in `apps/api/src/lib/close-api/batch-plan.ts`                                                                  |
+| Hashes per `close/delivered` request | 20                                       | `DELIVERED_MAX_HASHES` in `apps/api/src/lib/close-api/delivered-amount.ts`                                                                |
+| JSON request body                    | 100 KB                                   | `JSON_BODY_LIMIT` in `apps/api/src/configure-app.ts`                                                                                      |
+
+{/* generated:limits:end */}
+
+## Request rate
+
+One budget per API key covers every endpoint on both networks, so a key used for mainnet and testnet spends the same budget. A request without a valid key is counted against its client IP. The service index, `/health` and `/health/deep` are not limited.
+
+Every limited response reports the budget in `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset`, and a rejected request is `429 rate_limited` with `Retry-After`. The older `X-RateLimit-*` names carry the same values and are deprecated; see [Compatibility and deprecation](/integrators/compatibility#deprecated-today). The [API reference](/api-reference/introduction#rate-limits) describes the full behavior, including what counts against the budget.
+
+## Keys and sessions
+
+A wallet holds at most the number of active keys above. Creating one more answers `409 key_limit_reached`: revoke a key first.
+
+Signing in to the [API keys page](https://lumenwipe.com/api-keys) signs a one-time challenge, which must be answered within its lifetime, and gives a session that manages keys for the session lifetime above. The session token is not an API key and calls nothing else. An API key itself does not expire; revoke or rotate it on the same page.
+
+## Bodies and batches
+
+A JSON body over the limit is refused with `413 payload_too_large` before it reaches a route. A close never puts more operations in one transaction than the limit above: an account with more to remove is closed over several transactions, and `remaining.requiresAnotherCall` says when another round is needed. `close/batch-plan` refuses more addresses than its limit with `400 too_many_addresses`, and `close/delivered` refuses more hashes than its limit with `400 invalid_tx_hash`.
+
+## Sponsored fees
+
+Where sponsored fees are available (see [Networks](/integrators/networks)), the sponsor pays at most a fixed fee per transaction and stays within a daily budget per network, per source account, per API key and in total. A spent budget answers `429 sponsorship_budget_exhausted` until the next UTC day. The values are in `apps/api/src/config/constants.ts`, and the rule is invariant INV-39 in the [invariant register](/invariants).
+
+## Request a higher limit
+
+A higher request rate is given as a key that carries its own limit and window, issued by the operator. It replaces the default for that key only, and rotating the key keeps it. To ask for one, open an issue in the [GitHub repository](https://github.com/LumenWipe/lumenwipe/issues) with the key's id (never the key itself), the network, and your expected peak rate in requests per minute. The other limits on this page are fixed in the code and are the same for every key.

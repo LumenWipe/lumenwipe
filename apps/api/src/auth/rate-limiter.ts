@@ -205,7 +205,7 @@ function setRateLimitHeaders(res: Response, decision: RateLimitDecision): void {
   ];
   for (const [name, value] of values) {
     res.setHeader(`RateLimit-${name}`, String(value));
-    // Deprecated: the pre-standard names, emitted for one release alongside RateLimit-*.
+    // Deprecated pre-standard names, kept alongside RateLimit-* until at least 2027-06-01.
     res.setHeader(`X-RateLimit-${name}`, String(value));
   }
 }

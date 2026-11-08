@@ -82,6 +82,15 @@
         ]
       },
       {
+        "group": "Integrators",
+        "pages": [
+          "integrators/quickstart",
+          "integrators/networks",
+          "integrators/limits",
+          "integrators/compatibility"
+        ]
+      },
+      {
         "group": "SDK",
         "pages": [
           "sdk/overview",

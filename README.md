@@ -18,12 +18,12 @@ Non-custodial &nbsp;·&nbsp; Client-side signing &nbsp;·&nbsp; Soroban & DeFi s
 
 ## Where to read next
 
-| If you are...     | Start with                                                                                                                                                                                          |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **A user**        | [Closing an account](docs/guides/closing-an-account.mdx), then [Recovery](docs/guides/recovery.mdx) if a close stops partway and [Troubleshooting and FAQ](docs/guides/troubleshooting-and-faq.mdx) |
-| **An integrator** | [SDK overview](docs/sdk/overview.mdx), the [API introduction](docs/api-reference/introduction.mdx) and the [error reference](docs/api-reference/errors.mdx)                                         |
-| **An evaluator**  | [Executive summary](docs/executive-summary.md), [Technical architecture](docs/architecture.md), the [threat model](docs/threat-model.md) and [SECURITY.md](SECURITY.md)                             |
-| **A contributor** | [CONTRIBUTING.md](CONTRIBUTING.md) and [Add a protocol exit](docs/contributing/add-a-protocol-exit.mdx)                                                                                             |
+| If you are...     | Start with                                                                                                                                                                                                         |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **A user**        | [Closing an account](docs/guides/closing-an-account.mdx), then [Recovery](docs/guides/recovery.mdx) if a close stops partway and [Troubleshooting and FAQ](docs/guides/troubleshooting-and-faq.mdx)                |
+| **An integrator** | The [Quickstart](docs/integrators/quickstart.mdx), the [SDK overview](docs/sdk/overview.mdx), the [API introduction](docs/api-reference/introduction.mdx) and the [error reference](docs/api-reference/errors.mdx) |
+| **An evaluator**  | [Executive summary](docs/executive-summary.md), [Technical architecture](docs/architecture.md), the [threat model](docs/threat-model.md) and [SECURITY.md](SECURITY.md)                                            |
+| **A contributor** | [CONTRIBUTING.md](CONTRIBUTING.md) and [Add a protocol exit](docs/contributing/add-a-protocol-exit.mdx)                                                                                                            |
 
 ---
 
@@ -254,6 +254,7 @@ Full technical documentation is at [**docs.lumenwipe.com**](https://docs.lumenwi
 | [Guides](docs/guides/closing-an-account.mdx)                       | Closing an account, how a close works, signing options, protocol exits, exchange closes, troubleshooting, and recovery          |
 | [Use cases](docs/use-cases/overview.mdx)                           | Who closes accounts and why, from individuals to wallet and embedded-account platforms                                          |
 | [Reference](docs/reference/glossary.mdx)                           | Glossary, the supported matrix, and logging and privacy                                                                         |
+| [Integrators](docs/integrators/quickstart.mdx)                     | Quickstart, network differences and the mainnet checklist, limits, and the compatibility and deprecation policy                 |
 | [SDK](docs/sdk/overview.mdx)                                       | The `@lumenwipe/sdk` client, `runClose`, verification, errors and versioning                                                    |
 | [API reference](docs/api-reference/introduction.mdx)               | Authentication, errors, rate limits and every endpoint, plus the [error reference](docs/api-reference/errors.mdx)               |
 | [Add a protocol exit](docs/contributing/add-a-protocol-exit.mdx)   | The contributor guide for a new DeFi protocol exit                                                                              |
