@@ -5,7 +5,9 @@ All notable changes to `@lumenwipe/verify` are documented here. Format follows
 [Semantic Versioning](https://semver.org/). See [`RELEASING.md`](../../RELEASING.md) for how a
 release is cut.
 
-## [0.1.0] - Unreleased
+## [Unreleased]
+
+Not released yet; the first release will be 0.1.0.
 
 ### Added
 
@@ -30,3 +32,4 @@ release is cut.
   `registry_snapshot_invalid`.
 - Vectors for a served snapshot in `vectors/close-v1.json`, still schema 1: `input.servedRegistry`
   is optional, and a rejection may mutate the snapshot instead of, or with, the transaction.
+- The package ships its `LICENSE` and this `CHANGELOG.md`.
