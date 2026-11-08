@@ -1,29 +1,37 @@
 import type {
   AccountState,
   AllowancesResult,
+  BatchPlanRequest,
+  BatchPlanResponse,
   ClosePlanRequest,
   CloseDeliveredResponse,
   CloseStatusResponse,
   CloseTransactionsRequest,
   FeeBumpSponsorResponse,
+  HealthDeepResponse,
   HealthResponse,
   MediatorCheckResult,
   MediatorSignResponse,
   Network,
   PathResponse,
   PlanResponse,
+  RecordMergeResponse,
   RevokeAllowanceResponse,
+  ServedExchangeRegistry,
+  StatsFeed,
+  StatsTotals,
   SubmitResponse,
   TransactionLookupResponse,
   TransactionsResponse,
 } from "@lumenwipe/types";
 import { LumenWipeInvalidNetworkError } from "./errors";
 import { HttpTransport } from "./http";
+import { withoutTrailingSlashes } from "./url";
 import type { LumenWipeClientOptions, RequestOptions } from "./options";
 
 const NETWORKS: readonly unknown[] = ["mainnet", "testnet"] satisfies Network[];
 
-function isPlaintextRemote(baseUrl: string): boolean {
+export function isPlaintextRemote(baseUrl: string): boolean {
   try {
     const url = new URL(baseUrl);
     if (url.protocol !== "http:") return false;
@@ -51,7 +59,7 @@ export class LumenWipeClient {
       throw new Error("No fetch implementation available; pass one via options.fetch.");
     }
     this.http = new HttpTransport(
-      options.baseUrl.replace(/\/+$/, ""),
+      withoutTrailingSlashes(options.baseUrl),
       options.apiKey,
       options.timeout ?? 30_000,
       resolved,
@@ -81,11 +89,36 @@ export class LumenWipeClient {
     return resolved;
   }
 
+  /** The `/v1/{network}` path for `rest`. The network is checked before any request is built. */
+  private v1(network: Network | undefined, rest: string): string {
+    return `/v1/${encodeURIComponent(this.resolveNetwork(network))}${rest}`;
+  }
+
   health(options?: RequestOptions): Promise<HealthResponse> {
     return this.http.request<HealthResponse>("GET", "/health", undefined, {
       ...options,
       retry: "transient",
     });
+  }
+
+  /** Whether Stellar RPC is reachable on every network, and the days left on the exchange registry.
+   *  A degraded service answers 503, thrown as a `LumenWipeApiError` whose `body` is a
+   *  `HealthDeepResponse` with `status: "error"`. Never retried: the 503 is the answer. */
+  healthDeep(options?: RequestOptions): Promise<HealthDeepResponse> {
+    return this.http.request<HealthDeepResponse>("GET", "/health/deep", undefined, {
+      ...options,
+      retry: "never",
+    });
+  }
+
+  /** The exchange registry the API closes against. Do not rely on it past `validUntil`. */
+  getExchangeRegistry(options?: RequestOptions): Promise<ServedExchangeRegistry> {
+    return this.http.request<ServedExchangeRegistry>(
+      "GET",
+      "/v1/config/exchange-registry",
+      undefined,
+      { ...options, retry: "transient" }
+    );
   }
 
   async getAccount(
@@ -95,7 +128,7 @@ export class LumenWipeClient {
   ): Promise<AccountState> {
     return this.http.request<AccountState>(
       "GET",
-      `/${this.resolveNetwork(network)}/account/${encodeURIComponent(address)}`,
+      this.v1(network, `/account/${encodeURIComponent(address)}`),
       undefined,
       { ...options, retry: "transient" }
     );
@@ -109,7 +142,7 @@ export class LumenWipeClient {
     const query = new URLSearchParams({ fromAsset: params.fromAsset, amount: params.amount });
     return this.http.request<PathResponse>(
       "GET",
-      `/${this.resolveNetwork(network)}/paths?${query.toString()}`,
+      this.v1(network, `/paths?${query.toString()}`),
       undefined,
       { ...options, retry: "transient" }
     );
@@ -120,11 +153,28 @@ export class LumenWipeClient {
     network?: Network,
     options?: RequestOptions
   ): Promise<PlanResponse> {
-    return this.http.request<PlanResponse>(
+    return this.http.request<PlanResponse>("POST", this.v1(network, "/close/plan"), body, {
+      ...options,
+      retry: "throttle",
+    });
+  }
+
+  /** Plans up to 20 accounts into one shared destination in one call. Read-only: no decisions are
+   *  applied, so plan each account with `closePlan` before closing it. An address that cannot be
+   *  read or planned comes back as a `blocked` plan, never as a missing entry. */
+  async batchPlan(
+    body: BatchPlanRequest,
+    network?: Network,
+    options?: RequestOptions
+  ): Promise<BatchPlanResponse> {
+    return this.http.request<BatchPlanResponse>(
       "POST",
-      `/v1/${this.resolveNetwork(network)}/close/plan`,
+      this.v1(network, "/close/batch-plan"),
       body,
-      { ...options, retry: "throttle" }
+      {
+        ...options,
+        retry: "throttle",
+      }
     );
   }
 
@@ -142,7 +192,7 @@ export class LumenWipeClient {
   ): Promise<TransactionsResponse> {
     return this.http.request<TransactionsResponse>(
       "POST",
-      `/v1/${this.resolveNetwork(network)}/close/transactions`,
+      this.v1(network, "/close/transactions"),
       body,
       { ...options, retry: "throttle" }
     );
@@ -155,7 +205,7 @@ export class LumenWipeClient {
   ): Promise<SubmitResponse> {
     return this.http.request<SubmitResponse>(
       "POST",
-      `/v1/${this.resolveNetwork(network)}/submit`,
+      this.v1(network, "/submit"),
       { signedXdr },
       { ...options, retry: "never" }
     );
@@ -170,7 +220,7 @@ export class LumenWipeClient {
   ): Promise<TransactionLookupResponse> {
     return this.http.request<TransactionLookupResponse>(
       "GET",
-      `/v1/${this.resolveNetwork(network)}/transactions/${encodeURIComponent(hash)}`,
+      this.v1(network, `/transactions/${encodeURIComponent(hash)}`),
       undefined,
       { ...options, retry: "transient" }
     );
@@ -186,7 +236,7 @@ export class LumenWipeClient {
     const query = new URLSearchParams({ source });
     return this.http.request<CloseStatusResponse>(
       "GET",
-      `/v1/${this.resolveNetwork(network)}/close/status?${query.toString()}`,
+      this.v1(network, `/close/status?${query.toString()}`),
       undefined,
       { ...options, retry: "transient" }
     );
@@ -205,7 +255,7 @@ export class LumenWipeClient {
     const query = new URLSearchParams({ destination, hashes: hashes.join(",") });
     return this.http.request<CloseDeliveredResponse>(
       "GET",
-      `/v1/${this.resolveNetwork(network)}/close/delivered?${query.toString()}`,
+      this.v1(network, `/close/delivered?${query.toString()}`),
       undefined,
       { ...options, retry: "transient" }
     );
@@ -218,7 +268,7 @@ export class LumenWipeClient {
   ): Promise<MediatorCheckResult> {
     return this.http.request<MediatorCheckResult>(
       "GET",
-      `/${this.resolveNetwork(network)}/mediator/check/${encodeURIComponent(address)}`,
+      this.v1(network, `/mediator/check/${encodeURIComponent(address)}`),
       undefined,
       { ...options, retry: "transient" }
     );
@@ -231,7 +281,7 @@ export class LumenWipeClient {
   ): Promise<MediatorSignResponse> {
     return this.http.request<MediatorSignResponse>(
       "POST",
-      `/${this.resolveNetwork(network)}/mediator/sign`,
+      this.v1(network, "/mediator/sign"),
       {
         transaction,
       },
@@ -249,7 +299,7 @@ export class LumenWipeClient {
   ): Promise<FeeBumpSponsorResponse> {
     return this.http.request<FeeBumpSponsorResponse>(
       "POST",
-      `/${this.resolveNetwork(network)}/fee-bump/sponsor`,
+      this.v1(network, "/fee-bump/sponsor"),
       {
         transaction,
       },
@@ -266,7 +316,7 @@ export class LumenWipeClient {
   ): Promise<AllowancesResult> {
     return this.http.request<AllowancesResult>(
       "GET",
-      `/${this.resolveNetwork(network)}/allowances/${encodeURIComponent(address)}`,
+      this.v1(network, `/allowances/${encodeURIComponent(address)}`),
       undefined,
       { ...options, retry: "transient" }
     );
@@ -281,8 +331,41 @@ export class LumenWipeClient {
   ): Promise<RevokeAllowanceResponse> {
     return this.http.request<RevokeAllowanceResponse>(
       "POST",
-      `/${this.resolveNetwork(network)}/allowances/revoke`,
+      this.v1(network, "/allowances/revoke"),
       params,
+      { ...options, retry: "throttle" }
+    );
+  }
+
+  /** Accounts closed and XLM recovered through LumenWipe on the network. */
+  async getStats(network?: Network, options?: RequestOptions): Promise<StatsTotals> {
+    return this.http.request<StatsTotals>("GET", this.v1(network, "/stats"), undefined, {
+      ...options,
+      retry: "transient",
+    });
+  }
+
+  /** The totals, the most recent closes and the daily activity on the network. */
+  async getStatsFeed(network?: Network, options?: RequestOptions): Promise<StatsFeed> {
+    return this.http.request<StatsFeed>("GET", this.v1(network, "/stats/feed"), undefined, {
+      ...options,
+      retry: "transient",
+    });
+  }
+
+  /** Counts a confirmed close that was submitted outside this API. The API re-reads the
+   *  transaction and counts it only if it built it, it confirmed and it merged an account;
+   *  `counted` is false for a hash already counted. Closes sent through `submit()` are counted
+   *  without this. */
+  async recordMerge(
+    txHash: string,
+    network?: Network,
+    options?: RequestOptions
+  ): Promise<RecordMergeResponse> {
+    return this.http.request<RecordMergeResponse>(
+      "POST",
+      this.v1(network, "/stats/merges"),
+      { txHash },
       { ...options, retry: "throttle" }
     );
   }

@@ -132,6 +132,14 @@ export type AquariusPoolType = "constant_product" | "stable" | "concentrated";
 // @public
 export type AssetDisposition = "convert" | "issuer" | "transfer" | "leave";
 
+// @public
+export interface BatchPlanRequest {
+    // (undocumented)
+    addresses: string[];
+    // (undocumented)
+    destination?: string;
+}
+
 // @public (undocumented)
 export interface BatchPlanResponse {
     // (undocumented)
@@ -428,6 +436,12 @@ export interface ConversionPath {
     toAsset: string;
 }
 
+// @public
+export interface CreateIntegratorKeyRequest {
+    label?: string;
+    networks?: Network[];
+}
+
 // @public (undocumented)
 export interface DailyActivity {
     // (undocumented)
@@ -585,6 +599,21 @@ export type DemolishPhase = "IDLE" | "ANALYZING" | "PREFLIGHT_COMPLETE" | "SIGNE
 export type ErrorCode = "account_not_found" | "account_read_failed" | "account_too_large" | "admin_api_not_configured" | "allowances_read_failed" | "api_key_not_found" | "aquarius_trustline_missing" | "backstop_emissions_unclaimed" | "backstop_token_unconvertible" | "backstop_withdrawal_cooling_down" | "backstop_withdrawal_not_queued" | "bad_request" | "blend_emissions_trustline_missing" | "blend_repay_asset_balance_unknown" | "blend_repay_asset_missing" | "claimable_balance_not_claimable_now" | "claimable_balance_reserve_short" | "claimable_balances_too_many" | "close_fee_balance_short" | "confirmation_timeout" | "conversion_floor_missing" | "conversion_impact_not_acknowledged" | "conversion_provider_unrecognized" | "defi_exit_blocked" | "defi_exit_unsupported" | "defi_position_unrecognized" | "defi_positions_blocked" | "defi_positions_stale" | "defi_positions_unavailable" | "destination_not_acknowledged" | "destination_read_failed" | "fee_bump_exceeds_cap" | "fee_bump_not_configured" | "forbidden" | "forward_amount_exceeds_balance" | "inner_fee_not_zero" | "integrator_api_not_configured" | "internal_error" | "invalid_address" | "invalid_addresses" | "invalid_body" | "invalid_challenge" | "invalid_decisions" | "invalid_destination" | "invalid_label" | "invalid_memo" | "invalid_network" | "invalid_networks" | "invalid_owner" | "invalid_plan_hash" | "invalid_rate_limit" | "invalid_request" | "invalid_signature" | "invalid_signed_xdr" | "invalid_source" | "invalid_spender" | "invalid_token" | "invalid_tokens" | "invalid_transaction_xdr" | "invalid_tx_hash" | "issuer_read_failed" | "issuer_supply_not_acknowledged" | "key_limit_reached" | "key_network_not_allowed" | "mediator_key_misconfiguration" | "mediator_not_configured" | "memo_required" | "merge_destination_unusable" | "merged_account_not_found" | "missing_parameters" | "missing_transaction" | "needs_decisions" | "not_found" | "operation_not_sponsorable" | "owner_not_found" | "path_lookup_failed" | "payload_too_large" | "phoenix_trustline_missing" | "plan_failed" | "provider_response_unusable" | "quote_drifted" | "rate_limited" | "registry_expired" | "request_failed" | "revoke_build_failed" | "revoke_needs_restore" | "revoke_simulation_failed" | "revoke_unsafe" | "route_lookup_unavailable" | "service_unavailable" | "signer_normalization_unsafe" | "soroban_token_conversion_failed" | "soroban_token_conversion_unavailable" | "soroban_token_conversion_unsafe" | "soroban_token_needs_restore" | "soroban_token_route_lost" | "soroban_token_transfer_failed" | "soroban_token_transfer_unsafe" | "soroban_token_unreadable" | "soroswap_trustline_missing" | "source_sequence_too_far" | "sponsor_source_unusable" | "sponsorship_budget_exhausted" | "state_changed" | "stats_unavailable" | "submit_failed" | "submit_rejected" | "time_bounds_required" | "too_many_addresses" | "transaction_expired" | "transaction_structure_not_allowed" | "transactions_failed" | "transfer_destination_missing" | "transfer_destination_unusable" | "trustline_cannot_be_left" | "trustline_deauthorized_with_balance" | "trustline_maintain_liabilities_with_balance" | "tx_not_verified" | "unauthorized" | "unprocessable_entity" | "unsupported_media_type" | "unsupported_memo_type" | "vault_undercollateralized" | "withdraw_before_repay";
 
 // @public
+export interface ExchangeRegistryEntry {
+    // (undocumented)
+    address: string;
+    // (undocumented)
+    domain: string;
+    memoType: "text" | "id" | "hash";
+    // (undocumented)
+    name: string;
+    // (undocumented)
+    requiresMediator: boolean;
+    // (undocumented)
+    requiresMemo: boolean;
+}
+
+// @public
 export interface ExecutionTxBreakdown {
     covers: StepType[];
     order: number;
@@ -617,6 +646,30 @@ export interface FxdaoCdpPosition extends DefiPositionBase {
 }
 
 // @public
+export interface HealthDeepIndicator {
+    // (undocumented)
+    daysRemaining?: number;
+    // (undocumented)
+    message?: string;
+    // (undocumented)
+    responseTime?: number;
+    // (undocumented)
+    status: "up" | "down";
+}
+
+// @public
+export interface HealthDeepResponse {
+    // (undocumented)
+    details: Record<string, HealthDeepIndicator>;
+    // (undocumented)
+    error: Record<string, HealthDeepIndicator>;
+    // (undocumented)
+    info: Record<string, HealthDeepIndicator>;
+    // (undocumented)
+    status: "ok" | "error";
+}
+
+// @public
 export interface HealthResponse {
     // (undocumented)
     status: string;
@@ -627,6 +680,70 @@ export class InsufficientSignatureWeightError extends Error {
     constructor(pending: PendingRound);
     // (undocumented)
     readonly pending: PendingRound;
+}
+
+// @public
+export interface IntegratorChallengeResponse {
+    expiresAt: string;
+    // (undocumented)
+    message: string;
+}
+
+// @public
+export interface IntegratorKeyList {
+    // (undocumented)
+    keys: IntegratorKeyListEntry[];
+    // (undocumented)
+    usage: IntegratorOwnerUsage | null;
+}
+
+// @public
+export interface IntegratorKeyListEntry extends IntegratorKeyRecord {
+    // (undocumented)
+    usage: IntegratorKeyUsage | null;
+}
+
+// @public
+export interface IntegratorKeyRecord {
+    createdAt: string;
+    id: string;
+    // (undocumented)
+    label: string | null;
+    lastUsedAt: string | null;
+    networks: Network[] | null;
+    revokedAt: string | null;
+    rotatedFrom: string | null;
+}
+
+// @public
+export interface IntegratorKeyUsage {
+    // (undocumented)
+    last30Days: number;
+    // (undocumented)
+    rateLimitedLast30Days: number;
+    // (undocumented)
+    today: number;
+}
+
+// @public
+export interface IntegratorOwnerUsage {
+    // (undocumented)
+    last30Days: number;
+    // (undocumented)
+    today: number;
+}
+
+// @public
+export interface IntegratorSessionRequest {
+    address: string;
+    message: string;
+    signature: string;
+}
+
+// @public
+export interface IntegratorSessionResponse {
+    expiresAt: string;
+    token: string;
 }
 
 // @public (undocumented)
@@ -705,6 +822,14 @@ export function isApiErrorCode<C extends ApiErrorCode>(error: unknown, code: C):
 export function isSubmitRefused(error: unknown): boolean;
 
 // @public
+export interface IssuedIntegratorKey {
+    // (undocumented)
+    key: string;
+    // (undocumented)
+    record: IntegratorKeyRecord;
+}
+
+// @public
 export class LumenWipeAbortError extends Error {
     constructor(reason?: unknown);
     // (undocumented)
@@ -731,6 +856,7 @@ export class LumenWipeApiError extends Error {
 // @public
 export class LumenWipeClient {
     constructor(options: LumenWipeClientOptions);
+    batchPlan(body: BatchPlanRequest, network?: Network, options?: RequestOptions): Promise<BatchPlanResponse>;
     closeDelivered(destination: string, hashes: readonly string[], network?: Network, options?: RequestOptions): Promise<CloseDeliveredResponse>;
     // (undocumented)
     closePlan(body: ClosePlanRequest, network?: Network, options?: RequestOptions): Promise<PlanResponse>;
@@ -740,18 +866,23 @@ export class LumenWipeClient {
     // (undocumented)
     getAccount(address: string, network?: Network, options?: RequestOptions): Promise<AccountState>;
     getAllowances(address: string, network?: Network, options?: RequestOptions): Promise<AllowancesResult>;
+    getExchangeRegistry(options?: RequestOptions): Promise<ServedExchangeRegistry>;
     // (undocumented)
     getPaths(params: {
         fromAsset: string;
         amount: string;
     }, network?: Network, options?: RequestOptions): Promise<PathResponse>;
+    getStats(network?: Network, options?: RequestOptions): Promise<StatsTotals>;
+    getStatsFeed(network?: Network, options?: RequestOptions): Promise<StatsFeed>;
     getTransaction(hash: string, network?: Network, options?: RequestOptions): Promise<TransactionLookupResponse>;
     // (undocumented)
     health(options?: RequestOptions): Promise<HealthResponse>;
+    healthDeep(options?: RequestOptions): Promise<HealthDeepResponse>;
     // (undocumented)
     mediatorCheck(address: string, network?: Network, options?: RequestOptions): Promise<MediatorCheckResult>;
     // (undocumented)
     mediatorSign(transaction: string, network?: Network, options?: RequestOptions): Promise<MediatorSignResponse>;
+    recordMerge(txHash: string, network?: Network, options?: RequestOptions): Promise<RecordMergeResponse>;
     revokeAllowance(params: {
         owner: string;
         token: string;
@@ -768,6 +899,26 @@ export interface LumenWipeClientOptions {
     fetch?: FetchLike;
     logger?: (message: string) => void;
     network?: Network;
+    retry?: RetryOptions;
+    timeout?: number;
+}
+
+// @public
+export class LumenWipeIntegratorClient {
+    constructor(options: LumenWipeIntegratorClientOptions);
+    challenge(address: string, options?: RequestOptions): Promise<IntegratorChallengeResponse>;
+    createKey(token: string, request?: CreateIntegratorKeyRequest, options?: RequestOptions): Promise<IssuedIntegratorKey>;
+    listKeys(token: string, options?: RequestOptions): Promise<IntegratorKeyList>;
+    revokeKey(token: string, id: string, options?: RequestOptions): Promise<RevokedIntegratorKey>;
+    rotateKey(token: string, id: string, options?: RequestOptions): Promise<IssuedIntegratorKey>;
+    session(request: IntegratorSessionRequest, options?: RequestOptions): Promise<IntegratorSessionResponse>;
+}
+
+// @public (undocumented)
+export interface LumenWipeIntegratorClientOptions {
+    baseUrl: string;
+    fetch?: FetchLike;
+    logger?: (message: string) => void;
     retry?: RetryOptions;
     timeout?: number;
 }
@@ -968,6 +1119,12 @@ export interface QuoteInfo {
 }
 
 // @public
+export interface RecordMergeRequest {
+    // (undocumented)
+    txHash: string;
+}
+
+// @public
 export interface RecordMergeResponse {
     // (undocumented)
     counted: boolean;
@@ -994,7 +1151,25 @@ export interface RevokeAllowanceResponse {
 }
 
 // @public
+export interface RevokedIntegratorKey {
+    // (undocumented)
+    status: "revoked";
+}
+
+// @public
 export function runClose(deps: CloseEngineDeps, resume?: PendingRound): Promise<CloseRunResult>;
+
+// @public
+export interface ServedExchangeRegistry {
+    // (undocumented)
+    entries: ExchangeRegistryEntry[];
+    lastVerified: string;
+    // (undocumented)
+    source: string;
+    validUntil: string;
+    // (undocumented)
+    version: string;
+}
 
 // @public
 export interface SorobanTokenBalance {

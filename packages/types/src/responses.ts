@@ -110,3 +110,51 @@ export interface RevokeAllowanceResponse {
 export interface HealthResponse {
   status: string;
 }
+
+/** One indicator of `GET /health/deep`: `rpc_<network>` carries `responseTime` in ms (and a fixed
+ *  `message`, `"timeout"` or `"unreachable"`, when down); `exchange_registry` carries
+ *  `daysRemaining`, negative once the registry has expired. */
+export interface HealthDeepIndicator {
+  status: "up" | "down";
+  responseTime?: number;
+  message?: string;
+  daysRemaining?: number;
+}
+
+/**
+ * Body of `GET /health/deep`. It answers 200 with `status: "ok"` when Stellar RPC is reachable on
+ * every network, and 503 with this same shape and `status: "error"` when it is not: the indicators
+ * that failed are in `error`, the rest in `info`, and every one of them in `details`.
+ */
+export interface HealthDeepResponse {
+  status: "ok" | "error";
+  info: Record<string, HealthDeepIndicator>;
+  error: Record<string, HealthDeepIndicator>;
+  details: Record<string, HealthDeepIndicator>;
+}
+
+/** One exchange in the registry: whether a close into it needs the mediator, and its memo rule. */
+export interface ExchangeRegistryEntry {
+  address: string;
+  name: string;
+  domain: string;
+  requiresMediator: boolean;
+  requiresMemo: boolean;
+  /** The required memo type, if `requiresMemo` is true. */
+  memoType: "text" | "id" | "hash";
+}
+
+/**
+ * Response from `GET /v1/config/exchange-registry`. A consumer must refuse to rely on it past
+ * `validUntil` (YYYY-MM-DD): a close into an exchange with the wrong memo rule succeeds on-chain and
+ * is credited to nobody.
+ */
+export interface ServedExchangeRegistry {
+  version: string;
+  /** The date every entry was last checked against the exchanges' own deposit docs. */
+  lastVerified: string;
+  /** After this date the data is treated as unusable, not merely old. */
+  validUntil: string;
+  source: string;
+  entries: ExchangeRegistryEntry[];
+}

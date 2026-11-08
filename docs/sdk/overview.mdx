@@ -39,7 +39,17 @@ if (plan.blockers.length > 0) {
   throw new Error(plan.blockers.map((b) => b.message).join("; "));
 }
 
-const { transactions, remaining } = await client.closeTransactions({ source, destination });
+// Every decision point needs an answer (convert or keep a token, acknowledge an exchange, ...).
+// Show them to the user, plan again with the answers, and close with those same answers.
+const decisions = await askUser(plan.decisionPoints);
+const reviewed = await client.closePlan({ source, destination, decisions });
+
+const { transactions, remaining } = await client.closeTransactions({
+  source,
+  destination,
+  decisions,
+  planHash: reviewed.planHash,
+});
 ```
 
 Verify each transaction, sign it, and submit it with [`submit`](/sdk/submit). Repeat while `remaining.requiresAnotherCall` is true. [`runClose`](/sdk/run-close) drives that whole loop for you.

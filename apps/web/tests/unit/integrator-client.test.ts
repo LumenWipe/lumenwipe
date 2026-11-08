@@ -27,7 +27,7 @@ describe("buildUpstreamRequest", () => {
       ""
     );
     const headers = init.headers as Record<string, string>;
-    expect(url).toBe("http://api.test/integrator/keys");
+    expect(url).toBe("http://api.test/v1/integrator/keys");
     expect(headers.Authorization).toBe("Bearer lws.session");
     expect(Object.keys(headers).map((h) => h.toLowerCase())).not.toContain("x-api-key");
   });

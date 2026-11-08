@@ -27,15 +27,19 @@ const client = new LumenWipeClient({
 
 const account = await client.getAccount(source);
 
-const plan = await client.closePlan({
-  source,
-  destination,
-  // ...see @lumenwipe/types for the full request shape
-});
+const plan = await client.closePlan({ source, destination });
+if (plan.blockers.length > 0) throw new Error(plan.blockers.map((b) => b.message).join("; "));
+
+// Every decision point needs an answer (convert or keep a token, acknowledge an exchange, ...).
+// Show them to the user, plan again with the answers, and close with those same answers.
+const decisions = await askUser(plan.decisionPoints);
+const reviewed = await client.closePlan({ source, destination, decisions });
 
 const { transactions, remaining } = await client.closeTransactions({
   source,
   destination,
+  decisions,
+  planHash: reviewed.planHash,
 });
 
 // Sign and submit each transaction, then repeat while remaining.requiresAnotherCall is true.
@@ -138,11 +142,15 @@ Never sign a transaction from this SDK without an equivalent check.
 
 ## API surface
 
-- `health()` - service health check.
+- `health()` / `healthDeep()` - service health, and whether Stellar RPC is reachable on every
+  network (a degraded service throws its 503, never retried).
+- `getExchangeRegistry()` - the exchange registry the API closes against; do not rely on it past
+  `validUntil`.
 - `getAccount(address, network?)` - current on-chain state for an account.
 - `getPaths(params, network?)` - conversion path quotes for a source asset.
 - `closePlan(body, network?)` - a preview of the full close plan, with blockers if any step
   cannot be closed safely.
+- `batchPlan(body, network?)` - plans up to 20 accounts into one destination, read-only.
 - `closeTransactions(body, network?)` - builds the next round of unsigned transactions.
 - `submit(signedXdr, network?)` - submits a signed transaction.
 - `mediatorCheck(address, network?)` / `mediatorSign(transaction, network?)` - the exchange
@@ -151,7 +159,17 @@ Never sign a transaction from this SDK without an equivalent check.
   hash, and read a close's phase from live state.
 - `closeDelivered(destination, hashes, network?)` - the XLM confirmed close transactions
   delivered to the destination, read from the ledger's result (see below).
+- `feeBumpSponsor(transaction, network?)`, `getAllowances(address, network?)` and
+  `revokeAllowance(params, network?)` - fee sponsorship and the allowance inspector.
+- `getStats(network?)` / `getStatsFeed(network?)` / `recordMerge(txHash, network?)` - close
+  totals, and counting a close submitted outside the API.
 - `runClose(deps)` - drives the full fetch/verify/sign/submit loop to completion.
+
+Every call uses the API's `/v1` paths, except `health()` and `healthDeep()`.
+
+`LumenWipeIntegratorClient` is a separate entry point for a wallet's own API keys: `challenge`,
+`session`, `listKeys`, `createKey`, `revokeKey` and `rotateKey`. It takes no API key and never
+sends one; the key calls carry only the wallet's session token. See the SDK docs.
 
 Request and response types come from `@lumenwipe/types` and are re-exported from this package, so
 no separate install is needed.

@@ -9,6 +9,26 @@ release is cut.
 
 ### Added
 
+- `client.batchPlan(body, network?)` for `POST /v1/{network}/close/batch-plan`: up to 20
+  accounts planned into one shared destination, read-only. Retried like the other stateless
+  posts. New type `BatchPlanRequest`.
+- `client.getExchangeRegistry()` for `GET /v1/config/exchange-registry`, retried like the other
+  reads. New types `ServedExchangeRegistry` and `ExchangeRegistryEntry`.
+- `client.healthDeep()` for `GET /health/deep`. A degraded service answers 503, thrown as a
+  `LumenWipeApiError` whose `body` is the `HealthDeepResponse` with `status: "error"`; it is never
+  retried. New types `HealthDeepResponse` and `HealthDeepIndicator`.
+- `client.getStats(network?)`, `client.getStatsFeed(network?)` and
+  `client.recordMerge(txHash, network?)` for the `/v1/{network}/stats` routes. New type
+  `RecordMergeRequest`.
+- `LumenWipeIntegratorClient`, a separate entry point for a wallet's own API keys: `challenge`,
+  `session`, `listKeys`, `createKey(token, { label?, networks? })`, `revokeKey` and `rotateKey`.
+  It takes no API key and never sends one; the key calls send only the session token, and a key
+  id is percent-encoded. Creating, revoking and rotating a key are never retried. New types
+  `LumenWipeIntegratorClientOptions`, `IntegratorChallengeResponse`, `IntegratorSessionRequest`,
+  `IntegratorSessionResponse`, `CreateIntegratorKeyRequest`, `IntegratorKeyRecord`,
+  `IntegratorKeyListEntry`, `IntegratorKeyUsage`, `IntegratorOwnerUsage`, `IntegratorKeyList`,
+  `IssuedIntegratorKey` and `RevokedIntegratorKey`.
+
 - The error codes `key_network_not_allowed` (403: the API key is limited to other networks),
   `invalid_label` and `invalid_networks` (400, from `POST /v1/integrator/keys`). Types only; no
   runtime change.
@@ -111,6 +131,11 @@ release is cut.
 
 ### Changed
 
+- `getAccount`, `getPaths`, `getAllowances`, `revokeAllowance`, `mediatorCheck`, `mediatorSign`
+  and `feeBumpSponsor` call their `/v1/{network}/...` paths. The SDK no longer calls any legacy
+  unversioned path; those answer with `Deprecation` and `Sunset` headers until 2027-06-01.
+  Request bodies and headers are unchanged. The network segment is percent-encoded after it is
+  checked.
 - `runClose` resolves with `{ mergeConfirmed }` instead of `undefined`. It is true only with
   `reconcile`, for a transaction the client parsed as a merge and saw confirmed under its own hash.
   Without `reconcile` it is always false: a caller must establish the merge itself, because `covers`

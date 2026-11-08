@@ -25,8 +25,21 @@ export interface LumenWipeClientOptions {
   fetch?: FetchLike;
   /** Per-request timeout in milliseconds. Defaults to 30000. `0`/`Infinity` disables it. */
   timeout?: number;
-  /** Opt-in retries. Off by default; never applied to `submit` or `mediatorSign`. */
+  /** Opt-in retries. Off by default; never applied to `submit`, `mediatorSign` or `healthDeep`. */
   retry?: RetryOptions;
   /** Receives one-time notices (plaintext `baseUrl`, defaulted network). Defaults to `console.warn`. */
+  logger?: (message: string) => void;
+}
+
+export interface LumenWipeIntegratorClientOptions {
+  /** Base URL of the LumenWipe API, e.g. `https://api.lumenwipe.com`. */
+  baseUrl: string;
+  /** Custom fetch (for environments without a global `fetch`, or for testing). */
+  fetch?: FetchLike;
+  /** Per-request timeout in milliseconds. Defaults to 30000. `0`/`Infinity` disables it. */
+  timeout?: number;
+  /** Opt-in retries. Off by default; never applied to creating, revoking or rotating a key. */
+  retry?: RetryOptions;
+  /** Receives one-time notices (plaintext `baseUrl`). Defaults to `console.warn`. */
   logger?: (message: string) => void;
 }
