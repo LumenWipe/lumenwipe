@@ -30,7 +30,10 @@ describe("parseSessionToken", () => {
     ["no mac", `lws.${ADDRESS}.${NOW_S}.`],
     ["an extra part", `${token()}.more`],
     ["a non-integer expiry", `lws.${ADDRESS}.1.5.mac`],
-    ["a bad checksum", `lws.${ADDRESS.slice(0, -1)}A.${NOW_S}.mac`],
+    [
+      "a bad checksum",
+      `lws.${ADDRESS.slice(0, -1)}${ADDRESS.endsWith("A") ? "B" : "A"}.${NOW_S}.mac`,
+    ],
     ["a contract address", `lws.CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA.1.mac`],
     ["a space in the mac", `lws.${ADDRESS}.${NOW_S}.ma c`],
   ])("refuses a token with %s", (_, value) => {

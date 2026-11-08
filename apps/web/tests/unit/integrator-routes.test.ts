@@ -33,9 +33,17 @@ let limiterCount = 1;
 let upstream: UpstreamReply = { status: 200, body: {} };
 const saved = new Map<string, string | undefined>();
 
+function originOf(input: unknown): string | null {
+  try {
+    return new URL(String(input)).origin;
+  } catch {
+    return null;
+  }
+}
+
 function upstreamCalls(): { url: string; init: RequestInit }[] {
   return (fetchSpy.mock.calls as [unknown, RequestInit][])
-    .filter(([input]) => String(input).startsWith(UPSTREAM))
+    .filter(([input]) => originOf(input) === new URL(UPSTREAM).origin)
     .map(([input, init]) => ({ url: String(input), init }));
 }
 
@@ -93,7 +101,7 @@ beforeAll(() => {
     process.env[key] = value;
   }
   fetchSpy = spyOn(globalThis, "fetch").mockImplementation((async (input: unknown) => {
-    if (new URL(String(input)).origin === LIMITER) {
+    if (originOf(input) === new URL(LIMITER).origin) {
       return Response.json([{ result: limiterCount }, { result: 1 }]);
     }
     return Response.json(upstream.body, { status: upstream.status });
