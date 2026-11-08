@@ -68,3 +68,12 @@ export function rateLimitedResponse(): NextResponse {
     { status: 429 }
   );
 }
+
+/** The answer of a route that refuses while its rate limiter can't be asked: a retryable 503 in
+ *  the usual envelope, which does not say the limiter is the cause. */
+export function rateLimiterUnavailableResponse(): NextResponse {
+  return NextResponse.json(
+    errorEnvelope("service_unavailable", "The service is temporarily unavailable."),
+    { status: 503, headers: { ...NOT_CONFIGURED_HEADERS, "Cache-Control": "no-store" } }
+  );
+}

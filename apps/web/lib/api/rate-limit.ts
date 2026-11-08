@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isValidNetwork } from "@/config/networks";
 import { checkNamespacedRateLimit } from "@/lib/upstash-redis";
 import { invalidNetworkResponse } from "@/lib/api/network-segment";
-import { rateLimitedResponse } from "@/lib/api/proxy-error";
+import { rateLimitedResponse, rateLimiterUnavailableResponse } from "@/lib/api/proxy-error";
 
 // Generous for a legitimate close flow (a close is a handful of requests), but caps how
 // much any single IP can pump through LumenWipe's shared API key in a day.
@@ -20,30 +20,38 @@ function clientIp(req: NextRequest): string {
   return "unknown";
 }
 
+export interface RateLimitOptions {
+  /** A route with a `[network]` param passes it, so an unknown network gets its 400 uncounted. */
+  params?: Promise<{ network: string }>;
+  /** A route that costs more than one upstream read per request sets its own bucket size. */
+  limitPerDay?: number;
+  /**
+   * What happens when the limiter can't be asked. `allow` (the default) lets the request through,
+   * so limiter trouble never blocks a step of a legitimate, irreversible close. `refuse` answers
+   * 503, for an optional route whose upstream cost per request is high enough that an outage of
+   * the limiter must not turn into uncapped reads against the shared key.
+   */
+  whenUnavailable?: "allow" | "refuse";
+}
+
 /**
  * Per-IP daily rate limit for the key-injecting proxy routes. The browser reaches these
  * routes with no API key, so without this a single client could turn the proxy into an
  * anonymous amplifier against the shared server-side key. Returns a 429 response when the
- * caller is over the limit, or null to proceed. Fails open (an Upstash Redis outage allows the request)
- * so infrastructure trouble never blocks a legitimate, irreversible close. A route with a
- * `[network]` param passes `params`, so an unknown network gets its 400 without counting. A
- * route that costs more than one upstream read per request passes its own `limitPerDay`.
+ * caller is over the limit, a 503 when the limiter is unavailable and the route refuses in that
+ * case, or null to proceed.
  */
 export async function rateLimitProxy(
   req: NextRequest,
   namespace: string,
-  params?: Promise<{ network: string }>,
-  limitPerDay = PROXY_LIMIT_PER_DAY
+  { params, limitPerDay = PROXY_LIMIT_PER_DAY, whenUnavailable = "allow" }: RateLimitOptions = {}
 ): Promise<NextResponse | null> {
   if (params && !isValidNetwork((await params).network)) return invalidNetworkResponse();
 
-  let allowed = true;
-  try {
-    allowed = await checkNamespacedRateLimit(`proxy:${namespace}`, clientIp(req), limitPerDay);
-  } catch {
-    // Fail open - limiter trouble must never block a legitimate, irreversible close.
-    return null;
+  const verdict = await checkNamespacedRateLimit(`proxy:${namespace}`, clientIp(req), limitPerDay);
+  if (verdict === "limited") return rateLimitedResponse();
+  if (verdict === "unavailable" && whenUnavailable === "refuse") {
+    return rateLimiterUnavailableResponse();
   }
-  if (allowed) return null;
-  return rateLimitedResponse();
+  return null;
 }

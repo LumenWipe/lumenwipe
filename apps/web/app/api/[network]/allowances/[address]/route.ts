@@ -8,7 +8,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ network: string; address: string }> }
 ) {
-  const limited = await rateLimitProxy(req, "allowances", params);
+  const limited = await rateLimitProxy(req, "allowances", { params });
   if (limited) return limited;
   const { network, address } = await params;
   return proxy(() => getApiClient().getAllowances(address, network as Network));

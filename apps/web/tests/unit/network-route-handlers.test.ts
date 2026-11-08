@@ -1,4 +1,13 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  spyOn,
+  test,
+} from "bun:test";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { NextRequest, type NextResponse } from "next/server";
@@ -49,6 +58,10 @@ const FORWARDED_ANSWER: Record<string, { status: number; upstreamCalls: number }
 const FORWARDED_QUERY: Record<string, string> = {
   "/v1/[network]/close/delivered/route.ts": `?destination=GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF&hashes=${"a".repeat(64)}`,
 };
+
+/** The routes that refuse, rather than forward, while the rate limiter can't be asked: optional
+ *  routes whose upstream cost per request is high. Every other route keeps the close flowing. */
+const FAIL_CLOSED = ["/[network]/estimate/route.ts", "/v1/[network]/close/delivered/route.ts"];
 
 const REFUSED = [
   "stats",
@@ -137,6 +150,48 @@ describe("route handlers with a [network] param", () => {
     const res = await call(file, "../admin", "?nxtPnetwork=..%2Fadmin");
     await expectRefused(res);
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("route handlers while the rate limiter is unreachable", () => {
+  let restore: (() => void) | undefined;
+
+  beforeEach(() => {
+    const forward = fetchSpy.getMockImplementation() as typeof globalThis.fetch;
+    fetchSpy.mockImplementation((async (input: unknown, init?: RequestInit) => {
+      if (new URL(String(input)).origin === LIMITER) throw new TypeError("fetch failed");
+      return forward(input as RequestInfo, init);
+    }) as unknown as typeof globalThis.fetch);
+    const quiet = spyOn(console, "error").mockImplementation(() => {});
+    restore = () => {
+      fetchSpy.mockImplementation(forward as never);
+      quiet.mockRestore();
+    };
+  });
+
+  afterEach(() => restore?.());
+
+  test("every fail-closed route exists", () => {
+    const refusing = ROUTES.map(([route]) => route).filter((route) => FAIL_CLOSED.includes(route));
+    expect(refusing.sort()).toEqual([...FAIL_CLOSED].sort());
+  });
+
+  test.each(ROUTES)("%s answers by its fail mode", async (route, file) => {
+    const res = await call(file, "testnet", FORWARDED_QUERY[route] ?? "", FORWARDED_BODY[route]);
+    expect(callsTo(LIMITER)).toBe(1);
+    if (FAIL_CLOSED.includes(route)) {
+      expect(res.status).toBe(503);
+      expect(res.headers.get("Retry-After")).toBe("30");
+      expect(res.headers.get("Cache-Control")).toBe("no-store");
+      expect(await res.json()).toEqual({
+        error: { code: "service_unavailable", message: "The service is temporarily unavailable." },
+      });
+      expect(callsTo(UPSTREAM)).toBe(0);
+    } else {
+      const expected = FORWARDED_ANSWER[route] ?? { status: 200, upstreamCalls: 1 };
+      expect(res.status).toBe(expected.status);
+      expect(callsTo(UPSTREAM)).toBe(expected.upstreamCalls);
+    }
   });
 });
 

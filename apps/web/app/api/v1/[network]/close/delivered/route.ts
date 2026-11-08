@@ -11,7 +11,8 @@ export const maxDuration = 55;
 export async function GET(req: NextRequest, { params }: { params: Promise<{ network: string }> }) {
   const { network } = await params;
   return deliveredLookupResponse(req.nextUrl.searchParams, {
-    rateLimit: () => rateLimitProxy(req, "close-delivered", params),
+    // Display-only and up to 20 transaction reads per call: refuses while the limiter is down.
+    rateLimit: () => rateLimitProxy(req, "close-delivered", { params, whenUnavailable: "refuse" }),
     relay: ({ destination, hashes }) =>
       proxy(() => getApiClient().closeDelivered(destination, hashes, network as Network)),
   });

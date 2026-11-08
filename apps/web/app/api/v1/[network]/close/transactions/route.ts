@@ -12,7 +12,7 @@ export const maxDuration = 55;
 export async function POST(req: NextRequest, { params }: { params: Promise<{ network: string }> }) {
   const { network } = await params;
 
-  const limited = await rateLimitProxy(req, "close-transactions", params);
+  const limited = await rateLimitProxy(req, "close-transactions", { params });
   if (limited) return limited;
 
   let body: CloseTransactionsRequest;

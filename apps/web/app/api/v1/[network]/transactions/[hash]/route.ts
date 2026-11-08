@@ -13,7 +13,7 @@ export async function GET(
 ) {
   const { network, hash } = await params;
   return transactionLookupResponse(hash, {
-    rateLimit: () => rateLimitProxy(req, "transactions", params),
+    rateLimit: () => rateLimitProxy(req, "transactions", { params }),
     relay: () => proxy(() => getApiClient().getTransaction(hash, network as Network)),
   });
 }
