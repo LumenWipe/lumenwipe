@@ -78,6 +78,12 @@ export function generateApiKey(): string {
 }
 
 const API_KEY_FORMAT = /^lw_[A-Za-z0-9_-]{43}$/;
+const KEY_ID_FORMAT = /^[0-9a-f]{64}$/;
+
+/** True when `id` has the shape `hashApiKey` produces, so it is safe as a storage field name. */
+export function isKeyId(id: string): boolean {
+  return KEY_ID_FORMAT.test(id);
+}
 
 /** True when `raw` has the exact shape `generateApiKey` produces. */
 export function isApiKeyFormat(raw: string): boolean {

@@ -385,6 +385,7 @@ describe("durable flush", () => {
     increment: async () => {},
     daily: async () => [],
     addUpstreamCounts,
+    addRateLimited: async () => {},
   });
 
   beforeEach(() => {

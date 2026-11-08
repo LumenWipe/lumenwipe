@@ -55,6 +55,7 @@ You manage your keys by signing in with a Stellar wallet: `POST /v1/integrator/a
 - A key with `networks` is refused with `403 key_network_not_allowed` on any other network, and on any keyed route that takes no network. The request does no work before it is refused. The label and networks cannot be changed later, and rotating a key keeps them.
 - Each key has its own rate-limit budget (see [Rate limits](#rate-limits)).
 - `GET /v1/integrator/keys` returns each key's `label`, `networks` and `lastUsedAt`. `lastUsedAt` is written at most once a minute, so it can trail the key's real use by about a minute, and stays `null` until a use has been written.
+- Each listed key also carries `usage`: its successful requests today and over the last 30 UTC days, today included, and the requests refused with `429` over the same 30 days. A key's `429` count is written at most once a minute and can trail by that much. The top-level `usage` is still the wallet's total across all its keys. Counts survive a restart; `usage` is `null` when they cannot be read.
 
 ## Errors
 

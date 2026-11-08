@@ -8,6 +8,7 @@ import {
   type ThrottlerStorage,
 } from "@nestjs/throttler";
 import type { NextFunction, Request, RequestHandler, Response } from "express";
+import { KeyActivityService } from "@/metering/key-activity.service";
 import { ApiKeyDirectory, type ResolvedApiKey } from "./api-key-directory";
 
 /** The bearer value of the `Authorization` header, or null when there is none. */
@@ -109,7 +110,8 @@ export class RateLimiter {
   constructor(
     @InjectThrottlerOptions() private readonly options: ThrottlerModuleOptions,
     @InjectThrottlerStorage() private readonly storage: ThrottlerStorage,
-    private readonly apiKeys: ApiKeyDirectory
+    private readonly apiKeys: ApiKeyDirectory,
+    private readonly activity: KeyActivityService
   ) {}
 
   private defaults(): { limit: number; ttl: number } {
@@ -125,13 +127,19 @@ export class RateLimiter {
     const bearer = bearerFromRequest(req);
     if (bearer !== null) {
       const peeked = this.apiKeys.peek(bearer);
-      if (peeked) return this.count(keyTracker(bearer), peeked);
+      if (peeked) return this.countKey(bearer, peeked);
       if (peeked === undefined && !(await this.count(lookupTracker(req), null)).blocked) {
         const resolved = await this.apiKeys.resolve(bearer).catch(() => null);
-        if (resolved) return this.count(keyTracker(bearer), resolved);
+        if (resolved) return this.countKey(bearer, resolved);
       }
     }
     return this.count(ipTracker(req), null);
+  }
+
+  private async countKey(bearer: string, resolved: ResolvedApiKey): Promise<RateLimitDecision> {
+    const decision = await this.count(keyTracker(bearer), resolved);
+    if (decision.blocked && resolved.id) this.activity.rateLimited(resolved.label, resolved.id);
+    return decision;
   }
 
   private async count(

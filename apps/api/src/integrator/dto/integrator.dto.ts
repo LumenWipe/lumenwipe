@@ -94,9 +94,32 @@ export class IntegratorKeyRecordDto {
   lastUsedAt!: string | null;
 }
 
+export class IntegratorKeyUsageDto {
+  @ApiProperty({ description: "Successful requests with this key today (UTC)." })
+  today!: number;
+
+  @ApiProperty({ description: "Successful requests with this key over the last 30 UTC days." })
+  last30Days!: number;
+
+  @ApiProperty({
+    description:
+      "Requests with this key refused with 429 over the last 30 UTC days. Not part of the request counts.",
+  })
+  rateLimitedLast30Days!: number;
+}
+
+export class IntegratorKeyListEntryDto extends IntegratorKeyRecordDto {
+  @ApiProperty({
+    type: IntegratorKeyUsageDto,
+    nullable: true,
+    description: "This key's counts; null if unavailable.",
+  })
+  usage!: IntegratorKeyUsageDto | null;
+}
+
 export class ListIntegratorKeysResponseDto {
-  @ApiProperty({ type: [IntegratorKeyRecordDto] })
-  keys!: IntegratorKeyRecordDto[];
+  @ApiProperty({ type: [IntegratorKeyListEntryDto] })
+  keys!: IntegratorKeyListEntryDto[];
 
   @ApiProperty({
     type: OwnerUsageDto,

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { InMemoryApiKeyStore } from "@/auth/api-key-store";
+import { InMemoryUsageStore } from "@/metering/usage-store";
 import {
   KEY_ACTIVITY_FLUSH_INTERVAL_MS,
   KeyActivityService,
@@ -19,9 +20,11 @@ function setup() {
     }
     return recordLastUsed(entries);
   };
-  const service = new KeyActivityService(store, () => new Date(now));
+  const usage = new InMemoryUsageStore();
+  const service = new KeyActivityService(store, usage, () => new Date(now));
   return {
     store,
+    usage,
     service,
     writes,
     advance: (ms: number) => (now += ms),
@@ -81,5 +84,47 @@ describe("KeyActivityService", () => {
     service.touch(record.hash);
     await service.onApplicationShutdown();
     expect((await store.findByHash(record.hash))!.lastUsedAt).not.toBeNull();
+  });
+
+  test("429s are counted in memory and added in one batch per interval, outside total", async () => {
+    const { usage, service, advance } = setup();
+    const id = "b".repeat(64);
+    const batches: number[] = [];
+    const add = usage.addRateLimited.bind(usage);
+    usage.addRateLimited = async (counts) => {
+      batches.push(counts.length);
+      return add(counts);
+    };
+    for (let i = 0; i < 40; i++) service.rateLimited("GOWNER", id);
+    await service.flushIfDue();
+    expect(batches).toEqual([]);
+    advance(KEY_ACTIVITY_FLUSH_INTERVAL_MS);
+    await service.flushIfDue();
+    expect(batches).toEqual([1]);
+    expect(await usage.daily("GOWNER", "2026-11-01")).toEqual([
+      { date: "2026-11-08", total: 0, rateLimitedByKey: { [id]: 40 } },
+    ]);
+  });
+
+  test("a failed 429 write adds its counts back to what arrived since", async () => {
+    const { usage, service, advance } = setup();
+    const id = "c".repeat(64);
+    const add = usage.addRateLimited.bind(usage);
+    let fail = true;
+    usage.addRateLimited = async (counts) => {
+      if (fail) {
+        fail = false;
+        throw new Error("unavailable");
+      }
+      return add(counts);
+    };
+    service.rateLimited("GOWNER", id);
+    service.rateLimited("GOWNER", id);
+    advance(KEY_ACTIVITY_FLUSH_INTERVAL_MS);
+    await service.flushIfDue();
+    service.rateLimited("GOWNER", id);
+    advance(KEY_ACTIVITY_FLUSH_INTERVAL_MS);
+    await service.flushIfDue();
+    expect((await usage.daily("GOWNER", "2026-11-01"))[0]?.rateLimitedByKey).toEqual({ [id]: 3 });
   });
 });

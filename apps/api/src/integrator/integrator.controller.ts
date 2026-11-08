@@ -127,13 +127,24 @@ export class IntegratorController {
   @Get("keys")
   @ApiBearerAuth("integrator-session")
   @UseGuards(IntegratorGuard)
-  @ApiOperation({ summary: "List the signed-in wallet's keys with its request counts." })
+  @ApiOperation({
+    summary: "List the signed-in wallet's keys with its request counts.",
+    description:
+      "Counts cover the last 30 UTC days, today included, and survive a restart. A key's 429 count is written at most once a minute and can trail by that much.",
+  })
   @ApiResponse({ status: 200, type: ListIntegratorKeysResponseDto })
   async list(@Req() req: IntegratorRequest) {
     const owner = req.integratorAddress!;
     const records = await this.store.listByOwner(owner);
-    const usage = await this.metering.usage(owner);
-    return { keys: records.map(toDto), usage };
+    const report = await this.metering.report(owner);
+    const none = { today: 0, last30Days: 0, rateLimitedLast30Days: 0 };
+    return {
+      keys: records.map((r) => ({
+        ...toDto(r),
+        usage: report ? (report.byKey[r.hash] ?? none) : null,
+      })),
+      usage: report?.owner ?? null,
+    };
   }
 
   @ApiErrorResponse(400, "The label or networks are malformed.", [
