@@ -4,6 +4,8 @@ import type { CloseTransaction, DecisionAnswer, DecisionPoint } from "@lumenwipe
 export interface CloseExpectation {
   source: string;
   destination: string;
+  /** Defaults to testnet, the only network this example closes on. */
+  networkPassphrase?: string;
 }
 
 const DESTINATION_ACK_CHOICE = "i_control_this_address";
@@ -19,7 +21,7 @@ export function verifyCloseTransaction(tx: CloseTransaction, expected: CloseExpe
   if (tx.needsSponsoredFee) {
     throw new Error("This example does not handle fee-sponsored transactions.");
   }
-  const parsed = TransactionBuilder.fromXdr(tx.xdr, Networks.TESTNET);
+  const parsed = TransactionBuilder.fromXdr(tx.xdr, expected.networkPassphrase ?? Networks.TESTNET);
   if (!(parsed instanceof Transaction)) {
     throw new Error("Unexpected fee-bump envelope.");
   }

@@ -47,7 +47,8 @@
     "type-check": "tsc --noEmit && tsc -p tests/tsconfig.json --noEmit && tsc -p examples/tsconfig.json --noEmit",
     "lint": "eslint src examples",
     "test": "bun test tests",
-    "example:headless": "bun run examples/headless-close.ts"
+    "example:headless": "bun run examples/headless-close.ts",
+    "example:plan-only": "bun run examples/plan-only.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
