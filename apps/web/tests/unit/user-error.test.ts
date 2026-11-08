@@ -23,6 +23,7 @@ import {
   closeFailureMessage,
   closeRetryIsSafe,
   PREIMAGE_EXPOSED,
+  SIGNED_NOT_APPROVED,
   SIGNER_RELEASED,
   STILL_UNCONFIRMED_NOTICE,
   UNCONFIRMED_NOTICE,
@@ -218,6 +219,12 @@ describe("toUserMessage", () => {
         new TxSubmitError("The network fee was too low. Please retry.", "tx_insufficient_fee")
       )
     ).toBe("The network fee was too low. Please retry.");
+  });
+
+  test("a signed transaction that is not the approved one is reported as such, in plain words", () => {
+    const message = toUserMessage(new UserFacingError(SIGNED_NOT_APPROVED), "execute");
+    expect(message).toBe("The signed transaction does not match what you approved.");
+    expect(message).not.toMatch(LEAKS);
   });
 
   const contexts: ErrorContext[] = ["analyze", "review", "execute", "wallet", "generic"];
