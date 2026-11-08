@@ -45,8 +45,9 @@ jobs:
         working-directory: apps/web
         env:
           # Public testnet endpoints. No secret is needed for the paths under test: the
-          # exchange/mediator flow requires a server-side mediator key and is exercised
-          # manually, so nothing here signs on behalf of an operator-held account.
+          # exchange/mediator flow needs a server-side mediator key and runs in the nightly SDK
+          # example (sdk-example-nightly.yml) with a per-run testnet key, so nothing here signs
+          # on behalf of an operator-held account.
           # Gateway first: SDF's endpoint stalls for seconds on a share of calls, which an
           # analyze of ~40 reads cannot absorb. SDF stays as the failover.
           STELLAR_RPC_TESTNET: https://soroban-rpc.testnet.stellar.gateway.fm,https://soroban-testnet.stellar.org

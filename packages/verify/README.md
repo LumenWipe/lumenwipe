@@ -68,6 +68,11 @@ Whether a destination is a listed exchange, whether it needs a memo and of which
 whether the merge must go through the shared intermediary are not inputs. The verifier derives
 them from the exchange registry bundled in this package.
 
+`requiresMediator(address)` exposes that same decision. An exchange close is one transaction
+holding the merge into the intermediary and the intermediary's forward, which the API co-signs
+(`mediatorSign`). Decide whether to ask for that co-signature with `requiresMediator(destination)`
+on the address the user typed, never from the API's response.
+
 ## The bundled registries
 
 This package uses only the exchange and contract registries bundled in it, as of its release.

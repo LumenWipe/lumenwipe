@@ -166,6 +166,52 @@ export function signerWeight(state: SignerState, publicKey: string): number {
   );
 }
 
+/** The server cannot carry an exchange close to this destination right now. Nothing was built,
+ *  signed or submitted when this is thrown. */
+export class MediatorUnavailableError extends Error {
+  constructor(
+    readonly destination: string,
+    readonly available: boolean,
+    readonly registryFresh: boolean
+  ) {
+    super(
+      !available
+        ? "The API has no intermediary key for this network, so it cannot co-sign the forward (a self-hosted API needs MEDIATOR_SECRET_TESTNET and MEDIATOR_PUBLIC_TESTNET)."
+        : "The API's exchange registry is past its verification window, so it refuses exchange closes."
+    );
+    this.name = "MediatorUnavailableError";
+  }
+}
+
+/**
+ * The intermediary may only add its signature. Refuses a co-signed envelope whose body differs
+ * from the one the user signed (any change to it changes the hash), or that carries no new
+ * signature, before anything is submitted.
+ */
+export function assertCosignOnlyAddedSignature(
+  signedXdr: string,
+  cosignedXdr: string,
+  networkPassphrase: string
+): void {
+  const before = TransactionBuilder.fromXdr(signedXdr, networkPassphrase);
+  const after = TransactionBuilder.fromXdr(cosignedXdr, networkPassphrase);
+  if (!(before instanceof Transaction) || !(after instanceof Transaction)) {
+    throw new Error("Unexpected fee-bump envelope.");
+  }
+  const hex = (tx: Transaction): string => Buffer.from(tx.hash()).toString("hex");
+  if (hex(after) !== hex(before)) {
+    throw new Error("The co-signed transaction does not match the one that was signed.");
+  }
+  const key = (sig: (typeof before.signatures)[number]): string => sig.toXDR("base64");
+  const kept = new Set(after.signatures.map(key));
+  if (!before.signatures.every((sig) => kept.has(key(sig)))) {
+    throw new Error("The co-signed transaction dropped a signature.");
+  }
+  if (after.signatures.length <= before.signatures.length) {
+    throw new Error("The intermediary did not add its signature.");
+  }
+}
+
 /** The fields an operator needs to act on a failure, never only its message. */
 export function describeError(error: unknown): string[] {
   const lines: string[] = [];
@@ -183,6 +229,13 @@ export function describeError(error: unknown): string[] {
       `${error.name}: transaction ${tx.id} has weight ${accumulatedWeight} of ${requiredWeight}.`
     );
     lines.push("  Sign with another key, then resume with runClose(deps, error.pending).");
+  } else if (error instanceof MediatorUnavailableError) {
+    lines.push(
+      `${error.name}: ${error.message}`,
+      `  destination: ${error.destination}`,
+      `  available: ${error.available}`,
+      `  registryFresh: ${error.registryFresh}`
+    );
   } else if (error instanceof Error) {
     lines.push(`${error.name}: ${error.message}`);
   } else {

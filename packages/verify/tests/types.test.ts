@@ -10,10 +10,12 @@ import type {
   ExitExpectations as WebExitExpectations,
   exitExpectations as webExitExpectations,
 } from "../../../apps/web/lib/stellar/exit-expectations";
+import type { mediatorAllowedFor } from "../../../apps/web/lib/exchange-registry";
 import type {
   CloseExpectationInput,
   ExitExpectations,
   exitExpectations,
+  requiresMediator,
   verifyCloseTransaction,
   VerifyCloseInput,
 } from "../src/index";
@@ -64,6 +66,14 @@ const pins = {
   exitReturn: true satisfies Pinned<
     ReturnType<typeof exitExpectations>,
     ReturnType<typeof webExitExpectations>
+  >,
+  mediatorParams: true satisfies Pinned<
+    Parameters<typeof requiresMediator>,
+    Parameters<typeof mediatorAllowedFor>
+  >,
+  mediatorReturn: true satisfies Pinned<
+    ReturnType<typeof requiresMediator>,
+    ReturnType<typeof mediatorAllowedFor>
   >,
 };
 

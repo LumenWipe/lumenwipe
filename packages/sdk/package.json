@@ -48,7 +48,8 @@
     "lint": "eslint src examples",
     "test": "bun run --filter '@lumenwipe/verify' build:js && bun test tests",
     "example:headless": "bun run --filter '@lumenwipe/verify' build:js && bun run examples/headless-close.ts",
-    "example:plan-only": "bun run examples/plan-only.ts"
+    "example:plan-only": "bun run examples/plan-only.ts",
+    "example:exchange": "bun run --filter '@lumenwipe/verify' build:js && bun run examples/exchange-close.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

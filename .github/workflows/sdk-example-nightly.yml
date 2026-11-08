@@ -2,7 +2,8 @@ name: sdk example (testnet)
 
 # The headless example is the file integrators copy, and nothing else runs it: it can break
 # against the API without any pull request noticing. So it runs nightly against an API started
-# in this job on testnet, with the plan-only rehearsal next to it, and a failure opens an issue.
+# in this job on testnet, with the exchange close and the plan-only rehearsal next to it, and a
+# failure opens an issue.
 # Not a pull request check: it funds accounts through Friendbot and waits on testnet ledgers.
 
 on:
@@ -19,7 +20,7 @@ permissions: {}
 
 jobs:
   example:
-    name: headless and plan-only examples against testnet
+    name: headless, exchange and plan-only examples against testnet
     runs-on: ubuntu-latest
     # A green run takes about two minutes after install; the retries inside the examples are
     # bounded well below this.
@@ -44,16 +45,25 @@ jobs:
       - name: Build and test the verifier the example signs with
         run: bun run --filter '@lumenwipe/verify' test
 
+      # No stored secret. The intermediary the exchange close forwards through is a keypair made
+      # here, masked before anything else touches it, funded by Friendbot through its public key,
+      # and handed only to the API process's environment: never GITHUB_ENV, an output, a file or
+      # a log. It is a testnet key that dies with the runner.
       - name: Start the API
         env:
-          # No secret: public testnet endpoints, and a key that exists only for this run.
+          # Public testnet endpoints, and a key that exists only for this run.
           # API_KEYS is a label=key map, so the accepted key is everything after the first `=`.
           API_KEYS: ci=${{ github.run_id }}-sdk-example
           STELLAR_RPC_TESTNET: https://soroban-rpc.testnet.stellar.gateway.fm,https://soroban-testnet.stellar.org
           PATH_ROUTING_API_TESTNET: https://horizon-testnet.stellar.org
         run: |
           set -euo pipefail
-          nohup bun run --filter '@lumenwipe/api' start > "$RUNNER_TEMP/api.log" 2>&1 &
+          read -r MEDIATOR_SECRET MEDIATOR_PUBLIC < <(cd packages/sdk && bun -e 'import { Keypair } from "@stellar/stellar-sdk"; const k = Keypair.random(); console.log(k.secret(), k.publicKey())')
+          echo "::add-mask::$MEDIATOR_SECRET"
+          curl -fsS --retry 3 --retry-all-errors -o /dev/null "https://friendbot.stellar.org/?addr=$MEDIATOR_PUBLIC"
+          MEDIATOR_SECRET_TESTNET="$MEDIATOR_SECRET" MEDIATOR_PUBLIC_TESTNET="$MEDIATOR_PUBLIC" \
+            nohup bun run --filter '@lumenwipe/api' start > "$RUNNER_TEMP/api.log" 2>&1 &
+          unset MEDIATOR_SECRET
           for _ in $(seq 1 120); do
             if curl -fsS "$LUMENWIPE_API_URL/health" > /dev/null 2>&1; then exit 0; fi
             sleep 1
@@ -63,6 +73,11 @@ jobs:
 
       - name: Close a throwaway account with the headless example
         run: bun run --filter '@lumenwipe/sdk' example:headless
+
+      # A listed exchange address on testnet: the merge goes to the intermediary above and its
+      # forward, co-signed by the API, carries the balance on with the deposit memo.
+      - name: Close a throwaway account to an exchange-style destination
+        run: bun run --filter '@lumenwipe/sdk' example:exchange
 
       # Two Friendbot accounts known only by their public keys: the rehearsal holds no secret,
       # and a fresh account plans with no blockers, so exit code 2 (blocked) fails the job too.
@@ -117,7 +132,7 @@ jobs:
           fi
 
           BODY=$(printf '%s\n' \
-            "The nightly run of the SDK's headless and plan-only examples failed against testnet." \
+            "The nightly run of the SDK's headless, exchange and plan-only examples failed against testnet." \
             "" \
             "Run: $RUN_URL" \
             "" \

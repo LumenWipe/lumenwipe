@@ -145,10 +145,15 @@ describe("buildDecisions", () => {
     required,
   });
 
-  test("always acknowledges the destination", () => {
-    expect(buildDecisions([], destination)).toEqual([
+  test("acknowledges the destination when the plan asks", () => {
+    expect(buildDecisions([point(destinationDecisionId(destination), true)], destination)).toEqual([
       { id: destinationDecisionId(destination), choice: "i_control_this_address" },
     ]);
+  });
+
+  test("answers nothing for a destination point the plan did not offer", () => {
+    expect(buildDecisions([], destination)).toEqual([]);
+    expect(buildDecisions([point(destinationDecisionId(other), false)], destination)).toEqual([]);
   });
 
   test("ignores optional points and the destination point itself", () => {

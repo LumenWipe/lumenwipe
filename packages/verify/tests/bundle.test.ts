@@ -47,11 +47,29 @@ for (const [file, source, sdkImport] of bundles) {
 }
 
 test("exports exactly the documented surface, in both formats", async () => {
-  const surface = ["VerificationError", "exitExpectations", "verifyCloseTransaction"];
+  const surface = [
+    "VerificationError",
+    "exitExpectations",
+    "requiresMediator",
+    "verifyCloseTransaction",
+  ];
   const esm = await import(new URL("../dist/index.js", import.meta.url).href);
   const cjs = createRequire(import.meta.url)(
     new URL("../dist/index.cjs", import.meta.url).pathname
   );
   expect(Object.keys(esm).sort()).toEqual(surface);
   expect(Object.keys(cjs).sort()).toEqual(surface);
+});
+
+test("requiresMediator answers from the bundled exchange registry, in both formats", async () => {
+  const listed = "GB5CLRWUCBQ6DFK2LR5ZMWJ7QCVEB3XKMPTQUYCDIYB4DRZJBEW6M26D";
+  const unlisted = "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD";
+  const esm = await import(new URL("../dist/index.js", import.meta.url).href);
+  const cjs = createRequire(import.meta.url)(
+    new URL("../dist/index.cjs", import.meta.url).pathname
+  );
+  for (const mod of [esm, cjs]) {
+    expect(mod.requiresMediator(listed)).toBe(true);
+    expect(mod.requiresMediator(unlisted)).toBe(false);
+  }
 });
