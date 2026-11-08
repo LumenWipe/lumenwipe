@@ -5,6 +5,7 @@ import type { AuthedRequest } from "@/auth/api-key.guard";
 import { MeteringInterceptor, meteredRoute } from "@/metering/metering.interceptor";
 import { MeteringService, RECORD_TIMEOUT_MS } from "@/metering/metering.service";
 import type { Firestore } from "@google-cloud/firestore";
+import { FIRESTORE_BATCH_LIMIT } from "@/auth/api-key-store";
 import {
   FirestoreUsageStore,
   InMemoryUsageStore,
@@ -186,6 +187,31 @@ describe("FirestoreUsageStore per-key fields", () => {
     expect(sets).toHaveLength(1);
     expect(sets[0]!.total).toBeUndefined();
     expect(Object.keys(sets[0]!.rateLimitedByKey as object)).toEqual([KEY_ID]);
+  });
+
+  test("splits more than one batch's worth of 429 slots into batches Firestore accepts", async () => {
+    const batches: number[] = [];
+    const firestore = {
+      collection: () => ({ doc: () => ({ collection: () => ({ doc: () => ({}) }) }) }),
+      batch: () => {
+        let size = 0;
+        return {
+          set: () => size++,
+          commit: async () => {
+            if (size > FIRESTORE_BATCH_LIMIT) throw new Error("too many writes");
+            batches.push(size);
+          },
+        };
+      },
+    } as unknown as Firestore;
+    const counts = Array.from({ length: FIRESTORE_BATCH_LIMIT + 1 }, (_, i) => ({
+      owner: `G${i}`,
+      keyId: KEY_ID,
+      date: "2026-10-09",
+      count: 1,
+    }));
+    await new FirestoreUsageStore(firestore).addRateLimited(counts);
+    expect(batches).toEqual([FIRESTORE_BATCH_LIMIT, 1]);
   });
 
   test("reads a day that has only 429s as zero requests", async () => {

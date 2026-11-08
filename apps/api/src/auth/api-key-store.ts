@@ -124,7 +124,8 @@ function inheritedOptions(old: ApiKeyRecord): NewApiKeyOptions {
   return { rateLimit: old.rateLimit, label: old.label, networks: old.networks };
 }
 
-const FIRESTORE_BATCH_LIMIT = 500;
+/** The most writes Firestore accepts in one batch. */
+export const FIRESTORE_BATCH_LIMIT = 500;
 
 function rethrowUnavailable(error: unknown): never {
   if (error instanceof Error && error.message === STORE_TIMEOUT_MESSAGE) {

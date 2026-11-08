@@ -1,5 +1,5 @@
 import { FieldValue, Firestore } from "@google-cloud/firestore";
-import { isKeyId } from "@/auth/api-key-store";
+import { FIRESTORE_BATCH_LIMIT, isKeyId } from "@/auth/api-key-store";
 import type { UpstreamDelta } from "@/lib/stellar/upstream-metrics";
 
 export interface DayUsage {
@@ -110,21 +110,22 @@ export class FirestoreUsageStore implements UsageStore {
 
   async addRateLimited(counts: readonly RateLimitedCount[]): Promise<void> {
     const valid = counts.filter((c) => isKeyId(c.keyId) && c.count > 0);
-    if (valid.length === 0) return;
-    const batch = this.firestore.batch();
-    for (const { owner, keyId, date, count } of valid) {
-      batch.set(
-        this.days(owner).doc(date),
-        {
-          owner,
-          date,
-          rateLimitedByKey: { [keyId]: FieldValue.increment(count) },
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
+    for (let i = 0; i < valid.length; i += FIRESTORE_BATCH_LIMIT) {
+      const batch = this.firestore.batch();
+      for (const { owner, keyId, date, count } of valid.slice(i, i + FIRESTORE_BATCH_LIMIT)) {
+        batch.set(
+          this.days(owner).doc(date),
+          {
+            owner,
+            date,
+            rateLimitedByKey: { [keyId]: FieldValue.increment(count) },
+            updatedAt: FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+      await batch.commit();
     }
-    await batch.commit();
   }
 
   async daily(owner: string, fromDate: string): Promise<DayUsage[]> {
