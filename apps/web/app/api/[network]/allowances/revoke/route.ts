@@ -11,7 +11,7 @@ import { rateLimitProxy } from "@/lib/api/rate-limit";
 export async function POST(req: NextRequest, { params }: { params: Promise<{ network: string }> }) {
   const { network } = await params;
 
-  const limited = await rateLimitProxy(req, "allowances-revoke", params);
+  const limited = await rateLimitProxy(req, "allowances-revoke", { params });
   if (limited) return limited;
 
   let body: { owner?: unknown; token?: unknown; spender?: unknown };

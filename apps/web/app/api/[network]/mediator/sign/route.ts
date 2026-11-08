@@ -12,7 +12,7 @@ import { rateLimitProxy } from "@/lib/api/rate-limit";
 export async function POST(req: NextRequest, { params }: { params: Promise<{ network: string }> }) {
   const { network } = await params;
 
-  const limited = await rateLimitProxy(req, "mediator-sign", params);
+  const limited = await rateLimitProxy(req, "mediator-sign", { params });
   if (limited) return limited;
 
   let body: { transaction?: unknown };

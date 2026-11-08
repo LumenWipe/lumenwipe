@@ -5,7 +5,7 @@ import { proxy } from "@/lib/api/proxy";
 import { rateLimitProxy } from "@/lib/api/rate-limit";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ network: string }> }) {
-  const limited = await rateLimitProxy(req, "paths", params);
+  const limited = await rateLimitProxy(req, "paths", { params });
   if (limited) return limited;
   const { network } = await params;
   const fromAsset = req.nextUrl.searchParams.get("fromAsset") ?? "";

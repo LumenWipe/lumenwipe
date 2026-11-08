@@ -31,7 +31,7 @@ beforeEach(() => {
   counted = [];
   spyOn(redis, "checkNamespacedRateLimit").mockImplementation(async (namespace, _ip, limit) => {
     counted.push([namespace, limit]);
-    return true;
+    return "allowed";
   });
   getAccount = mock(async () => freshAccount(ADDRESS));
   closePlan = mock(async () => PLAN);
@@ -72,10 +72,7 @@ test("no route but the estimate passes its own limit", () => {
       e.isDirectory() ? files(join(dir, e.name)) : e.name === "route.ts" ? [join(dir, e.name)] : []
     );
   const withOwnLimit = files(API_DIR)
-    .filter((file) => {
-      const calls = readFileSync(file, "utf8").match(/rateLimitProxy\(([^)]*)\)/g) ?? [];
-      return calls.some((c) => c.split(",").length > 3);
-    })
+    .filter((file) => /limitPerDay:/.test(readFileSync(file, "utf8")))
     .map((file) => relative(API_DIR, file));
   expect(withOwnLimit).toEqual(["[network]/estimate/route.ts"]);
 });
@@ -117,11 +114,31 @@ test("an unknown network is refused before anything is counted", async () => {
 });
 
 test("a refusal by the limiter asks the API nothing", async () => {
-  spyOn(redis, "checkNamespacedRateLimit").mockImplementation(async () => false);
+  spyOn(redis, "checkNamespacedRateLimit").mockImplementation(async () => "limited");
   const res = await call({ address: ADDRESS });
   expect(res.status).toBe(429);
   expect(res.headers.get("Cache-Control")).toBe("no-store");
   expect(getAccount).not.toHaveBeenCalled();
+});
+
+test("an unavailable limiter refuses with a retryable 503 and asks the API nothing", async () => {
+  spyOn(redis, "checkNamespacedRateLimit").mockImplementation(async () => "unavailable");
+  const res = await call({ address: ADDRESS });
+  expect(res.status).toBe(503);
+  expect(res.headers.get("Cache-Control")).toBe("no-store");
+  expect(res.headers.get("Retry-After")).toBe("30");
+  expect(await res.json()).toEqual({
+    error: { code: "service_unavailable", message: "The service is temporarily unavailable." },
+  });
+  expect(getAccount).not.toHaveBeenCalled();
+  expect(closePlan).not.toHaveBeenCalled();
+});
+
+test("a disabled limiter (local or CI) lets the estimate through", async () => {
+  spyOn(redis, "checkNamespacedRateLimit").mockImplementation(async () => "disabled");
+  const res = await call({ address: ADDRESS });
+  expect(res.status).toBe(200);
+  expect(getAccount).toHaveBeenCalledTimes(1);
 });
 
 test("a failed read keeps its status but never the upstream text, which may quote the address", async () => {

@@ -57,7 +57,13 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ network: string }> }
 ): Promise<NextResponse> {
-  const limited = await rateLimitProxy(req, "estimate", params, ESTIMATE_LIMIT_PER_DAY);
+  // An outage of the limiter refuses rather than forwards: the estimate is optional and costs two
+  // full account reads, so it must never run uncapped against the shared key.
+  const limited = await rateLimitProxy(req, "estimate", {
+    params,
+    limitPerDay: ESTIMATE_LIMIT_PER_DAY,
+    whenUnavailable: "refuse",
+  });
   if (limited) {
     limited.headers.set("Cache-Control", "no-store");
     return limited;

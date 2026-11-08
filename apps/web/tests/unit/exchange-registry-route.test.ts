@@ -25,7 +25,7 @@ function call() {
 beforeEach(() => {
   calls = [];
   process.env.LUMENWIPE_API_URL = "https://api.test";
-  spyOn(redis, "checkNamespacedRateLimit").mockImplementation(async () => true);
+  spyOn(redis, "checkNamespacedRateLimit").mockImplementation(async () => "allowed");
 });
 
 afterEach(() => {
