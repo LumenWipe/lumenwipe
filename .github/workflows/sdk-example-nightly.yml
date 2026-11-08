@@ -1,0 +1,130 @@
+name: sdk example (testnet)
+
+# The headless example is the file integrators copy, and nothing else runs it: it can break
+# against the API without any pull request noticing. So it runs nightly against an API started
+# in this job on testnet, with the plan-only rehearsal next to it, and a failure opens an issue.
+# Not a pull request check: it funds accounts through Friendbot and waits on testnet ledgers.
+
+on:
+  schedule:
+    # 06:00 UTC daily, an hour before the nightly e2e, so the two never share Friendbot.
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: sdk-example-testnet
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  example:
+    name: headless and plan-only examples against testnet
+    runs-on: ubuntu-latest
+    # A green run takes about two minutes after install; the retries inside the examples are
+    # bounded well below this.
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      LUMENWIPE_API_URL: http://localhost:3001
+      LUMENWIPE_API_KEY: ${{ github.run_id }}-sdk-example
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.4.4"
+
+      - run: bun install --frozen-lockfile
+
+      - name: Start the API
+        env:
+          # No secret: public testnet endpoints, and a key that exists only for this run.
+          # API_KEYS is a label=key map, so the accepted key is everything after the first `=`.
+          API_KEYS: ci=${{ github.run_id }}-sdk-example
+          STELLAR_RPC_TESTNET: https://soroban-rpc.testnet.stellar.gateway.fm,https://soroban-testnet.stellar.org
+          PATH_ROUTING_API_TESTNET: https://horizon-testnet.stellar.org
+        run: |
+          set -euo pipefail
+          nohup bun run --filter '@lumenwipe/api' start > "$RUNNER_TEMP/api.log" 2>&1 &
+          for _ in $(seq 1 120); do
+            if curl -fsS "$LUMENWIPE_API_URL/health" > /dev/null 2>&1; then exit 0; fi
+            sleep 1
+          done
+          echo "::error::The API did not become healthy within 120 seconds."
+          exit 1
+
+      - name: Close a throwaway account with the headless example
+        run: bun run --filter '@lumenwipe/sdk' example:headless
+
+      # Two Friendbot accounts known only by their public keys: the rehearsal holds no secret,
+      # and a fresh account plans with no blockers, so exit code 2 (blocked) fails the job too.
+      - name: Rehearse a close with the plan-only example
+        working-directory: packages/sdk
+        env:
+          LUMENWIPE_NETWORK: testnet
+        run: |
+          set -euo pipefail
+          read -r SOURCE DESTINATION < <(bun -e 'import { Keypair } from "@stellar/stellar-sdk"; console.log(Keypair.random().publicKey(), Keypair.random().publicKey())')
+          for address in "$SOURCE" "$DESTINATION"; do
+            curl -fsS --retry 3 --retry-all-errors -o /dev/null "https://friendbot.stellar.org/?addr=$address"
+          done
+          SOURCE="$SOURCE" DESTINATION="$DESTINATION" bun run example:plan-only
+
+      - name: Show the API log
+        if: failure()
+        run: tail -n 200 "$RUNNER_TEMP/api.log" || true
+
+  # Same reporting as the nightly e2e: a failure opens one issue, a later green run closes it.
+  report:
+    name: open an issue on failure
+    needs: example
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Open or close the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RESULT: ${{ needs.example.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          TITLE="Nightly SDK example is failing against testnet"
+
+          # Exact title match on the list endpoint; `|| true` so a transient API error cannot
+          # swallow the report. See e2e-nightly.yml for why not `--search`.
+          EXISTING=$(gh issue list --repo "$REPO" --state open --limit 200 --json number,title 2>/dev/null \
+            | jq -r --arg t "$TITLE" 'map(select(.title == $t)) | .[0].number // empty' || true)
+
+          # Cancelled and skipped runs are not failures and report nothing.
+          if [ "$RESULT" != "failure" ]; then
+            if [ "$RESULT" = "success" ] && [ -n "$EXISTING" ]; then
+              gh issue comment "$EXISTING" --repo "$REPO" --body "The nightly SDK example is green again: $RUN_URL"
+              gh issue close "$EXISTING" --repo "$REPO" --reason completed
+            fi
+            exit 0
+          fi
+
+          BODY=$(printf '%s\n' \
+            "The nightly run of the SDK's headless and plan-only examples failed against testnet." \
+            "" \
+            "Run: $RUN_URL" \
+            "" \
+            "These examples are what integrators copy, so a failure means the published pattern" \
+            "may no longer work against the API. Testnet or Friendbot flakiness is possible; read" \
+            "the step output and the API log in the run above before assuming either." \
+            "" \
+            "This issue closes itself on the next green run, including a manual one from the" \
+            "Actions tab.")
+
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --repo "$REPO" --body "Still failing: $RUN_URL"
+          else
+            gh issue create --repo "$REPO" --title "$TITLE" --body "$BODY" \
+              --label bug --label area:sdk --assignee salazarsebas
+          fi

@@ -2,49 +2,43 @@ import {
   BASE_FEE,
   Account,
   Keypair,
-  Networks,
   Operation,
   Transaction,
   TransactionBuilder,
 } from "@stellar/stellar-sdk";
-import { LumenWipeClient, runClose, type AccountState } from "@lumenwipe/sdk";
+import { LumenWipeClient, runClose } from "@lumenwipe/sdk";
 import { buildDecisions, verifyCloseTransaction } from "./verify";
+import {
+  PASSPHRASES,
+  fund,
+  requireEnv,
+  requiredWeightFor,
+  runMain,
+  signerWeight,
+  waitForAccount,
+  type SignerState,
+} from "./support";
 
-const FRIENDBOT_URL = "https://friendbot.stellar.org";
-
-const apiKey = process.env.LUMENWIPE_API_KEY;
-if (!apiKey) {
-  console.error("Set LUMENWIPE_API_KEY (create one at https://lumenwipe.com).");
-  process.exit(1);
-}
+// Throwaway accounts funded by Friendbot: this example never runs on mainnet.
+const NETWORK = "testnet";
+const networkPassphrase = PASSPHRASES[NETWORK];
 
 const client = new LumenWipeClient({
   baseUrl: process.env.LUMENWIPE_API_URL ?? "https://api.lumenwipe.com",
-  apiKey,
-  network: "testnet",
+  apiKey: requireEnv("LUMENWIPE_API_KEY", "create one at https://lumenwipe.com/api-keys"),
+  network: NETWORK,
 });
 
-async function fund(address: string): Promise<void> {
-  const res = await fetch(`${FRIENDBOT_URL}/?addr=${encodeURIComponent(address)}`);
-  if (!res.ok) throw new Error(`Friendbot could not fund ${address} (${res.status}).`);
-}
-
-async function waitForAccount(address: string): Promise<AccountState> {
-  for (let attempt = 0; attempt < 15; attempt++) {
-    try {
-      return await client.getAccount(address);
-    } catch {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-    }
-  }
-  throw new Error(`Account ${address} did not become readable in time.`);
+async function fundAndWait(address: string): Promise<void> {
+  // Polling starts at once, so a rejected key fails the run before Friendbot answers.
+  await Promise.all([fund(address), waitForAccount((a) => client.getAccount(a), address)]);
 }
 
 async function addDataEntry(keypair: Keypair): Promise<void> {
   const state = await client.getAccount(keypair.publicKey());
   const tx = new TransactionBuilder(new Account(keypair.publicKey(), state.sequence), {
     fee: BASE_FEE,
-    networkPassphrase: Networks.TESTNET,
+    networkPassphrase,
   })
     .addOperation(Operation.manageData({ name: "lumenwipe-example", value: "headless" }))
     .setTimeout(60)
@@ -59,9 +53,8 @@ async function main(): Promise<void> {
   const sourceAddress = source.publicKey();
   const destinationAddress = destination.publicKey();
 
-  console.log(`Funding ${sourceAddress} and ${destinationAddress} on testnet...`);
-  await Promise.all([fund(sourceAddress), fund(destinationAddress)]);
-  await Promise.all([waitForAccount(sourceAddress), waitForAccount(destinationAddress)]);
+  console.log(`Funding ${sourceAddress} and ${destinationAddress} on ${NETWORK}...`);
+  await Promise.all([fundAndWait(sourceAddress), fundAndWait(destinationAddress)]);
   await addDataEntry(source);
 
   const before = await client.getAccount(sourceAddress);
@@ -77,21 +70,34 @@ async function main(): Promise<void> {
   const count = plan.execution.estimatedTransactionCount;
   console.log(count === null ? "Plan ready." : `Plan ready: ${count} transaction(s).`);
 
+  // Signing weight is judged against the signers and thresholds each round was built from.
+  let signerState: SignerState = before;
+
   await runClose({
-    getTransactions: () =>
-      client.closeTransactions({
+    getTransactions: async () => {
+      const round = await client.closeTransactions({
         source: sourceAddress,
         destination: destinationAddress,
         decisions,
-      }),
+      });
+      signerState = round.sourceAccount ?? (await client.getAccount(sourceAddress));
+      return round;
+    },
     verify: (tx) =>
-      verifyCloseTransaction(tx, { source: sourceAddress, destination: destinationAddress }),
-    requiredWeight: () => 1,
+      verifyCloseTransaction(tx, {
+        source: sourceAddress,
+        destination: destinationAddress,
+        networkPassphrase,
+      }),
+    requiredWeight: (tx) => requiredWeightFor(tx, signerState, networkPassphrase),
     sign: async (_tx, xdr) => {
-      const parsed = TransactionBuilder.fromXdr(xdr, Networks.TESTNET);
+      const parsed = TransactionBuilder.fromXdr(xdr, networkPassphrase);
       if (!(parsed instanceof Transaction)) throw new Error("Unexpected fee-bump envelope.");
       parsed.sign(source);
-      return { xdr: parsed.toEnvelope().toXdr("base64"), weight: 1 };
+      return {
+        xdr: parsed.toEnvelope().toXdr("base64"),
+        weight: signerWeight(signerState, sourceAddress),
+      };
     },
     submit: async (_tx, xdr) => (await client.submit(xdr)).hash,
     onProgress: (message) => console.log(message),
@@ -102,7 +108,4 @@ async function main(): Promise<void> {
   console.log(`Closed. Destination now holds ${received.nativeBalanceLumens} XLM.`);
 }
 
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exit(1);
-});
+runMain(main);

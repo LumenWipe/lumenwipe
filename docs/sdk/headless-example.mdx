@@ -1,6 +1,6 @@
 ---
 title: "Headless example"
-description: "A complete testnet close from a plain Node or Bun process, as the reference implementation."
+description: "A complete testnet close from a plain Node or Bun process, and a read-only rehearsal of any account."
 icon: "terminal"
 ---
 
@@ -8,11 +8,32 @@ icon: "terminal"
 
 It funds two accounts through Friendbot, adds a data entry, then runs `getAccount`, `closePlan`, `closeTransactions`, and `submit` through [`runClose`](/sdk/run-close), signing with an in-process keypair.
 
+[`examples/plan-only.ts`](https://github.com/LumenWipe/lumenwipe/blob/main/packages/sdk/examples/plan-only.ts) is its read-only counterpart: it rehearses the close of any account, mainnet included, without holding a key or building a transaction. See [Rehearse a mainnet account](#rehearse-a-mainnet-account).
+
+Both run every night in CI against testnet, so a change that breaks them against the API is caught the next morning.
+
 ## The part to copy
 
 Before signing, the example decodes every transaction and checks it against its own inputs in [`examples/verify.ts`](https://github.com/LumenWipe/lumenwipe/blob/main/packages/sdk/examples/verify.ts). It rejects any operation it does not recognize. This is the pattern to follow. See [Verification](/sdk/verification).
 
 The example's verifier covers only what a simple account needs: data entries, empty trustlines, and open offers. A production integration needs a wider check.
+
+## Signing weight
+
+The example does not assume its key is enough. For each transaction it takes the strictest threshold its operations need (`high` for the merge, `medium` for removing a data entry, trustline or offer) from the signers and thresholds the round was built from, and reports the weight its key actually carries. When that falls short, `runClose` stops with `InsufficientSignatureWeightError` before submitting, and the error's `pending` holds the partially signed envelope: sign it with another key and pass it back as `runClose(deps, error.pending)`. See [runClose](/sdk/run-close).
+
+## Errors
+
+Nothing is swallowed. Waiting for a new account retries only what waiting can fix: an account the network does not show yet, a 429 or 5xx (honouring `Retry-After`), a timeout or a connection that never got a response. A rejected key or request fails at once. Every failure exits with code 1 and prints the error's typed fields, never only its message:
+
+```text
+LumenWipeApiError: LumenWipe API error 401 unauthorized: A valid API key is required.
+  status: 401
+  code: unauthorized
+  requestId: 2d15db8a-30ad-4015-b1c9-45de50768493
+```
+
+When retries run out, the last error is printed as the `cause`. A promise rejection nothing awaited fails the run the same way.
 
 ## Recording what arrived
 
@@ -34,10 +55,22 @@ Amounts are in stroops, as strings. Only a merge into the destination, or the re
 
 ## Run it
 
-Create an API key at [lumenwipe.com](https://lumenwipe.com), then, from the repository root:
+Create an API key at [lumenwipe.com/api-keys](https://lumenwipe.com/api-keys), then, from the repository root:
 
 ```bash
 LUMENWIPE_API_KEY=... bun run --filter '@lumenwipe/sdk' example:headless
 ```
 
 `LUMENWIPE_API_URL` overrides the default `https://api.lumenwipe.com`. The example runs on testnet only.
+
+## Rehearse a mainnet account
+
+Before the first real close, run the plan-only example against the account. It calls only `getAccount` and `closePlan`: no key is read, and no transaction is requested, built, signed or submitted.
+
+```bash
+LUMENWIPE_API_KEY=... LUMENWIPE_NETWORK=mainnet \
+SOURCE=G... DESTINATION=G... \
+bun run --filter '@lumenwipe/sdk' example:plan-only
+```
+
+It prints the account, the plan, the decisions the close will need and every blocker. The exit code is 0 when nothing blocks the close, 2 when something does, and 1 on an error. `LUMENWIPE_NETWORK` defaults to `testnet`. CI only ever runs it against testnet; pointing it at mainnet is for your own rehearsal.
