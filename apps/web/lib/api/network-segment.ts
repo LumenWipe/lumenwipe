@@ -2,7 +2,13 @@ import { NextResponse } from "next/server";
 import { isValidNetwork } from "@/config/networks";
 import { errorEnvelope } from "@/lib/api/error-body";
 
-const API_ROOTS_WITHOUT_NETWORK = new Set(["health", "stats", "integrator", "config"]);
+const API_ROOTS_WITHOUT_NETWORK = new Set([
+  "health",
+  "stats",
+  "integrator",
+  "config",
+  "csp-report",
+]);
 
 function decodeSegment(segment: string): string {
   try {

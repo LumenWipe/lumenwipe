@@ -66,15 +66,16 @@ test("the close flow's buckets keep the default limit", async () => {
   expect(PROXY_LIMIT_PER_DAY).toBe(500);
 });
 
-test("no route but the estimate passes its own limit", () => {
+test("no route but the estimate and the CSP report receiver passes its own limit", () => {
   const files = (dir: string): string[] =>
     readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
       e.isDirectory() ? files(join(dir, e.name)) : e.name === "route.ts" ? [join(dir, e.name)] : []
     );
   const withOwnLimit = files(API_DIR)
     .filter((file) => /limitPerDay:/.test(readFileSync(file, "utf8")))
-    .map((file) => relative(API_DIR, file));
-  expect(withOwnLimit).toEqual(["[network]/estimate/route.ts"]);
+    .map((file) => relative(API_DIR, file))
+    .sort();
+  expect(withOwnLimit).toEqual(["[network]/estimate/route.ts", "csp-report/route.ts"]);
 });
 
 test("the answer is the range and the read time, with no address and no account state", async () => {

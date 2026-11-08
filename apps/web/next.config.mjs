@@ -1,4 +1,5 @@
 import { PHASE_PRODUCTION_BUILD } from "next/constants.js";
+import { SECURITY_HEADERS } from "./config/security-headers.mjs";
 import { walletConnectBuildError } from "./config/wallet-connect-build.mjs";
 
 /** @type {import('next').NextConfig} */
@@ -11,6 +12,10 @@ const nextConfig = {
   transpilePackages: ["@lumenwipe/sdk", "@lumenwipe/types"],
   // The mainnet network used to live at /public (Stellar's network name).
   // It's now /mainnet to match the UI label; keep old links working.
+  // `/api/*` included: the proxy skips the CSP there, not these.
+  async headers() {
+    return [{ source: "/:path*", headers: [...SECURITY_HEADERS] }];
+  },
   async redirects() {
     return [
       { source: "/public", destination: "/mainnet", permanent: true },

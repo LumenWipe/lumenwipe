@@ -14,6 +14,8 @@
     "test:integration": "LUMENWIPE_RUN_INTEGRATION=1 bun test --preload ./tests/setup-env.ts tests/integration",
     "test:adversarial": "bun test tests/adversarial",
     "openapi:generate": "bun run scripts/generate-openapi.ts",
+    "setup:mediator": "bun scripts/setup-mediator.ts",
+    "test:mediator": "bun scripts/test-mediator-flow.ts",
     "mutation": "stryker run"
   },
   "dependencies": {

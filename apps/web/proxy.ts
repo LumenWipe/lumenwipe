@@ -45,6 +45,8 @@ export function proxy(request: NextRequest): NextResponse {
     `form-action 'self'`,
     `object-src 'none'`,
     `upgrade-insecure-requests`,
+    // Violation reports go to the Reporting-Endpoints entry named csp (config/security-headers.mjs).
+    `report-to csp`,
   ].join("; ");
 
   const requestHeaders = new Headers(request.headers);
