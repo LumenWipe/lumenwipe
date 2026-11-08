@@ -1,0 +1,26 @@
+{
+  "name": "@lumenwipe/lab",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lab": "bun run --filter '@lumenwipe/verify' build:js && bun src/cli.ts",
+    "type-check": "bun run --filter '@lumenwipe/verify' build && tsc --noEmit && tsc -p tests/tsconfig.json --noEmit",
+    "lint": "eslint src tests",
+    "test": "bun run --filter '@lumenwipe/verify' build:js && bun test --preload ./tests/no-network.ts tests"
+  },
+  "dependencies": {
+    "@lumenwipe/sdk": "workspace:*",
+    "@lumenwipe/verify": "workspace:*",
+    "@stellar/stellar-sdk": "17.4.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/bun": "^1.4.3",
+    "@typescript-eslint/eslint-plugin": "^8.71.2",
+    "@typescript-eslint/parser": "^8.71.2",
+    "eslint": "^10.12.0",
+    "globals": "^17.13.0",
+    "typescript": "^6.0.3"
+  }
+}

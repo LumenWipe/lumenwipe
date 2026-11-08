@@ -65,6 +65,9 @@ jobs:
               pkg: "@lumenwipe/playground",
               checks: "type-check lint test build",
             }
+          # The latency lab's own checks. Never its `lab` script: the lab runs only on a person's
+          # machine (tools/lab/tests/no-workflow.test.ts fails a workflow that invokes it).
+          - { name: "lab", pkg: "@lumenwipe/lab", checks: "type-check lint test" }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
