@@ -23,6 +23,7 @@ import UnconfirmedPanel from "./UnconfirmedPanel";
 import ProgressIndicator from "./ProgressIndicator";
 import PreSignPanel from "./PreSignPanel";
 import SigningProgress from "./SigningProgress";
+import CosignExchange from "./CosignExchange";
 import StatusMessage from "@/components/a11y/StatusMessage";
 import { SecretKeySigner, SignerReleasedError, type TransactionSigner } from "@/lib/stellar/signer";
 import { signerStanding, signerStandingText } from "@/lib/stellar/signer-standing";
@@ -98,6 +99,9 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
     run,
     progress,
     signatureStatus,
+    cosign,
+    importCosignResponse,
+    discardCosignRound,
     signingPrompt,
     submitPreAuthTransaction,
     checkUnconfirmed,
@@ -687,6 +691,20 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
                 network={network}
                 disabled={locked}
               />
+              {cosign && (
+                <CosignExchange
+                  status={cosign}
+                  requiredWeight={signatureStatus.requiredWeight}
+                  onImport={importCosignResponse}
+                  onContinue={() => void runWith(null, { cosignedResume: true })}
+                  onRebuild={() => {
+                    discardCosignRound();
+                    void execute();
+                  }}
+                  canRebuild={signerReady}
+                  disabled={locked}
+                />
+              )}
               {renderSignerPicker()}
               {blockedReasonLine}
               <Button

@@ -9,9 +9,10 @@ icon: "users"
 > what the app agrees to sign, so it went through a security design review before anything is built. The
 > outcome and the changes it required are in [Section 14](#14-security-design-review). The API change in
 > Section 3.1, signer normalization as the first transaction of a multisig close, is built (INV-51). The
-> two engine changes of check 7.3g are built in the SDK's `runClose` (INV-52); the hub does not use them yet.
-> The artifact parser (`apps/web/lib/cosign/artifact.ts`) and the station at `/cosign`
-> (`apps/web/lib/cosign/station-checks.ts`) are built. The hub's export and merge (Sections 4 and 7.3) are not.
+> two engine changes of check 7.3g are built in the SDK's `runClose` (INV-52). The artifact parser
+> (`apps/web/lib/cosign/artifact.ts`), the station at `/cosign` (`apps/web/lib/cosign/station-checks.ts`)
+> and the hub's export and merge (`apps/web/lib/cosign/merge.ts`, wired in `apps/web/hooks/useCloseExecution.ts`)
+> are built.
 
 ## 1. Summary
 
@@ -424,11 +425,11 @@ Proposed rows for the [invariant register](/invariants), added with the implemen
   device, with `preAuthorized: false` on the station.
 - The station sends the API only the network and the account address.
 
-The last proposed row, that for a multisig close signer normalization is its own first transaction, is in
-the register as INV-51.
+These rows are in the register as INV-53 to INV-56. The last proposed row, that for a multisig close signer
+normalization is its own first transaction, is in the register as INV-51.
 
-The [threat model](/threat-model) gains the station as part of the client-side key handling surface in the
-same change.
+The [threat model](/threat-model) lists the station as part of the client-side key handling surface
+(Section 2).
 
 ## 14. Security design review
 

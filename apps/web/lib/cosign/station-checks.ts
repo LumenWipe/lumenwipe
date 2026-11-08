@@ -90,17 +90,15 @@ export function fingerprintMatches(typed: string, hash: string): boolean {
   return typed.replace(/[\s.…]/g, "").toLowerCase() === fingerprintOf(hash).toLowerCase();
 }
 
-function masterWeightOf(live: LiveAccount, account: string): number {
-  return (
-    live.signers.find((s) => s.key === account && s.type === "ed25519_public_key")?.weight ?? 0
-  );
+function masterWeightOf(signers: AccountSigner[], account: string): number {
+  return signers.find((s) => s.key === account && s.type === "ed25519_public_key")?.weight ?? 0;
 }
 
 /** The refusals the API's normalization safety check (`assessSignerNormalizationSafety`) and its
  *  merge blocker make, judged here on the station's own read. */
 function assertAccountCanBeNormalized(live: LiveAccount, account: string): void {
   if (live.authImmutable) refuse(REFUSED.closeBlocked);
-  if (masterWeightOf(live, account) < 1) refuse(REFUSED.masterWeightZero);
+  if (masterWeightOf(live.signers, account) < 1) refuse(REFUSED.masterWeightZero);
   const satisfiable = live.signers
     .filter(
       (s) => s.type === "ed25519_public_key" || s.type === "hash_x" || s.type === "preauth_tx"
@@ -127,15 +125,16 @@ const isReset = (op: SetOptions): boolean =>
  * The v1 station signs signer normalization only (Section 7.2): every operation is a `set_options`
  * of the account that either removes one of its signers other than the master key, each of them
  * exactly once, or is the one threshold reset, which lowers every threshold to what the master key
- * alone meets.
+ * alone meets. Judged against `signers`, the account's signers as the caller read them; the hub
+ * uses the same rule to decide what it may export.
  */
-function normalizationSummary(
+export function assertSignerNormalization(
   operations: IntentOperation[],
   account: string,
-  live: LiveAccount,
+  signers: AccountSigner[],
   feeStroops: string
 ): NormalizationSummary {
-  const masterWeight = masterWeightOf(live, account);
+  const masterWeight = masterWeightOf(signers, account);
   const removedSigners: AccountSigner[] = [];
   let reset: SetOptions | null = null;
   if (operations.length === 0) refuse(REFUSED.notNormalization);
@@ -152,7 +151,7 @@ function normalizationSummary(
     }
     if (isRemoval(op)) {
       const signer = op.signer!;
-      const known = live.signers.some((s) => s.key === signer.key && s.type === signer.type);
+      const known = signers.some((s) => s.key === signer.key && s.type === signer.type);
       if (signer.weight !== 0 || signer.key === account || !known) {
         refuse(REFUSED.notNormalization);
       }
@@ -166,7 +165,7 @@ function normalizationSummary(
   }
   // Each removal is a distinct live signer other than the master key, so an equal count is the
   // exact set: sole control holds only when every other signer goes, whatever its type.
-  if (removedSigners.length !== live.signers.filter((s) => s.key !== account).length) {
+  if (removedSigners.length !== signers.filter((s) => s.key !== account).length) {
     refuse(REFUSED.notNormalization);
   }
   if (
@@ -229,7 +228,7 @@ export function checkRequest(input: {
   if (maxTime === 0 || maxTime - nowSeconds < IMPORT_FLOOR_SECONDS) refuse(REFUSED.expiresSoon);
 
   const intent = intentFromXdr(artifact.envelope, passphrase);
-  const summary = normalizationSummary(intent.operations, account, live, intent.fee);
+  const summary = assertSignerNormalization(intent.operations, account, live.signers, intent.fee);
   try {
     verifyCloseTransaction({
       unsignedXdr: artifact.envelope,
