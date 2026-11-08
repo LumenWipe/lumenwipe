@@ -35,8 +35,17 @@ function configure(env: Partial<Record<(typeof VARS)[number], string>>): void {
 
 const UPSTASH = { UPSTASH_REDIS_REST_URL: LIMITER, UPSTASH_REDIS_REST_TOKEN: "test-token" };
 
+/** The origin a fetch was sent to, or null for an input that is not a URL. */
+function originOf(input: unknown): string | null {
+  try {
+    return new URL(input instanceof Request ? input.url : String(input)).origin;
+  } catch {
+    return null;
+  }
+}
+
 function limiterCalls(): number {
-  return (fetchSpy.mock.calls as unknown[][]).filter(([input]) => String(input).startsWith(LIMITER))
+  return (fetchSpy.mock.calls as unknown[][]).filter(([input]) => originOf(input) === LIMITER)
     .length;
 }
 

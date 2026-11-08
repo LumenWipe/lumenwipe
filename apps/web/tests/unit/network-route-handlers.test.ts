@@ -80,8 +80,17 @@ const REFUSED = [
 let fetchSpy: ReturnType<typeof spyOn>;
 const saved = new Map<string, string | undefined>();
 
+/** The origin a fetch was sent to, or null for an input that is not a URL. */
+function originOf(input: unknown): string | null {
+  try {
+    return new URL(input instanceof Request ? input.url : String(input)).origin;
+  } catch {
+    return null;
+  }
+}
+
 function callsTo(origin: string): number {
-  return (fetchSpy.mock.calls as unknown[][]).filter(([input]) => String(input).startsWith(origin))
+  return (fetchSpy.mock.calls as unknown[][]).filter(([input]) => originOf(input) === origin)
     .length;
 }
 
@@ -111,7 +120,7 @@ beforeAll(() => {
     process.env[key] = value;
   }
   fetchSpy = spyOn(globalThis, "fetch").mockImplementation((async (input: unknown) => {
-    const pipeline = new URL(String(input)).origin === LIMITER;
+    const pipeline = originOf(input) === LIMITER;
     return Response.json(pipeline ? [{ result: 1 }, { result: 1 }] : {});
   }) as unknown as typeof globalThis.fetch);
 });
@@ -159,7 +168,7 @@ describe("route handlers while the rate limiter is unreachable", () => {
   beforeEach(() => {
     const forward = fetchSpy.getMockImplementation() as typeof globalThis.fetch;
     fetchSpy.mockImplementation((async (input: unknown, init?: RequestInit) => {
-      if (new URL(String(input)).origin === LIMITER) throw new TypeError("fetch failed");
+      if (originOf(input) === LIMITER) throw new TypeError("fetch failed");
       return forward(input as RequestInfo, init);
     }) as unknown as typeof globalThis.fetch);
     const quiet = spyOn(console, "error").mockImplementation(() => {});
