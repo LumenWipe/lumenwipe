@@ -298,7 +298,8 @@ export interface CloseEngineDeps {
   transactionHash?: (xdr: string) => string;
   /** Signs the given xdr (which may already carry earlier signatures) with the currently
    *  available signer, returning the updated xdr and its total accumulated signing weight
-   *  against the account's known signer set. */
+   *  against the account's known signer set. A weight that is not a finite number is
+   *  insufficient. */
   sign: (tx: CloseTransaction, xdr: string) => Promise<{ xdr: string; weight: number }>;
   /** Turns a signed envelope into the final one, adding any co-signature or sponsorship. Runs
    *  once per transaction: a resend never comes back here. It MUST keep the transaction it is
@@ -578,7 +579,7 @@ async function signOrThrow(
   reportTx(deps, "awaiting-signature", at, tx.covers);
   const { xdr: signedXdr, weight } = await deps.sign(tx, xdr);
   assertApproved(deps, tx, signedXdr, approvedHash);
-  if (weight < required) {
+  if (!(Number.isFinite(weight) && weight >= required)) {
     throw new InsufficientSignatureWeightError({
       tx,
       xdr: signedXdr,

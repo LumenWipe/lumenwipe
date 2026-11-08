@@ -150,6 +150,52 @@ test("runClose › insufficient weight throws instead of submitting", async () =
   expect(submitted).toEqual([]); // never submitted an under-signed transaction
 });
 
+async function closeWithWeight(required: number, weight: number) {
+  const submitted: number[] = [];
+  let prepared = 0;
+  let err: unknown = null;
+  try {
+    await runClose({
+      getTransactions: async () => resp([tx(0)], false),
+      verify: () => {},
+      requiredWeight: () => required,
+      sign: async (t, xdr) => ({ xdr: `${xdr}-signed`, weight }),
+      prepare: async (t, xdr) => {
+        prepared++;
+        return xdr;
+      },
+      submit: async (t) => {
+        submitted.push(t.order);
+        return "h";
+      },
+    });
+  } catch (e) {
+    err = e;
+  }
+  return { submitted, prepared, err };
+}
+
+for (const [label, required, weight] of [
+  ["NaN weight", 2, NaN],
+  ["Infinity weight", 2, Infinity],
+  ["Infinity weight against an Infinity requirement", Infinity, Infinity],
+  ["negative weight", 2, -1],
+  ["finite weight against a NaN requirement", NaN, 2],
+] as const) {
+  test(`runClose › ${label} is insufficient and throws a resumable round instead of submitting`, async () => {
+    const { submitted, prepared, err } = await closeWithWeight(required, weight);
+    expect(err).toBeInstanceOf(InsufficientSignatureWeightError);
+    const { pending } = err as InsufficientSignatureWeightError;
+    expect(pending.xdr).toBe("xdr-tx0-signed");
+    expect(pending.tx.order).toBe(0);
+    expect(pending.requiredWeight).toBe(required);
+    expect(pending.accumulatedWeight).toBe(weight);
+    expect(pending.queue).toEqual([]);
+    expect(prepared).toBe(0);
+    expect(submitted).toEqual([]);
+  });
+}
+
 // Bun 1.3.11's `.rejects.toSatisfy` hands the predicate the un-awaited Promise (not the
 // rejection reason) and still rethrows regardless of the predicate's return value, so this
 // uses the same try/catch pattern as the rest of this file rather than the brief's original
