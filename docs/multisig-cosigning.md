@@ -5,10 +5,11 @@ description: "Design for completing a multisig close when cosigners are on other
 icon: "users"
 ---
 
-> **Status: design reviewed, not implemented.** It changes what the signing screen accepts as input and
+> **Status: design reviewed, partly implemented.** It changes what the signing screen accepts as input and
 > what the app agrees to sign, so it went through a security design review before anything is built. The
-> outcome and the changes it required are in [Section 14](#14-security-design-review). Nothing described
-> here as "the station" or "the artifact" exists in the code today.
+> outcome and the changes it required are in [Section 14](#14-security-design-review). The API change in
+> Section 3.1, signer normalization as the first transaction of a multisig close, is built (INV-51).
+> Nothing described here as "the station" or "the artifact" exists in the code today.
 
 ## 1. Summary
 
@@ -61,12 +62,12 @@ Facts from this codebase that also shape the design:
 - The close engine verifies a transaction once, before its first signature, and does not verify a resumed
   transaction again (`packages/sdk/src/close-engine.ts`). That is sound in one session. A second device has
   no memory of that verification, so it must run `verify()` itself.
-- Today a multisig close needs the full signing weight on more than one transaction. Signer normalization
-  (removing the other signers and resetting the thresholds) shares a transaction with the asset handling,
-  conversions included: `assembleCloseOpsTagged` in `apps/api/src/lib/stellar/tx-builder/close-operations.ts`
-  puts `NORMALIZE_SIGNERS` and `HANDLE_ASSETS` in one operation list, and the fused close counts signer,
-  conversion and trustline operations together (`apps/api/src/lib/stellar/tx-builder/index.ts`). The exit,
-  token, conversion and claim rounds all run before normalization, and each of them needs the full weight.
+- A multisig close needs the full signing weight on one transaction only. When no single key of the account
+  reaches every threshold (`normalizesSignersFirst` in `apps/api/src/lib/stellar/tx-builder/index.ts`), the
+  first round of `buildCloseTransactions` is signer normalization alone: the signer removals and the
+  threshold reset, ahead of the exit, token, conversion and claim rounds, and never fused with the merge or
+  with asset handling. Every later transaction needs only the master key. Before this change normalization
+  shared a transaction with the asset handling, and every round before it needed the full weight.
 
 ## 3. Model: one hub, stateless stations
 
@@ -85,8 +86,10 @@ devices, and it would hand cosigners an envelope that other people's signatures 
 Decision: for a multisig close, the API emits signer normalization as **its own first transaction**,
 before any exit, token, conversion or claim round, and never fuses it with the merge. That transaction is
 the only one a station signs in v1. After it is confirmed, the master key alone signs the rest of the close
-on the hub, so the initiator must hold the master key. This is an API change, listed as a follow-up, and
-it ships before the station.
+on the hub, so the initiator must hold the master key. This API change ships before the station, and is
+built (INV-51). It applies when the master key carries weight and no single ed25519 key reaches the highest
+of the three thresholds; a close one key can sign keeps its layout. The plan step states the cost below,
+and the API emits the transaction only while no later refusal is already known from the state it reads.
 
 Alternative: leave the builder as it is and refuse cross-device cosigning for any multisig close with a
 conversion or a round before normalization. Rejected, for these reasons:
@@ -108,7 +111,7 @@ of the account, and the master key holder alone then decides the destination and
 multisig close, where cosigners sign the merge itself, is no longer offered. The station says so before it
 signs (Section 5).
 
-Until the API change ships, a multisig close cannot be cosigned across devices at all, and the interim
+Until the station ships, a multisig close cannot be cosigned across devices at all, and the interim
 statement (Section 12) applies.
 
 ## 4. Initiator journey (hub)
@@ -294,9 +297,9 @@ more. That is what **Rebuild and re-export** is for. With two cosigners, both si
 parallel, so the time grows by the slower of the two, not by both.
 
 Handoff count: with normalization first (Section 3.1), a multisig close needs one cross-device handoff.
-With today's builder it would need one for every transaction up to and including the one that normalizes
-the signers. That is every exit, token, conversion and claim round, plus the batch that removes the
-signers.
+With the builder as it was before that change it would have needed one for every transaction up to and
+including the one that normalizes the signers. That is every exit, token, conversion and claim round,
+plus the batch that removes the signers.
 
 ## 9. Failure, reload and abandonment
 
@@ -418,7 +421,9 @@ Proposed rows for the [invariant register](/invariants), added with the implemen
 - A device signs a received transaction only after `verify()` and the approved-hash check pass on that
   device, with `preAuthorized: false` on the station.
 - The station sends the API only the network and the account address.
-- For a multisig close, signer normalization is its own first transaction.
+
+The last proposed row, that for a multisig close signer normalization is its own first transaction, is in
+the register as INV-51.
 
 The [threat model](/threat-model) gains the station as part of the client-side key handling surface in the
 same change.

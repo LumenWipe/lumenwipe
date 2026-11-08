@@ -178,6 +178,21 @@ export function computeNeedsSignerNormalization(accountState: AccountState): boo
 }
 
 /**
+ * Whether signer normalization is the close's own first transaction (docs/multisig-cosigning.md
+ * Section 3.1): no single key reaches every threshold, so each round before normalization would
+ * need several keys. The master key must carry weight, because it signs that transaction
+ * (INV-43); a weight-0 master keeps today's layout and its blocker. Shared by `buildPlan()` and
+ * `buildCloseTransactions()`, so the plan's order is the order the builder emits.
+ */
+export function normalizesSignersFirst(accountState: AccountState): boolean {
+  if (!computeNeedsSignerNormalization(accountState)) return false;
+  const { signers, thresholds, address } = accountState;
+  if ((signers.find((s) => s.key === address)?.weight ?? 0) < 1) return false;
+  const needed = Math.max(thresholds.low, thresholds.med, thresholds.high, 1);
+  return !signers.some((s) => s.type === "ed25519_public_key" && s.weight >= needed);
+}
+
+/**
  * Blocks a signer normalization that would leave the account permanently unauthorizable. Shared by
  * `buildPlan()` (the `/close/plan` preview) and `buildCloseTransactions()` (the real
  * `/close/transactions` builder, issue #167) - both must refuse this before ever emitting a
@@ -580,8 +595,13 @@ export function buildPlan(
     }
   };
 
+  // A close whose normalization is its own first transaction is never fused: signer removal shares
+  // no transaction with a conversion, a removal or the merge (docs/multisig-cosigning.md 3.1).
+  const normalizeFirst = normalizesSignersFirst(accountState);
+
   if (
     fastPathEligible &&
+    !normalizeFirst &&
     hasCleanup &&
     !hasHardBlocker &&
     balancesNeedingClaimStep.length === 0 &&
@@ -623,6 +643,19 @@ export function buildPlan(
 
   // ─── Step generation ────────────────────────────────────────────────────────
 
+  const pushNormalizeStep = (): void => {
+    const description = normalizeFirst
+      ? `Remove ${extraSigners.length} additional signer(s) and reset authorization thresholds, in a transaction of its own before every other step. It leaves this key as the account's only signer, and it does not close the account: if a later step of the close is refused, the account stays open under this key alone.`
+      : `Remove ${extraSigners.length} additional signer(s) and reset authorization thresholds so this key alone can authorize transactions.`;
+    steps.push(
+      step(idx++, "NORMALIZE_SIGNERS", "Remove extra signers", description, extraSigners.length + 1)
+    );
+  };
+
+  // Normalization first when one key cannot sign every round, exactly where the round builder
+  // runs it, so every later round needs only the master key.
+  if (normalizeFirst) pushNormalizeStep();
+
   // DeFi exits come first, exactly where the round builder runs them: each is its own Soroban
   // transaction ahead of every classic step, and what it withdraws lands in a trustline the steps
   // below then dispose of and remove. Shown first so the plan reads in execution order.
@@ -635,17 +668,7 @@ export function buildPlan(
   // token out, and the token round then moves it before anything classic.
   pushTokenSteps();
 
-  if (needsSignerNormalization) {
-    steps.push(
-      step(
-        idx++,
-        "NORMALIZE_SIGNERS",
-        "Remove extra signers",
-        `Remove ${extraSigners.length} additional signer(s) and reset authorization thresholds so this key alone can authorize transactions.`,
-        extraSigners.length + 1
-      )
-    );
-  }
+  if (needsSignerNormalization && !normalizeFirst) pushNormalizeStep();
 
   // Stryker disable next-line EqualityOperator,ConditionalExpression: batchItems([], N) always
   // returns [], so the loop below runs zero times regardless of this gate - it is an early exit,

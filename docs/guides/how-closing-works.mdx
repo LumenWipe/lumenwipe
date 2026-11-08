@@ -35,7 +35,7 @@ A close has four stages. Nothing is signed until you have seen the whole plan.
 For a given account state the plan is always the same. It runs in this order, which satisfies the ledger's constraints:
 
 1. Exit DeFi positions, each as its own transaction
-2. Normalize signers, when extra signers exist
+2. Normalize signers, when extra signers exist. When no single key of the account can sign the close, this comes first instead, as a transaction of its own, so the master key alone signs every step after it
 3. Revoke the sponsorships this account provides, when the owners can absorb the reserve
 4. Remove data entries
 5. Cancel offers
@@ -51,6 +51,7 @@ Liquidity pool shares are not unwound by LumenWipe. An account that holds them i
 Most accounts close in a single transaction, signed once. More are needed in a few cases:
 
 - **An exchange destination** adds one transaction, the [mediator](/reference/glossary#mediator) transfer. See [exchange closes](/guides/exchanges-and-the-mediator).
+- **An account no single key can sign** removes its other signers first, in a transaction of its own, so the rest of the close needs only the master key.
 - **Claimable balances** are claimed first and the account is closed second, so the proceeds are not lost.
 - **A Soroban step**, such as a DeFi exit or a Soroswap aggregator swap, is its own transaction, because it cannot be mixed with other operations.
 - **More than 100 operations** are split into the fewest transactions the protocol limit allows.

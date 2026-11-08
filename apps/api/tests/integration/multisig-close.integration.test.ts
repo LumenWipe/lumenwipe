@@ -82,18 +82,21 @@ function transactionResultCodes(
   return { transaction, operations: operations as string[] };
 }
 
-// Retries getAccountState until it reflects the just-submitted 2-of-3 SetOptions
-// configuration (all 3 signers present), or the attempt cap is hit, absorbing Soroban RPC's
+// Retries getAccountState until it lists `signerCount` signers (the 2-of-3 configuration, then
+// the normalized account), or the attempt cap is hit, absorbing Soroban RPC's
 // ingestion lag relative to the Horizon-compatible endpoint the configuring transaction was
 // confirmed against. Also retries through a transient AccountNotFoundError, matching
 // readAccountStateUntilSponsoring's rationale in sponsorship.integration.test.ts.
-async function readAccountStateUntilSignersConfigured(publicKey: string): Promise<AccountState> {
+async function readAccountStateUntilSigners(
+  publicKey: string,
+  signerCount: number
+): Promise<AccountState> {
   let lastState: AccountState | null = null;
   let lastError: unknown;
   for (let attempt = 0; attempt < ACCOUNT_STATE_POLL_MAX_ATTEMPTS; attempt++) {
     try {
       lastState = await getAccountState(publicKey, "testnet");
-      if (lastState.signers.length === 3) return lastState;
+      if (lastState.signers.length === signerCount) return lastState;
     } catch (err) {
       lastError = err;
     }
@@ -106,7 +109,7 @@ async function readAccountStateUntilSignersConfigured(publicKey: string): Promis
 }
 
 test.skipIf(!RUN_INTEGRATION)(
-  "a real 2-of-3 multisig account is closed end to end: one signer alone is rejected, two meet threshold and merge",
+  "a real 2-of-3 multisig account is closed end to end: two keys sign the normalization alone, then the master key alone merges",
   async () => {
     const server = new Horizon.Server(HORIZON_URL);
     const master = Keypair.random(); // the account being closed - also signer #1
@@ -141,13 +144,13 @@ test.skipIf(!RUN_INTEGRATION)(
     // multisig signer set and thresholds this close will need to satisfy. Polls rather than
     // reading once immediately, since RPC (the provider buildCloseTransactions reads from
     // below) can lag Horizon's already-confirmed configureTx by several seconds.
-    const accountState = await readAccountStateUntilSignersConfigured(master.publicKey());
+    const accountState = await readAccountStateUntilSigners(master.publicKey(), 3);
     expect(accountState.signers).toHaveLength(3);
     expect(accountState.thresholds).toEqual({ low: 1, med: 2, high: 2 });
 
     // This is the function under test: builds the real close transaction(s) against live
-    // state. A fresh account with no subentries/balances beyond XLM closes as a single
-    // fused merge transaction.
+    // state. No single key reaches the thresholds, so the first round is the signer
+    // normalization alone, and the merge follows in a round of its own.
     const result = await buildCloseTransactions(
       ALL_ON,
       accountState,
@@ -158,7 +161,8 @@ test.skipIf(!RUN_INTEGRATION)(
       {}
     );
     expect(result.transactions).toHaveLength(1);
-    expect(result.requiresAnotherCall).toBe(false);
+    expect(result.transactions[0].covers).toEqual(["NORMALIZE_SIGNERS"]);
+    expect(result.requiresAnotherCall).toBe(true);
     const unsignedXdr = result.transactions[0].xdr;
 
     // One signer alone (weight 1) must NOT meet the high threshold (2) - proves this is a
@@ -180,15 +184,33 @@ test.skipIf(!RUN_INTEGRATION)(
     expect(codes?.operations).toContain("op_bad_auth");
     expect(await accountExists(server, master.publicKey())).toBe(true);
 
-    // A second signer (co-signer B) brings accumulated weight to 2, meeting the threshold -
-    // submit succeeds and the account is gone (merged).
+    // A second signer (co-signer B) brings accumulated weight to 2, meeting the threshold:
+    // the normalization lands and the account stays open under the master key alone.
     const twoSigTx = TransactionBuilder.fromXDR(unsignedXdr, Networks.TESTNET);
     twoSigTx.sign(master);
     twoSigTx.sign(coSignerB);
     const submitResult = await server.submitTransaction(twoSigTx);
     expect(submitResult.successful).toBe(true);
+    expect(await accountExists(server, master.publicKey())).toBe(true);
+
+    const normalized = await readAccountStateUntilSigners(master.publicKey(), 1);
+    expect(normalized.thresholds).toEqual({ low: 0, med: 1, high: 1 });
+    const close = await buildCloseTransactions(
+      ALL_ON,
+      normalized,
+      destination.publicKey(),
+      {},
+      "testnet",
+      null,
+      {}
+    );
+    expect(close.transactions).toHaveLength(1);
+    expect(close.requiresAnotherCall).toBe(false);
+    const mergeTx = TransactionBuilder.fromXDR(close.transactions[0].xdr, Networks.TESTNET);
+    mergeTx.sign(master);
+    expect((await server.submitTransaction(mergeTx)).successful).toBe(true);
 
     expect(await accountExists(server, master.publicKey())).toBe(false);
   },
-  90000
+  150000
 );

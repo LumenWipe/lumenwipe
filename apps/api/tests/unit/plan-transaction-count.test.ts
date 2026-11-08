@@ -4,7 +4,7 @@ import type { AccountState, CloseTransaction, Trustline } from "@lumenwipe/types
 import { emptyLines } from "./fixtures/ledger-trustlines";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import * as rpcModule from "@/lib/stellar/rpc";
-import { buildPlan } from "@/lib/stellar/tx-builder";
+import { buildPlan, normalizesSignersFirst } from "@/lib/stellar/tx-builder";
 import { toExecutionBreakdown } from "@/lib/close-api/plan-response";
 import { authorizationOf } from "./fixtures/trustline";
 import { stubIssuance } from "./fixtures/issuance";
@@ -81,7 +81,11 @@ async function stubMediator(): Promise<void> {
  *  between rounds being whatever `advance` says the previous round left behind. */
 async function planned(state: AccountState, viaMediator: boolean) {
   const { steps } = buildPlan(ALL_ON, state, viaMediator);
-  return toExecutionBreakdown(steps, { viaMediator, decided: true });
+  return toExecutionBreakdown(steps, {
+    viaMediator,
+    decided: true,
+    normalizationFirst: normalizesSignersFirst(state),
+  });
 }
 
 async function built(
@@ -158,6 +162,52 @@ test("an account over 100 operations reports every chunk the builder returns", a
     ),
   }));
   expect(actual.count).toBe(2);
+  expect(plan.estimatedTransactionCount).toBe(actual.count);
+  expect(plan.transactions.map((t) => t.covers)).toEqual(actual.covers);
+});
+
+test("a multisig exchange close reports its normalization, the claim, the cleanup and the transfer", async () => {
+  stubRpc();
+  await stubMediator();
+  const cosigner = Keypair.random().publicKey();
+  const state = accountState({
+    signers: [
+      { key: SOURCE, weight: 1, type: "ed25519_public_key" },
+      { key: cosigner, weight: 1, type: "ed25519_public_key" },
+    ],
+    thresholds: { low: 1, med: 2, high: 2 },
+    trustlines: trustlines(2),
+    numSubEntries: 3,
+    claimableBalances: [
+      {
+        id: `00000000${"a".repeat(64)}`,
+        asset: "native",
+        amount: "10.0000000",
+        claimants: [{ destination: SOURCE, predicate: { type: "unconditional" } }],
+        sponsor: null,
+      },
+    ],
+  });
+  const plan = await planned(state, true);
+  const actual = await built(state, (s, round) => {
+    const covers = round.flatMap((t) => t.covers);
+    if (covers.includes("NORMALIZE_SIGNERS")) {
+      return {
+        ...s,
+        signers: [s.signers[0]!],
+        thresholds: { low: 0, med: 1, high: 1 },
+        numSubEntries: 2,
+      };
+    }
+    if (covers.includes("CLAIM_BALANCES")) return { ...s, claimableBalances: [] };
+    return { ...s, trustlines: [], numSubEntries: 0 };
+  });
+  expect(actual.covers).toEqual([
+    ["NORMALIZE_SIGNERS"],
+    ["CLAIM_BALANCES"],
+    ["REMOVE_TRUSTLINES"],
+    ["MERGE"],
+  ]);
   expect(plan.estimatedTransactionCount).toBe(actual.count);
   expect(plan.transactions.map((t) => t.covers)).toEqual(actual.covers);
 });
