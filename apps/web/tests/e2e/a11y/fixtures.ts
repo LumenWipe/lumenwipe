@@ -196,6 +196,36 @@ function outcomesPlan(decided: boolean): PlanResponse {
   };
 }
 
+/** A multisig account whose signer normalization the cosign station checks: the master key and
+ *  one cosigner, neither able to reach the thresholds alone. */
+export const COSIGN_ACCOUNT = Keypair.random().publicKey();
+export const COSIGN_SIGNER = Keypair.random().publicKey();
+
+/** A signer normalization request for `COSIGN_ACCOUNT` on its next sequence number, unsigned. */
+export function cosignRequestEnvelope(): string {
+  return new TransactionBuilder(new Account(COSIGN_ACCOUNT, SEQUENCE), {
+    fee: "100",
+    networkPassphrase: Networks.TESTNET,
+  })
+    .addOperation(Operation.setOptions({ signer: { ed25519PublicKey: COSIGN_SIGNER, weight: 0 } }))
+    .addOperation(Operation.setOptions({ lowThreshold: 0, medThreshold: 1, highThreshold: 1 }))
+    .setTimeout(300)
+    .build()
+    .toEnvelope()
+    .toXDR("base64");
+}
+
+function cosignAccount(address: string): AccountState {
+  return {
+    ...accountState(address),
+    signers: [
+      { key: address, weight: 1, type: "ed25519_public_key" },
+      { key: COSIGN_SIGNER, weight: 1, type: "ed25519_public_key" },
+    ],
+    thresholds: { low: 0, med: 2, high: 2 },
+  };
+}
+
 export function accountState(address: string): AccountState {
   return {
     address,
@@ -412,6 +442,7 @@ export async function installApiFixtures(page: Page): Promise<{ expectAllAnswere
       }
       if (address === FLAGGED_TOKEN_ACCOUNT) return json(route, flaggedTokenAccount(address));
       if (address === OUTCOMES_ACCOUNT) return json(route, outcomesAccount(address));
+      if (address === COSIGN_ACCOUNT) return json(route, cosignAccount(address));
       return json(route, accountState(address));
     }
     if (method === "POST" && pathname === "/api/v1/testnet/close/plan") {

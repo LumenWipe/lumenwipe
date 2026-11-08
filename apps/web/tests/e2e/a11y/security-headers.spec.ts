@@ -4,7 +4,7 @@ import { SECURITY_HEADERS } from "../../../config/security-headers.mjs";
 // Headers do not depend on the viewport: one project is enough.
 test.beforeEach(() => test.skip(test.info().project.name !== "desktop", "viewport-independent"));
 
-for (const path of ["/", "/api/health"]) {
+for (const path of ["/", "/cosign", "/api/health"]) {
   test(`${path} carries every security header exactly once`, async ({ request }) => {
     const res = await request.get(path, { maxRedirects: 0 });
     const raw = res.headersArray();
@@ -24,6 +24,9 @@ test("a page gets the strict nonce CSP with report-to, and /api gets none", asyn
   expect(csp).toMatch(/script-src 'self' 'nonce-[A-Za-z0-9+/=]+' 'strict-dynamic'(;|$)/);
   expect(csp).not.toContain("unsafe-eval");
   expect(csp.split("; ").at(-1)).toBe("report-to csp");
+  expect((await request.get("/cosign")).headers()["content-security-policy"]).toMatch(
+    /script-src 'self' 'nonce-[A-Za-z0-9+/=]+' 'strict-dynamic'(;|$)/
+  );
 
   const api = await request.get("/api/health");
   expect(api.headers()["content-security-policy"]).toBeUndefined();
