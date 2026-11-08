@@ -15,6 +15,7 @@ test("analyze, review, execute, complete and history", async ({ page }) => {
   await expect(
     page.getByRole("heading", { level: 1, name: "Decide what happens to each item" })
   ).toBeVisible();
+  await expect(page).toHaveTitle("Plan the close | LumenWipe");
   await expectNoAxeViolations(page, "analyze");
 
   await page
@@ -24,12 +25,14 @@ test("analyze, review, execute, complete and history", async ({ page }) => {
   await page.getByRole("button", { name: /Review the full plan/i }).click();
   await expect(page).toHaveURL(/\/testnet\/review/);
   await expect(page.getByRole("heading", { level: 1, name: "Review the full plan" })).toBeVisible();
+  await expect(page).toHaveTitle("Review the plan | LumenWipe");
   await expectNoAxeViolations(page, "review");
 
   await page.getByRole("checkbox").check();
   await page.getByRole("button", { name: /Continue to signing/i }).click();
   await expect(page).toHaveURL(/\/testnet\/execute/);
   await expectSigningPanel(page);
+  await expect(page).toHaveTitle("Sign the close | LumenWipe");
   await expectNoAxeViolations(page, "execute, wallet signer");
 
   await page.getByRole("tab", { name: /Use secret key \(advanced\)/i }).click();
@@ -66,6 +69,8 @@ test("analyze, review, execute, complete and history", async ({ page }) => {
   await page.getByRole("button", { name: /Sign & execute close/i }).click();
   await expect(page).toHaveURL(/\/testnet\/receipt\/[^/?#]+$/);
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  // Set at runtime from the saved outcome, so no step title is left behind on the receipt.
+  await expect(page).toHaveTitle("Account closed | LumenWipe");
   await expectNoAxeViolations(page, "saved receipt");
 
   await page.getByRole("button", { name: "Merge history" }).click();
