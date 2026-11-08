@@ -11,6 +11,7 @@ import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { authorizationOf } from "./fixtures/trustline";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
+import { ALL_ON } from "@/config/kill-switches";
 
 const SOURCE = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
@@ -66,7 +67,9 @@ async function assetCard(
   path: typeof fetchConversionPath
 ): Promise<{ card: DecisionPoint | undefined; blockerCodes: (string | undefined)[] }> {
   spyOn(readAccount, "readAccountState").mockResolvedValue(state());
-  const plan = await buildAccountPlan(SOURCE, null, [], "testnet", { fetchConversionPath: path });
+  const plan = await buildAccountPlan(SOURCE, null, [], "testnet", ALL_ON, {
+    fetchConversionPath: path,
+  });
   return {
     card: plan.decisionPoints.find((d) => d.type === "asset_disposition"),
     blockerCodes: plan.blockers.map((b) => b.code),

@@ -9,6 +9,7 @@ import { toExecutionBreakdown } from "@/lib/close-api/plan-response";
 import { authorizationOf } from "./fixtures/trustline";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
+import { ALL_ON } from "@/config/kill-switches";
 
 beforeEach(() => {
   stubIssuance();
@@ -79,7 +80,7 @@ async function stubMediator(): Promise<void> {
 /** What the plan reports, and what the builder returns summed over every round, the state
  *  between rounds being whatever `advance` says the previous round left behind. */
 async function planned(state: AccountState, viaMediator: boolean) {
-  const { steps } = buildPlan(state, viaMediator);
+  const { steps } = buildPlan(ALL_ON, state, viaMediator);
   return toExecutionBreakdown(steps, { viaMediator, decided: true });
 }
 
@@ -91,7 +92,7 @@ async function built(
   const covers: CloseTransaction["covers"][] = [];
   let state = initial;
   for (let round = 0; round < 10; round++) {
-    const result = await buildCloseTransactions(state, DEST, {}, "testnet");
+    const result = await buildCloseTransactions(ALL_ON, state, DEST, {}, "testnet");
     for (const tx of result.transactions) covers.push(tx.covers);
     if (!result.requiresAnotherCall) return { count: covers.length, covers };
     state = advance(state, result.transactions, round);

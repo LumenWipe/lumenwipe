@@ -36,6 +36,7 @@ export const ERROR_CODE_DESCRIPTIONS: Record<ErrorCode, string> = {
     "A token conversion with a high or unmeasured price impact, or with disagreeing quotes, was chosen without its confirmation.",
   conversion_provider_unrecognized: "A conversion names a provider the API does not recognize.",
   defi_exit_blocked: "A DeFi position could not be exited safely.",
+  defi_exit_paused: "Exits from this DeFi protocol are paused. Retry later.",
   defi_exit_unsupported: "The account holds a DeFi position that cannot be exited yet.",
   defi_position_unrecognized: "A DeFi position could not be identified.",
   defi_positions_blocked: "A DeFi position blocks the close.",
@@ -44,8 +45,10 @@ export const ERROR_CODE_DESCRIPTIONS: Record<ErrorCode, string> = {
   destination_not_acknowledged:
     "The destination is not a recognized exchange address and was not confirmed.",
   destination_read_failed: "The destination account could not be read. Retry.",
+  exchange_forward_paused: "Closing into an exchange is paused. Retry later.",
   fee_bump_exceeds_cap: "The sponsored fee would exceed the cap.",
   fee_bump_not_configured: "Sponsored fees are not configured on this server.",
+  fee_sponsorship_paused: "Fee sponsorship is paused. Retry later.",
   forbidden: "The caller is not allowed to do this.",
   forward_amount_exceeds_balance: "The mediator forward is larger than the balance being merged.",
   inner_fee_not_zero: "The inner transaction of a sponsored fee bump must carry no fee of its own.",

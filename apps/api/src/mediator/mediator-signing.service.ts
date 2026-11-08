@@ -12,6 +12,7 @@ import {
 } from "@/lib/close-api/memo-rules";
 import { LiveReadError } from "@/lib/stellar/live-trustline";
 import { fail } from "@/common/fail";
+import { readKillSwitches } from "@/config/kill-switches";
 import { MIN_MEDIATOR_FORWARD_STROOPS } from "@/config/constants";
 import { xlmToStroops } from "@/lib/utils/amounts";
 import { validityProblem, VALIDITY_MESSAGES } from "@/lib/stellar/validity-window";
@@ -43,6 +44,14 @@ export class MediatorSigningService {
    * then adds the mediator signature; it can never change destination/amount.
    */
   async sign(network: Network, body: { transaction?: string }): Promise<{ transaction: string }> {
+    if (!readKillSwitches(network).mediatorForward) {
+      fail(
+        "exchange_forward_paused",
+        "Closing into an exchange is paused right now. Choose a wallet you control as the " +
+          "destination, or try again later.",
+        503
+      );
+    }
     const mediatorKeypair = this.keys.keypair(network);
     if (!mediatorKeypair) {
       fail(

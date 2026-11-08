@@ -7,6 +7,7 @@ import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { authorizationOf } from "./fixtures/trustline";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
+import { ALL_ON } from "@/config/kill-switches";
 
 beforeEach(() => {
   stubIssuance();
@@ -95,7 +96,7 @@ test("a direct close under the op cap still finishes in one round", async () => 
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
 
   const state = accountState({ trustlines: manyTrustlines(3), numSubEntries: 3 });
-  const result = await buildCloseTransactions(state, DEST, {}, "testnet");
+  const result = await buildCloseTransactions(ALL_ON, state, DEST, {}, "testnet");
 
   expect(result.transactions).toHaveLength(1);
   expect(result.requiresAnotherCall).toBe(false);
@@ -109,7 +110,7 @@ test("a direct close over the op cap asks for another call instead of expiring l
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
 
   const state = accountState({ trustlines: manyTrustlines(150), numSubEntries: 150 });
-  const result = await buildCloseTransactions(state, DEST, {}, "testnet");
+  const result = await buildCloseTransactions(ALL_ON, state, DEST, {}, "testnet");
 
   // Only the first chunk is handed back - not all of them sharing one time bound - and the
   // merge (which packCloseTransactions only ever puts on the last chunk) is not in it.
@@ -128,7 +129,7 @@ test("a follow-up call against the reduced live state converges to the merge", a
   // fresh 100-op chunk, AST0..AST99 by construction order) leaves behind once it lands - the
   // real live-re-read a second /close/transactions call would see, not just "some" reduction.
   const state = accountState({ trustlines: manyTrustlines(50, 100), numSubEntries: 50 });
-  const result = await buildCloseTransactions(state, DEST, {}, "testnet");
+  const result = await buildCloseTransactions(ALL_ON, state, DEST, {}, "testnet");
 
   expect(result.transactions).toHaveLength(1);
   expect(result.requiresAnotherCall).toBe(false);
@@ -146,7 +147,7 @@ test("an exchange close whose balance cannot cover the forward fee is a typed 42
     await import("@/lib/close-api/build-transactions");
 
   const state = accountState({ nativeBalanceLumens: "0.0000100" });
-  const failure = await buildCloseTransactions(state, DEST, {}, "testnet").catch((e) => e);
+  const failure = await buildCloseTransactions(ALL_ON, state, DEST, {}, "testnet").catch((e) => e);
 
   expect(failure).toBeInstanceOf(CloseBuildError);
   expect(failure).toMatchObject({ code: "close_fee_balance_short", status: 422 });

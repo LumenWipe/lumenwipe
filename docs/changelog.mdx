@@ -12,6 +12,11 @@ As of 2026-10-10, the mediator flow (exchange closes) and sponsored fees are ava
 
 ## 2026-11
 
+### 2026-11-08
+
+- **API:** An exchange close on a network without a configured relay account, or while exchange closes are paused, is now a `close/plan` blocker (`mediator_not_configured` or `exchange_forward_paused`), and `close/transactions` refuses it with the same code before it builds any cleanup transaction. Previously `mediator_not_configured` was returned only after the cleanup transactions had landed.
+- **API:** New error codes `exchange_forward_paused`, `fee_sponsorship_paused` and `defi_exit_paused` (all `503`). Each is reported as a `close/plan` blocker and refused by `close/transactions` before any transaction is built; `/mediator/sign` and `/fee-bump/sponsor` also return the first two. A paused Soroban token conversion is reported as `soroban_token_conversion_unavailable`.
+
 ### 2026-11-07
 
 - **Web:** The receipt page has a "Print or save as PDF" action. The printed receipt is black on white, with the full destination and every transaction hash and explorer URL in full, the details of each group open, and no navigation, buttons or background.

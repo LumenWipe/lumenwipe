@@ -7,6 +7,7 @@ import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import * as rpcModule from "@/lib/stellar/rpc";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
+import { ALL_ON } from "@/config/kill-switches";
 
 beforeEach(() => {
   stubIssuance();
@@ -48,7 +49,7 @@ function state(over: Partial<AccountState["defiPositions"]>): AccountState {
 }
 
 test("positions that could not be confirmed (no snapshot) refuse the build with the plan's own code", async () => {
-  const promise = buildCloseTransactions(state({ timestamp: null }), DEST, {}, "testnet");
+  const promise = buildCloseTransactions(ALL_ON, state({ timestamp: null }), DEST, {}, "testnet");
   await expect(promise).rejects.toBeInstanceOf(CloseBuildError);
   await expect(promise).rejects.toMatchObject({
     code: "defi_positions_unavailable",
@@ -58,6 +59,7 @@ test("positions that could not be confirmed (no snapshot) refuse the build with 
 
 test("a position detection could not read refuses the build", async () => {
   const promise = buildCloseTransactions(
+    ALL_ON,
     state({
       unrecognizedPositions: [
         { protocol: "fxdao", rawType: "wasmhash-mismatch", reason: "hash differs" },
@@ -72,7 +74,7 @@ test("a position detection could not read refuses the build", async () => {
 
 test("a stale snapshot refuses the build", async () => {
   const old = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const promise = buildCloseTransactions(state({ timestamp: old }), DEST, {}, "testnet");
+  const promise = buildCloseTransactions(ALL_ON, state({ timestamp: old }), DEST, {}, "testnet");
   await expect(promise).rejects.toMatchObject({ code: "defi_positions_stale", status: 422 });
 });
 
@@ -93,6 +95,7 @@ test("an explicit user acknowledgement lets the build proceed instead of refusin
   })) as unknown as typeof rpcModule.getRpcServer);
 
   const result = await buildCloseTransactions(
+    ALL_ON,
     state({ timestamp: null }),
     DEST,
     {},
@@ -110,6 +113,7 @@ test("an explicit user acknowledgement lets the build proceed instead of refusin
 
 test("the acknowledgement does not bypass the gate when the sweep actually found a position", async () => {
   const promise = buildCloseTransactions(
+    ALL_ON,
     state({
       timestamp: null,
       positions: [
@@ -145,6 +149,7 @@ test("a confirmed-empty degraded result on a zero-trustline account does not ref
   })) as unknown as typeof rpcModule.getRpcServer);
 
   const result = await buildCloseTransactions(
+    ALL_ON,
     state({ source: DEGRADED_SOURCE_CONFIRMED, timestamp: null }),
     DEST,
     {},
@@ -168,6 +173,7 @@ test("a confirmed sweep with a real detected position is never refused by the co
   })) as unknown as typeof rpcModule.getRpcServer);
 
   const promise = buildCloseTransactions(
+    ALL_ON,
     state({
       source: DEGRADED_SOURCE_CONFIRMED,
       timestamp: null,

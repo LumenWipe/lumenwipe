@@ -170,6 +170,26 @@ describe("sign: configuration gates", () => {
     const out = await controller.sign("testnet", { transaction: buildXdr() });
     expect(typeof out.transaction).toBe("string");
   });
+
+  test("S3 a paused forward is refused with 503 before anything is signed, and signs again once on", async () => {
+    const saved = process.env.MEDIATOR_FORWARD_ENABLED;
+    const { controller } = await makeController();
+    try {
+      process.env.MEDIATOR_FORWARD_ENABLED = "false";
+      await expectFail(
+        controller.sign("testnet", { transaction: buildXdr() }),
+        503,
+        "exchange_forward_paused",
+        "Closing into an exchange is paused right now. Choose a wallet you control as the destination, or try again later."
+      );
+      process.env.MEDIATOR_FORWARD_ENABLED = "true";
+      const out = await controller.sign("testnet", { transaction: buildXdr() });
+      expect(typeof out.transaction).toBe("string");
+    } finally {
+      if (saved === undefined) delete process.env.MEDIATOR_FORWARD_ENABLED;
+      else process.env.MEDIATOR_FORWARD_ENABLED = saved;
+    }
+  });
 });
 
 describe("sign: body gates", () => {

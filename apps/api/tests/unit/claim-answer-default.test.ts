@@ -5,6 +5,7 @@ import { claimedAmountsPerAsset, deriveDecisionPoints } from "@/lib/close-api/de
 import { buildPlan } from "@/lib/stellar/tx-builder";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { authorizationOf } from "./fixtures/trustline";
+import { ALL_ON } from "@/config/kill-switches";
 
 const MASTER = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
@@ -69,7 +70,9 @@ test("a claim answer plans exactly as no answer, whatever the balance's status",
   expect(deriveDecisionPoints(state, { [TRUSTED]: true }, answered)).toEqual(
     deriveDecisionPoints(state, { [TRUSTED]: true }, {})
   );
-  expect(buildPlan(state, false, false, answered)).toEqual(buildPlan(state, false, false, {}));
+  expect(buildPlan(ALL_ON, state, false, false, answered)).toEqual(
+    buildPlan(ALL_ON, state, false, false, {})
+  );
 });
 
 test("a forfeit is not equivalent, so the web still re-plans it", () => {
@@ -77,5 +80,7 @@ test("a forfeit is not equivalent, so the web still re-plans it", () => {
   const forfeited = { claimable: "forfeit" } as const;
   expect(claimedAmountsPerAsset(state, forfeited).get(TRUSTED)).toBeUndefined();
   expect(claimedAmountsPerAsset(state, {}).get(TRUSTED)).toBe(50_000_000n);
-  expect(buildPlan(state, false, false, forfeited)).not.toEqual(buildPlan(state, false, false, {}));
+  expect(buildPlan(ALL_ON, state, false, false, forfeited)).not.toEqual(
+    buildPlan(ALL_ON, state, false, false, {})
+  );
 });

@@ -355,6 +355,24 @@ export function tokenConversionFloors(
   return floors;
 }
 
+/** The provider each token convert answer names, for the plan: unlike the floors, never refuses
+ *  an answer, since the plan reports what is wrong with it rather than failing. */
+export function tokenConversionProviders(
+  answers: DecisionAnswer[],
+  assetsById: { id: string; asset: string }[]
+): Record<string, "soroswap" | "xbull"> {
+  const assetForId = new Map(assetsById.map((a) => [a.id, a.asset]));
+  const providers: Record<string, "soroswap" | "xbull"> = {};
+  for (const answer of answers) {
+    const asset = assetForId.get(answer.id);
+    if (answer.choice !== "convert_to_xlm" || asset === undefined || !isTokenContract(asset)) {
+      continue;
+    }
+    providers[asset] = answer.params?.provider === "xbull" ? "xbull" : "soroswap";
+  }
+  return providers;
+}
+
 /**
  * The floors the convert answers carry for classic assets, in stroops: the least XLM the plan
  * showed the conversion delivering. Optional, so a caller that never saw a quote still builds;

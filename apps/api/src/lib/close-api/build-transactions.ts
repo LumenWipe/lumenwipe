@@ -90,8 +90,8 @@ import {
 import { assessIssuanceBlockers } from "@/lib/close-api/issuance-blocker";
 import { confirmLedgerState } from "@/lib/close-api/state-drift";
 import { assessIssuance, type IssuanceDeps } from "@/lib/close-api/issuance-preflight";
-import { isConversionEnabled } from "@/lib/soroswap/conversion-quotes";
-import { isXBullEnabled } from "@/lib/xbull/conversion-quotes";
+import type { KillSwitches } from "@/config/kill-switches";
+import { killSwitchBlockers } from "@/lib/kill-switches/blockers";
 
 // Raised when a close cannot be expressed as the minimal set of transactions.
 // The route handler maps `code` to an error response.
@@ -190,6 +190,7 @@ export interface CloseBuildResult {
 //     balance.
 // `requiresAnotherCall` is true whenever more transactions follow the returned batch.
 export async function buildCloseTransactions(
+  switches: KillSwitches,
   accountState: AccountState,
   destinationAddress: string,
   dispositions: Record<string, AssetDisposition>,
@@ -206,8 +207,6 @@ export async function buildCloseTransactions(
     /** Per classic asset, the least XLM (stroops) the plan showed its conversion delivering. */
     classicFloors?: Record<string, bigint>;
     deps?: Partial<TokenConversionRoundDeps>;
-    /** Overrides the environment flag; tests only. */
-    enabled?: boolean;
   } = {},
   /** Whether the caller has an explicit, address-scoped acknowledgement that this account
    *  holds no DeFi positions (close-api/decisions.ts's `isDefiPositionsAcknowledged`), passed
@@ -265,6 +264,18 @@ export async function buildCloseTransactions(
     );
   }
 
+  // A switched-off path refuses here, before any read or round: an exchange close must never
+  // clean an account up for a forward that cannot follow, and a paused exit, conversion or fee
+  // sponsor must not leave the close half done.
+  const killed = killSwitchBlockers(accountState, switches, {
+    viaMediator: requiresMediatorForAddress(destinationAddress),
+    dispositions,
+    conversionProviders: Object.fromEntries(
+      Object.entries(conversion.floors ?? {}).map(([contract, f]) => [contract, f.provider])
+    ),
+  })[0];
+  if (killed) throw new CloseBuildError(killed.code, killed.message, killed.status);
+
   // Settled here because `blendSdkNetwork` reads the pin synchronously during the exit round.
   await pinRpcProvider(network);
   const server = getRpcServer(network);
@@ -281,7 +292,7 @@ export async function buildCloseTransactions(
   // Ledgers close roughly every 5s; surface an approximate ledger bound for the tx time bound.
   const validUntilLedger = latest.sequence + Math.ceil(TX_TIMEOUT_SECONDS / 5);
   const needsMediator = requiresMediatorForAddress(destinationAddress);
-  const sponsorConfigured = getFeeAccountKeypair(network) !== null;
+  const sponsorConfigured = switches.feeSponsorship && getFeeAccountKeypair(network) !== null;
 
   // Round 0 for accounts with DeFi positions: leave every protocol first, one Soroban transaction
   // per step (a repay, then a withdraw...), each simulated against the current ledger. Proceeds
@@ -332,20 +343,9 @@ export async function buildCloseTransactions(
         );
       }
     }
-    // Either provider being configured is enough to attempt a conversion; the per-provider
-    // availability checks inside the round itself (allowed.aggregator/routers, allowedXBull.router)
-    // are what actually gate which specific route a token gets, at the right granularity. This
-    // early check only rules out the case where neither provider is configured at all.
-    const conversionOn = conversion.enabled ?? (isConversionEnabled() || isXBullEnabled());
-    for (const [asset, disposition] of Object.entries(dispositions)) {
-      if (disposition === "convert" && isTokenContract(asset) && !conversionOn) {
-        throw new TokenTransferBlockedError(
-          "soroban_token_conversion_unavailable",
-          `Converting the ${asset.slice(0, 4)}…${asset.slice(-4)} token to XLM is not available ` +
-            "here. Send it to another account, or leave it on record."
-        );
-      }
-    }
+    // A convert answer through a provider that is off was refused by the gate above; the
+    // per-provider checks inside the round decide which specific route a token gets.
+    const conversionOn = switches.sorobanConversion || switches.xbullConversion;
     const tokenRound = await buildTokenTransferRound(
       accountState,
       dispositions,

@@ -13,6 +13,7 @@ import {
 import { getAccountState } from "@/lib/stellar/account-state";
 import { buildCloseTransactions } from "@/lib/close-api/build-transactions";
 import type { AccountState } from "@lumenwipe/types";
+import { ALL_ON } from "@/config/kill-switches";
 
 const FRIENDBOT = "https://friendbot.stellar.org";
 const HORIZON_URL = "https://horizon-testnet.stellar.org";
@@ -148,6 +149,7 @@ test.skipIf(!RUN_INTEGRATION)(
     // state. A fresh account with no subentries/balances beyond XLM closes as a single
     // fused merge transaction.
     const result = await buildCloseTransactions(
+      ALL_ON,
       accountState,
       destination.publicKey(),
       {},

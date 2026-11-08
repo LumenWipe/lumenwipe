@@ -65,6 +65,48 @@ Two different "versions" exist for the API and they answer different questions:
 routes traffic back to the last known-good revision without a new deploy. Cloud Run keeps prior
 revisions around; nothing needs to be rebuilt.
 
+### Kill switches
+
+Each of these turns one path off without a code deploy. A switch is read on every request, and
+while it is off the plan reports the path as a blocker and `close/transactions` refuses it before
+it builds any transaction, so a close is never left half done by a switch.
+
+| Variable                     | Off pauses                                                   | Default when unset |
+| ---------------------------- | ------------------------------------------------------------ | ------------------ |
+| `FEE_SPONSORSHIP_ENABLED`    | Fee sponsorship (`/fee-bump/sponsor` and sponsored rounds)   | On                 |
+| `MEDIATOR_FORWARD_ENABLED`   | Exchange closes through the relay account (mediator co-sign) | On                 |
+| `SOROBAN_CONVERSION_ENABLED` | Soroban token conversion through Soroswap                    | Off (opt-in)       |
+| `XBULL_CONVERSION_ENABLED`   | Soroban token conversion through xBull                       | Off (opt-in)       |
+| `AQUARIUS_EXIT_ENABLED`      | Aquarius position exits                                      | On                 |
+| `BLEND_EXIT_ENABLED`         | Blend position exits                                         | On                 |
+| `FXDAO_EXIT_ENABLED`         | FxDAO position exits                                         | On                 |
+| `PHOENIX_EXIT_ENABLED`       | Phoenix position exits                                       | On                 |
+| `SOROSWAP_EXIT_ENABLED`      | Soroswap position exits                                      | On                 |
+
+Turn one off, then back on (shown for fee sponsorship; every variable above works the same way):
+
+```bash
+gcloud run services update lumenwipe-api --region us-central1 --update-env-vars=FEE_SPONSORSHIP_ENABLED=false
+gcloud run services update lumenwipe-api --region us-central1 --update-env-vars=FEE_SPONSORSHIP_ENABLED=true
+```
+
+Read the value back after every update:
+
+```bash
+gcloud run services describe lumenwipe-api --region us-central1 --format='value(spec.template.spec.containers[0].env)'
+```
+
+A value other than `true` or `false` refuses the boot. A failed update, that one included, leaves
+the previous revision serving with the previous value, so read the value back rather than assume
+it took.
+
+**Time to effect**: a configuration update creates a new revision. In six revision rollouts of the
+API on 2026-11-08 (`deploy-api.yml` runs 42463701811, 42472457028, 42473699224, 42475705017,
+42486620587 and 42492993210) the new revision served all traffic 36 to 54 seconds after the
+update began, median about 42 seconds. Requests already in flight on the old revision finish with
+the old value. Environment variables are set on the service and inherited by every revision
+(`deploy-api.yml` sets none), so a switch stays as set across later deploys.
+
 ## SDK: releasing to npm
 
 `packages/sdk` is the only component with a real external dependency graph - someone's

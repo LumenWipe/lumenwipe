@@ -19,6 +19,7 @@ import { authorizationOf } from "../unit/fixtures/trustline";
 import { ledgerEntries } from "../unit/fixtures/ledger-trustlines";
 import { stubIssuance } from "../unit/fixtures/issuance";
 import { stubLedgerConfirmation } from "../unit/fixtures/ledger-confirmation";
+import { ALL_ON } from "@/config/kill-switches";
 
 beforeEach(() => {
   stubIssuance();
@@ -95,12 +96,12 @@ test.each(LOOKUPS)(
     spyOn(readAccount, "readAccountState").mockResolvedValue(state());
     stubChain();
 
-    const plan = await buildAccountPlan(SOURCE, null, [], "testnet");
+    const plan = await buildAccountPlan(SOURCE, null, [], "testnet", ALL_ON);
     for (const point of plan.decisionPoints) expect(point.default).not.toBe("return_to_issuer");
     expect(plan.status).not.toBe("ready");
     expect(resolveDispositions([], [])).toEqual({});
 
-    const failure = await buildCloseTransactions(state(), DEST, {}, "testnet").catch(
+    const failure = await buildCloseTransactions(ALL_ON, state(), DEST, {}, "testnet").catch(
       (e: unknown) => e
     );
     expect(failure).toBeInstanceOf(Error);
@@ -120,17 +121,22 @@ test.each(LOOKUPS)(
     spyOn(readAccount, "readAccountState").mockResolvedValue(state([offer]));
     stubChain();
 
-    const plan = await buildAccountPlan(SOURCE, null, [], "testnet");
+    const plan = await buildAccountPlan(SOURCE, null, [], "testnet", ALL_ON);
     const card = plan.decisionPoints.find((d) => d.type === "asset_disposition");
     expect(card?.default).not.toBe("return_to_issuer");
     expect(plan.steps.some((s) => (s as { type: string }).type === "CANCEL_OFFERS")).toBe(true);
 
-    const unanswered = await buildCloseTransactions(state([offer]), DEST, {}, "testnet").catch(
-      (e: unknown) => e
-    );
+    const unanswered = await buildCloseTransactions(
+      ALL_ON,
+      state([offer]),
+      DEST,
+      {},
+      "testnet"
+    ).catch((e: unknown) => e);
     expect(unanswered).toBeInstanceOf(Error);
 
     const answered = await buildCloseTransactions(
+      ALL_ON,
       state([offer]),
       DEST,
       { [ASSET]: "issuer" },

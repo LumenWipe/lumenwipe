@@ -15,6 +15,7 @@ import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { authorizationOf } from "./fixtures/trustline";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
+import { ALL_ON } from "@/config/kill-switches";
 
 beforeEach(() => {
   stubIssuance();
@@ -100,6 +101,7 @@ test("a transfer disposition reaches the builder as a payment to the chosen acco
 
   const state = accountState({ trustlines: [trustline(USDC, "100")] });
   const result = await buildCloseTransactions(
+    ALL_ON,
     state,
     DEST,
     { [USDC]: "transfer" },
@@ -128,6 +130,7 @@ test("the payment precedes the changeTrust that removes the same trustline", asy
 
   const state = accountState({ trustlines: [trustline(USDC, "100")] });
   const result = await buildCloseTransactions(
+    ALL_ON,
     state,
     DEST,
     { [USDC]: "transfer" },
@@ -160,7 +163,7 @@ test("a transfer disposition with no destination refuses instead of converting",
   // The failure mode being pinned: falling through to the conversion path would swap away the
   // exact balance the caller asked to keep, and report success.
   await expect(
-    buildCloseTransactions(state, DEST, { [USDC]: "transfer" }, "testnet", null, {}, {})
+    buildCloseTransactions(ALL_ON, state, DEST, { [USDC]: "transfer" }, "testnet", null, {}, {})
   ).rejects.toBeInstanceOf(MissingTransferDestinationError);
 });
 
@@ -177,6 +180,7 @@ test("transfer composes with issuer on another asset in the same close", async (
   });
 
   const result = await buildCloseTransactions(
+    ALL_ON,
     state,
     DEST,
     { [USDC]: "transfer", [eurc]: "issuer" },
@@ -200,6 +204,7 @@ test("the summary names the destination, not just a count", async () => {
 
   const state = accountState({ trustlines: [trustline(USDC, "100")] });
   const result = await buildCloseTransactions(
+    ALL_ON,
     state,
     DEST,
     { [USDC]: "transfer" },
@@ -235,6 +240,7 @@ function useLedger(live: bigint | null, destination: LineSpec | null): void {
 async function buildTransfer(snapshotBalance = "100") {
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
   return buildCloseTransactions(
+    ALL_ON,
     accountState({ trustlines: [trustline(USDC, snapshotBalance)] }),
     DEST,
     { [USDC]: "transfer" },

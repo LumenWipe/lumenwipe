@@ -35,6 +35,7 @@ import type { AccountSigner, AccountState } from "@lumenwipe/types";
 import { emptyDefiPositionsResult } from "../unit/fixtures/defi-positions";
 import { stubIssuance } from "../unit/fixtures/issuance";
 import { stubLedgerConfirmation } from "../unit/fixtures/ledger-confirmation";
+import { ALL_ON } from "@/config/kill-switches";
 
 beforeEach(() => {
   stubIssuance();
@@ -100,7 +101,9 @@ test("close/transactions refuses to build a normalization that would strand a we
     { key: StrKey.encodeSha256Hash(CO_SIGNER_KP.rawPublicKey()), weight: 1, type: "hash_x" },
   ]);
 
-  const err = await buildCloseTransactions(state, DEST, {}, "testnet").catch((e: unknown) => e);
+  const err = await buildCloseTransactions(ALL_ON, state, DEST, {}, "testnet").catch(
+    (e: unknown) => e
+  );
   expect(err).toBeInstanceOf(CloseBuildError);
   expect((err as CloseBuildError).code).toBe("signer_normalization_unsafe");
   expect((err as CloseBuildError).status).toBe(422);
@@ -129,7 +132,9 @@ test("close/transactions refuses to build a normalization no satisfiable signer 
     { low: 0, med: 1, high: 3 }
   );
 
-  const err = await buildCloseTransactions(state, DEST, {}, "testnet").catch((e: unknown) => e);
+  const err = await buildCloseTransactions(ALL_ON, state, DEST, {}, "testnet").catch(
+    (e: unknown) => e
+  );
   expect(err).toBeInstanceOf(CloseBuildError);
   expect((err as CloseBuildError).code).toBe("signer_normalization_unsafe");
 });
@@ -142,7 +147,7 @@ test("close/transactions builds normally once the same account's master key carr
     { key: StrKey.encodeSha256Hash(CO_SIGNER_KP.rawPublicKey()), weight: 1, type: "hash_x" },
   ]);
 
-  const result = await buildCloseTransactions(state, DEST, {}, "testnet");
+  const result = await buildCloseTransactions(ALL_ON, state, DEST, {}, "testnet");
   const ops = TransactionBuilder.fromXDR(result.transactions[0]!.xdr, Networks.TESTNET).operations;
   expect(ops.some((o) => o.type === "setOptions")).toBe(true);
 });

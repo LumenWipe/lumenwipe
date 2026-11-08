@@ -44,8 +44,13 @@ export class MediatorController {
   ])
   @ApiErrorResponse(
     503,
-    "Mediator flow not available on this server, or the destination could not be read.",
-    ["mediator_not_configured", "mediator_key_misconfiguration", "service_unavailable"]
+    "Mediator flow not available on this server or paused, or the destination could not be read.",
+    [
+      "mediator_not_configured",
+      "exchange_forward_paused",
+      "mediator_key_misconfiguration",
+      "service_unavailable",
+    ]
   )
   @ApiBodyErrorResponses()
   @Post("sign")

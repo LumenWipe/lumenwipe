@@ -17,6 +17,7 @@ import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { authorizationOf } from "./fixtures/trustline";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
+import { ALL_ON } from "@/config/kill-switches";
 
 beforeEach(() => {
   stubIssuance();
@@ -83,7 +84,7 @@ test("plan: an unavailable price source is a price-source blocker, not an illiqu
   spyOn(readAccount, "readAccountState").mockResolvedValue(state());
   unavailable();
 
-  const plan = await buildAccountPlan(SOURCE, null, [], "testnet");
+  const plan = await buildAccountPlan(SOURCE, null, [], "testnet", ALL_ON);
 
   expect(plan.status).toBe("blocked");
   expect(plan.blockers.map((b) => b.message)).toContain(PRICE_SOURCE_UNAVAILABLE);
@@ -101,7 +102,7 @@ test("plan: a genuine empty market still offers return to issuer without a defau
     reason: "no_market",
   });
 
-  const plan = await buildAccountPlan(SOURCE, null, [], "testnet");
+  const plan = await buildAccountPlan(SOURCE, null, [], "testnet", ALL_ON);
 
   expect(plan.blockers.map((b) => b.message)).not.toContain(PRICE_SOURCE_UNAVAILABLE);
   const card = plan.decisionPoints.find((d) => d.type === "asset_disposition");
@@ -118,7 +119,7 @@ test("transactions: an unavailable price source is a 503, never a quote_drifted 
     getLedgerEntries: mirrorSnapshot(SOURCE, () => snapshot),
   } as unknown as ReturnType<typeof rpcModule.getRpcServer>);
 
-  const failure = await buildCloseTransactions(state(), DEST, {}, "testnet").catch(
+  const failure = await buildCloseTransactions(ALL_ON, state(), DEST, {}, "testnet").catch(
     (e: unknown) => e
   );
 

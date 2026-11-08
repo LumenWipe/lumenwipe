@@ -35,6 +35,8 @@ import {
   trustlineShortfallNote,
 } from "@/lib/stellar/claim-reserve";
 import { batchItems } from "./batching";
+import type { KillSwitches } from "@/config/kill-switches";
+import { killSwitchBlockers, type ConversionProvider } from "@/lib/kill-switches/blockers";
 import { CLAIM_ROUND_BATCH_SIZE, OP_BATCH_LIMIT } from "@/config/constants";
 
 function shortAddr(addr: string): string {
@@ -274,6 +276,7 @@ export function assessTrustlineAuthorizationBlockers(
 }
 
 export function buildPlan(
+  switches: KillSwitches,
   accountState: AccountState,
   mediatorRequired: boolean,
   fastPathEligible = false,
@@ -297,7 +300,9 @@ export function buildPlan(
   userVerifiedNoDefiPositions = false,
   /** Which exit targets could not be built when the caller checked them, and which of those the
    *  user chose to leave behind. Absent, every target the catalog supports plans as an exit. */
-  exitPreflight?: ExitPreflight
+  exitPreflight?: ExitPreflight,
+  /** Per token answered convert, the provider whose quote the answer accepted. */
+  conversionProviders: Record<string, ConversionProvider> = {}
 ): BuildPlanResult {
   const steps: PlannedStep[] = [];
   const blockers: PlanBlocker[] = [];
@@ -401,8 +406,17 @@ export function buildPlan(
   // DeFi positions the catalog cannot exit block here; the ones it can become EXIT_POSITIONS
   // steps below. Either way no detected position is left out of the plan in silence.
   const detectedPositions = defiPositions?.positions ?? [];
-  const exitBlockers = planExitSteps(detectedPositions, 0, exitPreflight);
+  // A paused protocol's positions get no step: killSwitchBlockers below blocks on them instead.
+  const exitPositions = detectedPositions.filter((p) => !switches.pausedExits.has(p.protocol));
+  const exitBlockers = planExitSteps(exitPositions, 0, exitPreflight);
   blockers.push(...exitBlockers.blockers);
+  blockers.push(
+    ...killSwitchBlockers(accountState, switches, {
+      viaMediator: mediatorRequired,
+      dispositions,
+      conversionProviders,
+    }).map(({ code, message }) => ({ code, message }))
+  );
 
   // Threshold gating: SetOptions is a HIGH-threshold operation. If no combination of
   // this app's satisfiable signers can reach the current high threshold, the normalization
@@ -612,7 +626,7 @@ export function buildPlan(
   // DeFi exits come first, exactly where the round builder runs them: each is its own Soroban
   // transaction ahead of every classic step, and what it withdraws lands in a trustline the steps
   // below then dispose of and remove. Shown first so the plan reads in execution order.
-  for (const exitStep of planExitSteps(detectedPositions, idx, exitPreflight).steps) {
+  for (const exitStep of planExitSteps(exitPositions, idx, exitPreflight).steps) {
     steps.push(exitStep);
     idx++;
   }

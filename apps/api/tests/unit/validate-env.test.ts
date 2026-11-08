@@ -264,3 +264,41 @@ test("a list's first position may pair a legacy header name with a legacy value"
   });
   expect(problems).toEqual([]);
 });
+
+test("a kill switch that is unset or true boots silently", () => {
+  for (const value of [undefined, "", "true", " TRUE "]) {
+    const env = { ...OK, FEE_SPONSORSHIP_ENABLED: value } as NodeJS.ProcessEnv;
+    const { problems, warnings } = checkEnv(env);
+    expect(problems).toEqual([]);
+    expect(warnings).toEqual([]);
+  }
+});
+
+test("a kill switch set to false boots and says what is paused", () => {
+  const { problems, warnings } = checkEnv({
+    ...OK,
+    MEDIATOR_FORWARD_ENABLED: "false",
+    BLEND_EXIT_ENABLED: " False ",
+  } as NodeJS.ProcessEnv);
+  expect(problems).toEqual([]);
+  expect(warnings).toEqual([
+    {
+      variable: "MEDIATOR_FORWARD_ENABLED",
+      message:
+        "MEDIATOR_FORWARD_ENABLED is false - exchange closes through the relay account are paused.",
+    },
+    {
+      variable: "BLEND_EXIT_ENABLED",
+      message: "BLEND_EXIT_ENABLED is false - blend exits are paused.",
+    },
+  ]);
+});
+
+test("a kill switch that is neither true nor false refuses the boot instead of reading as on", () => {
+  for (const value of ["fasle", "0", "no", "off"]) {
+    const { problems } = checkEnv({ ...OK, PHOENIX_EXIT_ENABLED: value } as NodeJS.ProcessEnv);
+    expect(problems).toEqual([
+      { variable: "PHOENIX_EXIT_ENABLED", message: "PHOENIX_EXIT_ENABLED must be true or false." },
+    ]);
+  }
+});

@@ -19,6 +19,7 @@ import type { ResolveDefiPositionsDeps } from "@/lib/defi-positions/resolve-defi
 import type { AccountState } from "@lumenwipe/types";
 import { emptyDefiPositionsResult } from "../unit/fixtures/defi-positions";
 import { authorizationOf } from "../unit/fixtures/trustline";
+import { ALL_ON } from "@/config/kill-switches";
 
 const SOURCE = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
@@ -110,7 +111,7 @@ test.each(REFUSED_STATES)(
       defiPositionsWarnings: [],
     };
 
-    const err = await buildCloseTransactions(accountState, DEST, {}, "testnet").catch(
+    const err = await buildCloseTransactions(ALL_ON, accountState, DEST, {}, "testnet").catch(
       (e: unknown) => e
     );
     expect(err).toBeInstanceOf(CloseBuildError);
@@ -174,8 +175,8 @@ test("a clawback-enabled trustline is reported as clawback-enabled and does not 
   expect(omittedState.trustlines[0]!.clawbackEnabled).toBe(false);
   expect(falseState.trustlines[0]!.clawbackEnabled).toBe(false);
 
-  const withPlan = buildPlan(withState, false, false);
-  const withoutPlan = buildPlan(omittedState, false, false);
+  const withPlan = buildPlan(ALL_ON, withState, false, false);
+  const withoutPlan = buildPlan(ALL_ON, omittedState, false, false);
   expect(withPlan.blockers).toEqual(withoutPlan.blockers);
   expect(withPlan.steps.map((s) => s.title)).toEqual(withoutPlan.steps.map((s) => s.title));
 });

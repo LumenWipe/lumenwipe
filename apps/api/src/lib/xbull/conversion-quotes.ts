@@ -17,16 +17,19 @@ import type {
 export const XBULL_QUOTE_TIMEOUT_MS = 8_000;
 const DEFAULT_XBULL_API_URL = "https://swap-api.xbull.io";
 
-function readEnv(): { baseUrl: string; enabled: boolean } {
+export function readXBullEnv(env: NodeJS.ProcessEnv = process.env): {
+  baseUrl: string;
+  enabled: boolean;
+} {
   return {
-    baseUrl: process.env.XBULL_SWAP_API_URL?.trim() || DEFAULT_XBULL_API_URL,
-    enabled: process.env.XBULL_CONVERSION_ENABLED === "true",
+    baseUrl: env.XBULL_SWAP_API_URL?.trim() || DEFAULT_XBULL_API_URL,
+    enabled: env.XBULL_CONVERSION_ENABLED === "true",
   };
 }
 
 /** Pure function of an env-shaped object, never `process.env` itself: this is what a test
  *  exercises directly, without needing a real environment variable set. */
-export function isXBullEnabled(env: { enabled: boolean } = readEnv()): boolean {
+export function isXBullEnabled(env: { enabled: boolean } = readXBullEnv()): boolean {
   return env.enabled;
 }
 
@@ -40,7 +43,7 @@ export interface XBullConversionDeps {
 }
 
 export function defaultXBullConversionDeps(): XBullConversionDeps {
-  const env = readEnv();
+  const env = readXBullEnv();
   return {
     fetch: isXBullEnabled(env) ? globalThis.fetch : null,
     baseUrl: env.baseUrl,
