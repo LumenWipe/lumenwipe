@@ -621,6 +621,90 @@ export function checkDesignTokens(root: string): Problem[] {
   return problems;
 }
 
+const WEB_LAYOUT = "apps/web/app/layout.tsx";
+const PRIVACY_SECTIONS = [
+  { source: "docs/architecture.md", heading: /^## \d+\. User protection and privacy\s*$/ },
+  { source: "docs/reference/logging-and-privacy.mdx", heading: /^## Page analytics\s*$/ },
+];
+const LOCAL_EXTENSIONS = [".tsx", ".ts", "/index.tsx", "/index.ts"];
+
+/** Each analytics tool a privacy page may name, and the code that means the web loads it. */
+const ANALYTICS_TOOLS = [
+  {
+    name: "Vercel Web Analytics",
+    named: /\bVercel (?:Web )?Analytics\b/,
+    loaded: /["'`]@vercel\/analytics(?:\/[\w-]+)?["'`]/,
+  },
+  {
+    name: "Umami Cloud",
+    named: /\bUmami\b/,
+    loaded: /["'`]https:\/\/cloud\.umami\.is\/script\.js["'`]/,
+  },
+  { name: "Plausible", named: /\bPlausible\b/, loaded: /plausible/i },
+  {
+    name: "Google Analytics",
+    named: /\bGoogle Analytics\b/,
+    loaded: /googletagmanager\.com|@next\/third-parties\/google/,
+  },
+];
+
+function resolveLocal(root: string, from: string, spec: string): string | null {
+  let base: string;
+  if (spec.startsWith("@/")) base = `apps/web/${spec.slice(2)}`;
+  else if (spec.startsWith(".")) base = toPosix(join(dirname(from), spec));
+  else return null;
+  for (const ext of LOCAL_EXTENSIONS) {
+    if (existsSync(join(root, base + ext))) return base + ext;
+  }
+  return null;
+}
+
+/**
+ * The web's root layout and the local files it imports directly, comments removed: the analytics
+ * a page loads are either in the layout or one component away from it.
+ */
+function layoutCode(root: string): string | null {
+  const layout = read(root, WEB_LAYOUT);
+  if (layout === null) return null;
+  const code = stripComments(layout);
+  const parts = [code];
+  for (const match of code.matchAll(IMPORT_SPECIFIER)) {
+    const file = resolveLocal(root, WEB_LAYOUT, match[1]!);
+    const source = file === null ? null : read(root, file);
+    if (source !== null) parts.push(stripComments(source));
+  }
+  return parts.join("\n");
+}
+
+/**
+ * Every page that states the privacy position names exactly the analytics tools the web's root
+ * layout loads, so a tool cannot be added, swapped or removed without the docs following.
+ */
+export function checkAnalyticsTools(root: string): Problem[] {
+  const code = layoutCode(root);
+  if (code === null) return [{ source: WEB_LAYOUT, message: "is missing" }];
+  const loaded = ANALYTICS_TOOLS.filter((tool) => tool.loaded.test(code));
+  const problems: Problem[] = [];
+  for (const { source, heading } of PRIVACY_SECTIONS) {
+    const text = read(root, source);
+    const body = text && section(text, heading);
+    if (!body) {
+      problems.push({ source, message: "the section stating the privacy position was not found" });
+      continue;
+    }
+    for (const tool of ANALYTICS_TOOLS) {
+      const named = tool.named.test(body);
+      const isLoaded = loaded.includes(tool);
+      if (named && !isLoaded) {
+        problems.push({ source, message: `names ${tool.name}, which ${WEB_LAYOUT} does not load` });
+      } else if (!named && isLoaded) {
+        problems.push({ source, message: `does not name ${tool.name}, which ${WEB_LAYOUT} loads` });
+      }
+    }
+  }
+  return problems;
+}
+
 export function checkAll(root: string): Problem[] {
   return [
     ...checkRegister(root),
@@ -632,6 +716,7 @@ export function checkAll(root: string): Problem[] {
     ...checkThreatModelCoverage(root),
     ...checkSecurityScope(root),
     ...checkDesignTokens(root),
+    ...checkAnalyticsTools(root),
   ].map((problem) => ({ ...problem, source: toPosix(problem.source) }));
 }
 
