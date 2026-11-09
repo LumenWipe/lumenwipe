@@ -65,6 +65,16 @@ curl -s "$API/" | jq -r .gitSha
 
 Expected: a single entry with `latestRevision: true` at 100 percent, and the fix's commit.
 
+## An `upstream` smoke result
+
+A run whose summary shows `| /health/deep | upstream (rpc_testnet) |` promoted its candidate while an RPC provider was down for the revision serving before it too: the candidate's `/health/deep` failed only on dependencies that revision also reported down, so the outage was not the candidate's fault. The run also carries a warning naming them. Nothing needs rolling back, but the smoke test could not prove those dependencies work on the new revision, so check once the provider recovers:
+
+```bash
+curl -s "$API/health/deep" | jq '.details | map_values(.status)'
+```
+
+Expected: `"up"` for every entry. If the provider is still down, follow [Provider outage](/runbooks/provider-outage). If it recovered and the dependency is still `"down"` on the new revision, that revision broke it: roll back with the steps above.
+
 ## Drill
 
 A manual run of the deploy workflow with `drill: fail-smoke` forces the smoke test to fail and shows the automatic path end to end: the candidate never takes traffic, and the run ends restored.
