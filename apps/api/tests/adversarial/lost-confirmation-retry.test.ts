@@ -26,9 +26,9 @@ afterEach(() => {
   mock.restore();
 });
 
-// A minimal, validly-signed transaction - submitAndWait's offline signature pre-flight
-// (checkTransactionSignatures) requires a real signature from the source account before any
-// RPC stub is ever reached.
+// A minimal transaction signed by its source, the shape a wallet submits: submitAndWait's offline
+// signature pre-flight (checkTransactionSignatures) verifies a signature whose hint matches the
+// source before any RPC stub is reached.
 function signedXdr(): string {
   const account = new Account(SOURCE.publicKey(), "100");
   const tx = new TransactionBuilder(account, { fee: "100", networkPassphrase: Networks.TESTNET })
