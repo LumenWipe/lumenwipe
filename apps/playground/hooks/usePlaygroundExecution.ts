@@ -18,6 +18,8 @@ import {
   type MessStepDef,
 } from "@/lib/mess-plan";
 import type { AccountState, IntentOperation } from "@lumenwipe/sdk";
+import { GENERIC_ERROR_COPY } from "@/lib/error-copy";
+import { PlaygroundApiError, playgroundRequest, SessionExpiredError } from "@/lib/playground-api";
 
 interface SessionResponse {
   sessionId: string;
@@ -41,36 +43,8 @@ interface UsePlaygroundExecutionResult {
   progressStatus: string | null;
 }
 
-class SessionExpiredError extends Error {}
-
-// Plain-language mapping for the machine error codes the playground's own
-// routes return (see app/api/session/**/route.ts) - CLAUDE.md's "user-facing
-// errors are plain language; never surface raw SDK codes or stack traces"
-// invariant applies here too, not just to apps/api/apps/web. Any code not
-// listed here (including a raw `detail` string from an underlying SDK error)
-// falls through to the generic message - it never reaches the user verbatim.
-const ERROR_MESSAGES: Record<string, string> = {
-  session_not_found: "This demo session expired. Start a new one.",
-  friendbot_failed: "Could not fund the demo account. Please try again.",
-  rate_limited: "Too many attempts. Please wait a moment and try again.",
-};
-
-function plainErrorMessage(code: string | undefined): string {
-  if (code && ERROR_MESSAGES[code]) return ERROR_MESSAGES[code];
-  return "Something went wrong. Please try again.";
-}
-
-async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, {
-    headers: { "Content-Type": "application/json" },
-    ...init,
-  });
-  if (res.status === 404) throw new SessionExpiredError("Session expired");
-  if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as { error?: string; detail?: string };
-    throw new Error(plainErrorMessage(body.error));
-  }
-  return (await res.json()) as T;
+function api<T>(path: string, init?: RequestInit): Promise<T> {
+  return playgroundRequest<T>(fetch, path, init);
 }
 
 // Orbit radius/duration by node kind - adapted from the deleted
@@ -179,8 +153,8 @@ export function usePlaygroundExecution(): UsePlaygroundExecutionResult {
       store.setPhase("EXPIRED");
       return;
     }
-    const message = err instanceof Error ? err.message : String(err);
-    store.setLastError(message);
+    if (!(err instanceof PlaygroundApiError)) console.error("[playground] unexpected error:", err);
+    store.setLastError(err instanceof PlaygroundApiError ? err.message : GENERIC_ERROR_COPY);
     store.setPhase("ERROR");
   }, []);
 

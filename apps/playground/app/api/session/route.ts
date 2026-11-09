@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { Keypair } from "@stellar/stellar-sdk";
 import { encryptSecret, PlaygroundConfigError } from "@/lib/crypto";
 import {
-  createSession,
   sessionExpiresAt,
+  sessionStore,
   PlaygroundStoreUnavailableError,
 } from "@/lib/session-store";
 import { getPlaygroundIssuerKeypair, getPlaygroundMmKeypair } from "@/lib/accounts";
@@ -18,6 +18,7 @@ import {
   getNeededEphemeralCodes,
   maxOfferCount,
 } from "@/lib/mess-plan";
+import { notConfiguredResponse } from "@/lib/route-helpers";
 import { rateLimit, SESSIONS_PER_DAY_PER_IP } from "@/lib/rate-limit";
 
 export const maxDuration = 60;
@@ -33,10 +34,7 @@ export async function POST(req: NextRequest) {
   const issuer = getPlaygroundIssuerKeypair();
   const mm = getPlaygroundMmKeypair();
   if (!issuer || !mm) {
-    return NextResponse.json(
-      { error: "Playground is not configured on this server." },
-      { status: 503 }
-    );
+    return notConfiguredResponse();
   }
 
   let mode: PlaygroundMode = "standard";
@@ -103,7 +101,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const session = await createSession({
+    const session = await sessionStore.createSession({
       demoPublic: demo.publicKey(),
       encDemoSecret: encryptSecret(demo.secret()),
       ephemeralIssuers: ephemeral.map((e) => ({
@@ -133,10 +131,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     if (err instanceof PlaygroundConfigError || err instanceof PlaygroundStoreUnavailableError) {
-      return NextResponse.json(
-        { error: "Playground is not configured on this server." },
-        { status: 503 }
-      );
+      return notConfiguredResponse();
     }
     throw err;
   }

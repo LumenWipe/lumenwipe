@@ -1,0 +1,30 @@
+// Plain-language copy for the machine error codes the playground's routes return. A raw SDK or
+// network message never reaches the user: an unknown code gets the generic line.
+const NOT_CONFIGURED_COPY = "This demo is temporarily unavailable. Please try again later.";
+
+const ERROR_COPY = new Map<string, string>(
+  Object.entries({
+    session_not_found: "This demo session expired. Start a new one.",
+    friendbot_failed: "Could not fund the demo account. Please try again.",
+    rate_limited: "Too many attempts. Please wait a moment and try again.",
+    tx_failed: "A setup transaction did not go through on the test network. Please try again.",
+    demolish_failed: "The close did not finish. Please try again.",
+    state_read_failed: "Could not read the demo account from the test network. Please try again.",
+    not_configured: NOT_CONFIGURED_COPY,
+    step_in_progress: "This step is already running. Wait for it to finish.",
+    step_already_executed: "This step already ran for this demo. Start a new one to run it again.",
+    invalid_step: "This demo step is not recognized. Start a new demo.",
+    cleanup_failed: "The demo finished, but its leftover test accounts could not be cleared.",
+    network_error: "Could not reach the playground. Check your connection and try again.",
+    invalid_json: "The request could not be read. Please try again.",
+  })
+);
+
+export const GENERIC_ERROR_COPY = "Something went wrong. Please try again.";
+
+export function errorCopy(code: string | undefined, status?: number): string {
+  const copy = code === undefined ? undefined : ERROR_COPY.get(code);
+  if (copy) return copy;
+  if (status === 503) return NOT_CONFIGURED_COPY;
+  return GENERIC_ERROR_COPY;
+}
