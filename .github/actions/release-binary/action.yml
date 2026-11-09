@@ -1,0 +1,66 @@
+name: Install a pinned release binary
+description: >-
+  Installs one binary from a release archive pinned by version and SHA-256 into the workspace. The
+  archive is restored from the Actions cache and downloaded only on a miss, so a release host outage
+  cannot fail a job once the archive is cached. The SHA-256 check runs on a restored archive too, and
+  a miss saves the archive only after that check passes. The key carries the version and the
+  SHA-256 with no fallback keys, so a bumped pin never restores an older archive.
+inputs:
+  name:
+    description: Tool name, used in the cache key and the archive file name (lowercase letters, digits, dashes).
+    required: true
+  version:
+    description: Pinned version, used in the cache key and the archive file name.
+    required: true
+  sha256:
+    description: Expected SHA-256 of the archive.
+    required: true
+  url:
+    description: Release asset URL of the archive.
+    required: true
+  member:
+    description: Path of the binary inside the archive.
+    required: true
+  strip-components:
+    description: Leading directories to strip from the member when extracting.
+    required: false
+    default: "0"
+runs:
+  using: composite
+  steps:
+    - name: Check the cache key parts
+      shell: bash
+      env:
+        TOOL_NAME: ${{ inputs.name }}
+        TOOL_VERSION: ${{ inputs.version }}
+      run: |
+        if ! [[ "$TOOL_NAME" =~ ^[a-z0-9-]+$ ]] || ! [[ "$TOOL_VERSION" =~ ^[0-9A-Za-z.+-]+$ ]]; then
+          echo "::error::release-binary: name '$TOOL_NAME' or version '$TOOL_VERSION' is not usable in a cache key"
+          exit 2
+        fi
+
+    - name: Restore the archive from the cache
+      id: restore
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/release-binary/${{ inputs.name }}-${{ inputs.version }}.tar.gz
+        key: release-binary-${{ inputs.name }}-${{ inputs.version }}-${{ inputs.sha256 }}-${{ runner.os }}-${{ runner.arch }}
+
+    - name: Check and extract the archive (download it on a miss)
+      shell: bash
+      env:
+        ARCHIVE: ${{ runner.temp }}/release-binary/${{ inputs.name }}-${{ inputs.version }}.tar.gz
+        URL: ${{ inputs.url }}
+        SHA256: ${{ inputs.sha256 }}
+        MEMBER: ${{ inputs.member }}
+        STRIP: ${{ inputs.strip-components }}
+      run: scripts/install-release-binary.sh "$ARCHIVE" "$URL" "$SHA256" "$MEMBER" "$STRIP"
+
+    # Runs only after the checksum step passed (a failed step stops the action), so the cache never
+    # stores an archive that did not match the pin.
+    - name: Save the checked archive to the cache
+      if: steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/release-binary/${{ inputs.name }}-${{ inputs.version }}.tar.gz
+        key: ${{ steps.restore.outputs.cache-primary-key }}

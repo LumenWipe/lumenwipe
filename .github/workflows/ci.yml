@@ -7,6 +7,12 @@ on:
 
 permissions: {}
 
+# The docs job installs lychee on a PR only; the release-binary-cache job reads the same pins on a
+# push to main so a PR can restore the archive from main's cache.
+env:
+  LYCHEE_VERSION: 0.24.2
+  LYCHEE_SHA256: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
+
 jobs:
   # One job per workspace so a failure points at the exact package. Each package
   # runs only the checks it defines (packages/types is type-only, so type-check only).
@@ -457,19 +463,28 @@ jobs:
 
       # Version, checksum, config and log range come from scripts/security-tools.json, shared
       # with `bun run security:scan`. The `installed` output lets the aggregate job tell an install
-      # failure apart from a failed scan.
-      - name: Install gitleaks
-        id: install
+      # failure apart from a failed scan: it is set only once the pins are read and the binary is
+      # restored or downloaded, checked against the pin and extracted.
+      - name: Read the gitleaks pins
+        id: pins
         run: |
-          GITLEAKS_VERSION="$(jq -er .gitleaks.version scripts/security-tools.json)"
-          GITLEAKS_SHA256="$(jq -er .gitleaks.linuxSha256 scripts/security-tools.json)"
-          scripts/download.sh \
-            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
-            gitleaks.tar.gz
-          echo "${GITLEAKS_SHA256}  gitleaks.tar.gz" | sha256sum -c -
-          tar -xzf gitleaks.tar.gz gitleaks
-          rm gitleaks.tar.gz
-          echo "installed=true" >> "$GITHUB_OUTPUT"
+          {
+            echo "version=$(jq -er .gitleaks.version scripts/security-tools.json)"
+            echo "sha256=$(jq -er .gitleaks.linuxSha256 scripts/security-tools.json)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Install gitleaks
+        uses: ./.github/actions/release-binary
+        with:
+          name: gitleaks
+          version: ${{ steps.pins.outputs.version }}
+          sha256: ${{ steps.pins.outputs.sha256 }}
+          url: https://github.com/gitleaks/gitleaks/releases/download/v${{ steps.pins.outputs.version }}/gitleaks_${{ steps.pins.outputs.version }}_linux_x64.tar.gz
+          member: gitleaks
+
+      - name: Mark gitleaks installed
+        id: install
+        run: echo "installed=true" >> "$GITHUB_OUTPUT"
 
       - name: Scan the full history
         run: |
@@ -517,6 +532,9 @@ jobs:
       - name: Test the download script
         run: bun test scripts/download.test.ts
 
+      - name: Test the release binary install script
+        run: bun test scripts/install-release-binary.test.ts
+
       - name: Test the API deploy script
         run: bun test scripts/deploy-api.test.ts
 
@@ -543,19 +561,42 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install actionlint
-        run: |
-          scripts/download.sh \
-            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
-            actionlint.tar.gz
-          echo "${ACTIONLINT_SHA256}  actionlint.tar.gz" | sha256sum -c -
-          tar -xzf actionlint.tar.gz actionlint
-          rm actionlint.tar.gz
+        uses: ./.github/actions/release-binary
+        with:
+          name: actionlint
+          version: ${{ env.ACTIONLINT_VERSION }}
+          sha256: ${{ env.ACTIONLINT_SHA256 }}
+          url: https://github.com/rhysd/actionlint/releases/download/v${{ env.ACTIONLINT_VERSION }}/actionlint_${{ env.ACTIONLINT_VERSION }}_linux_amd64.tar.gz
+          member: actionlint
 
       - name: Lint workflows
         run: ./actionlint -color
 
       - name: Require pinned actions and job timeouts
         run: scripts/check-workflows.sh
+
+  # The docs job runs on a PR only, so nothing on main would ever cache lychee and each docs PR
+  # would still fetch it from the release host. This keeps the entry in main's cache, which every PR
+  # can read. It is not part of the aggregate gate: a release host outage here only marks this job.
+  release-binary-cache:
+    name: release binary cache
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Cache lychee
+        uses: ./.github/actions/release-binary
+        with:
+          name: lychee
+          version: ${{ env.LYCHEE_VERSION }}
+          sha256: ${{ env.LYCHEE_SHA256 }}
+          url: https://github.com/lycheeverse/lychee/releases/download/lychee-v${{ env.LYCHEE_VERSION }}/lychee-x86_64-unknown-linux-gnu.tar.gz
+          member: lychee-x86_64-unknown-linux-gnu/lychee
+          strip-components: "1"
 
   # The docs site and the diagrams embedded in it have no other guard: a broken link, a page that
   # never reaches the sidebar, a failing Mintlify build or a diagram edited without re-rendering
@@ -572,8 +613,6 @@ jobs:
       contents: read
     if: github.event_name == 'pull_request'
     env:
-      LYCHEE_VERSION: 0.24.2
-      LYCHEE_SHA256: 1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a
       MINT_VERSION: 4.2.778
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -617,13 +656,14 @@ jobs:
 
       - name: Install lychee
         if: steps.changed.outputs.docs == 'true'
-        run: |
-          scripts/download.sh \
-            "https://github.com/lycheeverse/lychee/releases/download/lychee-v${LYCHEE_VERSION}/lychee-x86_64-unknown-linux-gnu.tar.gz" \
-            lychee.tar.gz
-          echo "${LYCHEE_SHA256}  lychee.tar.gz" | sha256sum -c -
-          tar -xzf lychee.tar.gz --strip-components=1 lychee-x86_64-unknown-linux-gnu/lychee
-          rm lychee.tar.gz
+        uses: ./.github/actions/release-binary
+        with:
+          name: lychee
+          version: ${{ env.LYCHEE_VERSION }}
+          sha256: ${{ env.LYCHEE_SHA256 }}
+          url: https://github.com/lycheeverse/lychee/releases/download/lychee-v${{ env.LYCHEE_VERSION }}/lychee-x86_64-unknown-linux-gnu.tar.gz
+          member: lychee-x86_64-unknown-linux-gnu/lychee
+          strip-components: "1"
 
       - name: Check links in the root documents
         if: steps.changed.outputs.docs == 'true'
