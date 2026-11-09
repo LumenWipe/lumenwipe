@@ -97,7 +97,7 @@ describe("every close operation type has a decided scene action", () => {
     set_options: { type: "destroy", nodeIds: ["signer:extra"] },
     payment: { type: "pulse", nodeId: "tl:AIRDROP1" },
     account_merge: { type: "merge" },
-    path_payment_strict_send: null,
+    path_payment_strict_send: { type: "pulse", nodeId: "tl:AIRDROP1" },
     claim_claimable_balance: null,
     revoke_sponsorship: null,
     invoke_host_function: null,
@@ -118,6 +118,7 @@ test("an operation whose node is not in the scene returns no action", () => {
   expect(operationToSceneAction(SAMPLES.change_trust, live("tl:LWDEMO"))).toBeNull();
   expect(operationToSceneAction(SAMPLES.manage_data, live("data:kyc_status"))).toBeNull();
   expect(operationToSceneAction(SAMPLES.payment, live("tl:LWDEMO"))).toBeNull();
+  expect(operationToSceneAction(SAMPLES.path_payment_strict_send, live("tl:LWDEMO"))).toBeNull();
   expect(operationToSceneAction(SAMPLES.set_options, live("tl:LWDEMO"))).toBeNull();
 });
 

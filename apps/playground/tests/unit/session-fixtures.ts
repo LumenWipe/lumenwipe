@@ -28,6 +28,7 @@ export function newSessionData(): NewSessionData {
     demolishPending: null,
     demolishDone: false,
     selection: selectionForMode("light"),
+    transferRecipient: null,
   };
 }
 

@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { encryptSecret } from "@/lib/crypto";
 import { sessionStore } from "@/lib/session-store";
 import { getPlaygroundIssuerKeypair, getPlaygroundMmKeypair } from "@/lib/accounts";
-import { ensureMmOffer } from "@/lib/mess-builders";
+import { ensureStandingLiquidity } from "@/lib/mess-builders";
 import { handleCreateSession } from "@/lib/route-handlers";
 import { rateLimit } from "@/lib/rate-limit";
 import { unavailableScenarios } from "@/lib/scenario-availability";
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     issuer: getPlaygroundIssuerKeypair,
     mm: getPlaygroundMmKeypair,
     fundAccount: fundWithFriendbot,
-    ensureMmOffer,
+    ensureStandingLiquidity,
     encrypt: encryptSecret,
     unavailable: unavailableScenarios,
   });

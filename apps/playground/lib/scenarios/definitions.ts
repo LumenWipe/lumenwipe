@@ -2,21 +2,27 @@ import {
   AIRDROP_ASSETS,
   BASE_RESERVE_XLM,
   DEMO_SWAP_PRICE,
+  DISPOSITION_ASSETS,
   EPHEMERAL_ISSUER_FUNDING_XLM,
   JUNK_DATA_ENTRIES,
   JUNK_OFFERS,
   LWDEMO_AMOUNT,
   LWDEMO_CODE,
+  RECIPIENT_FUNDING_XLM,
   SWAP_ASSETS,
   type AssetCode,
   type OfferAsset,
 } from "./catalog";
-import type {
-  MessStepDef,
-  MessStepId,
-  OrderedStep,
-  ScenarioCost,
-  ScenarioDefinition,
+import {
+  DISPOSITION_CHOICES,
+  type AssetDisposition,
+  type CloseOperationType,
+  type DispositionChoice,
+  type MessStepDef,
+  type MessStepId,
+  type OrderedStep,
+  type ScenarioCost,
+  type ScenarioDefinition,
 } from "./types";
 
 export const MESS_STEP_SECONDS = 5;
@@ -32,10 +38,20 @@ const TRUST_STEP: Record<AssetCode, MessStepId> = {
   LWDEMO: "TRUST_LWDEMO",
   USDC: "TRUST_USDC",
   EURC: "TRUST_EURC",
+  LWCOIN: "TRUST_LWCOIN",
+  LWGEM: "TRUST_LWGEM",
 };
 
 /** Trustlines open in this order, so the offers that need them line up with the catalog. */
-const TRUST_ORDER: readonly AssetCode[] = ["AIRDROP1", "RUGPULL", "LWDEMO", "USDC", "EURC"];
+const TRUST_ORDER: readonly AssetCode[] = [
+  "AIRDROP1",
+  "RUGPULL",
+  "LWDEMO",
+  "USDC",
+  "EURC",
+  "LWCOIN",
+  "LWGEM",
+];
 
 const trustlineNode = (code: AssetCode): string => `tl:${code}`;
 
@@ -100,6 +116,7 @@ const lwdemoHolding: ScenarioDefinition = {
         signers: 0,
         closeOperations: 2,
         operationTypes: ["payment", "changeTrust"],
+        dispositions: [],
       },
       cost: cost(2, 1, BASE_RESERVE_XLM, 1),
     },
@@ -145,6 +162,7 @@ const junkAirdrops: ScenarioDefinition = {
           signers: 0,
           closeOperations: 2 * tokens,
           operationTypes: ["payment", "changeTrust"],
+          dispositions: [],
         },
         cost: cost(tokens + 1, tokens, tokens * (ISSUER_FUNDING + BASE_RESERVE_XLM), tokens),
       },
@@ -193,6 +211,7 @@ const stablecoinSwaps: ScenarioDefinition = {
           signers: 0,
           closeOperations: 2 * tokens,
           operationTypes: ["payment", "changeTrust"],
+          dispositions: [],
         },
         cost: cost(
           2 * tokens,
@@ -239,6 +258,7 @@ const dataEntries: ScenarioDefinition = {
           signers: 0,
           closeOperations: count,
           operationTypes: ["manageData"],
+          dispositions: [],
         },
         cost: cost(1, 1, count * BASE_RESERVE_XLM, count),
       },
@@ -308,6 +328,7 @@ const staleOffers: ScenarioDefinition = {
           signers: 0,
           closeOperations: count,
           operationTypes: ["manageSellOffer"],
+          dispositions: [],
         },
         cost: cost(1, 1, count * BASE_RESERVE_XLM + lockedXlm, count),
       },
@@ -347,10 +368,116 @@ const forgottenSigner: ScenarioDefinition = {
         signers: 1,
         closeOperations: 1,
         operationTypes: ["setOptions"],
+        dispositions: [],
       },
       cost: cost(1, 1, BASE_RESERVE_XLM, 1),
     },
   }),
+};
+
+const FUND_DISPOSITION_STEP: Record<(typeof DISPOSITION_ASSETS)[number]["code"], MessStepId> = {
+  LWCOIN: "FUND_LWCOIN",
+  LWGEM: "FUND_LWGEM",
+};
+
+const CHOICE_LABELS: Record<DispositionChoice, string> = {
+  burn: "Burn (return to issuer)",
+  convert: "Convert to XLM",
+  transfer: "Transfer to another account",
+};
+
+/** The parameter for each asset is its code in lower case, valued by DISPOSITION_CHOICES' index. */
+const dispositionParam = (code: string): string => code.toLowerCase();
+
+function chosenDispositions(params: Readonly<Record<string, number>>): AssetDisposition[] {
+  return DISPOSITION_ASSETS.map((a) => {
+    const choice = DISPOSITION_CHOICES[params[dispositionParam(a.code)] ?? 0];
+    if (!choice) throw new RangeError(`No disposition at index for ${a.code}`);
+    return { asset: a.code, choice, amount: a.amount };
+  });
+}
+
+const dispositions: ScenarioDefinition = {
+  id: "dispositions",
+  featureSet: "classic",
+  label: "Convert, transfer or burn",
+  description:
+    "Two playground tokens, each closed the way you pick: burned, converted to XLM, or sent to another account.",
+  params: Object.fromEntries(
+    DISPOSITION_ASSETS.map((a) => [
+      dispositionParam(a.code),
+      {
+        label: a.code,
+        min: 0,
+        max: DISPOSITION_CHOICES.length - 1,
+        default: 0,
+        choices: DISPOSITION_CHOICES.map((c) => CHOICE_LABELS[c]),
+      },
+    ])
+  ),
+  heldAssets: () => DISPOSITION_ASSETS.map((a) => a.code),
+  requiresAnyOf: [],
+  conflicts: [],
+  build: (params) => {
+    const chosen = chosenDispositions(params);
+    const codes = chosen.map((d) => d.asset);
+    const transferred = chosen.filter((d) => d.choice === "transfer").map((d) => d.asset);
+    const steps: OrderedStep[] = [...codes.map(trustStep)];
+    DISPOSITION_ASSETS.forEach((a, i) => {
+      steps.push({
+        order: ORDER.fund + 4 + i,
+        step: {
+          id: FUND_DISPOSITION_STEP[a.code],
+          label: `Receive ${a.amount} ${a.code}`,
+          nodes: [],
+          balances: [{ nodeId: trustlineNode(a.code), balance: a.amount }],
+          action: { kind: "issuer_payment", asset: a.code, amount: a.amount },
+        },
+      });
+    });
+    if (transferred.length > 0) {
+      steps.push({
+        order: ORDER.fund + 4 + DISPOSITION_ASSETS.length,
+        step: {
+          id: "OPEN_RECIPIENT",
+          label: `Open an account that can receive ${transferred.join(" and ")}`,
+          nodes: [],
+          balances: [],
+          action: {
+            kind: "open_recipient",
+            fundingXlm: RECIPIENT_FUNDING_XLM,
+            assets: transferred,
+          },
+        },
+      });
+    }
+    const operationTypes: CloseOperationType[] = ["payment", "changeTrust"];
+    if (chosen.some((d) => d.choice === "convert")) operationTypes.push("pathPaymentStrictSend");
+    const recipientXlm = transferred.length > 0 ? Number(RECIPIENT_FUNDING_XLM) : 0;
+    return {
+      ok: true,
+      build: {
+        steps,
+        ephemeralAssets: [],
+        expectation: {
+          assets: codes,
+          offers: 0,
+          dataEntries: 0,
+          signers: 0,
+          // A payment or a conversion, then the trustline removal, per asset.
+          closeOperations: 2 * codes.length,
+          operationTypes,
+          dispositions: chosen.filter((d) => d.choice !== "burn"),
+        },
+        cost: cost(
+          steps.length,
+          codes.length,
+          codes.length * BASE_RESERVE_XLM + recipientXlm,
+          codes.length
+        ),
+      },
+    };
+  },
 };
 
 /** Every scenario, in the order a selection lists them. */
@@ -361,4 +488,5 @@ export const SCENARIOS: readonly ScenarioDefinition[] = [
   dataEntries,
   staleOffers,
   forgottenSigner,
+  dispositions,
 ];

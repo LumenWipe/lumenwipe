@@ -191,6 +191,7 @@ export function validateSelection(
     signers: 0,
     closeOperations: 0,
     operationTypes: ["accountMerge"],
+    dispositions: [],
   };
   const cost: ScenarioCost = {
     xlm: 2 * BASE_RESERVE_XLM,
@@ -211,6 +212,7 @@ export function validateSelection(
     expectation.dataEntries += build.expectation.dataEntries;
     expectation.signers += build.expectation.signers;
     expectation.closeOperations += build.expectation.closeOperations;
+    expectation.dispositions.push(...build.expectation.dispositions);
     for (const type of build.expectation.operationTypes) {
       if (!expectation.operationTypes.includes(type)) expectation.operationTypes.push(type);
     }

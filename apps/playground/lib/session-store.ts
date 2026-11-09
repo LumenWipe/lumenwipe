@@ -12,7 +12,7 @@ import { parseSelection, validateSelection, type ScenarioSelection } from "./sce
 export const SESSION_TTL_SECONDS = 3600;
 
 /** Bumped whenever the stored shape changes; a session of any other version reads as expired. */
-export const SESSION_SCHEMA_VERSION = 4;
+export const SESSION_SCHEMA_VERSION = 5;
 
 /** Longer than any route's maxDuration, so a request the platform kills frees its session soon after. */
 export const SESSION_LOCK_TTL_MS = 150_000;
@@ -53,6 +53,13 @@ export function logEntryOf({
   return { txId, hash, summary, operations };
 }
 
+/** An account the playground creates for the session to send a balance to; its secret is
+ *  encrypted like the demo's, and only cleanup signs with it. */
+export interface SessionAccount {
+  publicKey: string;
+  encSecret: string;
+}
+
 export interface PlaygroundSession {
   schemaVersion: typeof SESSION_SCHEMA_VERSION;
   id: string;
@@ -73,6 +80,9 @@ export interface PlaygroundSession {
   /** The validated scenario selection. The plan, the executor's steps and the close expectation
    *  are recomputed from it on every request; nothing the client sends later can change it. */
   selection: ScenarioSelection;
+  /** The account a "transfer" disposition sends to, created by the OPEN_RECIPIENT step; null when
+   *  the selection transfers nothing. The close may transfer to this account and no other. */
+  transferRecipient: SessionAccount | null;
 }
 
 type FixedFields = "schemaVersion" | "id" | "createdAt";
@@ -98,6 +108,12 @@ function isEphemeralIssuer(value: unknown): value is EphemeralIssuer {
     typeof value.publicKey === "string" &&
     typeof value.encSecret === "string" &&
     typeof value.assetCode === "string"
+  );
+}
+
+function isSessionAccount(value: unknown): value is SessionAccount {
+  return (
+    isRecord(value) && typeof value.publicKey === "string" && typeof value.encSecret === "string"
   );
 }
 
@@ -137,7 +153,8 @@ export function isPlaygroundSession(value: unknown): value is PlaygroundSession 
     (value.demolishPending === null || isPendingDemolishTx(value.demolishPending)) &&
     typeof value.demolishDone === "boolean" &&
     typeof value.createdAt === "number" &&
-    isValidSelection(value.selection)
+    isValidSelection(value.selection) &&
+    (value.transferRecipient === null || isSessionAccount(value.transferRecipient))
   );
 }
 

@@ -1,5 +1,5 @@
 import "server-only";
-import { Networks, Transaction, TransactionBuilder } from "@stellar/stellar-sdk";
+import { Networks, Transaction, TransactionBuilder, type Asset } from "@stellar/stellar-sdk";
 import {
   exitExpectations,
   verifyCloseTransaction,
@@ -7,7 +7,12 @@ import {
   type TransferChoice,
 } from "@lumenwipe/verify";
 import type { CloseTransaction } from "@lumenwipe/sdk";
-import { LWDEMO_CODE, resolvePlan, type CloseOperationType } from "./scenarios";
+import {
+  conversionFloorStroops,
+  isPersistentAsset,
+  resolvePlan,
+  type CloseOperationType,
+} from "./scenarios";
 import type { PlaygroundSession } from "./session-store";
 
 // The check the playground's backend runs on every XDR the real API returns, before signing it.
@@ -19,9 +24,15 @@ import type { PlaygroundSession } from "./session-store";
 // the playground's own configuration, never from the API's response:
 //
 // - the merge goes to the fixed sink, with no memo;
-// - a payment may only return an asset of the session to its own issuer;
+// - a payment may only return an asset of the session to its own issuer, unless the session chose
+//   another disposition for it: a transfer goes only to the session's own recipient, and an asset
+//   chosen to convert can only be converted, to XLM, into the demo, for no less than the floor its
+//   recorded amount and the playground's standing price give;
 // - a signer may only be removed if the session recorded adding it;
-// - no transfer, conversion, claim or DeFi exit was chosen, so each of those is refused.
+// - no claim or DeFi exit was chosen, so each of those is refused.
+//
+// The shared verifier holds a transfer to a floor; the playground also holds a transfer and a
+// conversion to at most the amount the mess paid in, so the two together pin a transfer exactly.
 //
 // On top of that, two rules the shared verifier cannot hold for every close, because the
 // exchange hand-off places its forward payment after the merge and a large close spans several
@@ -50,6 +61,8 @@ export const PLAYGROUND_CLOSE_OPERATION_TYPES: readonly CloseOperationType[] = [
   "manageData",
   "manageSellOffer",
   "setOptions",
+  // A conversion the session chose; the shared verifier refuses one of any other asset.
+  "pathPaymentStrictSend",
   // The API revokes a sponsorship it finds on one of these entries before removing it.
   "revokeAccountSponsorship",
   "revokeTrustlineSponsorship",
@@ -64,6 +77,23 @@ export interface SessionAsset {
   issuer: string;
 }
 
+/** A balance the session chose to send to its own recipient, keyed by `CODE:ISSUER`. */
+export interface PlaygroundTransfer {
+  asset: string;
+  destination: string;
+  /** What the mess paid in: the transfer must move exactly this. */
+  amount: string;
+}
+
+/** A balance the session chose to convert to XLM, keyed by `CODE:ISSUER`. */
+export interface PlaygroundConversion {
+  asset: string;
+  /** What the mess paid in: the conversion may sell no more. */
+  amount: string;
+  /** The least XLM the conversion may accept, in stroops. */
+  minAmountOut: string;
+}
+
 /** What a demolish of one session may do, from the session record and the playground config. */
 export interface PlaygroundCloseExpectation {
   demoPublic: string;
@@ -72,29 +102,45 @@ export interface PlaygroundCloseExpectation {
   recordedSigners: string[];
   offerCount: number;
   dataEntryCount: number;
+  transfers: PlaygroundTransfer[];
+  conversions: PlaygroundConversion[];
 }
 
 /**
- * The expectation for a session's demolish: the assets, offers and data entries its stored
- * selection planned (lib/scenarios), the issuers it recorded, and the signers it recorded.
- * `lwdemoIssuer` is the playground's persistent issuer from its configuration; every other asset
- * must be one of the session's own ephemeral issuers.
+ * The expectation for a session's demolish: the assets, offers, data entries and dispositions its
+ * stored selection planned (lib/scenarios), the issuers and recipient it recorded, and the signers
+ * it recorded. `persistentIssuer` is the playground's own issuer from its configuration (LWDEMO and
+ * the disposition assets); every other asset must be one of the session's own ephemeral issuers.
  */
 export function expectationFromSession(
   session: Pick<
     PlaygroundSession,
-    "demoPublic" | "ephemeralIssuers" | "recordedSigners" | "selection"
+    "demoPublic" | "ephemeralIssuers" | "recordedSigners" | "selection" | "transferRecipient"
   >,
   sinkPublic: string,
-  lwdemoIssuer: string
+  persistentIssuer: string
 ): PlaygroundCloseExpectation {
   const planned = resolvePlan(session.selection).expectation;
-  const assets = planned.assets.map((code): SessionAsset => {
-    if (code === LWDEMO_CODE) return { code, issuer: lwdemoIssuer };
+  const issuerOf = (code: string): string => {
+    if (isPersistentAsset(code)) return persistentIssuer;
     const issuer = session.ephemeralIssuers.find((e) => e.assetCode === code);
     if (!issuer) throw new PlaygroundVerificationError("session_issuer_missing");
-    return { code, issuer: issuer.publicKey };
-  });
+    return issuer.publicKey;
+  };
+  const assets = planned.assets.map((code): SessionAsset => ({ code, issuer: issuerOf(code) }));
+  const transfers: PlaygroundTransfer[] = [];
+  const conversions: PlaygroundConversion[] = [];
+  for (const { asset: code, choice, amount } of planned.dispositions) {
+    const asset = `${code}:${issuerOf(code)}`;
+    if (choice === "convert") {
+      conversions.push({ asset, amount, minAmountOut: conversionFloorStroops(amount).toString() });
+    } else if (choice === "transfer") {
+      if (!session.transferRecipient) {
+        throw new PlaygroundVerificationError("session_recipient_missing");
+      }
+      transfers.push({ asset, destination: session.transferRecipient.publicKey, amount });
+    }
+  }
   return {
     demoPublic: session.demoPublic,
     sinkPublic,
@@ -102,6 +148,8 @@ export function expectationFromSession(
     recordedSigners: [...session.recordedSigners],
     offerCount: planned.offers,
     dataEntryCount: planned.dataEntries,
+    transfers,
+    conversions,
   };
 }
 
@@ -122,10 +170,21 @@ export function maxOperations(expected: PlaygroundCloseExpectation): number {
 
 function sharedExpectation(expected: PlaygroundCloseExpectation): CloseExpectationInput {
   const transfers: Record<string, TransferChoice> = {};
+  const classicConversions: Record<string, { minAmountOut: string }> = {};
+  const converted = new Set(expected.conversions.map((c) => c.asset));
   for (const { code, issuer } of expected.assets) {
     // A return to the issuer, as the web app expresses one: the destination is pinned to the
-    // issuer encoded in the asset itself, so the amount is no floor at all.
-    transfers[`${code}:${issuer}`] = { destination: issuer, amount: "0" };
+    // issuer encoded in the asset itself, so the amount is no floor at all. An asset chosen to
+    // convert gets none, so the conversion is the only way it can leave.
+    const asset = `${code}:${issuer}`;
+    if (!converted.has(asset)) transfers[asset] = { destination: issuer, amount: "0" };
+  }
+  // A transfer replaces the return: its asset can then go to the recipient, and nowhere else.
+  for (const { asset, destination, amount } of expected.transfers) {
+    transfers[asset] = { destination, amount };
+  }
+  for (const { asset, minAmountOut } of expected.conversions) {
+    classicConversions[asset] = { minAmountOut };
   }
   return {
     ...exitExpectations(null, "testnet"),
@@ -145,9 +204,45 @@ function sharedExpectation(expected: PlaygroundCloseExpectation): CloseExpectati
     accountThresholds: { low: 0, med: 0, high: 0 },
     transfers,
     tokenTransfers: {},
-    classicConversions: {},
+    classicConversions,
     tokenConversions: {},
   };
+}
+
+/** A decimal amount as the SDK prints one (at most seven decimals), in stroops. */
+export function amountToStroops(amount: string): bigint {
+  const match = /^(\d+)(?:\.(\d{1,7}))?$/.exec(amount);
+  if (!match) throw new PlaygroundVerificationError("amount_unreadable");
+  const [, whole, fraction = ""] = match;
+  return BigInt(whole) * BigInt(10_000_000) + BigInt(fraction.padEnd(7, "0"));
+}
+
+const assetKey = (asset: Asset): string => `${asset.getCode()}:${asset.getIssuer()}`;
+
+/**
+ * What the shared verifier does not hold: a transfer or a conversion moves no more than the mess
+ * paid in. Run after it, so every payment and conversion reaching here is one the session chose.
+ */
+function assertWithinRecordedAmounts(
+  ops: Transaction["operations"],
+  expected: PlaygroundCloseExpectation
+): void {
+  for (const op of ops) {
+    if (op.type === "payment" && !op.asset.isNative()) {
+      const transfer = expected.transfers.find((t) => t.asset === assetKey(op.asset));
+      if (transfer && amountToStroops(op.amount) > amountToStroops(transfer.amount)) {
+        throw new PlaygroundVerificationError("transfer_above_recorded");
+      }
+    } else if (op.type === "pathPaymentStrictSend") {
+      const conversion = op.sendAsset.isNative()
+        ? undefined
+        : expected.conversions.find((c) => c.asset === assetKey(op.sendAsset));
+      if (!conversion) throw new PlaygroundVerificationError("conversion_not_chosen");
+      if (amountToStroops(op.sendAmount) > amountToStroops(conversion.amount)) {
+        throw new PlaygroundVerificationError("conversion_above_held");
+      }
+    }
+  }
 }
 
 export function verifyDemolishTransaction(
@@ -170,6 +265,7 @@ export function verifyDemolishTransaction(
   if (!ops.every((op) => PLAYGROUND_CLOSE_OPERATION_TYPES.some((type) => type === op.type))) {
     throw new PlaygroundVerificationError("operation_not_allowed");
   }
+  assertWithinRecordedAmounts(ops, expected);
   if (ops.length > maxOperations(expected)) {
     throw new PlaygroundVerificationError("too_many_operations");
   }

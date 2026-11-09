@@ -14,6 +14,11 @@ export const MESS_STEP_IDS = [
   "DATA_ENTRIES",
   "OFFERS",
   "ADD_SIGNER",
+  "TRUST_LWCOIN",
+  "TRUST_LWGEM",
+  "FUND_LWCOIN",
+  "FUND_LWGEM",
+  "OPEN_RECIPIENT",
 ] as const;
 
 export type MessStepId = (typeof MESS_STEP_IDS)[number];
@@ -40,7 +45,8 @@ export type StepAction =
       kind: "offers";
       offers: { selling: OfferAsset; buying: OfferAsset; amount: string; price: string }[];
     }
-  | { kind: "add_signer" };
+  | { kind: "add_signer" }
+  | { kind: "open_recipient"; fundingXlm: string; assets: AssetCode[] };
 
 export type StepActionKind = StepAction["kind"];
 
@@ -85,6 +91,19 @@ export type CloseOperationType =
   | "revokeClaimableBalanceSponsorship"
   | "invokeHostFunction";
 
+/** How the close disposes of a persistent asset's balance; "burn" returns it to its issuer. */
+export type DispositionChoice = "burn" | "convert" | "transfer";
+
+/** The order a disposition parameter's values stand for. */
+export const DISPOSITION_CHOICES: readonly DispositionChoice[] = ["burn", "convert", "transfer"];
+
+/** A balance the session chose a disposition for, with the amount the mess paid into it. */
+export interface AssetDisposition {
+  asset: AssetCode;
+  choice: DispositionChoice;
+  amount: string;
+}
+
 /** What closing a scenario's entries takes: the verifier's expectation and operation ceiling come from these. */
 export interface ScenarioExpectation {
   assets: AssetCode[];
@@ -94,6 +113,8 @@ export interface ScenarioExpectation {
   /** The close operations these entries need, excluding the final merge and threshold reset. */
   closeOperations: number;
   operationTypes: CloseOperationType[];
+  /** Assets closed other than by a return to the issuer; every other asset is returned. */
+  dispositions: AssetDisposition[];
 }
 
 export interface ScenarioCost {
@@ -112,6 +133,8 @@ export interface IntParam {
   min: number;
   max: number;
   default: number;
+  /** Names for the values min to max, for a parameter that picks one option rather than a count. */
+  choices?: readonly string[];
 }
 
 export type ScenarioId =
@@ -120,7 +143,8 @@ export type ScenarioId =
   | "stablecoin-swaps"
   | "data-entries"
   | "stale-offers"
-  | "forgotten-signer";
+  | "forgotten-signer"
+  | "dispositions";
 
 export interface OrderedStep {
   /** Steps from every scenario are sorted by this key into one plan. */

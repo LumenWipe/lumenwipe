@@ -1,6 +1,6 @@
 export const LWDEMO_CODE = "LWDEMO";
 
-export type AssetCode = "LWDEMO" | "AIRDROP1" | "RUGPULL" | "USDC" | "EURC";
+export type AssetCode = "LWDEMO" | "AIRDROP1" | "RUGPULL" | "USDC" | "EURC" | "LWCOIN" | "LWGEM";
 export type OfferAsset = AssetCode | "native";
 
 /** Airdropped by their own throwaway issuer, which pays from inside the demo's transaction. */
@@ -16,6 +16,52 @@ export const SWAP_ASSETS = [
 ] as const satisfies readonly { code: AssetCode; amount: string }[];
 
 export const LWDEMO_AMOUNT = "25";
+
+/**
+ * Issued by the playground's persistent issuer, like LWDEMO, and paid to the demo by it. Each is
+ * closed by the disposition the visitor picks: burned (returned to the issuer), converted to XLM
+ * through the market maker's standing offer, or transferred to the session's own recipient.
+ */
+export const DISPOSITION_ASSETS = [
+  { code: "LWCOIN", amount: "20" },
+  { code: "LWGEM", amount: "8" },
+] as const satisfies readonly { code: AssetCode; amount: string }[];
+
+/** The assets the persistent issuer issues; every other one has a throwaway issuer per session. */
+export const PERSISTENT_ASSETS = [
+  LWDEMO_CODE,
+  ...DISPOSITION_ASSETS.map((a) => a.code),
+] as const satisfies readonly AssetCode[];
+
+export function isPersistentAsset(code: string): boolean {
+  return PERSISTENT_ASSETS.some((p) => p === code);
+}
+
+/**
+ * The market maker's standing offers: each sells XLM for one persistent asset at this price, in
+ * units of the asset per XLM, so converting N units delivers N / price XLM. A junk offer that buys
+ * one of these assets with XLM is always priced above it (tests/unit/scenario-catalog.test.ts), so
+ * another session's conversion fills the market maker, never this session's own offer.
+ */
+export const STANDING_LIQUIDITY_PRICE = "2";
+
+/**
+ * The least XLM, in stroops, the close may accept for converting `amount` of a persistent asset:
+ * what the standing offer pays, less 1%. The API applies 0.5% slippage to its quote, so the floor
+ * sits under its minimum while the offer has depth, and it comes from this configuration, never
+ * from the API.
+ */
+export function conversionFloorStroops(amount: string): bigint {
+  const STROOPS_PER_UNIT = BigInt(10_000_000);
+  return (
+    (BigInt(amount) * STROOPS_PER_UNIT * BigInt(99)) /
+    (BigInt(STANDING_LIQUIDITY_PRICE) * BigInt(100))
+  );
+}
+
+/** XLM the demo gives the session's transfer recipient: its two base reserves, one trustline per
+ *  persistent asset and the fees of its own cleanup. */
+export const RECIPIENT_FUNDING_XLM = "3";
 /** XLM per swapped token: 0.2 x 10 = 2 XLM per swap. */
 export const DEMO_SWAP_PRICE = "0.2";
 export const FRIENDBOT_XLM = "10000";
@@ -32,9 +78,13 @@ export const JUNK_DATA_ENTRIES = [
   { key: "kyc_status", value: "unverified" },
 ] as const;
 
-/** Never crosses the market maker's sell-XLM/buy-LWDEMO offer. Swap offers stay below the swapped amount. */
+/**
+ * Never crosses the market maker's sell-XLM/buy-LWDEMO offer, and the one that buys LWDEMO is
+ * priced above the standing offer, so a conversion elsewhere never fills it. Swap offers stay below
+ * the swapped amount.
+ */
 export const JUNK_OFFERS = [
-  { selling: "native", buying: LWDEMO_CODE, amount: "5", price: "2" },
+  { selling: "native", buying: LWDEMO_CODE, amount: "5", price: "3" },
   { selling: "AIRDROP1", buying: "native", amount: "500000", price: "0.0001" },
   { selling: "RUGPULL", buying: "native", amount: "10", price: "42" },
   { selling: "USDC", buying: "native", amount: "8", price: "10" },

@@ -3,6 +3,7 @@ import { Account, Keypair, Networks, Operation, TransactionBuilder } from "@stel
 import {
   LumenWipeApiError,
   type CloseTransaction,
+  type DecisionPoint,
   type TransactionLookupResponse,
   type TransactionsResponse,
 } from "@lumenwipe/sdk";
@@ -82,14 +83,16 @@ class FakeApi implements DemolishApi {
   lookupSeesLanded = false;
   submitBehavior: SubmitBehavior = "confirm";
   buildsMerge = true;
+  /** The decision points the plan asks for. */
+  decisionPoints: DecisionPoint[] = [];
   calls = { plan: 0, transactions: 0, submit: 0, lookup: 0 };
   /** Called whenever a transaction lands, to stop the request there. */
   onLanded: () => void = () => {};
 
-  async closePlan(): Promise<{ decisionPoints: [] }> {
+  async closePlan(): Promise<{ decisionPoints: DecisionPoint[] }> {
     this.calls.plan++;
     if (!this.accountOpen) throw apiError(404, "account_not_found");
-    return { decisionPoints: [] };
+    return { decisionPoints: this.decisionPoints };
   }
 
   async closeTransactions(): Promise<TransactionsResponse> {
@@ -305,5 +308,30 @@ describe("a demolish round resumes from where a request died", () => {
     const loaded = await store.loadSession(session.id);
     expect(loaded?.demolishPending).toBeNull();
     expect(loaded?.demolishLog).toEqual([]);
+  });
+
+  test("a decision the playground cannot make stops the round before anything is built", async () => {
+    const store = memoryStore();
+    const session = await newSession(store);
+    const api = new FakeApi();
+    api.decisionPoints = [
+      {
+        id: "defi_positions:GDEMO",
+        type: "confirmation",
+        subject: { kind: "defi_positions" },
+        options: [{ id: "no_defi_positions_confirmed_manually" }],
+        default: "",
+        required: true,
+      },
+    ];
+
+    const result = await round(store, session.id, api);
+
+    expect(result).toEqual({
+      status: 422,
+      body: { error: "demolish_decision_unanswerable", decisions: ["defi_positions:GDEMO"] },
+    });
+    expect([api.calls.transactions, api.calls.submit]).toEqual([0, 0]);
+    expect((await store.loadSession(session.id))?.demolishPending).toBeNull();
   });
 });

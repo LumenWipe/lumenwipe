@@ -14,7 +14,10 @@ import {
   TxSubmitError,
 } from "./horizon-submit";
 import {
-  LWDEMO_CODE,
+  PERSISTENT_ASSETS,
+  STANDING_LIQUIDITY_PRICE,
+  isPersistentAsset,
+  type AssetCode,
   type MessStepDef,
   type OfferAsset,
   type StepAction,
@@ -39,6 +42,8 @@ export interface MessContext {
   ephemeralIssuers: Map<string, Keypair>;
   persistentIssuer: Keypair;
   mmPublic: string;
+  /** The session's transfer recipient, which the OPEN_RECIPIENT step creates; null without one. */
+  transferRecipient: Keypair | null;
   /** Persists a signer in the session record before the step adds it to the demo account. */
   recordSigner: (publicKey: string) => Promise<void>;
 }
@@ -51,7 +56,7 @@ function ephemeralIssuer(code: string, ctx: MessContext): Keypair {
 
 function resolveAsset(code: OfferAsset, ctx: MessContext): Asset {
   if (code === "native") return Asset.native();
-  if (code === LWDEMO_CODE) return new Asset(LWDEMO_CODE, ctx.persistentIssuer.publicKey());
+  if (isPersistentAsset(code)) return new Asset(code, ctx.persistentIssuer.publicKey());
   return new Asset(code, ephemeralIssuer(code, ctx).publicKey());
 }
 
@@ -129,49 +134,132 @@ export async function buildSignSubmit(
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
-export async function ensureMmOffer(mm: Keypair, issuerPublic: string): Promise<void> {
-  const state = await loadHorizonAccount(mm.publicKey());
-  void state; // presence check only; the actual "does the offer already exist" read
-  // happens against Horizon's offers endpoint - kept intentionally simple for a
-  // testnet-only demo account (unlike production, correctness here is not security-critical).
-  const res = await fetch(`${HORIZON_TESTNET_URL}/accounts/${mm.publicKey()}/offers?limit=200`);
-  const offers = (await res.json()) as {
-    _embedded: {
-      records: {
-        selling: { asset_type: string };
-        buying: { asset_code?: string; asset_issuer?: string };
-      }[];
-    };
-  };
-  const hasOffer = offers._embedded.records.some(
-    (o) =>
-      o.selling.asset_type === "native" &&
-      o.buying.asset_code === LWDEMO_CODE &&
-      o.buying.asset_issuer === issuerPublic
-  );
-  if (hasOffer) return;
+/** XLM the market maker keeps out of its standing offers, for its reserves and fees. */
+const MM_KEEP_XLM = 50;
+/** Most XLM one standing offer sells; a session converts at most a few XLM of it. */
+const STANDING_OFFER_MAX_XLM = 1000;
+/** An offer worn below this is posted again at full size. */
+const STANDING_OFFER_REFILL_XLM = 100;
 
-  const accRes = await fetch(`${HORIZON_TESTNET_URL}/accounts/${mm.publicKey()}`);
-  const acc = (await accRes.json()) as { balances: { asset_type: string; balance: string }[] };
-  const nativeBalance = parseFloat(
-    acc.balances.find((b) => b.asset_type === "native")?.balance ?? "0"
-  );
-  const spendable = nativeBalance - 10;
-  const amount = Math.min(spendable, 5000);
-  if (amount < 50) {
-    console.error(
-      `[playground] MM ${mm.publicKey()} balance too low to post liquidity offer (${nativeBalance} XLM)`
+interface HorizonOffer {
+  id: string;
+  amount: string;
+  selling: { asset_type: string };
+  buying: { asset_code?: string; asset_issuer?: string };
+}
+
+interface HorizonBalance {
+  asset_type: string;
+  asset_code?: string;
+  asset_issuer?: string;
+  balance: string;
+}
+
+async function horizonJson<T>(path: string): Promise<T> {
+  const res = await fetch(`${HORIZON_TESTNET_URL}${path}`, {
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) throw new Error(`Horizon read failed (${res.status})`);
+  return (await res.json()) as T;
+}
+
+/**
+ * The operations that give each persistent asset a standing route to XLM: the market maker trusts
+ * the asset and sells XLM for it at STANDING_LIQUIDITY_PRICE. Pure, so a test can check which
+ * operations a given market maker state needs. An offer worn below the refill mark is resized;
+ * `unfunded` names the assets left without one because the market maker is short of XLM.
+ */
+export function standingLiquidityOps(
+  issuerPublic: string,
+  nativeBalance: number,
+  balances: readonly HorizonBalance[],
+  offers: readonly HorizonOffer[]
+): { ops: xdr.Operation[]; unfunded: AssetCode[] } {
+  const ops: xdr.Operation[] = [];
+  const unfunded: AssetCode[] = [];
+  let spendable = nativeBalance - MM_KEEP_XLM;
+  for (const code of PERSISTENT_ASSETS) {
+    const asset = new Asset(code, issuerPublic);
+    const trusted = balances.some((b) => b.asset_code === code && b.asset_issuer === issuerPublic);
+    if (!trusted) ops.push(Operation.changeTrust({ asset }));
+    const offer = offers.find(
+      (o) =>
+        o.selling.asset_type === "native" &&
+        o.buying.asset_code === code &&
+        o.buying.asset_issuer === issuerPublic
     );
-    return;
+    if (offer && Number(offer.amount) >= STANDING_OFFER_REFILL_XLM) continue;
+    const amount = Math.min(spendable, STANDING_OFFER_MAX_XLM);
+    if (amount < STANDING_OFFER_REFILL_XLM) {
+      unfunded.push(code);
+      continue;
+    }
+    spendable -= amount;
+    ops.push(
+      Operation.manageSellOffer({
+        selling: Asset.native(),
+        buying: asset,
+        amount: amount.toFixed(7),
+        price: STANDING_LIQUIDITY_PRICE,
+        ...(offer && { offerId: offer.id }),
+      })
+    );
   }
-  await buildSignSubmit(mm, [
-    Operation.manageSellOffer({
-      selling: Asset.native(),
-      buying: new Asset(LWDEMO_CODE, issuerPublic),
-      amount: amount.toFixed(7),
-      price: "2",
-    }),
+  return { ops, unfunded };
+}
+
+/** Posts or refills the market maker's standing offers; a no-op when they are all in place. */
+export async function ensureStandingLiquidity(mm: Keypair, issuerPublic: string): Promise<void> {
+  const [account, offers] = await Promise.all([
+    horizonJson<{ balances: HorizonBalance[] }>(`/accounts/${mm.publicKey()}`),
+    horizonJson<{ _embedded: { records: HorizonOffer[] } }>(
+      `/accounts/${mm.publicKey()}/offers?limit=200`
+    ),
   ]);
+  const native = account.balances.find((b) => b.asset_type === "native");
+  const { ops, unfunded } = standingLiquidityOps(
+    issuerPublic,
+    Number(native?.balance ?? "0"),
+    account.balances,
+    offers._embedded.records
+  );
+  if (unfunded.length > 0) {
+    // A conversion of these assets finds no route until the market maker is topped up.
+    console.warn("[playground] market maker too low to post standing liquidity", {
+      mm: mm.publicKey(),
+      assets: unfunded,
+    });
+  }
+  if (ops.length > 0) await buildSignSubmit(mm, ops);
+}
+
+/**
+ * Empties and merges the session's transfer recipient into the market maker: each transferred
+ * balance goes back to the persistent issuer, each trustline is removed, then the merge. The
+ * balances are the amounts the session recorded, not a read: before the close has transferred
+ * anything there is nothing to return, so only the trustlines are removed.
+ */
+export function retireRecipientOps(
+  persistentIssuer: string,
+  mmPublic: string,
+  trusted: readonly AssetCode[],
+  received: readonly { asset: AssetCode; amount: string }[]
+): xdr.Operation[] {
+  return [
+    ...received.map(({ asset, amount }) =>
+      Operation.payment({
+        destination: persistentIssuer,
+        asset: new Asset(asset, persistentIssuer),
+        amount,
+      })
+    ),
+    ...trusted.map((code) =>
+      Operation.changeTrust({ asset: new Asset(code, persistentIssuer), limit: "0" })
+    ),
+    Operation.accountMerge({ destination: mmPublic }),
+  ];
 }
 
 type Submit = (source: Keypair, ops: xdr.Operation[], extraSigners?: Keypair[]) => Promise<string>;
@@ -269,6 +357,24 @@ export const MESS_EXECUTORS: { [K in StepActionKind]: Executor<K> } = {
       )
     ),
   add_signer: (_action, ctx, _submit, deps) => addForgottenSigner(ctx, deps),
+  // The demo creates the recipient, which trusts the assets it will receive, in one transaction.
+  open_recipient: (action, ctx, submit) => {
+    const recipient = ctx.transferRecipient;
+    if (!recipient) throw new Error("open_recipient step with no recipient in the session");
+    return submit(
+      ctx.demo,
+      [
+        Operation.createAccount({
+          destination: recipient.publicKey(),
+          startingBalance: action.fundingXlm,
+        }),
+        ...action.assets.map((code) =>
+          Operation.changeTrust({ source: recipient.publicKey(), asset: resolveAsset(code, ctx) })
+        ),
+      ],
+      [recipient]
+    );
+  },
 };
 
 function runAction<K extends StepActionKind>(

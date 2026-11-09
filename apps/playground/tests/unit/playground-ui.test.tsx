@@ -239,6 +239,46 @@ describe("the demolish runs round by round", () => {
     await rtl.waitFor(() => expect(routes.count("POST /api/session")).toBe(2));
   });
 
+  test("a decision the demo cannot make shows a blocker card naming it, not a generic failure", async () => {
+    const id = "defi_positions:GDEMO";
+    routes.handlers.set(ROUND, async () => ({
+      status: 422,
+      body: { error: "demolish_decision_unanswerable", decisions: [id] },
+    }));
+    await dirtyAccount();
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: /Demolish it here/ }));
+
+    const card = await rtl.screen.findByRole("alert", undefined, { timeout: 5000 });
+    expect(card.textContent).toContain("Blocked: a decision this demo cannot make");
+    expect(card.textContent).toContain(errorCopy("demolish_decision_unanswerable"));
+    const list = rtl.within(card).getByRole("list", { name: "Unanswered decisions" });
+    expect(
+      rtl
+        .within(list)
+        .getAllByRole("listitem")
+        .map((li) => li.textContent)
+    ).toEqual([id]);
+    expect(rtl.screen.queryByText(errorCopy("demolish_failed"))).toBeNull();
+    expect(rtl.screen.getByRole("button", { name: /Resume the close/ })).toBeTruthy();
+  });
+
+  test("any other error after a blocker shows the plain alert again", async () => {
+    let rounds = 0;
+    routes.handlers.set(ROUND, async () => {
+      rounds++;
+      return rounds === 1
+        ? { status: 422, body: { error: "demolish_decision_unanswerable", decisions: ["x"] } }
+        : { status: 502, body: { error: "demolish_failed" } };
+    });
+    await dirtyAccount();
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: /Demolish it here/ }));
+    await rtl.screen.findByRole("list", { name: "Unanswered decisions" }, { timeout: 5000 });
+
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: /Resume the close/ }));
+    await rtl.screen.findByText(errorCopy("demolish_failed"), undefined, { timeout: 5000 });
+    expect(rtl.screen.queryByRole("list", { name: "Unanswered decisions" })).toBeNull();
+  });
+
   test("an error before the close started keeps the single Start over, with no warning", async () => {
     routes.handlers.set("/api/session", async () => ({
       status: 502,
@@ -300,6 +340,29 @@ describe("the scenario picker", () => {
       rtl.render(<ScenarioPicker />);
       rtl.fireEvent.click(button("Fewer entries"));
       expect(totals().steps).toContain("Attach 2 leftover data entries");
+    });
+
+    test("a disposition is picked by name, and the plan follows it", () => {
+      usePlaygroundStore
+        .getState()
+        .setSelection(
+          { scenarios: [{ id: "dispositions", params: { lwcoin: 0, lwgem: 0 } }] },
+          null
+        );
+      rtl.render(<ScenarioPicker />);
+      const gem = rtl.screen.getByRole("combobox", { name: "LWGEM" });
+      expect([...gem.querySelectorAll("option")].map((o) => o.textContent)).toEqual([
+        "Burn (return to issuer)",
+        "Convert to XLM",
+        "Transfer to another account",
+      ]);
+      expect(totals().steps).not.toContain("Open an account that can receive LWGEM");
+      rtl.fireEvent.change(gem, { target: { value: "2" } });
+      expect(totals().steps).toContain("Open an account that can receive LWGEM");
+      expect(usePlaygroundStore.getState().selection.scenarios[0]?.params).toEqual({
+        lwcoin: 0,
+        lwgem: 2,
+      });
     });
 
     test("turning on a scenario that needs a token pulls one in", () => {
@@ -401,7 +464,7 @@ describe("the scenario picker", () => {
     test("every toggle has an accessible name and a pressed state", () => {
       rtl.render(<ScenarioPicker />);
       const toggles = [...document.querySelectorAll("fieldset button[aria-pressed]")];
-      expect(toggles.length).toBe(6);
+      expect(toggles.length).toBe(7);
       for (const toggle of toggles) expect(toggle.textContent?.length).toBeGreaterThan(0);
     });
   });

@@ -66,48 +66,82 @@ export interface DemolishRoundResult {
 const destinationDecisionId = (address: string): string => `destination:${address}`;
 const DESTINATION_ACK_CHOICE = "i_control_this_address";
 
-/**
- * The disposition every playground asset gets.
- *
- * `convert_to_xlm` is deliberately not used. The demo tokens are playground-issued and the only
- * liquidity they have is the market maker's own self-manufactured offer, so path finding is not
- * dependable and a drifted route fails the round with `quote_drifted`. Returning to the issuer -
- * an account the playground itself controls - is always available, needs no path, and carries no
- * slippage risk.
- */
-const ASSET_DISPOSITION_CHOICE = "return_to_issuer";
+/** The API's disposition choice ids (decisions.ts `resolveDispositions`, `TRANSFER_CHOICE`). */
+const RETURN_TO_ISSUER_CHOICE = "return_to_issuer";
+const CONVERT_CHOICE = "convert_to_xlm";
+const TRANSFER_CHOICE = "transfer_to_account";
+/** The API's `LEAVE_CHOICE`: a Soroban token balance stays with the closed address. */
+const LEAVE_TOKEN_CHOICE = "acknowledge_residue";
+
+/** Required decision points the playground has no answer for, which stop the close before it builds. */
+export class DemolishDecisionUnanswerableError extends Error {
+  constructor(readonly decisionIds: string[]) {
+    super("The close needs a decision the playground cannot make");
+    this.name = "DemolishDecisionUnanswerableError";
+  }
+}
+
+export interface DemolishDecisions {
+  answers: DecisionAnswer[];
+  /** The ids of the required points left unanswered. */
+  unanswerable: string[];
+}
 
 /**
- * Turns the plan's pending decision points into the answer set `close/transactions` requires.
+ * The answer to one trustline's disposition, from the session's expectation: the choice the
+ * session recorded for that exact asset (code and issuer), or a return to the issuer for any other
+ * asset the session planned. Null for an asset the session never planned.
+ */
+function assetAnswer(
+  id: string,
+  asset: string,
+  expected: PlaygroundCloseExpectation
+): DecisionAnswer | null {
+  const conversion = expected.conversions.find((c) => c.asset === asset);
+  if (conversion) {
+    // The floor travels with the answer, so the API refuses a route below it before building.
+    return { id, choice: CONVERT_CHOICE, params: { minAmountOut: conversion.minAmountOut } };
+  }
+  const transfer = expected.transfers.find((t) => t.asset === asset);
+  if (transfer) {
+    return { id, choice: TRANSFER_CHOICE, params: { destination: transfer.destination } };
+  }
+  const planned = expected.assets.some(({ code, issuer }) => `${code}:${issuer}` === asset);
+  return planned ? { id, choice: RETURN_TO_ISSUER_CHOICE } : null;
+}
+
+/**
+ * Turns the plan's decision points into the answer set `close/transactions` requires.
  *
- * Derived from what the API actually asked for rather than from the mess plan, so it stays correct
- * whichever mode funded the session and never has to know which assets exist. A decision point of
- * a kind the playground has no safe automatic answer for (a claimable balance - the playground
- * never creates one) is deliberately left unanswered: the API then refuses the round with a
- * `needs_decisions` 422 naming it, which is a clean, legible failure rather than a guess about
- * whether a balance should be claimed or forfeited.
+ * Every answer comes from the session's expectation, never from the plan's recommendation: a
+ * trustline is converted, transferred to the session's recipient, or returned to its issuer as the
+ * session chose, and a Soroban token someone dusted the demo with is left with the throwaway key.
+ * A required point anything else asks for (an asset the session never planned, a claimable
+ * balance, a confirmation the API added) is listed as unanswerable rather than guessed, so the
+ * round stops and the page names it.
  */
 export function buildDemolishDecisions(
   decisionPoints: DecisionPoint[],
-  sinkPublic: string
-): DecisionAnswer[] {
-  const answers: DecisionAnswer[] = [
-    { id: destinationDecisionId(sinkPublic), choice: DESTINATION_ACK_CHOICE },
-  ];
+  expected: PlaygroundCloseExpectation
+): DemolishDecisions {
+  const destinationId = destinationDecisionId(expected.sinkPublic);
+  const answers: DecisionAnswer[] = [{ id: destinationId, choice: DESTINATION_ACK_CHOICE }];
+  const unanswerable: string[] = [];
   for (const dp of decisionPoints) {
-    // The point's own id already carries the API's `asset:CODE-ISSUER` encoding, so it is echoed
-    // back verbatim instead of being re-derived from the subject.
+    if (dp.id === destinationId) continue;
+    let answer: DecisionAnswer | null = null;
     if (dp.type === "asset_disposition") {
-      // A Soroban token someone dusted the demo account with has no issuer to return it to; the
-      // demo acknowledges it stays with the throwaway key and closes anyway.
-      const isToken = dp.subject.kind === "soroban_token";
-      answers.push({
-        id: dp.id,
-        choice: isToken ? "acknowledge_residue" : ASSET_DISPOSITION_CHOICE,
-      });
+      // The point's own id already carries the API's encoding, so it is echoed back verbatim.
+      const { kind, asset } = dp.subject;
+      if (kind === "soroban_token") answer = { id: dp.id, choice: LEAVE_TOKEN_CHOICE };
+      else if (kind === "trustline" && typeof asset === "string") {
+        answer = assetAnswer(dp.id, asset, expected);
+      }
     }
+    if (answer) answers.push(answer);
+    else if (dp.required) unanswerable.push(dp.id);
   }
-  return answers;
+  return { answers, unanswerable };
 }
 
 function parseOwn(xdr: string): Transaction {
@@ -174,7 +208,11 @@ export async function runCloseRound(
     getTransactions: async () => {
       if (!decisions) {
         const plan = await client.closePlan({ source: demoPublic, destination: sinkPublic });
-        decisions = buildDemolishDecisions(plan.decisionPoints, sinkPublic);
+        const built = buildDemolishDecisions(plan.decisionPoints, opts.expected);
+        if (built.unanswerable.length > 0) {
+          throw new DemolishDecisionUnanswerableError(built.unanswerable);
+        }
+        decisions = built.answers;
       }
       const res = await client.closeTransactions({
         source: demoPublic,

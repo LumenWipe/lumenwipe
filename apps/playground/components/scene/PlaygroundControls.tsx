@@ -19,6 +19,7 @@ import {
 import { usePlaygroundStore } from "@/store/playground";
 import { errorCopy, GENERIC_ERROR_COPY } from "@/lib/error-copy";
 import { FEATURE_SETS, validateSelection } from "@/lib/scenarios";
+import BlockerCard from "./BlockerCard";
 import ScenarioPicker from "./ScenarioPicker";
 
 function CountdownBadge({ expiresAt }: { expiresAt: number }) {
@@ -72,6 +73,7 @@ export default function PlaygroundControls({
   const phase = usePlaygroundStore((s) => s.phase);
   const expiresAt = usePlaygroundStore((s) => s.expiresAt);
   const lastError = usePlaygroundStore((s) => s.lastError);
+  const blockedDecisions = usePlaygroundStore((s) => s.blockedDecisions);
   const accountState = usePlaygroundStore((s) => s.accountState);
   const recoveredXlm = usePlaygroundStore((s) => s.recoveredXlm);
   const sessionId = usePlaygroundStore((s) => s.sessionId);
@@ -310,16 +312,22 @@ export default function PlaygroundControls({
 
       {phase === "ERROR" && (
         <>
-          <div
-            role="alert"
-            className="mb-4 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-white/75"
-          >
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-            <span className="break-words">
-              {lastError ?? GENERIC_ERROR_COPY}
+          {blockedDecisions ? (
+            <BlockerCard message={lastError ?? GENERIC_ERROR_COPY} decisionIds={blockedDecisions}>
               {replayLine}
-            </span>
-          </div>
+            </BlockerCard>
+          ) : (
+            <div
+              role="alert"
+              className="mb-4 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-white/75"
+            >
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+              <span className="break-words">
+                {lastError ?? GENERIC_ERROR_COPY}
+                {replayLine}
+              </span>
+            </div>
+          )}
           {demolishFailed ? (
             <div className="flex flex-col gap-2">
               <button

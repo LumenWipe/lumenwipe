@@ -8,6 +8,7 @@ const CODES = [
   "tx_failed",
   "demolish_failed",
   "demolish_outcome_unknown",
+  "demolish_decision_unanswerable",
   "demolish_started",
   "state_read_failed",
   "not_configured",

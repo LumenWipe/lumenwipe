@@ -1,56 +1,130 @@
 import { test, expect } from "bun:test";
-import { buildDemolishDecisions } from "@/lib/demolish";
+import { buildDemolishDecisions, DemolishDecisionUnanswerableError } from "@/lib/demolish";
+import type { PlaygroundCloseExpectation } from "@/lib/verify";
 import type { DecisionPoint } from "@lumenwipe/sdk";
 
 // The real API refuses `close/transactions` outright when either half of this answer set is
 // missing: an unrecognized destination is a 422 `destination_not_acknowledged` (the sink is a
 // random testnet keypair, never a registry exchange, so it fires every time), and a funded
 // trustline with no disposition is a 422 `needs_decisions`. These pin the exact ids and choice
-// strings the API's apps/api/src/lib/close-api/decisions.ts expects.
+// strings the API's apps/api/src/lib/close-api/decisions.ts expects, and that every answer comes
+// from the session's expectation rather than from the plan.
 
 const SINK = "GBOYVOCQNI34T7IO6RPNE6RZCVD7WNTFJZJUEX64RSQF6IJT5NFDRGMN";
 const ISSUER = "GCXXGL3PVDB3EN22CP7JQYVZUVZ6IDN6URCQGPIZZ4WAPRRZTOFJMVEV";
+const RECIPIENT = "GDMIIQBWLRHBLDLTB4RJ5ZTVEYNE6CF3ZUSOOMD7ZCOD4FEX3NDBBCGN";
+const STRANGER = "GBLBAKEGAULFA7MYR6KJ4JRQUFJYTKGF5BRJOCXFH4KWKYKLR5HTVSR6";
 
-function assetPoint(code: string): DecisionPoint {
+function expected(over: Partial<PlaygroundCloseExpectation> = {}): PlaygroundCloseExpectation {
   return {
-    id: `asset:${code}-${ISSUER}`,
+    demoPublic: "GDEMO",
+    sinkPublic: SINK,
+    assets: [
+      { code: "LWDEMO", issuer: ISSUER },
+      { code: "RUGPULL", issuer: ISSUER },
+      { code: "LWCOIN", issuer: ISSUER },
+      { code: "LWGEM", issuer: ISSUER },
+    ],
+    recordedSigners: [],
+    offerCount: 0,
+    dataEntryCount: 0,
+    transfers: [],
+    conversions: [],
+    ...over,
+  };
+}
+
+function assetPoint(code: string, issuer = ISSUER, convertible = false): DecisionPoint {
+  return {
+    id: `asset:${code}-${issuer}`,
     type: "asset_disposition",
-    subject: { kind: "trustline", asset: `${code}:${ISSUER}`, balance: "25", convertible: false },
-    options: [{ id: "return_to_issuer" }, { id: "transfer_to_account" }],
-    default: "",
+    subject: { kind: "trustline", asset: `${code}:${issuer}`, balance: "25", convertible },
+    options: convertible
+      ? [{ id: "convert_to_xlm", recommended: true }, { id: "return_to_issuer" }]
+      : [{ id: "return_to_issuer" }, { id: "transfer_to_account" }],
+    default: convertible ? "convert_to_xlm" : "",
     required: true,
   };
 }
 
+const destinationAck = { id: `destination:${SINK}`, choice: "i_control_this_address" };
+
 test("always acknowledges the destination, keyed by the sink's own address", () => {
-  const answers = buildDemolishDecisions([], SINK);
-  expect(answers).toEqual([{ id: `destination:${SINK}`, choice: "i_control_this_address" }]);
+  expect(buildDemolishDecisions([], expected())).toEqual({
+    answers: [destinationAck],
+    unanswerable: [],
+  });
 });
 
-test("answers every asset disposition with return_to_issuer, echoing the point's own id", () => {
-  const answers = buildDemolishDecisions([assetPoint("LWDEMO"), assetPoint("RUGPULL")], SINK);
+test("the destination's own confirmation point is answered, not reported as unanswerable", () => {
+  const point: DecisionPoint = {
+    id: `destination:${SINK}`,
+    type: "confirmation",
+    subject: { kind: "destination", address: SINK },
+    options: [{ id: "i_control_this_address" }],
+    default: "",
+    required: true,
+  };
+  expect(buildDemolishDecisions([point], expected())).toEqual({
+    answers: [destinationAck],
+    unanswerable: [],
+  });
+});
+
+test("an asset the session burns is returned to its issuer, echoing the point's own id", () => {
+  const { answers } = buildDemolishDecisions(
+    [assetPoint("LWDEMO"), assetPoint("RUGPULL")],
+    expected()
+  );
   expect(answers).toEqual([
-    { id: `destination:${SINK}`, choice: "i_control_this_address" },
+    destinationAck,
     { id: `asset:LWDEMO-${ISSUER}`, choice: "return_to_issuer" },
     { id: `asset:RUGPULL-${ISSUER}`, choice: "return_to_issuer" },
   ]);
 });
 
-test("never answers convert_to_xlm, even when the plan recommends it", () => {
-  const convertible: DecisionPoint = {
-    ...assetPoint("LWDEMO"),
-    subject: { kind: "trustline", asset: `LWDEMO:${ISSUER}`, balance: "25", convertible: true },
-    options: [{ id: "convert_to_xlm", recommended: true }, { id: "return_to_issuer" }],
-    default: "convert_to_xlm",
-  };
-  const answers = buildDemolishDecisions([convertible], SINK);
-  expect(answers.map((a) => a.choice)).not.toContain("convert_to_xlm");
+test("a recommended conversion is not taken unless the session chose it", () => {
+  const { answers } = buildDemolishDecisions([assetPoint("LWDEMO", ISSUER, true)], expected());
   expect(answers[1]).toEqual({ id: `asset:LWDEMO-${ISSUER}`, choice: "return_to_issuer" });
 });
 
-// A guess here is a guess about whether funds are claimed or permanently forfeited. Leaving it
-// unanswered turns it into the API's own `needs_decisions` 422, which names the balance.
-test("leaves a claimable-balance decision unanswered rather than guessing", () => {
+test("an asset the session converts is answered convert_to_xlm with the session's floor", () => {
+  const { answers } = buildDemolishDecisions(
+    [assetPoint("LWCOIN", ISSUER, true)],
+    expected({
+      conversions: [{ asset: `LWCOIN:${ISSUER}`, amount: "20", minAmountOut: "99000000" }],
+    })
+  );
+  expect(answers[1]).toEqual({
+    id: `asset:LWCOIN-${ISSUER}`,
+    choice: "convert_to_xlm",
+    params: { minAmountOut: "99000000" },
+  });
+});
+
+test("an asset the session transfers is sent to the session's recipient", () => {
+  const { answers } = buildDemolishDecisions(
+    [assetPoint("LWGEM")],
+    expected({ transfers: [{ asset: `LWGEM:${ISSUER}`, destination: RECIPIENT, amount: "8" }] })
+  );
+  expect(answers[1]).toEqual({
+    id: `asset:LWGEM-${ISSUER}`,
+    choice: "transfer_to_account",
+    params: { destination: RECIPIENT },
+  });
+});
+
+test("a code the session planned, under an issuer it did not, is unanswerable", () => {
+  const { answers, unanswerable } = buildDemolishDecisions(
+    [assetPoint("LWDEMO", STRANGER)],
+    expected()
+  );
+  expect(answers).toEqual([destinationAck]);
+  expect(unanswerable).toEqual([`asset:LWDEMO-${STRANGER}`]);
+});
+
+// A guess here is a guess about whether funds are claimed or permanently forfeited.
+test("a claimable-balance decision is reported as unanswerable rather than guessed", () => {
   const claim: DecisionPoint = {
     id: "claim:00000000abc",
     type: "claimable_balance",
@@ -59,8 +133,31 @@ test("leaves a claimable-balance decision unanswered rather than guessing", () =
     default: "claim",
     required: true,
   };
-  const answers = buildDemolishDecisions([claim], SINK);
+  const { answers, unanswerable } = buildDemolishDecisions([claim], expected());
   expect(answers.map((a) => a.id)).not.toContain("claim:00000000abc");
+  expect(unanswerable).toEqual(["claim:00000000abc"]);
+});
+
+test("a required confirmation the API adds is unanswerable; an optional one is skipped", () => {
+  const confirmation = (id: string, required: boolean): DecisionPoint => ({
+    id,
+    type: "confirmation",
+    subject: { kind: "defi_positions" },
+    options: [{ id: "no_defi_positions_confirmed_manually" }],
+    default: "",
+    required,
+  });
+  const { answers, unanswerable } = buildDemolishDecisions(
+    [confirmation("defi_positions:GDEMO", true), confirmation("optional:GDEMO", false)],
+    expected()
+  );
+  expect(answers).toEqual([destinationAck]);
+  expect(unanswerable).toEqual(["defi_positions:GDEMO"]);
+});
+
+test("an asset point without a readable asset is unanswerable", () => {
+  const point: DecisionPoint = { ...assetPoint("LWDEMO"), subject: { kind: "trustline" } };
+  expect(buildDemolishDecisions([point], expected()).unanswerable).toEqual([point.id]);
 });
 
 test("a Soroban token someone dusted the demo account with is acknowledged, not 'returned to an issuer' it does not have", () => {
@@ -75,7 +172,60 @@ test("a Soroban token someone dusted the demo account with is acknowledged, not 
     default: "transfer_to_account",
     required: true,
   };
-  const answers = buildDemolishDecisions([assetPoint("LWDEMO"), tokenPoint], SINK);
+  const { answers, unanswerable } = buildDemolishDecisions(
+    [assetPoint("LWDEMO"), tokenPoint],
+    expected()
+  );
   expect(answers).toContainEqual({ id: tokenPoint.id, choice: "acknowledge_residue" });
   expect(answers.find((a) => a.id === assetPoint("LWDEMO").id)?.choice).toBe("return_to_issuer");
+  expect(unanswerable).toEqual([]);
+});
+
+test("with both tokens converted or both transferred, each answer is its own asset's", () => {
+  const { answers } = buildDemolishDecisions(
+    [assetPoint("LWCOIN", ISSUER, true), assetPoint("LWGEM", ISSUER, true)],
+    expected({
+      conversions: [
+        { asset: `LWCOIN:${ISSUER}`, amount: "20", minAmountOut: "99000000" },
+        { asset: `LWGEM:${ISSUER}`, amount: "8", minAmountOut: "39600000" },
+      ],
+    })
+  );
+  expect(answers.slice(1).map((a) => a.params?.minAmountOut)).toEqual(["99000000", "39600000"]);
+  const other = "GOTHERRECIPIENT";
+  const transferred = buildDemolishDecisions(
+    [assetPoint("LWCOIN"), assetPoint("LWGEM")],
+    expected({
+      transfers: [
+        { asset: `LWCOIN:${ISSUER}`, destination: RECIPIENT, amount: "20" },
+        { asset: `LWGEM:${ISSUER}`, destination: other, amount: "8" },
+      ],
+    })
+  );
+  expect(transferred.answers.slice(1).map((a) => a.params?.destination)).toEqual([
+    RECIPIENT,
+    other,
+  ]);
+});
+
+test("only an asset_disposition point about a trustline is answered as one", () => {
+  const lookalike: DecisionPoint = { ...assetPoint("LWDEMO"), type: "confirmation" };
+  const otherKind: DecisionPoint = {
+    ...assetPoint("LWDEMO"),
+    id: "pool:LWDEMO",
+    subject: { kind: "liquidity_pool_share", asset: `LWDEMO:${ISSUER}` },
+  };
+  expect(buildDemolishDecisions([lookalike, otherKind], expected())).toEqual({
+    answers: [destinationAck],
+    unanswerable: [lookalike.id, otherKind.id],
+  });
+});
+
+test("the stop names itself, so a log line reads as what it is", () => {
+  const err = new DemolishDecisionUnanswerableError(["claim:1"]);
+  expect([err.name, err.message, err.decisionIds]).toEqual([
+    "DemolishDecisionUnanswerableError",
+    "The close needs a decision the playground cannot make",
+    ["claim:1"],
+  ]);
 });
