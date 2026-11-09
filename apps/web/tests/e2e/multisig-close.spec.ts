@@ -174,9 +174,11 @@ test("multisig close: a wallet that already signed cannot open a second prompt",
   expect(await accountExists(master.publicKey())).toBe(false);
 });
 
-/** Adds, as a second signer of `master` (weight 1, thresholds 2), the hash of a transaction that
+/** Adds, as a second signer of `master` (weight 2, thresholds 2), the hash of a transaction that
  *  merges `master` into `destination`, and returns that transaction's XDR. It is built for the
- *  sequence the account will have once the signer is added, so it is the next one to land. */
+ *  sequence the account will have once the signer is added, so it is the next one to land. The
+ *  pasted merge is submitted on its own, with no signatures, so the pre-auth signer alone has to
+ *  meet the high threshold; the master key (weight 1) alone still does not. */
 async function preAuthorizeMerge(master: Keypair, destination: string): Promise<string> {
   const res = await fetch(`${HORIZON}/accounts/${master.publicKey()}`);
   const { sequence } = (await res.json()) as { sequence: string };
@@ -194,7 +196,7 @@ async function preAuthorizeMerge(master: Keypair, destination: string): Promise<
     fee: BASE_FEE,
     networkPassphrase: PASSPHRASE,
   })
-    .addOperation(Operation.setOptions({ signer: { preAuthTx: merge.hash(), weight: 1 } }))
+    .addOperation(Operation.setOptions({ signer: { preAuthTx: merge.hash(), weight: 2 } }))
     .addOperation(Operation.setOptions({ lowThreshold: 1, medThreshold: 2, highThreshold: 2 }))
     .setTimeout(60)
     .build();
