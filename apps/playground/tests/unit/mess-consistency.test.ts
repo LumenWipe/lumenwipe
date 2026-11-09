@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { describe, expect, test } from "bun:test";
 import { NextRequest } from "next/server";
 import { Asset, Keypair, Networks, Transaction, TransactionBuilder } from "@stellar/stellar-sdk";
@@ -38,6 +39,7 @@ interface Posted {
 
 const issuer = Keypair.random();
 const mm = Keypair.random();
+const CRON_SECRET = randomBytes(16).toString("hex");
 
 function setupFunding(plan: ReturnType<typeof resolvePlan>): string {
   const setup = plan.steps.find((s) => s.action.kind === "setup")?.action;
@@ -57,7 +59,7 @@ async function runAndCheck(selection: ScenarioSelection): Promise<void> {
       rateLimit: async () => null,
       issuer: () => issuer,
       mm: () => mm,
-      cronSecret: () => "a-test-cron-secret-0123456789",
+      cronSecret: () => CRON_SECRET,
       marketMakerBalance: async () => ({ balance: "10000.0000000", sellingLiabilities: "0" }),
       provisionDemo: async () => {},
       encrypt,

@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { NextRequest } from "next/server";
 import { Keypair } from "@stellar/stellar-sdk";
@@ -27,7 +28,8 @@ import { fakeClock, memoryStore, newSessionData, type FakeClock } from "./sessio
 
 const ENC = "enc:";
 const encrypt = (plaintext: string): string => ENC + Buffer.from(plaintext).toString("base64");
-const CRON_SECRET = "a-test-cron-secret-0123456789";
+// Generated per run: a cron secret the route accepts (32 hex characters).
+const CRON_SECRET = randomBytes(16).toString("hex");
 
 const mm = Keypair.random();
 const issuer = Keypair.random();

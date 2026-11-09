@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { describe, expect, test } from "bun:test";
 import { NextRequest, NextResponse } from "next/server";
 import { Keypair, Operation, type xdr } from "@stellar/stellar-sdk";
@@ -134,7 +135,8 @@ function countingStore(store: SessionStore): { store: SessionStore; calls: () =>
 const expired = (clock: FakeClock): void => clock.advance(SESSION_RECORD_TTL_SECONDS * 1000 + 1);
 
 const NOT_CONFIGURED = { status: 503, body: { error: "not_configured" } };
-const CRON_SECRET = "a-test-cron-secret-0123456789";
+// Generated per run: a cron secret the route accepts (32 hex characters).
+const CRON_SECRET = randomBytes(16).toString("hex");
 const MM_FUNDED = { balance: "10000.0000000", sellingLiabilities: "3000.0000000" };
 const NOT_FOUND = { status: 404, body: { error: "session_not_found" } };
 
