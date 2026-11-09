@@ -22,6 +22,9 @@ const trustlineNodeId = (asset: string): string => `tl:${asset.split(":")[0]}`;
 const destroyIfLive = (live: readonly LiveNode[], nodeId: string): SceneAction | null =>
   live.some((n) => n.id === nodeId) ? { type: "destroy", nodeIds: [nodeId] } : null;
 
+const pulseIfLive = (live: readonly LiveNode[], nodeId: string): SceneAction | null =>
+  live.some((n) => n.id === nodeId) ? { type: "pulse", nodeId } : null;
+
 /** No visual: the operation changes nothing the scene draws. */
 const noVisual = (): null => null;
 
@@ -39,12 +42,10 @@ export const SCENE_HANDLERS: { [T in OperationType]: Handler<T> } = {
   },
   set_options: (op, live) =>
     op.signer && op.signer.weight === 0 ? destroyIfLive(live, "signer:extra") : null,
-  payment: (op, live) => {
-    const nodeId = trustlineNodeId(op.asset);
-    return live.some((n) => n.id === nodeId) ? { type: "pulse", nodeId } : null;
-  },
+  payment: (op, live) => pulseIfLive(live, trustlineNodeId(op.asset)),
   account_merge: () => ({ type: "merge" }),
-  path_payment_strict_send: noVisual,
+  // A conversion empties the trustline into XLM, as a payment out of it does.
+  path_payment_strict_send: (op, live) => pulseIfLive(live, trustlineNodeId(op.sendAsset)),
   claim_claimable_balance: noVisual,
   revoke_sponsorship: noVisual,
   invoke_host_function: noVisual,

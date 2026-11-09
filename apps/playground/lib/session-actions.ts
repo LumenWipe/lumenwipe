@@ -1,7 +1,11 @@
 import "server-only";
 import { CloseOutcomeUnknownError, LumenWipeApiError, type AccountState } from "@lumenwipe/sdk";
 import { PlaygroundConfigError } from "./crypto";
-import type { DemolishRoundHooks, DemolishRoundResult } from "./demolish";
+import {
+  DemolishDecisionUnanswerableError,
+  type DemolishRoundHooks,
+  type DemolishRoundResult,
+} from "./demolish";
 import { resolvePlan, type MessStepDef, type MessStepId } from "./scenarios";
 import {
   PlaygroundStoreUnavailableError,
@@ -26,6 +30,10 @@ const SESSION_NOT_FOUND: ActionResult = { status: 404, body: { error: "session_n
 const STEP_IN_PROGRESS: ActionResult = { status: 409, body: { error: "step_in_progress" } };
 const STEP_NOT_IN_PLAN: ActionResult = { status: 400, body: { error: "step_not_in_plan" } };
 const STEP_OUT_OF_ORDER: ActionResult = { status: 409, body: { error: "step_out_of_order" } };
+
+/** How many unanswerable decision ids a refused round reports, and how much of each. */
+const MAX_REPORTED_DECISIONS = 10;
+const MAX_DECISION_ID_LENGTH = 200;
 
 export interface MessStepDeps {
   /** `recordSigner` persists a signer the step is about to add, before its transaction is sent. */
@@ -217,6 +225,19 @@ export async function runDemolishRound(
     });
   } catch (err) {
     if (isConfigError(err)) return NOT_CONFIGURED;
+    if (err instanceof DemolishDecisionUnanswerableError) {
+      // Nothing was built or signed. The ids come from the API's plan, so they are bounded before
+      // they are returned; the page shows them as text.
+      return {
+        status: 422,
+        body: {
+          error: "demolish_decision_unanswerable",
+          decisions: err.decisionIds
+            .slice(0, MAX_REPORTED_DECISIONS)
+            .map((decisionId) => decisionId.slice(0, MAX_DECISION_ID_LENGTH)),
+        },
+      };
+    }
     console.error("[playground] demolish round failed", { sessionId: id }, err);
     const error =
       err instanceof CloseOutcomeUnknownError ? "demolish_outcome_unknown" : "demolish_failed";

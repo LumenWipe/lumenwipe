@@ -1,6 +1,6 @@
 import "server-only";
 import { NextRequest, NextResponse } from "next/server";
-import { Keypair } from "@stellar/stellar-sdk";
+import { Keypair, type xdr } from "@stellar/stellar-sdk";
 import { PlaygroundConfigError } from "./crypto";
 import {
   DEFAULT_CUSTOM_CONFIG,
@@ -17,12 +17,13 @@ import {
   isMessStepId,
   parseReplayCode,
   parseSelection,
+  resolvePlan,
   validateSelection,
   type MessStepDef,
   type ScenarioId,
   type ValidationResult,
 } from "./scenarios";
-import type { MessContext } from "./mess-builders";
+import { retireRecipientOps, type MessContext } from "./mess-builders";
 import type { DemolishRoundResult, RunDemolishOptions } from "./demolish";
 import { CREDENTIALS_PER_DAY_PER_IP, SESSIONS_PER_DAY_PER_IP, type RateLimit } from "./rate-limit";
 import { actionResponse, loadSessionOrErrorResponse, notConfiguredResponse } from "./route-helpers";
@@ -62,7 +63,8 @@ export interface CreateSessionDeps extends PlaygroundKeys {
   rateLimit: RateLimit;
   /** Funds a new testnet account; false when Friendbot refused or could not be reached. */
   fundAccount: (publicKey: string) => Promise<boolean>;
-  ensureMmOffer: (mm: Keypair, issuerPublic: string) => Promise<void>;
+  /** Gives every persistent asset its standing offer on the market maker (best effort). */
+  ensureStandingLiquidity: (mm: Keypair, issuerPublic: string) => Promise<void>;
   encrypt: (secret: string) => string;
   /** Scenarios this deployment cannot run, with the reason shown to the visitor. */
   unavailable: () => ReadonlyMap<ScenarioId, string>;
@@ -89,9 +91,12 @@ export interface DemolishRouteDeps extends PlaygroundKeys {
 export interface CleanupRouteDeps {
   store: SessionStore;
   mm: () => Keypair | null;
+  issuer: () => Keypair | null;
   decrypt: (payload: string) => string;
   /** Merges `source` into `destination` on chain. */
   merge: (source: Keypair, destination: string) => Promise<unknown>;
+  /** Signs and submits `ops` from `source`. */
+  submit: (source: Keypair, ops: xdr.Operation[]) => Promise<unknown>;
 }
 
 export interface CredentialsDeps {
@@ -219,15 +224,18 @@ export async function handleCreateSession(
     assetCode: code,
     keypair: Keypair.random(),
   }));
+  const recipient = plan.steps.some((s) => s.action.kind === "open_recipient")
+    ? Keypair.random()
+    : null;
 
   if (!(await deps.fundAccount(demo.publicKey()))) {
     return NextResponse.json({ error: "friendbot_failed" }, { status: 502 });
   }
 
   try {
-    await deps.ensureMmOffer(mm, issuer.publicKey());
+    await deps.ensureStandingLiquidity(mm, issuer.publicKey());
   } catch (err) {
-    console.error("[playground] MM offer self-healing failed:", err);
+    console.error("[playground] standing liquidity self-healing failed:", err);
   }
 
   try {
@@ -245,6 +253,10 @@ export async function handleCreateSession(
       demolishPending: null,
       demolishDone: false,
       selection: plan.selection,
+      transferRecipient: recipient && {
+        publicKey: recipient.publicKey(),
+        encSecret: deps.encrypt(recipient.secret()),
+      },
     });
 
     return NextResponse.json({
@@ -257,6 +269,7 @@ export async function handleCreateSession(
         mm: mm.publicKey(),
         lwdemoAsset: `${LWDEMO_CODE}:${issuer.publicKey()}`,
         ephemeral: ephemeral.map((e) => ({ code: e.assetCode, publicKey: e.keypair.publicKey() })),
+        transferRecipient: recipient?.publicKey() ?? null,
       },
     });
   } catch (err) {
@@ -302,6 +315,9 @@ export async function handleMess(
         ),
         persistentIssuer: issuer,
         mmPublic: mm.publicKey(),
+        transferRecipient:
+          session.transferRecipient &&
+          Keypair.fromSecret(deps.decrypt(session.transferRecipient.encSecret)),
         recordSigner,
       }),
   });
@@ -336,17 +352,42 @@ export async function handleDemolishRound(
 }
 
 /**
- * Recycles the ephemeral issuer accounts (merges their ~3 XLM back into the market maker) and
- * deletes the session. Best-effort: failures are logged but never block the caller - the XLM
- * involved is testnet-only.
+ * Recycles the ephemeral issuer accounts (merges their ~3 XLM back into the market maker), retires
+ * the transfer recipient, and deletes the session. Best-effort: failures are logged but never block
+ * the caller - the XLM involved is testnet-only.
  */
 export async function handleCleanup(id: string, deps: CleanupRouteDeps): Promise<NextResponse> {
   const mm = deps.mm();
+  const issuer = deps.issuer();
 
   const result = await runCleanup(deps.store, id, {
     recycle: async (session) => {
       const recycled: string[] = [];
       if (!mm) return recycled;
+      const recipient = session.transferRecipient;
+      if (recipient && issuer) {
+        try {
+          const { steps, expectation } = resolvePlan(session.selection);
+          const opened = steps.flatMap((s) =>
+            s.action.kind === "open_recipient" ? s.action.assets : []
+          );
+          // Only a finished close has paid the recipient what the session recorded.
+          const received = session.demolishDone
+            ? expectation.dispositions.filter((d) => d.choice === "transfer")
+            : [];
+          await deps.submit(
+            Keypair.fromSecret(deps.decrypt(recipient.encSecret)),
+            retireRecipientOps(issuer.publicKey(), mm.publicKey(), opened, received)
+          );
+          recycled.push(recipient.publicKey);
+        } catch (err) {
+          console.error(
+            "[playground] cleanup recipient failed",
+            { recipient: recipient.publicKey },
+            err
+          );
+        }
+      }
       for (const eph of session.ephemeralIssuers) {
         try {
           const kp = Keypair.fromSecret(deps.decrypt(eph.encSecret));

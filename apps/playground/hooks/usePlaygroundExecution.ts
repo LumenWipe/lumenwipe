@@ -11,7 +11,12 @@ import { operationToSceneAction } from "@/lib/scene-actions";
 import { SCENE_NODE_KINDS, type MessStepDef, type SceneNodeSpec } from "@/lib/scenarios";
 import type { AccountState, IntentOperation } from "@lumenwipe/sdk";
 import { GENERIC_ERROR_COPY } from "@/lib/error-copy";
-import { PlaygroundApiError, playgroundRequest, SessionExpiredError } from "@/lib/playground-api";
+import {
+  DecisionBlockedError,
+  PlaygroundApiError,
+  playgroundRequest,
+  SessionExpiredError,
+} from "@/lib/playground-api";
 
 interface SessionResponse {
   sessionId: string;
@@ -173,7 +178,10 @@ export function usePlaygroundExecution(): UsePlaygroundExecutionResult {
       return;
     }
     if (!(err instanceof PlaygroundApiError)) console.error("[playground] unexpected error:", err);
-    store.setLastError(err instanceof PlaygroundApiError ? err.message : GENERIC_ERROR_COPY);
+    store.setLastError(
+      err instanceof PlaygroundApiError ? err.message : GENERIC_ERROR_COPY,
+      err instanceof DecisionBlockedError ? err.decisionIds : null
+    );
     store.setPhase("ERROR");
   }, []);
 

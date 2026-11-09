@@ -47,6 +47,8 @@ export interface PlaygroundAccounts {
   mm: string;
   lwdemoAsset: string;
   ephemeral: Array<{ code: string; publicKey: string }>;
+  /** The account the session's transfers go to; null when it transfers nothing. */
+  transferRecipient: string | null;
 }
 
 interface PlaygroundState {
@@ -61,6 +63,8 @@ interface PlaygroundState {
   log: LogEntry[];
   accountState: AccountState | null;
   lastError: string | null;
+  /** The decision ids that stopped the close, when the last error was such a stop. */
+  blockedDecisions: string[] | null;
   /** XLM recovered so far during the demolish phase (for the core counter). */
   recoveredXlm: string | null;
   /** The last error stopped a close that had started: the demo can resume it. */
@@ -89,7 +93,7 @@ interface PlaygroundState {
   addLog: (entry: Omit<LogEntry, "id" | "at">) => void;
   setAccountState: (state: AccountState | null) => void;
   setRecoveredXlm: (xlm: string) => void;
-  setLastError: (error: string | null) => void;
+  setLastError: (error: string | null, blockedDecisions?: string[] | null) => void;
   setDemolishFailed: (failed: boolean) => void;
   setSelection: (
     selection: ScenarioSelection,
@@ -114,6 +118,7 @@ const sessionInitialState = {
   log: [],
   accountState: null,
   lastError: null,
+  blockedDecisions: null,
   recoveredXlm: null,
   demolishFailed: false,
 };
@@ -178,7 +183,7 @@ export const usePlaygroundStore = create<PlaygroundState>((set) => ({
 
   setRecoveredXlm: (recoveredXlm) => set({ recoveredXlm }),
 
-  setLastError: (lastError) => set({ lastError }),
+  setLastError: (lastError, blockedDecisions = null) => set({ lastError, blockedDecisions }),
 
   setDemolishFailed: (demolishFailed) => set({ demolishFailed }),
 

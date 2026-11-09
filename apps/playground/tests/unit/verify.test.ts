@@ -13,8 +13,9 @@ import {
 import { VerificationError } from "@lumenwipe/verify";
 import type { CloseTransaction } from "@lumenwipe/sdk";
 import { selectionForMode } from "@/lib/mess-plan";
-import type { ScenarioSelection } from "@/lib/scenarios";
+import { parseSelection, type ScenarioSelection } from "@/lib/scenarios";
 import {
+  amountToStroops,
   expectationFromSession,
   maxOperations,
   PLAYGROUND_CLOSE_OPERATION_TYPES,
@@ -23,6 +24,7 @@ import {
   type PlaygroundCloseExpectation,
 } from "@/lib/verify";
 import recipeFixture from "../fixtures/api-recipe-close.json";
+import dispositionsFixture from "../fixtures/api-recipe-dispositions.json";
 
 // The playground verifies with `@lumenwipe/verify`, the web app's own trust anchor, held to the
 // session record. These tests pin what each rule means for a playground close; the rules
@@ -42,6 +44,8 @@ const airdropIssuer = Keypair.random().publicKey();
 const rugIssuer = Keypair.random().publicKey();
 const forgotten = Keypair.random().publicKey();
 const LWDEMO = new Asset("LWDEMO", lwdemoIssuer);
+const LWCOIN = new Asset("LWCOIN", lwdemoIssuer);
+const LWGEM = new Asset("LWGEM", lwdemoIssuer);
 const RUGPULL = new Asset("RUGPULL", rugIssuer);
 
 const SELECTION: ScenarioSelection = {
@@ -64,7 +68,13 @@ function expectation(
   ephemeralIssuers = ISSUERS
 ): PlaygroundCloseExpectation {
   return expectationFromSession(
-    { demoPublic: demo, ephemeralIssuers, recordedSigners: [forgotten], selection },
+    {
+      demoPublic: demo,
+      ephemeralIssuers,
+      recordedSigners: [forgotten],
+      selection,
+      transferRecipient: null,
+    },
     sink,
     lwdemoIssuer
   );
@@ -169,6 +179,7 @@ function recipeExpectation(recipe: Recipe, recordedSigners: string[]): Playgroun
       ephemeralIssuers: session.ephemeralIssuers.map((e) => ({ ...e, encSecret: "enc" })),
       recordedSigners,
       selection,
+      transferRecipient: null,
     },
     session.sinkPublic,
     session.lwdemoIssuer
@@ -205,6 +216,23 @@ describe("the API's real transactions for today's recipes", () => {
         offers: recipe.session.offerCount,
         data: recipe.session.dataEntryCount,
         assets: recipe.session.ephemeralIssuers.length + 1,
+      });
+    }
+  });
+
+  // The fixture is unchanged by the dispositions scenario: a session without it still expects only
+  // returns to the issuer, with no transfer and no conversion, and every transaction still verifies.
+  test("a session without the dispositions scenario expects no transfer and no conversion", () => {
+    for (const recipe of recipeFixture.recipes) {
+      const expected = recipeExpectation(recipe, recipe.session.recordedSigners);
+      expect({
+        recipe: recipe.name,
+        transfers: expected.transfers,
+        conversions: expected.conversions,
+      }).toEqual({
+        recipe: recipe.name,
+        transfers: [],
+        conversions: [],
       });
     }
   });
@@ -252,6 +280,7 @@ describe("expectationFromSession", () => {
         ephemeralIssuers: [],
         recordedSigners,
         selection: selectionForMode("light"),
+        transferRecipient: null,
       },
       sink,
       lwdemoIssuer
@@ -415,7 +444,7 @@ describe("payments", () => {
 });
 
 describe("what a playground close never contains", () => {
-  test("a conversion is refused: the playground never chooses one", () => {
+  test("a conversion is refused unless the session chose one", () => {
     const op = Operation.pathPaymentStrictSend({
       sendAsset: LWDEMO,
       sendAmount: "5",
@@ -475,7 +504,18 @@ describe("what a playground close never contains", () => {
 
 describe("the playground's close operation types", () => {
   test("one close holding every listed type is accepted, and lists exactly those types", () => {
+    const converting: ScenarioSelection = {
+      scenarios: [...SELECTION.scenarios, { id: "dispositions", params: { lwcoin: 1, lwgem: 0 } }],
+    };
     const ops = [
+      Operation.pathPaymentStrictSend({
+        sendAsset: LWCOIN,
+        sendAmount: "20",
+        destination: demo,
+        destAsset: Asset.native(),
+        destMin: "9.95",
+        path: [],
+      }),
       Operation.revokeAccountSponsorship({ account: demo }),
       Operation.revokeTrustlineSponsorship({ account: demo, asset: LWDEMO }),
       Operation.revokeOfferSponsorship({ seller: demo, offerId: "1" }),
@@ -494,7 +534,7 @@ describe("the playground's close operation types", () => {
       Operation.setOptions({ signer: { ed25519PublicKey: forgotten, weight: 0 } }),
     ];
     const xdrBase64 = envelope(ops);
-    expect(outcome(xdrBase64)).toBe("accepted");
+    expect(outcome(xdrBase64, expectation(converting))).toBe("accepted");
     const parsed = TransactionBuilder.fromXDR(xdrBase64, PASSPHRASE);
     if (!(parsed instanceof Transaction)) throw new Error("expected a transaction");
     expect(new Set(parsed.operations.map((op) => op.type))).toEqual(
@@ -505,5 +545,239 @@ describe("the playground's close operation types", () => {
   test("a type the shared anchor allows but no scenario creates is refused", () => {
     const claim = Operation.claimClaimableBalance({ balanceId: `00000000${"a".repeat(64)}` });
     expect(outcome(envelope([claim]))).toBe("operation_not_allowed");
+  });
+});
+
+describe("dispositions the session chose", () => {
+  const recipient = Keypair.random().publicKey();
+  /** LWCOIN converted and LWGEM transferred, beside the default selection. */
+  const CHOSEN: ScenarioSelection = {
+    scenarios: [...SELECTION.scenarios, { id: "dispositions", params: { lwcoin: 1, lwgem: 2 } }],
+  };
+  const chosen = (): PlaygroundCloseExpectation =>
+    expectationFromSession(
+      {
+        demoPublic: demo,
+        ephemeralIssuers: ISSUERS,
+        recordedSigners: [forgotten],
+        selection: CHOSEN,
+        transferRecipient: { publicKey: recipient, encSecret: "enc" },
+      },
+      sink,
+      lwdemoIssuer
+    );
+  const transfer = (destination: string, amount = "8", asset = LWGEM) =>
+    Operation.payment({ destination, asset, amount });
+  const convert = (sendAmount = "20", destMin = "9.95", sendAsset = LWCOIN) =>
+    Operation.pathPaymentStrictSend({
+      sendAsset,
+      sendAmount,
+      destination: demo,
+      destAsset: Asset.native(),
+      destMin,
+      path: [],
+    });
+
+  test("the expectation takes the recipient and amounts from the session and the floor from configuration", () => {
+    const expected = chosen();
+    expect(expected.transfers).toEqual([
+      { asset: `LWGEM:${lwdemoIssuer}`, destination: recipient, amount: "8" },
+    ]);
+    // 20 LWCOIN at 2 per XLM is 10 XLM; the floor is 1% under it.
+    expect(expected.conversions).toEqual([
+      { asset: `LWCOIN:${lwdemoIssuer}`, amount: "20", minAmountOut: "99000000" },
+    ]);
+  });
+
+  test("a transfer without the session's recipient cannot be expected", () => {
+    expect(() =>
+      expectationFromSession(
+        {
+          demoPublic: demo,
+          ephemeralIssuers: ISSUERS,
+          recordedSigners: [forgotten],
+          selection: CHOSEN,
+          transferRecipient: null,
+        },
+        sink,
+        lwdemoIssuer
+      )
+    ).toThrow("session_recipient_missing");
+  });
+
+  test("a transfer of the recorded amount to the recipient is accepted", () => {
+    expect(outcome(envelope([transfer(recipient)]), chosen())).toBe("accepted");
+  });
+
+  test("a transfer to anyone but the recipient is refused, the issuer and the sink included", () => {
+    for (const destination of [Keypair.random().publicKey(), lwdemoIssuer, sink]) {
+      expect(outcome(envelope([transfer(destination)]), chosen())).toBe(
+        "transfer_destination_mismatch"
+      );
+    }
+  });
+
+  test("a transfer above the recorded amount is refused; one below it is short", () => {
+    expect(outcome(envelope([transfer(recipient, "8.0000001")]), chosen())).toBe(
+      "transfer_above_recorded"
+    );
+    expect(outcome(envelope([transfer(recipient, "7.9999999")]), chosen())).toBe(
+      "transfer_amount_short"
+    );
+  });
+
+  test("a transfer of the asset the session converts is refused", () => {
+    expect(outcome(envelope([transfer(recipient, "20", LWCOIN)]), chosen())).toBe(
+      "transfer_not_chosen"
+    );
+  });
+
+  test("a conversion of the recorded amount at the floor or above is accepted", () => {
+    expect(outcome(envelope([convert("20", "9.9")]), chosen())).toBe("accepted");
+    expect(outcome(envelope([convert("20", "10")]), chosen())).toBe("accepted");
+  });
+
+  test("a conversion of more than the demo holds is refused", () => {
+    expect(outcome(envelope([convert("20.0000001")]), chosen())).toBe("conversion_above_held");
+  });
+
+  test("a conversion accepting less than the floor is refused", () => {
+    expect(outcome(envelope([convert("20", "9.8999999")]), chosen())).toBe(
+      "conversion_min_out_below_floor"
+    );
+  });
+
+  test("a conversion of the asset the session transfers is refused", () => {
+    expect(outcome(envelope([convert("8", "3", LWGEM)]), chosen())).toBe(
+      "conversion_asset_not_chosen"
+    );
+  });
+
+  test("an asset chosen to convert can no longer be returned to its issuer", () => {
+    expect(outcome(envelope([returnToIssuer(LWCOIN)]), chosen())).toBe("transfer_not_chosen");
+  });
+
+  test("an asset the session burns is still returned to its issuer", () => {
+    const burning: ScenarioSelection = {
+      scenarios: [{ id: "dispositions", params: { lwcoin: 0, lwgem: 0 } }],
+    };
+    const expected = expectation(burning, []);
+    expect(expected.transfers).toEqual([]);
+    expect(expected.conversions).toEqual([]);
+    expect(outcome(envelope([returnToIssuer(LWCOIN), returnToIssuer(LWGEM)]), expected)).toBe(
+      "accepted"
+    );
+    expect(outcome(envelope([convert()]), expected)).toBe("conversion_asset_not_chosen");
+  });
+
+  test("each asset is held to its own recorded amount when both transfer or both convert", () => {
+    const both = (choice: number): PlaygroundCloseExpectation =>
+      expectationFromSession(
+        {
+          demoPublic: demo,
+          ephemeralIssuers: [],
+          recordedSigners: [],
+          selection: {
+            scenarios: [{ id: "dispositions", params: { lwcoin: choice, lwgem: choice } }],
+          },
+          transferRecipient: { publicKey: recipient, encSecret: "enc" },
+        },
+        sink,
+        lwdemoIssuer
+      );
+    // LWCOIN's 20 must not stand in for LWGEM's 8.
+    expect(outcome(envelope([transfer(recipient, "8")]), both(2))).toBe("accepted");
+    expect(outcome(envelope([transfer(recipient, "8.0000001")]), both(2))).toBe(
+      "transfer_above_recorded"
+    );
+    expect(outcome(envelope([convert("8", "3.96", LWGEM)]), both(1))).toBe("accepted");
+    expect(outcome(envelope([convert("8.0000001", "3.96", LWGEM)]), both(1))).toBe(
+      "conversion_above_held"
+    );
+  });
+
+  test("the whole chosen close fits the operation ceiling it always had", () => {
+    const ops = [
+      convert(),
+      Operation.changeTrust({ asset: LWCOIN, limit: "0" }),
+      transfer(recipient),
+      Operation.changeTrust({ asset: LWGEM, limit: "0" }),
+    ];
+    expect(outcome(envelope(ops), chosen())).toBe("accepted");
+    expect(maxOperations(chosen())).toBe(maxOperations(expectation()) + 4);
+  });
+});
+
+describe("amounts in stroops", () => {
+  test("reads whole and decimal amounts exactly, and refuses anything else", () => {
+    expect(amountToStroops("8")).toBe(BigInt(80_000_000));
+    expect(amountToStroops("0.0000001")).toBe(BigInt(1));
+    expect(amountToStroops("20.5")).toBe(BigInt(205_000_000));
+    for (const bad of ["", "1.", ".5", "1.00000001", "-1", "1e3", " 1"]) {
+      expect(() => amountToStroops(bad)).toThrow("amount_unreadable");
+    }
+  });
+});
+
+describe("the API's real transactions for the dispositions recipes", () => {
+  // Built by apps/api's buildCloseTransactions (apps/api/tests/unit/playground-dispositions-recipe.test.ts)
+  // with the answers the playground sends: convert at the session's floor, transfer to the
+  // session's recipient, return the rest to the issuer.
+  type DispositionsRecipe = (typeof dispositionsFixture.recipes)[number];
+
+  function dispositionsExpectation(
+    recipe: DispositionsRecipe,
+    recipient = recipe.session.transferRecipient
+  ): PlaygroundCloseExpectation {
+    const selection = parseSelection(recipe.selection);
+    if (!selection) throw new Error(`recipe ${recipe.name} has no readable selection`);
+    return expectationFromSession(
+      {
+        demoPublic: recipe.session.demoPublic,
+        ephemeralIssuers: [],
+        recordedSigners: [],
+        selection,
+        transferRecipient: { publicKey: recipient, encSecret: "enc" },
+      },
+      recipe.session.sinkPublic,
+      recipe.session.persistentIssuer
+    );
+  }
+
+  test("every transaction verifies against its session", () => {
+    setSystemTime(new Date(dispositionsFixture.builtAtSeconds * 1000));
+    expect(dispositionsFixture.recipes.map((r) => r.name)).toEqual([
+      "convert-and-transfer",
+      "transfer-and-burn",
+      "burn-and-convert",
+    ]);
+    for (const recipe of dispositionsFixture.recipes) {
+      expect(recipe.transactions).toHaveLength(1);
+      expect({
+        recipe: recipe.name,
+        outcome: outcome(recipe.transactions[0]!, dispositionsExpectation(recipe)),
+      }).toEqual({ recipe: recipe.name, outcome: "accepted" });
+    }
+  });
+
+  test("a recipe that transfers is refused for a session with another recipient", () => {
+    setSystemTime(new Date(dispositionsFixture.builtAtSeconds * 1000));
+    const recipe = dispositionsFixture.recipes.find((r) => r.name === "transfer-and-burn")!;
+    const other = Keypair.random().publicKey();
+    expect(outcome(recipe.transactions[0]!, dispositionsExpectation(recipe, other))).toBe(
+      "transfer_destination_mismatch"
+    );
+  });
+
+  test("a recipe that converts is refused for a session that burns instead", () => {
+    setSystemTime(new Date(dispositionsFixture.builtAtSeconds * 1000));
+    const recipe = dispositionsFixture.recipes.find((r) => r.name === "burn-and-convert")!;
+    const burning = {
+      ...recipe,
+      selection: { scenarios: [{ id: "dispositions", params: { lwcoin: 0, lwgem: 0 } }] },
+    };
+    expect(outcome(recipe.transactions[0]!, dispositionsExpectation(burning))).toBe(
+      "conversion_asset_not_chosen"
+    );
   });
 });

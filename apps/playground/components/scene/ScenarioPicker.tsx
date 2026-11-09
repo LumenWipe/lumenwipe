@@ -66,6 +66,38 @@ function Counter({
   );
 }
 
+/** A parameter that picks one named option; its value is the option's index from `min`. */
+function Choice({
+  label,
+  value,
+  min,
+  choices,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  choices: readonly string[];
+  onChange: (v: number) => void;
+}) {
+  return (
+    <label className="flex items-center justify-between gap-2">
+      <span className="text-xs text-white/60">{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className="rounded border border-white/15 bg-black/40 px-1.5 py-0.5 text-xs text-white/80"
+      >
+        {choices.map((name, i) => (
+          <option key={name} value={min + i}>
+            {name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 /** Arrow keys, Home and End move focus along a row of buttons. */
 function rovingFocus(event: KeyboardEvent<HTMLDivElement>): void {
   const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button")];
@@ -292,16 +324,27 @@ export default function ScenarioPicker() {
                   )}
                   {on && choice && Object.keys(def.params).length > 0 && (
                     <div className="space-y-1.5 border-t border-white/10 px-3 py-2">
-                      {Object.entries(def.params).map(([name, spec]) => (
-                        <Counter
-                          key={name}
-                          label={spec.label}
-                          value={choice.params[name] ?? spec.default}
-                          min={spec.min}
-                          max={spec.max}
-                          onChange={(v) => setParam(def.id, name, v)}
-                        />
-                      ))}
+                      {Object.entries(def.params).map(([name, spec]) =>
+                        spec.choices ? (
+                          <Choice
+                            key={name}
+                            label={spec.label}
+                            value={choice.params[name] ?? spec.default}
+                            min={spec.min}
+                            choices={spec.choices}
+                            onChange={(v) => setParam(def.id, name, v)}
+                          />
+                        ) : (
+                          <Counter
+                            key={name}
+                            label={spec.label}
+                            value={choice.params[name] ?? spec.default}
+                            min={spec.min}
+                            max={spec.max}
+                            onChange={(v) => setParam(def.id, name, v)}
+                          />
+                        )
+                      )}
                     </div>
                   )}
                 </div>

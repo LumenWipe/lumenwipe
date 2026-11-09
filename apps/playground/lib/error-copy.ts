@@ -11,6 +11,8 @@ const ERROR_COPY = new Map<string, string>(
     demolish_failed: "The close did not finish. Resume to carry on from where it stopped.",
     demolish_outcome_unknown:
       "The last close transaction is not confirmed yet. Wait a moment, then resume to check it.",
+    demolish_decision_unanswerable:
+      "The close stopped before signing anything: the LumenWipe API asked for a decision this demo has no answer for.",
     demolish_started:
       "The close has already started for this demo. Start a new one to run the setup again.",
     state_read_failed: "Could not read the demo account from the test network. Please try again.",

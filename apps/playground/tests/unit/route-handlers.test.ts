@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { NextRequest, NextResponse } from "next/server";
-import { Keypair } from "@stellar/stellar-sdk";
+import { Keypair, Operation, type xdr } from "@stellar/stellar-sdk";
 import { LumenWipeApiError, type AccountState } from "@lumenwipe/sdk";
 import { PlaygroundConfigError } from "@/lib/crypto";
 import {
@@ -19,7 +19,7 @@ import {
   type ScenarioSelection,
 } from "@/lib/scenarios";
 import type { MessContext } from "@/lib/mess-builders";
-import type { RunDemolishOptions } from "@/lib/demolish";
+import { DemolishDecisionUnanswerableError, type RunDemolishOptions } from "@/lib/demolish";
 import type { RateLimit } from "@/lib/rate-limit";
 import {
   handleCleanup,
@@ -149,7 +149,7 @@ describe("create session", () => {
         funded.push(publicKey);
         return true;
       },
-      ensureMmOffer: async () => {},
+      ensureStandingLiquidity: async () => {},
       encrypt: (plaintext) => {
         encrypted.push(plaintext);
         return encrypt(plaintext);
@@ -164,6 +164,36 @@ describe("create session", () => {
       request("/api/session", { body: body === undefined ? undefined : JSON.stringify(body) }),
       deps
     );
+
+  test("a selection that transfers stores an encrypted recipient; any other stores none", async () => {
+    const transferring = createDeps();
+    const res = await create(transferring.deps, {
+      selection: { scenarios: [{ id: "dispositions", params: { lwcoin: 2, lwgem: 1 } }] },
+    });
+    expect(res.status).toBe(200);
+    const body = await jsonBody(res);
+    const stored = await transferring.store.loadSession(body.sessionId as string);
+    const recipient = stored?.transferRecipient;
+    if (!recipient) throw new Error("expected a recipient");
+    // The demo secret, then the recipient's; neither reaches the response.
+    expect(transferring.encrypted).toHaveLength(2);
+    const recipientSecret = transferring.encrypted[1]!;
+    expect(Keypair.fromSecret(recipientSecret).publicKey()).toBe(recipient.publicKey);
+    expect(recipient.encSecret).toBe(encrypt(recipientSecret));
+    expect(JSON.stringify(body)).not.toContain(recipientSecret);
+    expect((body.messPlan as MessStepDef[]).map((s) => s.id)).toContain("OPEN_RECIPIENT");
+
+    const burning = createDeps();
+    const other = await jsonBody(
+      await create(burning.deps, {
+        selection: { scenarios: [{ id: "dispositions", params: { lwcoin: 1, lwgem: 0 } }] },
+      })
+    );
+    expect(
+      (await burning.store.loadSession(other.sessionId as string))?.transferRecipient
+    ).toBeNull();
+    expect(burning.encrypted).toHaveLength(1);
+  });
 
   test("a new session is stored and the response carries the plan and no secret", async () => {
     const { deps, store, encrypted, funded } = createDeps();
@@ -236,7 +266,7 @@ describe("create session", () => {
 
   test("a failed market maker offer refresh does not fail the session", async () => {
     const { deps } = createDeps({
-      ensureMmOffer: async () => {
+      ensureStandingLiquidity: async () => {
         throw new Error("horizon unavailable");
       },
     });
@@ -368,7 +398,7 @@ describe("scenario availability", () => {
           funded.push(key);
           return true;
         },
-        ensureMmOffer: async () => {},
+        ensureStandingLiquidity: async () => {},
         encrypt,
         unavailable: () =>
           new Map([["forgotten-signer", "Switched off on this deployment for now."]]),
@@ -777,6 +807,26 @@ describe("demolish", () => {
     expect((await store.loadSession(seeded.id))?.demolishDone).toBe(false);
   });
 
+  test("a decision the playground cannot make stops the round with the decision ids, bounded", async () => {
+    const store = memoryStore();
+    const seeded = await seed(store);
+    const ids = Array.from({ length: 12 }, (_, i) => `claim:${String(i).padStart(250, "0")}`);
+    const res = await handleDemolishRound(seeded.id, {
+      ...demolishDeps(store),
+      runDemolish: async () => {
+        throw new DemolishDecisionUnanswerableError(ids);
+      },
+    });
+    expect(await outcome(res)).toEqual({
+      status: 422,
+      body: {
+        error: "demolish_decision_unanswerable",
+        decisions: ids.slice(0, 10).map((id) => id.slice(0, 200)),
+      },
+    });
+    expect((await store.loadSession(seeded.id))?.demolishDone).toBe(false);
+  });
+
   test("a failed close is demolish_failed and leaves the session not done", async () => {
     const store = memoryStore();
     const seeded = await seed(store);
@@ -795,6 +845,7 @@ describe("demolish", () => {
 
 describe("cleanup", () => {
   const mm = Keypair.random();
+  const issuer = Keypair.random();
 
   test("every ephemeral issuer is merged into the market maker and the session deleted", async () => {
     const store = memoryStore();
@@ -803,9 +854,13 @@ describe("cleanup", () => {
     const res = await handleCleanup(seeded.id, {
       store,
       mm: () => mm,
+      issuer: () => issuer,
       decrypt,
       merge: async (source, destination) => {
         merges.push([source.publicKey(), destination]);
+      },
+      submit: async () => {
+        throw new Error("no recipient in this session");
       },
     });
     const issuers = [...seeded.issuers.values()].map((kp) => kp.publicKey());
@@ -821,10 +876,12 @@ describe("cleanup", () => {
     const res = await handleCleanup(seeded.id, {
       store,
       mm: () => mm,
+      issuer: () => issuer,
       decrypt,
       merge: async (source) => {
         if (source.publicKey() !== rugpull) throw new Error("op_has_sub_entries");
       },
+      submit: async () => {},
     });
     expect(await outcome(res)).toEqual({ status: 200, body: { ok: true, recycled: [rugpull] } });
   });
@@ -836,8 +893,12 @@ describe("cleanup", () => {
     const res = await handleCleanup(seeded.id, {
       store,
       mm: () => null,
+      issuer: () => issuer,
       decrypt,
       merge: async () => {
+        merges++;
+      },
+      submit: async () => {
         merges++;
       },
     });
@@ -846,8 +907,104 @@ describe("cleanup", () => {
     expect(await store.loadSession(seeded.id)).toBeNull();
   });
 
+  describe("the transfer recipient", () => {
+    const recipient = Keypair.random();
+    const TRANSFERRING: ScenarioSelection = {
+      scenarios: [{ id: "dispositions", params: { lwcoin: 2, lwgem: 2 } }],
+    };
+
+    async function retire(done: boolean, submit?: (source: Keypair) => Promise<void>) {
+      const store = memoryStore();
+      const seeded = await seed(store, {
+        selection: TRANSFERRING,
+        ephemeralIssuers: [],
+        demolishDone: done,
+        transferRecipient: {
+          publicKey: recipient.publicKey(),
+          encSecret: encrypt(recipient.secret()),
+        },
+      });
+      const submitted: [string, xdr.Operation[]][] = [];
+      const res = await handleCleanup(seeded.id, {
+        store,
+        mm: () => mm,
+        issuer: () => issuer,
+        decrypt,
+        merge: async () => {},
+        submit: async (source, ops) => {
+          submitted.push([source.publicKey(), ops]);
+          await submit?.(source);
+        },
+      });
+      return { res, submitted, store, id: seeded.id };
+    }
+
+    const types = (ops: xdr.Operation[]) => ops.map((op) => Operation.fromXDRObject(op).type);
+
+    test("after the close it returns both balances, removes both trustlines and merges", async () => {
+      const { res, submitted } = await retire(true);
+      expect(await outcome(res)).toEqual({
+        status: 200,
+        body: { ok: true, recycled: [recipient.publicKey()] },
+      });
+      expect(submitted.map(([source]) => source)).toEqual([recipient.publicKey()]);
+      expect(types(submitted[0]![1])).toEqual([
+        "payment",
+        "payment",
+        "changeTrust",
+        "changeTrust",
+        "accountMerge",
+      ]);
+    });
+
+    test("before the close it only removes the trustlines and merges", async () => {
+      const { submitted } = await retire(false);
+      expect(types(submitted[0]![1])).toEqual(["changeTrust", "changeTrust", "accountMerge"]);
+    });
+
+    test("a failed retirement is skipped and the session is still deleted", async () => {
+      const { res, store, id } = await retire(true, async () => {
+        throw new Error("op_underfunded");
+      });
+      expect(await outcome(res)).toEqual({ status: 200, body: { ok: true, recycled: [] } });
+      expect(await store.loadSession(id)).toBeNull();
+    });
+
+    test("without the issuer key the recipient is left alone", async () => {
+      const store = memoryStore();
+      const seeded = await seed(store, {
+        selection: TRANSFERRING,
+        ephemeralIssuers: [],
+        transferRecipient: {
+          publicKey: recipient.publicKey(),
+          encSecret: encrypt(recipient.secret()),
+        },
+      });
+      let submits = 0;
+      const res = await handleCleanup(seeded.id, {
+        store,
+        mm: () => mm,
+        issuer: () => null,
+        decrypt,
+        merge: async () => {},
+        submit: async () => {
+          submits++;
+        },
+      });
+      expect(await outcome(res)).toEqual({ status: 200, body: { ok: true, recycled: [] } });
+      expect(submits).toBe(0);
+    });
+  });
+
   test("an unknown session is session_not_found", async () => {
-    const deps = { store: memoryStore(), mm: () => mm, decrypt, merge: async () => {} };
+    const deps = {
+      store: memoryStore(),
+      mm: () => mm,
+      issuer: () => issuer,
+      decrypt,
+      merge: async () => {},
+      submit: async () => {},
+    };
     expect(await outcome(await handleCleanup(UNKNOWN_ID, deps))).toEqual(NOT_FOUND);
     expect(await outcome(await handleCleanup(NOT_A_UUID, deps))).toEqual(NOT_FOUND);
   });

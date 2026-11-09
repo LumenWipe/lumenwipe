@@ -163,6 +163,17 @@ describe("schema version", () => {
     expect(await (await stored(v3)).loadSession(SID)).toBeNull();
   });
 
+  test("a version 4 session, saved before a transfer recipient was recorded, reads as expired", async () => {
+    const { transferRecipient: _omitted, ...v4 } = { ...current(), schemaVersion: 4 };
+    expect(await (await stored(v4)).loadSession(SID)).toBeNull();
+    expect(await (await stored({ ...current(), schemaVersion: 4 })).loadSession(SID)).toBeNull();
+  });
+
+  test("a session with a transfer recipient loads with it", async () => {
+    const withRecipient = { ...current(), transferRecipient: { publicKey: "G", encSecret: "e" } };
+    expect(await (await stored(withRecipient)).loadSession(SID)).toEqual(withRecipient);
+  });
+
   test("a session whose stored selection is not valid reads as expired", async () => {
     for (const selection of [
       undefined,
@@ -198,6 +209,9 @@ describe("schema version", () => {
       { ...current(), demolishLog: [{ txId: "t", hash: "h", summary: "s" }] },
       { ...current(), demolishDone: "no" },
       { ...current(), demolishPending: undefined },
+      { ...current(), transferRecipient: undefined },
+      { ...current(), transferRecipient: { publicKey: "G" } },
+      { ...current(), transferRecipient: { publicKey: 1, encSecret: "e" } },
       { ...current(), demolishPending: { txId: "t", hash: "h", summary: "s", operations: [] } },
       {
         ...current(),

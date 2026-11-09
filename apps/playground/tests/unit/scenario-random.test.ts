@@ -7,6 +7,7 @@ import {
   MAX_SEED,
   SCENARIOS,
   SeededRandom,
+  V1_SCENARIO_IDS,
   decodeSelection,
   encodeSelection,
   formatReplayCode,
@@ -187,8 +188,24 @@ describe("properties over 5,000 seeds", () => {
   });
 });
 
-test("coverage over 20,000 seeds: every scenario appears, none always", () => {
-  const counts = new Map<ScenarioId, number>(SCENARIOS.map((s) => [s.id, 0]));
+test("v1 draws from the six scenarios it shipped with, so a later scenario never changes a code", () => {
+  expect(V1_SCENARIO_IDS).toEqual([
+    "lwdemo-holding",
+    "junk-airdrops",
+    "stablecoin-swaps",
+    "data-entries",
+    "stale-offers",
+    "forgotten-signer",
+  ]);
+  const later = SCENARIOS.map((s) => s.id).filter((id) => !V1_SCENARIO_IDS.includes(id));
+  expect(later).toEqual(["dispositions"]);
+  for (let i = 0; i < 20_000; i++) {
+    for (const { id } of generate(seedAt(i)).scenarios) expect(later).not.toContain(id);
+  }
+});
+
+test("coverage over 20,000 seeds: every v1 scenario appears, none always", () => {
+  const counts = new Map<ScenarioId, number>(V1_SCENARIO_IDS.map((id) => [id, 0]));
   const runs = 20_000;
   for (let i = 0; i < runs; i++) {
     for (const { id } of generate(seedAt(i)).scenarios) counts.set(id, (counts.get(id) ?? 0) + 1);

@@ -51,7 +51,7 @@ async function runAndCheck(selection: ScenarioSelection): Promise<void> {
       issuer: () => issuer,
       mm: () => mm,
       fundAccount: async () => true,
-      ensureMmOffer: async () => {},
+      ensureStandingLiquidity: async () => {},
       encrypt,
       unavailable: () => new Map(),
     }
@@ -94,7 +94,14 @@ async function runAndCheck(selection: ScenarioSelection): Promise<void> {
 
   const session = (await store.loadSession(sessionId))!;
   const expected = expectationFromSession(session, mm.publicKey(), issuer.publicKey());
-  assertConsistent({ plan, demoPublic, posted, expected, issuers: session.ephemeralIssuers });
+  assertConsistent({
+    plan,
+    demoPublic,
+    posted,
+    expected,
+    issuers: session.ephemeralIssuers,
+    recipient: session.transferRecipient?.publicKey ?? null,
+  });
 }
 
 const label = (asset: Asset): string => (asset.isNative() ? "native" : asset.getCode());
@@ -105,12 +112,14 @@ function assertConsistent({
   posted,
   expected,
   issuers,
+  recipient,
 }: {
   plan: ReturnType<typeof resolvePlan>;
   demoPublic: string;
   posted: Posted[];
   expected: ReturnType<typeof expectationFromSession>;
   issuers: { assetCode: string; publicKey: string }[];
+  recipient: string | null;
 }): void {
   // Every plan step posted exactly one transaction, in plan order.
   expect(posted.map((p) => p.stepId)).toEqual(plan.steps.map((s) => s.id));
@@ -123,6 +132,8 @@ function assertConsistent({
   const dataNames: string[] = [];
   const offerNodes: string[] = [];
   const airdrops: string[] = [];
+  const recipientTrusts: string[] = [];
+  let recipientsCreated = 0;
   let signersAdded = 0;
 
   for (const { stepId, tx } of posted) {
@@ -130,9 +141,14 @@ function assertConsistent({
       const source = op.source ?? tx.source;
       switch (op.type) {
         case "createAccount":
-          createdIssuers.push(op.destination);
+          if (op.destination === recipient) recipientsCreated++;
+          else createdIssuers.push(op.destination);
           break;
         case "changeTrust":
+          if (recipient !== null && source === recipient) {
+            if (op.line instanceof Asset) recipientTrusts.push(label(op.line));
+            break;
+          }
           expect(source).toBe(demoPublic);
           if (op.line instanceof Asset) {
             trusted.add(label(op.line));
@@ -190,6 +206,24 @@ function assertConsistent({
   const closeOps = 2 * trustlines.length + offerNodes.length + dataNames.length + signersAdded;
   expect(plan.expectation.closeOperations).toBe(closeOps);
   expect(maxOperations(expected)).toBe(closeOps + 2);
+
+  // A transfer goes to the account the session created for it, which trusts exactly the assets
+  // the session transfers, and a conversion is held to the amount the mess paid in.
+  const transferred = plan.expectation.dispositions.filter((d) => d.choice === "transfer");
+  expect(recipientsCreated).toBe(transferred.length > 0 ? 1 : 0);
+  expect(recipientTrusts).toEqual(transferred.map((d) => d.asset));
+  expect(
+    expected.transfers.map((t): { code: string; destination: string | null; amount: string } => ({
+      code: t.asset.split(":")[0],
+      destination: t.destination,
+      amount: t.amount,
+    }))
+  ).toEqual(transferred.map((d) => ({ code: d.asset, destination: recipient, amount: d.amount })));
+  expect(expected.conversions.map((c) => [c.asset.split(":")[0], c.amount])).toEqual(
+    plan.expectation.dispositions
+      .filter((d) => d.choice === "convert")
+      .map((d) => [d.asset, d.amount])
+  );
 }
 
 function* customConfigs(): Generator<PlaygroundCustomConfig> {
@@ -238,14 +272,23 @@ describe("the plan, the chain and the close expectation agree", () => {
     expect(cases).toBe(240);
   }, 120_000);
 
+  test("every disposition of each disposition asset", async () => {
+    for (let lwcoin = 0; lwcoin <= 2; lwcoin++) {
+      for (let lwgem = 0; lwgem <= 2; lwgem++) {
+        await runAndCheck({ scenarios: [{ id: "dispositions", params: { lwcoin, lwgem } }] });
+      }
+    }
+  });
+
   test("every subset of the registry at its smallest and largest parameters", async () => {
     let cases = 0;
     for (const selection of registrySelections()) {
       await runAndCheck(selection);
       cases++;
     }
-    // 59 subsets are valid at their minimum (stale offers needs a token); 35 of them still are at
-    // their maximum, where five offers need every token.
-    expect(cases).toBe(94);
+    // Without the dispositions scenario, 59 subsets are valid at their minimum (stale offers needs
+    // a token) and 35 of them still are at their maximum, where five offers need every token. The
+    // dispositions scenario fits beside each of those 94 and alone, at both ends: 2 * 94 + 2.
+    expect(cases).toBe(190);
   }, 120_000);
 });

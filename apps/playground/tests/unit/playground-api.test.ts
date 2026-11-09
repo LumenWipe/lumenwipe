@@ -1,6 +1,7 @@
 import { test, expect } from "bun:test";
 import { errorCopy, GENERIC_ERROR_COPY } from "@/lib/error-copy";
 import {
+  DecisionBlockedError,
   PlaygroundApiError,
   playgroundRequest,
   SessionExpiredError,
@@ -66,4 +67,18 @@ test("every failure response is a PlaygroundApiError carrying copy", async () =>
   expect(await failure(respond(404, { error: "session_not_found" }))).toBeInstanceOf(
     PlaygroundApiError
   );
+});
+
+test("a round stopped on a decision carries the decision ids, and only strings among them", async () => {
+  const err = await failure(
+    respond(422, { error: "demolish_decision_unanswerable", decisions: ["claim:1", 7, null, "x"] })
+  );
+  expect(err).toBeInstanceOf(DecisionBlockedError);
+  expect(err).toBeInstanceOf(PlaygroundApiError);
+  expect((err as DecisionBlockedError).decisionIds).toEqual(["claim:1", "x"]);
+  expect((err as Error).message).toBe(errorCopy("demolish_decision_unanswerable"));
+  const bare = await failure(respond(422, { error: "demolish_decision_unanswerable" }));
+  expect((bare as DecisionBlockedError).decisionIds).toEqual([]);
+  const other = await failure(respond(422, { error: "invalid_selection", decisions: ["x"] }));
+  expect(other).not.toBeInstanceOf(DecisionBlockedError);
 });

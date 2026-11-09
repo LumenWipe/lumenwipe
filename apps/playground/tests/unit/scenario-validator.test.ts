@@ -58,6 +58,7 @@ function synthetic(id: ScenarioId, cost: Partial<ScenarioCost>): ScenarioDefinit
           signers: 0,
           closeOperations: 1,
           operationTypes: ["setOptions"],
+          dispositions: [],
         },
         cost: {
           xlm: 0,
@@ -141,9 +142,9 @@ describe("the safety caps", () => {
       }))
     );
     const { cost } = resolvePlan(largest);
-    expect(cost.subEntries).toBe(16);
-    expect(cost.xlm).toBe(30);
-    expect(cost.seconds).toBe(145);
+    expect(cost.subEntries).toBe(18);
+    expect(cost.xlm).toBe(34);
+    expect(cost.seconds).toBe(186);
   });
 });
 
@@ -288,6 +289,7 @@ describe("the resolved plan", () => {
       signers: 1,
       closeOperations: 7,
       operationTypes: ["accountMerge", "payment", "changeTrust", "setOptions"],
+      dispositions: [],
     });
     expect(plan.cost.classicTransactions).toBe(plan.steps.length);
     expect(plan.cost.subEntries).toBe(4);

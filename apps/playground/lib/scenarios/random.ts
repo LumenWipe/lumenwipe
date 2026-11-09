@@ -141,22 +141,29 @@ const COUNT_WEIGHTS: readonly (readonly [number, number])[] = [
   [6, 2],
 ];
 
-const SCENARIO_WEIGHTS: Readonly<Record<ScenarioId, number>> = {
-  "lwdemo-holding": 4,
-  "junk-airdrops": 4,
-  "stablecoin-swaps": 3,
-  "data-entries": 4,
-  "stale-offers": 4,
-  "forgotten-signer": 3,
-};
+/**
+ * The scenarios version 1 draws from, with their weights. Frozen with the generator: a scenario
+ * added to the registry later is not drawn by v1, so every v1 code keeps naming the same wallet.
+ */
+const V1_SCENARIO_WEIGHTS: ReadonlyMap<ScenarioId, number> = new Map<ScenarioId, number>([
+  ["lwdemo-holding", 4],
+  ["junk-airdrops", 4],
+  ["stablecoin-swaps", 3],
+  ["data-entries", 4],
+  ["stale-offers", 4],
+  ["forgotten-signer", 3],
+]);
 
-const weightOf = (def: ScenarioDefinition): number => SCENARIO_WEIGHTS[def.id];
+/** The scenarios a v1 wallet can contain. */
+export const V1_SCENARIO_IDS: readonly ScenarioId[] = [...V1_SCENARIO_WEIGHTS.keys()];
+
+const weightOf = (def: ScenarioDefinition): number => V1_SCENARIO_WEIGHTS.get(def.id) ?? 0;
 
 const generateV1: Generator = (seed, options) => {
   const random = new SeededRandom(seed);
   const unavailable = options.unavailable ?? new Map<ScenarioId, string>();
   // Only scenarios that can run here and whose requirement something here can meet.
-  const runnable = SCENARIOS.filter((s) => !unavailable.has(s.id));
+  const runnable = SCENARIOS.filter((s) => V1_SCENARIO_WEIGHTS.has(s.id) && !unavailable.has(s.id));
   const providersOf = (def: ScenarioDefinition): ScenarioDefinition[] =>
     runnable.filter((s) => def.requiresAnyOf.includes(s.id));
   const eligible = runnable.filter(
