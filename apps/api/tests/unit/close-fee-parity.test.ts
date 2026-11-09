@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { Account, Keypair, StrKey, TransactionBuilder } from "@stellar/stellar-sdk";
+import {
+  Account,
+  Address,
+  Keypair,
+  Networks,
+  Operation,
+  StrKey,
+  TransactionBuilder,
+} from "@stellar/stellar-sdk";
 import type { AccountState, ClaimableBalance, CloseTransaction, Trustline } from "@lumenwipe/types";
 import { buildCloseTransactions, CloseBuildError } from "@/lib/close-api/build-transactions";
 import { buildPlan } from "@/lib/stellar/tx-builder";
@@ -13,6 +21,7 @@ import { BASE_FEE_STROOPS } from "@/config/constants";
 import { stroopsToFixedXlm, xlmToStroops } from "@/lib/utils/amounts";
 import * as rpcModule from "@/lib/stellar/rpc";
 import * as registry from "@/lib/exchange-registry";
+import * as conversionModule from "@/lib/close-api/token-conversion-round";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { mirrorSnapshot } from "./fixtures/ledger-trustlines";
 import { authorizationOf } from "./fixtures/trustline";
@@ -399,5 +408,96 @@ describe("signer normalization first, with later rounds of other kinds", () => {
       buildCloseTransactions(ALL_ON, short, DEST, {}, "testnet", null, selections)
     );
     expect(codes).toContain(failure.code);
+  });
+});
+
+describe("a token conversion round, with no fee sponsor", () => {
+  const TOKEN = Address.contract(Buffer.alloc(32, 7)).toString();
+  const ROUTER = Address.contract(Buffer.alloc(32, 8)).toString();
+  /** A Soroban swap's fee as the Soroswap API sets one; the own-fee check must count it. */
+  const CONVERSION_FEE = 52_485n;
+
+  function holdingToken(balanceStroops: bigint): AccountState {
+    return state(balanceStroops, {
+      sorobanTokens: {
+        tokens: [{ contract: TOKEN, balance: "250", symbol: "XTAR", decimals: 7, sources: [] }],
+        unreadable: [],
+        coverage: [],
+        eventsScanned: null,
+        warnings: [],
+      },
+    });
+  }
+
+  function swap(): CloseTransaction {
+    const tx = new TransactionBuilder(new Account(SOURCE, "100"), {
+      fee: CONVERSION_FEE.toString(),
+      networkPassphrase: Networks.TESTNET,
+    })
+      .addOperation(
+        Operation.invokeContractFunction({
+          contract: ROUTER,
+          function: "swap_exact_tokens_for_tokens",
+          args: [],
+        })
+      )
+      .setTimeout(300)
+      .build();
+    return {
+      id: "tx-1",
+      order: 0,
+      dependsOn: [],
+      xdr: tx.toXDR(),
+      networkPassphrase: Networks.TESTNET,
+      sourceSequence: "100",
+      validUntilLedger: 1060,
+      covers: ["HANDLE_ASSETS"],
+      coversTargets: [TOKEN],
+      intent: { summary: "Exchange 25 XTAR for XLM", operations: [] },
+    } as unknown as CloseTransaction;
+  }
+
+  function convert(s: AccountState) {
+    const round = swap();
+    const spy = spyOn(conversionModule, "buildTokenConversionRound").mockResolvedValue({
+      transaction: round,
+      remainingSteps: 0,
+    });
+    const result = buildCloseTransactions(
+      NO_SPONSOR,
+      s,
+      DEST,
+      { [TOKEN]: "convert" },
+      "testnet",
+      null,
+      {},
+      {},
+      {},
+      {},
+      { floors: { [TOKEN]: { minAmountOut: "1", provider: "soroswap" } } }
+    );
+    return { result, round, spy };
+  }
+
+  test("short by exactly the round's own fee, the build refuses with that amount", async () => {
+    const s = holdingToken(ONE_XLM + laterOwnFeesStroops(holdingToken(0n), 0, false));
+    const { result, spy } = convert(s);
+    const failure = await refusal(result);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(failure).toMatchObject({ code: "close_fee_balance_short", status: 422 });
+    expect(failure.message).toBe(closeFeeShortMessage(CONVERSION_FEE));
+  });
+
+  test("topped up by that amount, the conversion round builds", async () => {
+    const s = holdingToken(
+      ONE_XLM + laterOwnFeesStroops(holdingToken(0n), 0, false) + CONVERSION_FEE
+    );
+    const { result, round, spy } = convert(s);
+    const built = await result;
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(built.requiresAnotherCall).toBe(true);
+    expect(built.transactions).toHaveLength(1);
+    expect(built.transactions[0]!.xdr).toBe(round.xdr);
+    expect(feeOf(built.transactions[0]!)).toBe(CONVERSION_FEE);
   });
 });
