@@ -4,9 +4,12 @@ import { runMessStep } from "@/lib/session-actions";
 import {
   createSessionStore,
   isSessionId,
+  SESSION_COUNTDOWN_SECONDS,
   SESSION_LOCK_TTL_MS,
+  SESSION_RECORD_TTL_SECONDS,
   SESSION_SCHEMA_VERSION,
   SessionLockLostError,
+  sessionExpiresAt,
   sessionStore,
   type PlaygroundSession,
   type SessionStore,
@@ -106,12 +109,61 @@ test("a lock still inside its expiry is not freed", async () => {
   expect(await store.acquireLock(session.id)).toBeNull();
 });
 
-test("deleteSession removes the session", async () => {
+test("deleteSession removes the session and its index entry", async () => {
   const store = memoryStore();
   const session = await store.createSession(newSessionData());
+  const other = await store.createSession(newSessionData());
+  expect((await store.indexedSessionIds()).sort()).toEqual([session.id, other.id].sort());
   const lock = (await store.acquireLock(session.id))!;
   await store.deleteSession(lock);
   expect(await store.loadSession(session.id)).toBeNull();
+  expect(await store.indexedSessionIds()).toEqual([other.id]);
+});
+
+test("the record outlives the visitor's countdown, and the countdown is still one hour", async () => {
+  const clock = fakeClock();
+  const store = memoryStore(clock);
+  const session = await store.createSession(newSessionData());
+  const before = Date.now();
+  const expiresAt = sessionExpiresAt();
+  expect(SESSION_COUNTDOWN_SECONDS).toBe(3600);
+  expect(expiresAt - before).toBeGreaterThanOrEqual(3600 * 1000);
+  expect(expiresAt - before).toBeLessThan(3600 * 1000 + 1000);
+
+  clock.advance(24 * 3600 * 1000);
+  expect(await store.loadSession(session.id)).not.toBeNull();
+  clock.advance(SESSION_RECORD_TTL_SECONDS * 1000 - 24 * 3600 * 1000 + 1);
+  expect(await store.loadSession(session.id)).toBeNull();
+  // The index keeps the id until the reaper prunes it.
+  expect(await store.indexedSessionIds()).toEqual([session.id]);
+  await store.unindexSession(session.id);
+  expect(await store.indexedSessionIds()).toEqual([]);
+});
+
+test("the index survives in the dev file store, where an entry never expires", async () => {
+  const a = await sessionStore.createSession(newSessionData());
+  const b = await sessionStore.createSession(newSessionData());
+  const ids = await sessionStore.indexedSessionIds();
+  expect(ids).toContain(a.id);
+  expect(ids).toContain(b.id);
+  await sessionStore.unindexSession(a.id);
+  expect(await sessionStore.indexedSessionIds()).not.toContain(a.id);
+  await sessionStore.unindexSession(b.id);
+});
+
+test("a lease is exclusive until released, and the faucet failure reads back", async () => {
+  const store = memoryStore();
+  const lease = await store.acquireLease("reaper", 60_000);
+  expect(lease).not.toBeNull();
+  expect(await store.acquireLease("reaper", 60_000)).toBeNull();
+  await store.releaseLease(lease!);
+  expect(await store.acquireLease("reaper", 60_000)).not.toBeNull();
+
+  expect(await store.lastFaucetFailure()).toBeNull();
+  await store.recordFaucetFailure("rate_limited");
+  expect(await store.lastFaucetFailure()).toBe("rate_limited");
+  await store.recordFaucetFailure(null);
+  expect(await store.lastFaucetFailure()).toBeNull();
 });
 
 describe("schema version", () => {

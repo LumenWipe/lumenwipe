@@ -104,9 +104,9 @@ export const SPONSORED_OFFER = {
 export const RECIPIENT_FUNDING_XLM = "3";
 /** XLM per swapped token: 0.2 x 10 = 2 XLM per swap. */
 export const DEMO_SWAP_PRICE = "0.2";
-export const FRIENDBOT_XLM = "10000";
-/** XLM the demo keeps after returning the Friendbot excess to the market maker. */
-export const DEMO_KEEP_XLM = "100";
+/** XLM the market maker funds a demo with beyond its selection's cost: transaction fees and the
+ *  reserves the close holds for a moment while it claims balances. */
+export const DEMO_HEADROOM_XLM = 20;
 export const EPHEMERAL_ISSUER_FUNDING_XLM = "3";
 export const BASE_RESERVE_XLM = 0.5;
 

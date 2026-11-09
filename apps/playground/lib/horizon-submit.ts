@@ -17,18 +17,54 @@ export class TxSubmitError extends Error {
   }
 }
 
+const READ_TIMEOUT_MS = 15_000;
+/** Horizon answers a submission within about 30 seconds, with a 504 when it is still pending. */
+const SUBMIT_TIMEOUT_MS = 45_000;
+
+const readAccount = (address: string): Promise<Response> =>
+  fetch(`${HORIZON_TESTNET_URL}/accounts/${encodeURIComponent(address)}`, {
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+    signal: AbortSignal.timeout(READ_TIMEOUT_MS),
+  });
+
 /** Read the source account's current sequence from Horizon (zero indexing lag). */
 export async function loadHorizonAccount(
   address: string
 ): Promise<{ sequenceNumber: () => string }> {
-  const res = await fetch(`${HORIZON_TESTNET_URL}/accounts/${address}`, {
-    headers: { Accept: "application/json" },
-    cache: "no-store",
-  });
+  const res = await readAccount(address);
   if (res.status === 404) throw new Error(`Account not found: ${address}`);
   if (!res.ok) throw new Error(`Horizon account fetch failed (${res.status})`);
   const json = (await res.json()) as { sequence: string };
   return { sequenceNumber: () => json.sequence };
+}
+
+/** An account's XLM as Horizon reports it: the balance, and the part its offers have committed. */
+export interface NativeBalance {
+  balance: string;
+  sellingLiabilities: string;
+}
+
+interface HorizonAccountBalances {
+  balances?: { asset_type?: string; balance?: string; selling_liabilities?: string }[];
+}
+
+/** The account's XLM; throws for a missing account or an unreadable answer. */
+export async function loadNativeBalance(address: string): Promise<NativeBalance> {
+  const res = await readAccount(address);
+  if (!res.ok) throw new Error(`Horizon account fetch failed (${res.status})`);
+  const json = (await res.json()) as HorizonAccountBalances;
+  const native = json.balances?.find((b) => b.asset_type === "native");
+  if (typeof native?.balance !== "string") throw new Error("Horizon account has no XLM balance");
+  return { balance: native.balance, sellingLiabilities: native.selling_liabilities ?? "0" };
+}
+
+/** False only for Horizon's 404; any other failure throws, so it is never read as "gone". */
+export async function accountExists(address: string): Promise<boolean> {
+  const res = await readAccount(address);
+  if (res.status === 404) return false;
+  if (!res.ok) throw new Error(`Horizon account fetch failed (${res.status})`);
+  return true;
 }
 
 interface HorizonSubmitResponse {
@@ -43,6 +79,7 @@ export async function submitClassicViaHorizon(signedXdr: string): Promise<{ txHa
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ tx: signedXdr }),
+    signal: AbortSignal.timeout(SUBMIT_TIMEOUT_MS),
   });
 
   let json: HorizonSubmitResponse | null = null;

@@ -59,8 +59,17 @@ export interface DemolishRoundDeps {
   round: (session: PlaygroundSession, hooks: DemolishRoundHooks) => Promise<DemolishRoundResult>;
 }
 
+export interface RecycleResult {
+  /** Public keys merged into the market maker, or found already gone. */
+  recycled: string[];
+  /** Whether every account the session holds a key for is gone. */
+  complete: boolean;
+  /** Drops what was recycled from the record, for a cleanup that has to run again. */
+  patch: SessionPatch;
+}
+
 export interface CleanupDeps {
-  recycle: (session: PlaygroundSession) => Promise<string[]>;
+  recycle: (session: PlaygroundSession) => Promise<RecycleResult>;
 }
 
 function isConfigError(err: unknown): boolean {
@@ -344,7 +353,11 @@ export async function runResolve(
   }
 }
 
-/** Recycles the ephemeral issuers and deletes the session, under the same lock as every step. */
+/**
+ * Recycles the session's accounts under the same lock as every step, and deletes the record only
+ * once all of them are gone: the record holds the only copy of their keys, so a cleanup that
+ * stops part way keeps it, without what it did recycle, for the next attempt.
+ */
 export async function runCleanup(
   store: SessionStore,
   id: string,
@@ -352,7 +365,11 @@ export async function runCleanup(
 ): Promise<ActionResult> {
   try {
     return await withSessionLock(store, id, async (session, lock) => {
-      const recycled = await deps.recycle(session);
+      const { recycled, complete, patch } = await deps.recycle(session);
+      if (!complete) {
+        await store.updateSession(lock, () => patch);
+        return { status: 502, body: { error: "cleanup_failed" } };
+      }
       await store.deleteSession(lock);
       return { status: 200, body: { ok: true, recycled } };
     });

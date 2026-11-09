@@ -39,6 +39,12 @@ interface Posted {
 const issuer = Keypair.random();
 const mm = Keypair.random();
 
+function setupFunding(plan: ReturnType<typeof resolvePlan>): string {
+  const setup = plan.steps.find((s) => s.action.kind === "setup")?.action;
+  if (setup?.kind !== "setup") throw new Error("a plan with no setup step");
+  return setup.fundingXlm;
+}
+
 async function runAndCheck(selection: ScenarioSelection): Promise<void> {
   const store = memoryStore();
   const created = await handleCreateSession(
@@ -51,8 +57,9 @@ async function runAndCheck(selection: ScenarioSelection): Promise<void> {
       rateLimit: async () => null,
       issuer: () => issuer,
       mm: () => mm,
-      fundAccount: async () => true,
-      ensureStandingLiquidity: async () => {},
+      cronSecret: () => "a-test-cron-secret-0123456789",
+      marketMakerBalance: async () => ({ balance: "10000.0000000", sellingLiabilities: "0" }),
+      provisionDemo: async () => {},
       encrypt,
       unavailable: () => new Map(),
     }
@@ -80,6 +87,10 @@ async function runAndCheck(selection: ScenarioSelection): Promise<void> {
         executeMessStep: (planned, ctx) =>
           executeMessStep(planned, ctx, {
             loadAccount: async () => ({ sequenceNumber: () => "100" }),
+            loadNativeBalance: async () => ({
+              balance: setupFunding(plan),
+              sellingLiabilities: "0",
+            }),
             submit: async (signedXdr) => {
               const tx = TransactionBuilder.fromXDR(signedXdr, Networks.TESTNET);
               if (!(tx instanceof Transaction)) throw new Error("expected a transaction");

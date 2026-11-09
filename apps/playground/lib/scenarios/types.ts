@@ -36,8 +36,8 @@ export type StepAction =
       kind: "setup";
       ephemeralAssets: AssetCode[];
       issuerFundingXlm: string;
-      friendbotXlm: string;
-      keepXlm: string;
+      /** What the market maker funds the demo with when the session is created. */
+      fundingXlm: string;
     }
   | { kind: "change_trust"; asset: AssetCode }
   | { kind: "airdrops"; payments: { asset: AssetCode; amount: string }[] }

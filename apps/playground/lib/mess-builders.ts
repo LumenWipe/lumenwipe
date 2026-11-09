@@ -12,12 +12,14 @@ import {
 import {
   HORIZON_TESTNET_URL,
   loadHorizonAccount,
+  loadNativeBalance,
   submitClassicViaHorizon,
   TxSubmitError,
+  type NativeBalance,
 } from "./horizon-submit";
+import { formatStroops, networkStroops } from "./stroops";
+import { standingLiquidityOps, type HorizonBalance, type HorizonOffer } from "./standing-liquidity";
 import {
-  PERSISTENT_ASSETS,
-  STANDING_LIQUIDITY_PRICE,
   TIME_GATE_SECONDS,
   SPONSORED_OFFER,
   isPersistentAsset,
@@ -112,6 +114,8 @@ export async function loadAccountWithRetry<T>(
 
 export interface BuildSignSubmitDeps {
   loadAccount?: (address: string) => Promise<{ sequenceNumber: () => string }>;
+  /** Reads an account's XLM; the setup step sizes its return payment from it. */
+  loadNativeBalance?: (address: string) => Promise<NativeBalance>;
   submit?: (signedXdr: string) => Promise<{ txHash: string }>;
   sleep?: (ms: number) => Promise<void>;
 }
@@ -161,27 +165,6 @@ export async function buildSignSubmit(
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
-/** XLM the market maker keeps out of its standing offers, for its reserves and fees. */
-const MM_KEEP_XLM = 50;
-/** Most XLM one standing offer sells; a session converts at most a few XLM of it. */
-const STANDING_OFFER_MAX_XLM = 1000;
-/** An offer worn below this is posted again at full size. */
-const STANDING_OFFER_REFILL_XLM = 100;
-
-interface HorizonOffer {
-  id: string;
-  amount: string;
-  selling: { asset_type: string };
-  buying: { asset_code?: string; asset_issuer?: string };
-}
-
-interface HorizonBalance {
-  asset_type: string;
-  asset_code?: string;
-  asset_issuer?: string;
-  balance: string;
-}
-
 async function horizonJson<T>(path: string): Promise<T> {
   const res = await fetch(`${HORIZON_TESTNET_URL}${path}`, {
     headers: { Accept: "application/json" },
@@ -190,51 +173,6 @@ async function horizonJson<T>(path: string): Promise<T> {
   });
   if (!res.ok) throw new Error(`Horizon read failed (${res.status})`);
   return (await res.json()) as T;
-}
-
-/**
- * The operations that give each persistent asset a standing route to XLM: the market maker trusts
- * the asset and sells XLM for it at STANDING_LIQUIDITY_PRICE. Pure, so a test can check which
- * operations a given market maker state needs. An offer worn below the refill mark is resized;
- * `unfunded` names the assets left without one because the market maker is short of XLM.
- */
-export function standingLiquidityOps(
-  issuerPublic: string,
-  nativeBalance: number,
-  balances: readonly HorizonBalance[],
-  offers: readonly HorizonOffer[]
-): { ops: xdr.Operation[]; unfunded: AssetCode[] } {
-  const ops: xdr.Operation[] = [];
-  const unfunded: AssetCode[] = [];
-  let spendable = nativeBalance - MM_KEEP_XLM;
-  for (const code of PERSISTENT_ASSETS) {
-    const asset = new Asset(code, issuerPublic);
-    const trusted = balances.some((b) => b.asset_code === code && b.asset_issuer === issuerPublic);
-    if (!trusted) ops.push(Operation.changeTrust({ asset }));
-    const offer = offers.find(
-      (o) =>
-        o.selling.asset_type === "native" &&
-        o.buying.asset_code === code &&
-        o.buying.asset_issuer === issuerPublic
-    );
-    if (offer && Number(offer.amount) >= STANDING_OFFER_REFILL_XLM) continue;
-    const amount = Math.min(spendable, STANDING_OFFER_MAX_XLM);
-    if (amount < STANDING_OFFER_REFILL_XLM) {
-      unfunded.push(code);
-      continue;
-    }
-    spendable -= amount;
-    ops.push(
-      Operation.manageSellOffer({
-        selling: Asset.native(),
-        buying: asset,
-        amount: amount.toFixed(7),
-        price: STANDING_LIQUIDITY_PRICE,
-        ...(offer && { offerId: offer.id }),
-      })
-    );
-  }
-  return { ops, unfunded };
 }
 
 /** Posts or refills the market maker's standing offers; a no-op when they are all in place. */
@@ -305,13 +243,12 @@ type Executor<K extends StepActionKind> = (
 
 /** One executor per step action kind in the scenario registry. */
 export const MESS_EXECUTORS: { [K in StepActionKind]: Executor<K> } = {
-  setup: (action, ctx, submit) => {
-    const ephemeralCost = action.ephemeralAssets.length * parseFloat(action.issuerFundingXlm);
-    const returnAmount = (
-      parseFloat(action.friendbotXlm) -
-      parseFloat(action.keepXlm) -
-      ephemeralCost
-    ).toFixed(7);
+  // Anything the demo holds beyond what the market maker funded it with goes back to it, read from
+  // the account rather than assumed.
+  setup: async (action, ctx, submit, deps) => {
+    const read = deps.loadNativeBalance ?? loadNativeBalance;
+    const { balance } = await read(ctx.demo.publicKey());
+    const excess = networkStroops(balance) - networkStroops(action.fundingXlm);
     return submit(ctx.demo, [
       ...action.ephemeralAssets.map((code) =>
         Operation.createAccount({
@@ -319,7 +256,15 @@ export const MESS_EXECUTORS: { [K in StepActionKind]: Executor<K> } = {
           startingBalance: action.issuerFundingXlm,
         })
       ),
-      Operation.payment({ destination: ctx.mmPublic, asset: Asset.native(), amount: returnAmount }),
+      ...(excess > BigInt(0)
+        ? [
+            Operation.payment({
+              destination: ctx.mmPublic,
+              asset: Asset.native(),
+              amount: formatStroops(excess),
+            }),
+          ]
+        : []),
     ]);
   },
   change_trust: (action, ctx, submit) =>

@@ -1,21 +1,15 @@
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import {
-  Asset,
-  BASE_FEE,
-  Horizon,
-  Keypair,
-  Networks,
-  Operation,
-  TransactionBuilder,
-} from "@stellar/stellar-sdk";
-import { LWDEMO_CODE } from "../../lib/scenarios";
+import { BASE_FEE, Horizon, Keypair, Networks, TransactionBuilder } from "@stellar/stellar-sdk";
+import { standingLiquidityOps } from "../../lib/standing-liquidity";
 import { fundTestnetAccount, HORIZON } from "./testnet";
 
 // The e2e suite's playground server. It creates the playground's persistent testnet accounts for
-// this run only - an LWDEMO issuer and a market maker, both Friendbot-funded, with the market
-// maker trusting LWDEMO so it can post the liquidity offer the close converts against - plus a
-// fresh encryption key, then starts `next dev` with them in its environment.
+// this run only - a persistent-asset issuer and a market maker, both Friendbot-funded, with the
+// market maker posting the standing offers the close converts against (the hosted playground's
+// reaper keeps those refilled; this run has none) - plus a fresh encryption key and cron secret,
+// then starts `next dev` with them in its environment. The market maker funds every demo from its
+// 10,000 XLM, well above the floor below which a session is refused (lib/market-maker.ts).
 //
 // The keys exist only in this process and the server it spawns: they are never printed, written
 // to a file or passed back to the runner, and they are discarded with the run. No repository
@@ -27,13 +21,18 @@ import { fundTestnetAccount, HORIZON } from "./testnet";
 
 const PORT = "3002";
 
-async function trustLwdemo(mm: Keypair, issuerPublic: string): Promise<void> {
+/** The trustlines and standing offers the market maker needs, as the reaper would post them. */
+async function postStandingLiquidity(mm: Keypair, issuerPublic: string): Promise<void> {
   const server = new Horizon.Server(HORIZON);
   const account = await server.loadAccount(mm.publicKey());
-  const tx = new TransactionBuilder(account, { fee: BASE_FEE, networkPassphrase: Networks.TESTNET })
-    .addOperation(Operation.changeTrust({ asset: new Asset(LWDEMO_CODE, issuerPublic) }))
-    .setTimeout(60)
-    .build();
+  const native = account.balances.find((b) => b.asset_type === "native");
+  const { ops } = standingLiquidityOps(issuerPublic, Number(native?.balance ?? "0"), [], []);
+  const builder = new TransactionBuilder(account, {
+    fee: String(Number(BASE_FEE) * ops.length),
+    networkPassphrase: Networks.TESTNET,
+  }).setTimeout(60);
+  for (const op of ops) builder.addOperation(op);
+  const tx = builder.build();
   tx.sign(mm);
   await server.submitTransaction(tx);
 }
@@ -42,7 +41,7 @@ async function main(): Promise<void> {
   const issuer = Keypair.random();
   const mm = Keypair.random();
   await Promise.all([fundTestnetAccount(issuer.publicKey()), fundTestnetAccount(mm.publicKey())]);
-  await trustLwdemo(mm, issuer.publicKey());
+  await postStandingLiquidity(mm, issuer.publicKey());
   console.log("[playground e2e] per-run issuer and market maker funded", {
     issuer: issuer.publicKey(),
     mm: mm.publicKey(),
@@ -55,6 +54,7 @@ async function main(): Promise<void> {
       PLAYGROUND_ISSUER_SECRET_TESTNET: issuer.secret(),
       PLAYGROUND_MM_SECRET_TESTNET: mm.secret(),
       PLAYGROUND_ENCRYPTION_KEY: randomBytes(32).toString("hex"),
+      CRON_SECRET: randomBytes(32).toString("hex"),
       UPSTASH_REDIS_REST_URL: "",
       UPSTASH_REDIS_REST_TOKEN: "",
     },

@@ -355,7 +355,7 @@ describe("the demolish runs round by round", () => {
   test("an error before the close started keeps the single Start over, with no warning", async () => {
     routes.handlers.set("/api/session", async () => ({
       status: 502,
-      body: { error: "friendbot_failed" },
+      body: { error: "provision_failed" },
     }));
     rtl.render(<Harness />);
     rtl.fireEvent.click(rtl.screen.getByRole("button", { name: /Create & trash a demo account/ }));
@@ -588,12 +588,12 @@ describe("the replay code reaches the run, the summary and every error", () => {
       .setSelection(generateRandomSelection(17_452_747_771)!, "random", CODE);
     routes.handlers.set("/api/session", async () => ({
       status: 502,
-      body: { error: "friendbot_failed" },
+      body: { error: "provision_failed" },
     }));
     rtl.render(<Harness />);
     rtl.fireEvent.click(rtl.screen.getByRole("button", { name: /Create & trash a demo account/ }));
     const alert = await rtl.screen.findByRole("alert", undefined, { timeout: 5000 });
-    expect(alert.textContent).toBe(`${errorCopy("friendbot_failed")}Replay code ${CODE}`);
+    expect(alert.textContent).toBe(`${errorCopy("provision_failed")}Replay code ${CODE}`);
   });
 
   test("the summary shows the code", async () => {

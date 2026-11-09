@@ -12,10 +12,19 @@ import {
 } from "./scenarios";
 
 // Server-only custodial session storage for the testnet playground.
-// Secrets are stored AES-256-GCM-encrypted (see ./crypto). Sessions expire
-// after SESSION_TTL_SECONDS; every playground action refreshes the TTL.
+// Secrets are stored AES-256-GCM-encrypted (see ./crypto). A record expires
+// SESSION_RECORD_TTL_SECONDS after its last write, while the visitor's
+// countdown shows SESSION_COUNTDOWN_SECONDS.
 
-export const SESSION_TTL_SECONDS = 3600;
+/** The countdown the visitor sees. */
+export const SESSION_COUNTDOWN_SECONDS = 3600;
+
+/**
+ * How long a record outlives its last write, so the reaper can still read the keys of an abandoned
+ * session. On the Hobby plan the reaper runs once a day, anywhere within its hour, and a failed or
+ * missed run is not retried: 72 hours covers two runs after the reap threshold.
+ */
+export const SESSION_RECORD_TTL_SECONDS = 72 * 3600;
 
 /** Bumped whenever the stored shape changes; a session of any other version reads as expired. */
 export const SESSION_SCHEMA_VERSION = 6;
@@ -233,6 +242,15 @@ export class SessionLockLostError extends Error {
   }
 }
 
+/** A short exclusive hold on a name outside any session (an account's submissions, the reaper). */
+export interface Lease {
+  key: string;
+  token: string;
+}
+
+/** What the reaper's last faucet call returned, kept so a refused session can say why. */
+export type FaucetFailure = "rate_limited" | "unavailable";
+
 export interface SessionStore {
   createSession(data: NewSessionData): Promise<PlaygroundSession>;
   loadSession(id: string): Promise<PlaygroundSession | null>;
@@ -244,8 +262,18 @@ export interface SessionStore {
     lock: SessionLock,
     patch: (session: PlaygroundSession) => SessionPatch
   ): Promise<PlaygroundSession>;
-  /** Deletes the session, refused with SessionLockLostError unless `lock` is still held. */
+  /** Deletes the session and its index entry, refused with SessionLockLostError unless `lock` is
+   *  still held. */
   deleteSession(lock: SessionLock): Promise<void>;
+  /** Every session id created and not yet deleted; a record may have expired since. */
+  indexedSessionIds(): Promise<string[]>;
+  /** Drops an id whose record has expired from the index. */
+  unindexSession(id: string): Promise<void>;
+  acquireLease(name: string, ttlMs: number): Promise<Lease | null>;
+  releaseLease(lease: Lease): Promise<void>;
+  lastFaucetFailure(): Promise<FaucetFailure | null>;
+  /** Records the outcome of the reaper's faucet call; null after a successful one. */
+  recordFaucetFailure(failure: FaucetFailure | null): Promise<void>;
 }
 
 const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -257,6 +285,11 @@ export function isSessionId(value: string): boolean {
 
 const sessionKey = (id: string): string => `playground:session:${id}`;
 const lockKey = (id: string): string => `playground:session-lock:${id}`;
+const leaseKey = (name: string): string => `playground:lease:${name}`;
+const SESSION_INDEX_KEY = "playground:session-index";
+const FAUCET_FAILURE_KEY = "playground:faucet-failure";
+/** A faucet failure older than this no longer explains a refusal: a day's run has come since. */
+const FAUCET_FAILURE_TTL_SECONDS = 26 * 3600;
 
 export function createSessionStore(resolveKv: () => SessionKv): SessionStore {
   const loadSession = async (id: string): Promise<PlaygroundSession | null> => {
@@ -272,7 +305,9 @@ export function createSessionStore(resolveKv: () => SessionKv): SessionStore {
         id: uuidv4(),
         createdAt: Date.now(),
       };
-      await resolveKv().set(sessionKey(session.id), session, SESSION_TTL_SECONDS);
+      const kv = resolveKv();
+      await kv.set(sessionKey(session.id), session, SESSION_RECORD_TTL_SECONDS);
+      await kv.indexAdd(SESSION_INDEX_KEY, session.id);
       return session;
     },
     loadSession,
@@ -293,7 +328,7 @@ export function createSessionStore(resolveKv: () => SessionKv): SessionStore {
         lock.token,
         sessionKey(lock.sessionId),
         next,
-        SESSION_TTL_SECONDS
+        SESSION_RECORD_TTL_SECONDS
       );
       if (!written) throw new SessionLockLostError(lock.sessionId);
       return next;
@@ -305,6 +340,25 @@ export function createSessionStore(resolveKv: () => SessionKv): SessionStore {
         sessionKey(lock.sessionId)
       );
       if (!deleted) throw new SessionLockLostError(lock.sessionId);
+      await resolveKv().indexRemove(SESSION_INDEX_KEY, lock.sessionId);
+    },
+    indexedSessionIds: () => resolveKv().indexMembers(SESSION_INDEX_KEY),
+    async unindexSession(id) {
+      await resolveKv().indexRemove(SESSION_INDEX_KEY, id);
+    },
+    async acquireLease(name, ttlMs) {
+      const lease = { key: leaseKey(name), token: uuidv4() };
+      return (await resolveKv().acquire(lease.key, lease.token, ttlMs)) ? lease : null;
+    },
+    async releaseLease(lease) {
+      await resolveKv().releaseIfHeld(lease.key, lease.token);
+    },
+    async lastFaucetFailure() {
+      const value = await resolveKv().get(FAUCET_FAILURE_KEY);
+      return value === "rate_limited" || value === "unavailable" ? value : null;
+    },
+    async recordFaucetFailure(failure) {
+      await resolveKv().set(FAUCET_FAILURE_KEY, failure ?? "none", FAUCET_FAILURE_TTL_SECONDS);
     },
   };
 }
@@ -328,7 +382,7 @@ function resolveDefaultKv(): SessionKv {
 
 export const sessionStore: SessionStore = createSessionStore(resolveDefaultKv);
 
-/** Seconds until the session expires (for the client countdown). */
+/** When the visitor's countdown ends, in epoch milliseconds. */
 export function sessionExpiresAt(): number {
-  return Date.now() + SESSION_TTL_SECONDS * 1000;
+  return Date.now() + SESSION_COUNTDOWN_SECONDS * 1000;
 }
