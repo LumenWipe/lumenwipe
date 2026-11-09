@@ -214,7 +214,7 @@ test("buildCloseTransactions › sponsored entry the live re-read marks revocabl
   expect(ops.some((o) => o.type === "revokeSignerSponsorship")).toBe(true);
 });
 
-test("buildCloseTransactions › sponsored entry the live re-read marks unaffordable → REVOKE_SPONSORSHIP is omitted, no error", async () => {
+test("buildCloseTransactions › sponsored entry the live re-read marks unaffordable → refused, nothing built", async () => {
   spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
     rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
   spyOn(sponsorshipAffordability, "assessSponsorshipAffordability").mockResolvedValue({
@@ -226,12 +226,10 @@ test("buildCloseTransactions › sponsored entry the live re-read marks unafford
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
 
   const state = accountState({ sponsoredEntries: [SPONSORED_ENTRY], numSponsoring: 1 });
-  const result = await buildCloseTransactions(ALL_ON, state, DEST, {}, "testnet");
-
-  expect(result.transactions).toHaveLength(1);
-  expect(result.transactions[0].covers).not.toContain("REVOKE_SPONSORSHIP");
-  const ops = opsOf(result.transactions[0].xdr);
-  expect(ops.some((o) => o.type === "revokeSignerSponsorship")).toBe(false);
+  await expect(buildCloseTransactions(ALL_ON, state, DEST, {}, "testnet")).rejects.toMatchObject({
+    code: "sponsorship_unaffordable",
+    status: 422,
+  });
 });
 
 const TRANSFER_TO = Keypair.random().publicKey();

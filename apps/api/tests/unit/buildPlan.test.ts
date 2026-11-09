@@ -427,6 +427,33 @@ test("buildPlan › subEntryMismatch false → no mismatch blocker", () => {
   expect(blockers.every((b) => !b.message.includes("enumerated"))).toBe(true);
 });
 
+// ─── Coded merge blockers ───────────────────────────────────────────────────
+// close/transactions refuses a plan blocker by its code and fails closed on one without, so
+// every blocker that stops the merge carries the registered code the refusal reports.
+
+test("buildPlan › each merge blocker carries its registered code", () => {
+  const cases: Array<[Partial<AccountState>, string]> = [
+    [{ authImmutable: true }, "account_auth_immutable"],
+    [{ numSponsoring: 2 }, "sponsorship_unenumerated"],
+    [{ poolShares: [{ poolId: "a".repeat(64) }] }, "liquidity_pool_shares_held"],
+    [{ subEntryMismatch: true }, "subentries_unenumerated"],
+    [
+      {
+        signers: [
+          { key: MASTER, weight: 0, type: "ed25519_public_key" },
+          { key: EXTRA, weight: 5, type: "ed25519_public_key" },
+        ],
+        thresholds: { low: 0, med: 5, high: 5 },
+      },
+      "signer_normalization_unsafe",
+    ],
+  ];
+  for (const [overrides, code] of cases) {
+    const { blockers } = buildPlan(ALL_ON, makeAccount(overrides), false);
+    expect(blockers.map((b) => b.code)).toEqual([code]);
+  }
+});
+
 // ─── AUTH_IMMUTABLE blocker ──────────────────────────────────────────────────
 
 test("buildPlan › authImmutable=true → blocker emitted", () => {
