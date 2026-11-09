@@ -9,6 +9,7 @@ import { configureApp } from "./configure-app";
 import { createOpenApiDocument } from "./openapi";
 import { checkEnv, formatEnvFailure } from "./config/validate-env";
 import { deprecatedEnvWarnings, effectiveEndpointHosts } from "./config/networks";
+import { firestoreDatabaseLine } from "./config/firestore";
 import { registryExpiryWarning } from "./lib/exchange-registry";
 
 async function bootstrap(): Promise<void> {
@@ -28,6 +29,8 @@ async function bootstrap(): Promise<void> {
   for (const w of warnings) bootLogger.warn(w.message);
   for (const w of deprecatedEnvWarnings) bootLogger.warn(w);
   for (const hosts of effectiveEndpointHosts()) bootLogger.log(hosts);
+  const databaseLine = firestoreDatabaseLine();
+  if (databaseLine) bootLogger.log(databaseLine);
   const registryWarning = registryExpiryWarning();
   if (registryWarning) bootLogger.warn(registryWarning);
   configureApp(app);

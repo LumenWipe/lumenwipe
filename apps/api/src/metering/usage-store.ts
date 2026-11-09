@@ -1,5 +1,6 @@
 import { FieldValue, Firestore } from "@google-cloud/firestore";
 import { FIRESTORE_BATCH_LIMIT, isKeyId } from "@/auth/api-key-store";
+import { createFirestore } from "@/config/firestore";
 import type { UpstreamDelta } from "@/lib/stellar/upstream-metrics";
 
 export interface DayUsage {
@@ -207,5 +208,5 @@ export class InMemoryUsageStore implements UsageStore {
 export function createUsageStore(): UsageStore {
   const projectId = process.env.FIRESTORE_PROJECT_ID;
   if (!projectId) return new InMemoryUsageStore();
-  return new FirestoreUsageStore(new Firestore({ projectId }));
+  return new FirestoreUsageStore(createFirestore(projectId));
 }

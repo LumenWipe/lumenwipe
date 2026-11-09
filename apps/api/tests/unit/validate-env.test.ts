@@ -122,6 +122,27 @@ test("a missing ADMIN_API_TOKEN, FIRESTORE_PROJECT_ID or INTEGRATOR_AUTH_SECRET 
   ]);
 });
 
+test.each(["", "   ", "(default)", "restore-drill", "abcd"])(
+  "FIRESTORE_DATABASE_ID %p boots",
+  (id) => {
+    const { problems, warnings } = checkEnv({
+      ...OK,
+      FIRESTORE_DATABASE_ID: id,
+    } as NodeJS.ProcessEnv);
+    expect(problems).toEqual([]);
+    expect(warnings).toEqual([]);
+  }
+);
+
+test.each(["Restore-Drill", "abc", "restore-", "1restore", "re_store", "a".repeat(64)])(
+  "an invalid FIRESTORE_DATABASE_ID %p is fatal",
+  (id) => {
+    const { problems } = checkEnv({ ...OK, FIRESTORE_DATABASE_ID: id } as NodeJS.ProcessEnv);
+    expect(problems.map((p) => p.variable)).toEqual(["FIRESTORE_DATABASE_ID"]);
+    expect(problems[0]!.message).not.toContain(id);
+  }
+);
+
 test("the failure message names the variable and where to look", () => {
   const { problems } = checkEnv({} as NodeJS.ProcessEnv);
   const msg = formatEnvFailure(problems);
