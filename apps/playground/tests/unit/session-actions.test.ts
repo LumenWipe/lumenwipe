@@ -1,6 +1,7 @@
-import { test, expect } from "bun:test";
-import type { IntentOperation } from "@lumenwipe/sdk";
-import { runCleanup, runDemolishStep, runMessStep } from "@/lib/session-actions";
+import { test, expect, describe } from "bun:test";
+import { LumenWipeApiError, type IntentOperation } from "@lumenwipe/sdk";
+import { PlaygroundConfigError } from "@/lib/crypto";
+import { readSessionState, runCleanup, runDemolishStep, runMessStep } from "@/lib/session-actions";
 import type { SessionStore } from "@/lib/session-store";
 import { gate, memoryStore, newSessionData, tick } from "./session-fixtures";
 
@@ -197,4 +198,70 @@ test("cleanup is refused while a step holds the session", async () => {
   expect(outcome(cleanup)).toBe("step_in_progress");
   expect(recycles).toBe(0);
   expect(await store.loadSession(session.id)).not.toBeNull();
+});
+
+describe("failure responses carry a code and no upstream text", () => {
+  const UPSTREAM = "op_underfunded from horizon-testnet.stellar.org request 7f3a";
+  const leaks = (r: { body: Record<string, unknown> }): boolean =>
+    JSON.stringify(r.body).includes("op_underfunded") || JSON.stringify(r.body).includes("7f3a");
+
+  test("a failed mess step", async () => {
+    const store = memoryStore();
+    const session = await store.createSession(newSessionData());
+    const result = await runMessStep(store, session.id, "SETUP", {
+      executeStep: async () => {
+        throw new Error(UPSTREAM);
+      },
+    });
+    expect(result).toEqual({ status: 502, body: { error: "tx_failed" } });
+    expect(leaks(result)).toBe(false);
+  });
+
+  test("a failed demolish", async () => {
+    const store = memoryStore();
+    const session = await store.createSession(newSessionData());
+    const result = await runDemolishStep(store, session.id, {
+      demolish: async () => {
+        throw new Error(UPSTREAM);
+      },
+    });
+    expect(result).toEqual({ status: 502, body: { error: "demolish_failed" } });
+    expect(leaks(result)).toBe(false);
+  });
+
+  test("a failed account state read", async () => {
+    const store = memoryStore();
+    const session = await store.createSession(newSessionData());
+    const result = await readSessionState(session, {
+      getAccount: async () => {
+        throw new LumenWipeApiError(500, { error: { code: "internal", message: UPSTREAM } });
+      },
+    });
+    expect(result).toEqual({ status: 502, body: { error: "state_read_failed" } });
+    expect(leaks(result)).toBe(false);
+  });
+
+  test("a missing server key is a not_configured code", async () => {
+    const store = memoryStore();
+    const session = await store.createSession(newSessionData());
+    const result = await runMessStep(store, session.id, "SETUP", {
+      executeStep: async () => {
+        throw new PlaygroundConfigError(UPSTREAM);
+      },
+    });
+    expect(result).toEqual({ status: 503, body: { error: "not_configured" } });
+  });
+
+  test("an account the API no longer finds is the merged-away success, not a failure", async () => {
+    const store = memoryStore();
+    const session = await store.createSession(newSessionData());
+    const result = await readSessionState(session, {
+      getAccount: async () => {
+        throw new LumenWipeApiError(404, { error: { code: "not_found", message: UPSTREAM } });
+      },
+    });
+    expect(result.status).toBe(200);
+    expect(result.body.accountState).toBeNull();
+    expect(leaks(result)).toBe(false);
+  });
 });

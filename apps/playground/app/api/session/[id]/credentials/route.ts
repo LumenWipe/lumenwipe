@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { decryptSecret, PlaygroundConfigError } from "@/lib/crypto";
-import { loadSessionOrErrorResponse } from "@/lib/route-helpers";
+import { loadSessionOrErrorResponse, notConfiguredResponse } from "@/lib/route-helpers";
 import { rateLimit, CREDENTIALS_PER_DAY_PER_IP } from "@/lib/rate-limit";
 
 export const maxDuration = 10;
@@ -20,10 +20,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     return NextResponse.json({ publicKey: session.demoPublic, secretKey });
   } catch (err) {
     if (err instanceof PlaygroundConfigError) {
-      return NextResponse.json(
-        { error: "Playground is not configured on this server." },
-        { status: 503 }
-      );
+      return notConfiguredResponse();
     }
     throw err;
   }

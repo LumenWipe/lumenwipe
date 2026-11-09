@@ -10,6 +10,9 @@ import { DEV_STORE_FILE, devFileKv, upstashKv, type SessionKv } from "./kv";
 
 export const SESSION_TTL_SECONDS = 3600;
 
+/** Bumped whenever the stored shape changes; a session of any other version reads as expired. */
+export const SESSION_SCHEMA_VERSION = 1;
+
 /** Longer than any route's maxDuration, so a request the platform kills frees its session soon after. */
 export const SESSION_LOCK_TTL_MS = 150_000;
 
@@ -27,6 +30,7 @@ export interface DemolishLogEntry {
 }
 
 export interface PlaygroundSession {
+  schemaVersion: typeof SESSION_SCHEMA_VERSION;
   id: string;
   demoPublic: string;
   encDemoSecret: string;
@@ -42,8 +46,57 @@ export interface PlaygroundSession {
   dataEntryCount: number;
 }
 
-export type NewSessionData = Omit<PlaygroundSession, "id" | "createdAt">;
-export type SessionPatch = Partial<Omit<PlaygroundSession, "id" | "createdAt">>;
+type FixedFields = "schemaVersion" | "id" | "createdAt";
+export type NewSessionData = Omit<PlaygroundSession, FixedFields>;
+export type SessionPatch = Partial<Omit<PlaygroundSession, FixedFields>>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((v) => typeof v === "string");
+}
+
+function isEphemeralIssuer(value: unknown): value is EphemeralIssuer {
+  return (
+    isRecord(value) &&
+    typeof value.publicKey === "string" &&
+    typeof value.encSecret === "string" &&
+    typeof value.assetCode === "string"
+  );
+}
+
+function isDemolishLogEntry(value: unknown): value is DemolishLogEntry {
+  return (
+    isRecord(value) &&
+    typeof value.txId === "string" &&
+    typeof value.hash === "string" &&
+    typeof value.summary === "string" &&
+    Array.isArray(value.operations)
+  );
+}
+
+/** Validates a stored session of the current schema version; anything else is treated as expired. */
+export function isPlaygroundSession(value: unknown): value is PlaygroundSession {
+  return (
+    isRecord(value) &&
+    value.schemaVersion === SESSION_SCHEMA_VERSION &&
+    typeof value.id === "string" &&
+    typeof value.demoPublic === "string" &&
+    typeof value.encDemoSecret === "string" &&
+    Array.isArray(value.ephemeralIssuers) &&
+    value.ephemeralIssuers.every(isEphemeralIssuer) &&
+    isStringArray(value.completedMessSteps) &&
+    Array.isArray(value.demolishLog) &&
+    value.demolishLog.every(isDemolishLogEntry) &&
+    typeof value.demolishDone === "boolean" &&
+    typeof value.createdAt === "number" &&
+    isStringArray(value.fundRareAssets) &&
+    typeof value.offerCount === "number" &&
+    typeof value.dataEntryCount === "number"
+  );
+}
 
 export interface SessionLock {
   sessionId: string;
@@ -84,12 +137,17 @@ const lockKey = (id: string): string => `playground:session-lock:${id}`;
 export function createSessionStore(resolveKv: () => SessionKv): SessionStore {
   const loadSession = async (id: string): Promise<PlaygroundSession | null> => {
     const value = await resolveKv().get(sessionKey(id));
-    return (value as PlaygroundSession | null) ?? null;
+    return isPlaygroundSession(value) ? value : null;
   };
 
   return {
     async createSession(data) {
-      const session: PlaygroundSession = { ...data, id: uuidv4(), createdAt: Date.now() };
+      const session: PlaygroundSession = {
+        ...data,
+        schemaVersion: SESSION_SCHEMA_VERSION,
+        id: uuidv4(),
+        createdAt: Date.now(),
+      };
       await resolveKv().set(sessionKey(session.id), session, SESSION_TTL_SECONDS);
       return session;
     },

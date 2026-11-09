@@ -18,6 +18,7 @@ import {
   getNeededEphemeralCodes,
   maxOfferCount,
 } from "@/lib/mess-plan";
+import { notConfiguredResponse } from "@/lib/route-helpers";
 import { rateLimit, SESSIONS_PER_DAY_PER_IP } from "@/lib/rate-limit";
 
 export const maxDuration = 60;
@@ -33,10 +34,7 @@ export async function POST(req: NextRequest) {
   const issuer = getPlaygroundIssuerKeypair();
   const mm = getPlaygroundMmKeypair();
   if (!issuer || !mm) {
-    return NextResponse.json(
-      { error: "Playground is not configured on this server." },
-      { status: 503 }
-    );
+    return notConfiguredResponse();
   }
 
   let mode: PlaygroundMode = "standard";
@@ -133,10 +131,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     if (err instanceof PlaygroundConfigError || err instanceof PlaygroundStoreUnavailableError) {
-      return NextResponse.json(
-        { error: "Playground is not configured on this server." },
-        { status: 503 }
-      );
+      return notConfiguredResponse();
     }
     throw err;
   }

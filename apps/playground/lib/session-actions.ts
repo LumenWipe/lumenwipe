@@ -1,5 +1,5 @@
 import "server-only";
-import type { IntentOperation } from "@lumenwipe/sdk";
+import { LumenWipeApiError, type AccountState, type IntentOperation } from "@lumenwipe/sdk";
 import { PlaygroundConfigError } from "./crypto";
 import type { MessStepId } from "./mess-plan";
 import {
@@ -15,12 +15,9 @@ export interface ActionResult {
   body: Record<string, unknown>;
 }
 
-/** The one wording every route uses for "this deployment is missing its server-side config". */
-export const NOT_CONFIGURED_MESSAGE = "Playground is not configured on this server.";
-export const NOT_CONFIGURED: ActionResult = {
-  status: 503,
-  body: { error: NOT_CONFIGURED_MESSAGE },
-};
+// Every failure is a bare code: upstream SDK, Horizon and API messages are logged server-side and
+// never returned, and the client maps each code to its own plain-language copy.
+export const NOT_CONFIGURED: ActionResult = { status: 503, body: { error: "not_configured" } };
 const SESSION_NOT_FOUND: ActionResult = { status: 404, body: { error: "session_not_found" } };
 const STEP_IN_PROGRESS: ActionResult = { status: 409, body: { error: "step_in_progress" } };
 
@@ -91,9 +88,8 @@ export async function runMessStep(
     });
   } catch (err) {
     if (isConfigError(err)) return NOT_CONFIGURED;
-    const message = err instanceof Error ? err.message : String(err);
     console.error(`[playground] mess step ${stepId} failed for session ${id}:`, err);
-    return { status: 502, body: { error: "tx_failed", detail: message } };
+    return { status: 502, body: { error: "tx_failed" } };
   }
 }
 
@@ -135,9 +131,8 @@ export async function runDemolishStep(
     });
   } catch (err) {
     if (isConfigError(err)) return NOT_CONFIGURED;
-    const message = err instanceof Error ? err.message : String(err);
     console.error(`[playground] demolish failed for session ${id}:`, err);
-    return { status: 502, body: { error: "demolish_failed", detail: message } };
+    return { status: 502, body: { error: "demolish_failed" } };
   }
 }
 
@@ -156,5 +151,32 @@ export async function runCleanup(
   } catch (err) {
     if (isConfigError(err)) return NOT_CONFIGURED;
     throw err;
+  }
+}
+
+export interface StateDeps {
+  getAccount: (publicKey: string) => Promise<AccountState>;
+}
+
+export async function readSessionState(
+  session: PlaygroundSession,
+  deps: StateDeps
+): Promise<ActionResult> {
+  const progress = {
+    demoPublic: session.demoPublic,
+    completedMessSteps: session.completedMessSteps,
+    demolishLog: session.demolishLog,
+    demolishDone: session.demolishDone,
+  };
+  try {
+    const accountState = await deps.getAccount(session.demoPublic);
+    return { status: 200, body: { ...progress, accountState } };
+  } catch (err) {
+    if (err instanceof LumenWipeApiError && err.status === 404) {
+      // The demo account no longer exists once the merge lands - that's success, not an error.
+      return { status: 200, body: { ...progress, accountState: null } };
+    }
+    console.error(`[playground] account state read failed for session ${session.id}:`, err);
+    return { status: 502, body: { error: "state_read_failed" } };
   }
 }
