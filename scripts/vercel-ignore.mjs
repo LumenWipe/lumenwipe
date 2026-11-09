@@ -11,10 +11,21 @@ const SHARED = [
   ".tool-versions",
 ];
 
+// apps/playground verifies with @lumenwipe/verify, which tsup compiles from these directories of
+// apps/web (and the registries under apps/api/src/config). A change to any of them changes what the
+// playground checks before it signs. scripts/vercel-ignore.test.ts fails when a file the bundle
+// is compiled from falls outside this list.
+export const VERIFY_BUNDLE = [
+  "packages/verify/",
+  "apps/web/lib/",
+  "apps/web/config/",
+  "apps/api/src/config/",
+];
+
 // apps/web bundles apps/api/src/config/*.json through its `@registry/*` tsconfig path.
 export const WATCHED = {
   web: ["apps/web/", "apps/api/src/config/", ...SHARED],
-  playground: ["apps/playground/", ...SHARED],
+  playground: ["apps/playground/", ...VERIFY_BUNDLE, ...SHARED],
 };
 
 const SHA = /^[0-9a-f]{40}$/;

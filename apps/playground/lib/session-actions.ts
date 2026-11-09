@@ -30,7 +30,12 @@ export type OnDemolishConfirmed = (
 ) => void;
 
 export interface MessStepDeps {
-  executeStep: (stepId: MessStepId, session: PlaygroundSession) => Promise<string>;
+  /** `recordSigner` persists a signer the step is about to add, before its transaction is sent. */
+  executeStep: (
+    stepId: MessStepId,
+    session: PlaygroundSession,
+    recordSigner: (publicKey: string) => Promise<void>
+  ) => Promise<string>;
 }
 
 export interface DemolishDeps {
@@ -82,7 +87,14 @@ export async function runMessStep(
       if (session.completedMessSteps.includes(stepId)) {
         return { status: 409, body: { error: "step_already_executed" } };
       }
-      const txHash = await deps.executeStep(stepId, session);
+      // Recorded before the transaction is sent: a signer that never lands is harmless (removing
+      // it would fail on chain), while one that lands unrecorded would make the demolish refuse.
+      const recordSigner = async (publicKey: string): Promise<void> => {
+        await store.updateSession(lock, (current) => ({
+          recordedSigners: [...current.recordedSigners, publicKey],
+        }));
+      };
+      const txHash = await deps.executeStep(stepId, session, recordSigner);
       await store.updateSession(lock, (current) => ({
         completedMessSteps: [...current.completedMessSteps, stepId],
       }));

@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { decide, shouldBuild, WATCHED } from "./vercel-ignore.mjs";
+import { bundleInputs } from "./package-release";
 
 const BASE = "a".repeat(40);
 const run = (app: string, files: string[]): boolean => decide(app, BASE, () => files).build;
@@ -37,17 +39,25 @@ describe("playground", () => {
     "packages/types/src/index.ts",
     "bun.lock",
     "package.json",
+    "packages/verify/src/index.ts",
+    "apps/web/lib/stellar/verify.ts",
+    "apps/web/config/networks.ts",
+    "apps/api/src/config/exchange-registry.json",
   ])("builds when %s changes", (file) => {
     expect(run("playground", [file])).toBe(true);
   });
 
-  test.each([
-    "apps/web/app/page.tsx",
-    "apps/api/src/config/exchange-registry.json",
-    "apps/api/src/close/builder.ts",
-    "docs/architecture.md",
-  ])("skips when only %s changes", (file) => {
-    expect(run("playground", [file])).toBe(false);
+  test.each(["apps/web/app/page.tsx", "apps/api/src/close/builder.ts", "docs/architecture.md"])(
+    "skips when only %s changes",
+    (file) => {
+      expect(run("playground", [file])).toBe(false);
+    }
+  );
+
+  test("builds when any file the verify bundle is compiled from changes", async () => {
+    const inputs = await bundleInputs(resolve(import.meta.dir, ".."));
+    expect(inputs.length).toBeGreaterThan(0);
+    expect(inputs.filter((file) => !shouldBuild("playground", [file]))).toEqual([]);
   });
 });
 

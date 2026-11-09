@@ -146,9 +146,15 @@ describe("schema version", () => {
     expect(await (await stored({ ...current(), schemaVersion: 0 })).loadSession(SID)).toBeNull();
   });
 
+  test("a version 1 session, saved before signers were recorded, reads as expired", async () => {
+    const { recordedSigners: _omitted, ...v1 } = { ...current(), schemaVersion: 1 };
+    expect(await (await stored(v1)).loadSession(SID)).toBeNull();
+  });
+
   test("a malformed session reads as expired", async () => {
     for (const bad of [
       { ...current(), completedMessSteps: "SETUP" },
+      { ...current(), recordedSigners: [1] },
       { ...current(), ephemeralIssuers: [{ publicKey: "G", assetCode: "X" }] },
       { ...current(), demolishLog: [{ txId: "t", hash: "h", summary: "s" }] },
       { ...current(), demolishDone: "no" },

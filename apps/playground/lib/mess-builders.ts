@@ -47,6 +47,8 @@ export interface MessContext {
   fundRareAssets: string[];
   offerCount: number;
   dataEntryCount: number;
+  /** Persists a signer in the session record before the step adds it to the demo account. */
+  recordSigner: (publicKey: string) => Promise<void>;
 }
 
 function resolveAsset(code: string, ctx: MessContext): Asset {
@@ -330,13 +332,26 @@ export async function executeMessStep(stepId: MessStepId, ctx: MessContext): Pro
       );
     }
 
-    case "ADD_SIGNER": {
-      // The extra signer's secret is discarded: weight 1 with thresholds 0/1/1
-      // never blocks the master key, and the demolish removes it anyway.
-      const forgotten = Keypair.random();
-      return buildSignSubmit(ctx.demo, [
-        Operation.setOptions({ signer: { ed25519PublicKey: forgotten.publicKey(), weight: 1 } }),
-      ]);
-    }
+    case "ADD_SIGNER":
+      return addForgottenSigner(ctx);
   }
+}
+
+/**
+ * Adds a co-signer whose secret is discarded: weight 1 with thresholds 0/1/1 never blocks the
+ * master key, and the demolish removes it. lib/verify.ts lets a close remove only a signer the
+ * session recorded, so it is recorded before the transaction that adds it is sent.
+ */
+export async function addForgottenSigner(
+  ctx: Pick<MessContext, "demo" | "recordSigner">,
+  deps: BuildSignSubmitDeps = {}
+): Promise<string> {
+  const forgotten = Keypair.random().publicKey();
+  await ctx.recordSigner(forgotten);
+  return buildSignSubmit(
+    ctx.demo,
+    [Operation.setOptions({ signer: { ed25519PublicKey: forgotten, weight: 1 } })],
+    [],
+    deps
+  );
 }

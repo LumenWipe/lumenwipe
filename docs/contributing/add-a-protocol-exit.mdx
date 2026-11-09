@@ -24,9 +24,9 @@ For a protocol exit this works out as follows:
 | Kind of change                                     | Builder place                         | Verifier places                                                                               |
 | -------------------------------------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------- |
 | A Soroban exit (an `invokeHostFunction` operation) | The exit adapter in `apps/api`        | `apps/web/lib/stellar/verify.ts`, fed by `exit-expectations.ts` and the web contract registry |
-| A new classic operation type                       | The transaction builder in `apps/api` | `apps/web/lib/stellar/verify.ts` and `apps/playground/lib/verify.ts`                          |
+| A new classic operation type                       | The transaction builder in `apps/api` | `apps/web/lib/stellar/verify.ts`                                                              |
 
-The playground verifier refuses `invokeHostFunction` on purpose, because its throwaway demo accounts never hold DeFi positions, so a Soroban exit needs no entry there. A new classic operation does, or the playground rejects it. The playground never builds a close itself, and every close it runs goes through the real API.
+The playground has no verifier of its own to update: it checks every transaction with `@lumenwipe/verify`, the build of `apps/web/lib/stellar/verify.ts`, held to its session record. It passes no DeFi positions, so it refuses every Soroban exit. If the new operation changes what the playground's recipes build, `apps/api/tests/unit/playground-recipe.test.ts` fails until its fixture is regenerated, and the playground's unit tests then run the new transactions through its verifier. The playground never builds a close itself, and every close it runs goes through the real API.
 
 ## Steps
 

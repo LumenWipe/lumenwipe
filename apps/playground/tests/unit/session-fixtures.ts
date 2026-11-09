@@ -22,6 +22,7 @@ export function newSessionData(): NewSessionData {
     encDemoSecret: "enc",
     ephemeralIssuers: [],
     completedMessSteps: [],
+    recordedSigners: [],
     demolishLog: [],
     demolishDone: false,
     fundRareAssets: [],

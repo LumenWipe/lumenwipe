@@ -110,6 +110,7 @@ export async function POST(req: NextRequest) {
         assetCode: e.assetCode,
       })),
       completedMessSteps: [],
+      recordedSigners: [],
       demolishLog: [],
       demolishDone: false,
       fundRareAssets,
