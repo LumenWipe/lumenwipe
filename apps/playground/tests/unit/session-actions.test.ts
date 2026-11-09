@@ -271,6 +271,90 @@ test("a transaction that settles without confirming has its record cleared", asy
   expect(loaded?.demolishLog).toEqual([]);
 });
 
+/** A store whose next write that appends to the demolish log fails, once. */
+function failingLogWriteOnce(store: SessionStore): SessionStore {
+  let armed = true;
+  return {
+    ...store,
+    updateSession: async (lock, patch) => {
+      const current = await store.loadSession(lock.sessionId);
+      if (armed && current && patch(current).demolishLog) {
+        armed = false;
+        throw new Error("store unavailable");
+      }
+      return store.updateSession(lock, patch);
+    },
+  };
+}
+
+// The engine reports a settlement before the confirmation today; both orders are held here, so a
+// change in the engine cannot make the round drop a record whose log write failed.
+const ORDERS = ["settled, then confirmed", "confirmed, then settled"] as const;
+type Hooks = Parameters<Parameters<typeof runDemolishRound>[2]["round"]>[1];
+function settleAndConfirm(
+  hooks: Hooks,
+  order: (typeof ORDERS)[number],
+  logged: DemolishLogEntry,
+  closesAccount: boolean
+): void {
+  if (order === ORDERS[0]) hooks.settled();
+  hooks.onConfirmed(logged, closesAccount);
+  if (order === ORDERS[1]) hooks.settled();
+}
+
+describe("a confirmation whose log write failed keeps its record for the next round", () => {
+  for (const order of ORDERS) {
+    test(`a transaction that does not close the account (${order})`, async () => {
+      const store = memoryStore();
+      const session = await store.createSession(newSessionData());
+
+      const first = await runDemolishRound(failingLogWriteOnce(store), session.id, {
+        round: async (_session, hooks) => {
+          await hooks.persistPending(pending(1));
+          settleAndConfirm(hooks, order, entry(1), false);
+          return { done: false, remainingSteps: 1 };
+        },
+      });
+      expect(first.body).toEqual({ done: false, confirmed: [], remainingSteps: 1 });
+      const afterFirst = await store.loadSession(session.id);
+      expect(afterFirst?.demolishPending).toEqual(pending(1));
+      expect(afterFirst?.demolishLog).toEqual([]);
+
+      // The next round's lookup finds the transaction confirmed and reports it from the record.
+      const second = await runDemolishRound(store, session.id, {
+        round: async (_session, hooks) => {
+          expect(hooks.pending).toEqual(pending(1));
+          settleAndConfirm(hooks, order, entry(1), false);
+          return { done: false, remainingSteps: 1 };
+        },
+      });
+      expect(second.body).toEqual({ done: false, confirmed: [entry(1)], remainingSteps: 1 });
+      const afterSecond = await store.loadSession(session.id);
+      expect(afterSecond?.demolishLog).toEqual([entry(1)]);
+      expect(afterSecond?.demolishPending).toBeNull();
+    });
+
+    test(`the merge (${order})`, async () => {
+      const store = memoryStore();
+      const session = await store.createSession(newSessionData());
+
+      const result = await runDemolishRound(failingLogWriteOnce(store), session.id, {
+        round: async (_session, hooks) => {
+          await hooks.persistPending(pending(1, true));
+          settleAndConfirm(hooks, order, entry(1), true);
+          return DONE;
+        },
+      });
+
+      expect(result.body).toEqual({ done: true, confirmed: [entry(1)], remainingSteps: 0 });
+      const loaded = await store.loadSession(session.id);
+      expect(loaded?.demolishLog).toEqual([entry(1)]);
+      expect(loaded?.demolishPending).toBeNull();
+      expect(loaded?.demolishDone).toBe(true);
+    });
+  }
+});
+
 test("a record that cannot be written stops the round before anything is sent", async () => {
   const store = memoryStore();
   const session = await store.createSession(newSessionData());

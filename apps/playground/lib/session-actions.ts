@@ -145,21 +145,25 @@ export async function runDemolishRound(
         writes = next.catch(() => undefined);
         return next;
       };
-      // The in-flight record settled without a confirmation, so it is cleared once the round ends
-      // (a confirmation clears it in its own write instead).
-      let clearPending = false;
+      // What became of the in-flight record (the left-over one, or the last one written). Read only
+      // once the round ends, so the order the engine reports a settlement and a confirmation in
+      // does not matter: a record that settled without confirming is cleared then, while a
+      // confirmed one is cleared by its own log write, or kept for the next round if that failed.
+      let settled = false;
+      let confirmed = false;
 
       const hooks: DemolishRoundHooks = {
         pending: session.demolishPending,
         persistPending: async (pending) => {
-          clearPending = false;
+          settled = false;
+          confirmed = false;
           await write(() => ({ demolishPending: pending }));
         },
         settled: () => {
-          clearPending = true;
+          settled = true;
         },
         onConfirmed: (entry, closesAccount) => {
-          clearPending = false;
+          confirmed = true;
           write((current) => ({
             demolishLog: [...current.demolishLog, entry],
             demolishPending: null,
@@ -176,7 +180,7 @@ export async function runDemolishRound(
         result = await deps.round(session, hooks);
       } finally {
         await writes;
-        if (clearPending) {
+        if (settled && !confirmed) {
           await write(() => ({ demolishPending: null })).catch((err: unknown) => {
             console.error("[playground] demolish pending clear failed", { sessionId: id }, err);
           });
