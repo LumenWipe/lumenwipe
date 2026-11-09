@@ -113,6 +113,48 @@ describe("waitForAccount", () => {
     expect(r.calls()).toBe(3);
     expect(waits).toHaveLength(2);
   });
+
+  // Friendbot has taken about 18 s to fund, longer than a 15 attempt window at 1 s.
+  test("keeps waiting for an account Friendbot is slow to create", async () => {
+    const r = reader(Array.from({ length: 20 }, () => apiError(404, "account_not_found")));
+    const { sleep, waits } = recordingSleep();
+    expect(await waitForAccount(r.read, source, { sleep })).toBe(state);
+    expect(r.calls()).toBe(21);
+    expect(waits).toHaveLength(20);
+  });
+
+  test("still rethrows a rejected key at once after the account was missing", async () => {
+    const fatal = apiError(401, "unauthorized");
+    const r = reader([
+      apiError(404, "account_not_found"),
+      apiError(404, "account_not_found"),
+      fatal,
+    ]);
+    const { sleep, waits } = recordingSleep();
+    await expect(waitForAccount(r.read, source, { sleep })).rejects.toBe(fatal);
+    expect(r.calls()).toBe(3);
+    expect(waits).toHaveLength(2);
+  });
+
+  test("gives up on a missing account after 90 attempts", async () => {
+    const r = reader(Array.from({ length: 200 }, () => apiError(404, "account_not_found")));
+    const { sleep, waits } = recordingSleep();
+    const error = await waitForAccount(r.read, source, { sleep }).catch((e) => e);
+    expect(error).toBeInstanceOf(RetriesExhaustedError);
+    expect(error.message).toContain("after 90 attempts");
+    expect(error.cause).toBeInstanceOf(LumenWipeApiError);
+    expect(error.cause.code).toBe("account_not_found");
+    expect(r.calls()).toBe(90);
+    expect(waits).toHaveLength(89);
+  });
+
+  test("keeps the shorter budget for every other retryable error", async () => {
+    const r = reader(Array.from({ length: 200 }, () => apiError(503, "unavailable")));
+    const { sleep } = recordingSleep();
+    const error = await waitForAccount(r.read, source, { sleep }).catch((e) => e);
+    expect(error).toBeInstanceOf(RetriesExhaustedError);
+    expect(r.calls()).toBe(15);
+  });
 });
 
 describe("fund", () => {
@@ -135,6 +177,59 @@ describe("fund", () => {
     const error = await fund(source, { fetch: f.fetch, sleep: async () => {} }).catch((e) => e);
     expect(error).toBeInstanceOf(FriendbotError);
     expect(f.calls()).toBe(1);
+  });
+
+  test("bounds each Friendbot request with a timeout signal", async () => {
+    const signals: (AbortSignal | null | undefined)[] = [];
+    await fund(source, {
+      fetch: async (_url, init) => {
+        signals.push(init?.signal);
+        return new Response("", { status: 200 });
+      },
+    });
+    expect(signals).toHaveLength(1);
+    expect(signals[0]).toBeInstanceOf(AbortSignal);
+    expect(signals[0]?.aborted).toBe(false);
+  });
+
+  // The error Bun's fetch throws when the timeout signal fires, and when a caller aborts.
+  test("Bun names a timed out fetch TimeoutError and a caller's abort AbortError", async () => {
+    const timedOut = await fetch("http://127.0.0.1:9/", { signal: AbortSignal.timeout(0) }).catch(
+      (e) => e
+    );
+    expect(timedOut).toBeInstanceOf(DOMException);
+    expect(timedOut.name).toBe("TimeoutError");
+    const aborted = await fetch("http://127.0.0.1:9/", { signal: AbortSignal.abort() }).catch(
+      (e) => e
+    );
+    expect(aborted).toBeInstanceOf(DOMException);
+    expect(aborted.name).toBe("AbortError");
+  });
+
+  test("retries a Friendbot request that timed out", async () => {
+    let calls = 0;
+    await fund(source, {
+      fetch: async () => {
+        if (calls++ === 0) throw new DOMException("The operation timed out.", "TimeoutError");
+        return new Response("", { status: 200 });
+      },
+      sleep: async () => {},
+    });
+    expect(calls).toBe(2);
+  });
+
+  test("rethrows an aborted Friendbot request without retrying", async () => {
+    let calls = 0;
+    const abort = new DOMException("The operation was aborted.", "AbortError");
+    const error = await fund(source, {
+      fetch: async () => {
+        calls++;
+        throw abort;
+      },
+      sleep: async () => {},
+    }).catch((e) => e);
+    expect(error).toBe(abort);
+    expect(calls).toBe(1);
   });
 });
 
