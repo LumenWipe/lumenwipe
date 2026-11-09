@@ -1,4 +1,5 @@
 import type { AssetCode, OfferAsset } from "./catalog";
+import type { PinnedAssetId } from "./pinned";
 
 export const MESS_STEP_IDS = [
   "SETUP",
@@ -23,6 +24,9 @@ export const MESS_STEP_IDS = [
   "CLAIMABLE_BALANCES",
   "SPONSORED_ENTRIES",
   "MULTISIG",
+  "TRUST_CIRCLE_USDC",
+  "BUY_CIRCLE_USDC",
+  "SOROSWAP_DEPOSIT",
 ] as const;
 
 export type MessStepId = (typeof MESS_STEP_IDS)[number];
@@ -59,7 +63,14 @@ export type StepAction =
       dataEntry: { key: string; value: string };
       helperFundingXlm: string;
     }
-  | { kind: "multisig"; variant: MultisigVariant };
+  | { kind: "multisig"; variant: MultisigVariant }
+  /** A trustline to an asset no playground key issues, opened only once the DEX quotes the
+   *  purchase that follows (`amount` for at most `maxXlm`). */
+  | { kind: "pinned_trust"; asset: PinnedAssetId; amount: string; maxXlm: string }
+  /** Buys `amount` of a pinned asset with at most `maxXlm`, after a quote shows a route for it. */
+  | { kind: "pinned_buy"; asset: PinnedAssetId; amount: string; maxXlm: string }
+  /** Pairs the demo's USDC with XLM in the pinned Soroswap pair, through the router. */
+  | { kind: "soroswap_deposit"; usdc: string; maxXlm: string };
 
 /**
  * two_of_three: two co-signers beside the master key, any two of the three sign. hash_x: the
@@ -117,7 +128,16 @@ export interface PlannedResolution {
 
 export type StepActionKind = StepAction["kind"];
 
-export const SCENE_NODE_KINDS = ["trustline", "offer", "data", "signer"] as const;
+export const SCENE_NODE_KINDS = ["trustline", "offer", "data", "signer", "position"] as const;
+
+/** The kinds that are entries of the account itself, each holding a base reserve. A protocol
+ *  position lives in a contract's storage instead. */
+export const SUB_ENTRY_NODE_KINDS: readonly SceneNodeKind[] = [
+  "trustline",
+  "offer",
+  "data",
+  "signer",
+];
 
 export type SceneNodeKind = (typeof SCENE_NODE_KINDS)[number];
 
@@ -220,7 +240,8 @@ export type ScenarioId =
   | "dispositions"
   | "claimable-balances"
   | "sponsored-reserves"
-  | "multisig";
+  | "multisig"
+  | "soroswap-lp";
 
 export interface OrderedStep {
   /** Steps from every scenario are sorted by this key into one plan. */

@@ -24,24 +24,32 @@ import {
 import {
   expectationFromSession,
   PLAYGROUND_CLOSE_OPERATION_TYPES,
+  seededProtocols,
+  sharedExpectation,
   verifyDemolishTransaction,
   type PlaygroundCloseExpectation,
 } from "@/lib/verify";
+import {
+  PINNED_ASSETS,
+  resolvePlan,
+  SOROSWAP,
+  XLM_SAC,
+  type ScenarioSelection,
+} from "@/lib/scenarios";
 
 // The playground's structural check for a Soroban contract call (lib/verify-soroban.ts), and its
 // place in front of the shared verifier (lib/verify.ts).
 
 const demo = Keypair.random().publicKey();
 const stranger = Keypair.random().publicKey();
-const ROUTER = PINNED_SOROBAN_PROTOCOLS.soroswap.contracts[0];
+const ROUTER = PINNED_SOROBAN_PROTOCOLS.soroswap.entry[0]!;
 const contractId = (): string => StrKey.encodeContract(randomBytes(32));
-const PAIR = contractId();
-const TOKEN_A = contractId();
-const TOKEN_B = contractId();
+const PAIR = SOROSWAP.pair;
+const [TOKEN_A, TOKEN_B] = SOROSWAP.tokens;
 
 const SEEDED: SorobanExpectation = {
   demoPublic: demo,
-  seeded: [{ protocol: "soroswap", instances: [PAIR, TOKEN_A, TOKEN_B] }],
+  seeded: [{ protocol: "soroswap", variant: "lp" }],
 };
 
 const address = (a: string): xdr.ScVal => new Address(a).toScVal();
@@ -51,13 +59,23 @@ interface Removal {
   to?: string;
   aMin?: bigint;
   bMin?: bigint;
+  tokenA?: string;
+  tokenB?: string;
+  liquidity?: bigint;
 }
 
-function removalArgs({ to = demo, aMin = BigInt(5), bMin = BigInt(7) }: Removal = {}): xdr.ScVal[] {
+function removalArgs({
+  to = demo,
+  aMin = BigInt(5),
+  bMin = BigInt(7),
+  tokenA = TOKEN_A,
+  tokenB = TOKEN_B,
+  liquidity = BigInt(1000),
+}: Removal = {}): xdr.ScVal[] {
   return [
-    address(TOKEN_A),
-    address(TOKEN_B),
-    i128(BigInt(1000)),
+    address(tokenA),
+    address(tokenB),
+    i128(liquidity),
     i128(aMin),
     i128(bMin),
     address(to),
@@ -138,8 +156,34 @@ describe("assertSorobanTransaction", () => {
     expect(outcome(build(call()))).toBe("accepted");
   });
 
-  test("a contract that is neither pinned nor seeded by the session is refused", () => {
+  test("a contract the pinned row does not let a call be made to is refused", () => {
     expect(outcome(build(call({ contract: contractId() })))).toBe("soroban_contract_not_pinned");
+    // The pair is in the router's family, so the authorization may reach it, but no call is made
+    // to it directly.
+    expect(outcome(build(call({ contract: PAIR })))).toBe("soroban_contract_not_pinned");
+  });
+
+  test("the tokens named must be exactly the pinned pair's, in either order", () => {
+    const reversed = removalArgs({ tokenA: TOKEN_B, tokenB: TOKEN_A });
+    expect(outcome(build(call({ args: reversed })))).toBe("accepted");
+    expect(outcome(build(call({ args: removalArgs({ tokenB: contractId() }) })))).toBe(
+      "soroban_token_not_pinned"
+    );
+    expect(outcome(build(call({ args: removalArgs({ tokenB: TOKEN_A }) })))).toBe(
+      "soroban_token_not_pinned"
+    );
+    const account = removalArgs();
+    account[0] = address(demo);
+    expect(outcome(build(call({ args: account })))).toBe("soroban_token_not_pinned");
+  });
+
+  test("a liquidity amount that is not a positive i128 is refused", () => {
+    expect(outcome(build(call({ args: removalArgs({ liquidity: BigInt(0) }) })))).toBe(
+      "soroban_amount_not_positive"
+    );
+    const args = removalArgs();
+    args[2] = nativeToScVal(BigInt(1000), { type: "u128" });
+    expect(outcome(build(call({ args })))).toBe("soroban_amount_not_positive");
   });
 
   test("a function outside the protocol's allowlist is refused", () => {
@@ -241,13 +285,17 @@ describe("in front of the shared verifier", () => {
   const sink = Keypair.random().publicKey();
   const issuer = Keypair.random().publicKey();
 
-  function sessionExpectation(): PlaygroundCloseExpectation {
+  const SOROSWAP_LP: ScenarioSelection = { scenarios: [{ id: "soroswap-lp", params: {} }] };
+
+  function sessionExpectation(
+    selection: ScenarioSelection = { scenarios: [{ id: "lwdemo-holding", params: {} }] }
+  ): PlaygroundCloseExpectation {
     return expectationFromSession(
       {
         demoPublic: demo,
         ephemeralIssuers: [],
         recordedSigners: [],
-        selection: { scenarios: [{ id: "lwdemo-holding", params: {} }] },
+        selection,
         transferRecipient: null,
         helperAccounts: [],
         claimableBalances: [],
@@ -292,7 +340,7 @@ describe("in front of the shared verifier", () => {
     expect(PLAYGROUND_CLOSE_OPERATION_TYPES).toContain("invokeHostFunction");
   });
 
-  test("a current session seeds no protocol, so its Soroban module refuses every call", () => {
+  test("a session whose selection seeds no protocol has every call refused by its Soroban module", () => {
     const expected = sessionExpectation();
     expect(expected.sorobanSeeded).toEqual([]);
     expect(demolishOutcome(build(call()), expected)).toBe("soroban:soroban_protocol_not_seeded");
@@ -301,18 +349,121 @@ describe("in front of the shared verifier", () => {
     );
   });
 
+  test("a Soroswap liquidity session's exit passes both checks, alone in its transaction", () => {
+    const expected = sessionExpectation(SOROSWAP_LP);
+    expect(expected.sorobanSeeded).toEqual([{ protocol: "soroswap", variant: "lp" }]);
+    expect(demolishOutcome(build(call()), expected)).toBe("accepted");
+  });
+
   test("every transaction holding a contract call goes through the Soroban module first", () => {
     // Beside a merge, which the shared verifier would refuse for a reason of its own.
     const merge = Operation.accountMerge({ destination: sink });
-    expect(demolishOutcome(build(call(), merge), sessionExpectation())).toBe(
+    expect(demolishOutcome(build(call(), merge), sessionExpectation(SOROSWAP_LP))).toBe(
       "soroban:soroban_call_not_alone"
+    );
+    // A recipient the Soroban module refuses never reaches the shared verifier.
+    expect(
+      demolishOutcome(
+        build(call({ args: removalArgs({ to: stranger }) })),
+        sessionExpectation(SOROSWAP_LP)
+      )
+    ).toBe("soroban:soroban_account_argument_mismatch");
+  });
+
+  test("a call the Soroban module accepts still has to pass the shared verifier", () => {
+    // The authorization moves a share other than the one the call removes: the playground's
+    // module checks only that it stays in the router's family, the shared verifier that the router
+    // pays exactly the removed amount into its pair.
+    const auth = removalAuth(
+      invocation(PAIR, "transfer", [address(demo), address(PAIR), i128(BigInt(999))])
+    );
+    expect(outcome(build(call({ auth: [auth] })))).toBe("accepted");
+    expect(demolishOutcome(build(call({ auth: [auth] })), sessionExpectation(SOROSWAP_LP))).toBe(
+      "shared:exit_liquidity_auth_invalid"
+    );
+  });
+});
+
+describe("the shared expectation, from the selection and the pinned configuration only", () => {
+  const sink = Keypair.random().publicKey();
+  const issuer = Keypair.random().publicKey();
+  const CIRCLE = PINNED_ASSETS["circle-usdc"];
+  const lwdemoSac = new Asset("LWDEMO", issuer).contractId(Networks.TESTNET);
+
+  const expectationFor = (...ids: ("soroswap-lp" | "lwdemo-holding")[]) =>
+    expectationFromSession(
+      {
+        demoPublic: demo,
+        ephemeralIssuers: [],
+        recordedSigners: [],
+        selection: { scenarios: ids.map((id) => ({ id, params: {} })) },
+        transferRecipient: null,
+        helperAccounts: [],
+        claimableBalances: [],
+      },
+      sink,
+      issuer
+    );
+  const withPool = sharedExpectation(expectationFor("lwdemo-holding", "soroswap-lp"));
+  const without = sharedExpectation(expectationFor("lwdemo-holding"));
+
+  test("the seeded protocols come from the plan's steps", () => {
+    const steps = (ids: ScenarioSelection) => resolvePlan(ids).steps;
+    expect(seededProtocols(steps({ scenarios: [{ id: "soroswap-lp", params: {} }] }))).toEqual([
+      { protocol: "soroswap", variant: "lp" },
+    ]);
+    expect(seededProtocols(steps({ scenarios: [{ id: "lwdemo-holding", params: {} }] }))).toEqual(
+      []
     );
   });
 
-  test("a call the Soroban module accepts still has to pass the shared verifier, which refuses it today", () => {
-    // The shared expectation names no exit contract until a seeding scenario fills it (#432).
-    const expected = { ...sessionExpectation(), sorobanSeeded: [...SEEDED.seeded] };
-    expect(outcome(build(call()))).toBe("accepted");
-    expect(demolishOutcome(build(call()), expected)).toBe("shared:exit_contract_not_position");
+  test("the pinned asset is one of the session's assets, with its fixed issuer", () => {
+    expect(expectationFor("soroswap-lp").assets).toEqual([
+      { code: CIRCLE.code, issuer: CIRCLE.issuer },
+    ]);
+    expect(expectationFor("lwdemo-holding").assets).toEqual([{ code: "LWDEMO", issuer }]);
+  });
+
+  test("exitContracts: the router and the pair, only when the selection seeds the pool", () => {
+    expect(withPool.exitContracts).toEqual([SOROSWAP.router, SOROSWAP.pair]);
+    expect(without.exitContracts).toEqual([]);
+  });
+
+  test("exitFunctions: the router's removal, and none on the pair", () => {
+    expect(withPool.exitFunctions).toEqual({
+      [SOROSWAP.router]: ["remove_liquidity"],
+      [SOROSWAP.pair]: [],
+    });
+    expect(without.exitFunctions).toEqual({});
+  });
+
+  test("positionTokenContracts: the pair's two tokens", () => {
+    expect(withPool.positionTokenContracts).toEqual([CIRCLE.contract, XLM_SAC]);
+    expect(without.positionTokenContracts).toEqual([]);
+  });
+
+  test("ownTokensByContract: the pair's tokens, keyed by the pair", () => {
+    expect(withPool.ownTokensByContract).toEqual({ [SOROSWAP.pair]: [CIRCLE.contract, XLM_SAC] });
+    expect(without.ownTokensByContract).toEqual({});
+  });
+
+  test("heldTokenContracts: XLM and the contract of every asset the session holds", () => {
+    expect(withPool.heldTokenContracts).toEqual([XLM_SAC, lwdemoSac, CIRCLE.contract]);
+    expect(without.heldTokenContracts).toEqual([XLM_SAC, lwdemoSac]);
+  });
+
+  test("protectedTokenContracts: the same list, so a spend of any is held to a repay", () => {
+    expect(withPool.protectedTokenContracts).toEqual(withPool.heldTokenContracts);
+    expect(without.protectedTokenContracts).toEqual(without.heldTokenContracts);
+  });
+
+  test("the fields no seeded protocol uses stay empty, and the registry is the bundled one", () => {
+    for (const shared of [withPool, without]) {
+      expect(shared.shareTokenContracts).toEqual([]);
+      expect(shared.debtTokenContracts).toEqual([]);
+      expect(shared.repayTokensByPool).toEqual({});
+      expect(shared.registryContracts).toContain(SOROSWAP.router);
+      expect(shared.registryContracts).not.toContain(SOROSWAP.pair);
+    }
   });
 });

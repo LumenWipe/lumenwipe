@@ -6,6 +6,7 @@ import {
   type SceneAction,
 } from "@/lib/scene-actions";
 import type { IntentOperation } from "@lumenwipe/sdk";
+import { PINNED_ASSETS, SOROSWAP } from "@/lib/scenarios";
 
 const SOURCE = "GDEMO";
 const live = (...ids: string[]): LiveNode[] => ids.map((id) => ({ id }));
@@ -163,4 +164,35 @@ test("a removed signer destroys a node of its own type, one per removal", () => 
   expect(
     operationToSceneAction(setOptions({ key: "K", weight: 0, type: "hash_x" }), live())
   ).toBeNull();
+});
+
+describe("the Soroswap position and its pinned asset", () => {
+  const circle = `${PINNED_ASSETS["circle-usdc"].code}:${PINNED_ASSETS["circle-usdc"].issuer}`;
+  const scene = live("tl:circle-usdc", "tl:USDC", "lp:soroswap");
+
+  test("the exit through the router empties the pool's node, and nothing else does", () => {
+    const exit = { ...SAMPLES.invoke_host_function, contract: SOROSWAP.router };
+    expect(operationToSceneAction({ ...exit, function: "remove_liquidity" }, scene)).toEqual({
+      type: "destroy",
+      nodeIds: ["lp:soroswap"],
+    });
+    expect(
+      operationToSceneAction({ ...exit, function: "swap_exact_tokens_for_tokens" }, scene)
+    ).toBeNull();
+    const elsewhere = { ...exit, contract: SOROSWAP.pair, function: "remove_liquidity" };
+    expect(operationToSceneAction(elsewhere, scene)).toBeNull();
+  });
+
+  test("Circle's USDC has its own node, apart from the playground's USDC", () => {
+    const removal = { ...SAMPLES.change_trust, asset: circle };
+    expect(operationToSceneAction(removal, scene)).toEqual({
+      type: "destroy",
+      nodeIds: ["tl:circle-usdc"],
+    });
+    const playground = { ...SAMPLES.change_trust, asset: "USDC:GEPHEMERAL" };
+    expect(operationToSceneAction(playground, scene)).toEqual({
+      type: "destroy",
+      nodeIds: ["tl:USDC"],
+    });
+  });
 });

@@ -6,7 +6,9 @@ import {
   MAX_SESSION_XLM,
   MAX_SOROBAN_TRANSACTIONS,
   MAX_SUB_ENTRIES,
+  FULL_SELECTION,
   SCENARIOS,
+  STANDARD_SELECTION,
   parseSelection,
   resolvePlan,
   validateSelection,
@@ -17,6 +19,25 @@ import {
 } from "@/lib/scenarios";
 
 const pick = (...scenarios: ScenarioSelection["scenarios"]): ScenarioSelection => ({ scenarios });
+
+/** A scenario with every parameter at its minimum or its maximum. */
+const at = (def: ScenarioDefinition, end: "min" | "max") => ({
+  id: def.id,
+  params: Object.fromEntries(Object.entries(def.params).map(([n, s]) => [n, s[end]])),
+});
+
+/** Every way to keep `size` of `count` indexes, from `from` on. */
+const subsets = (count: number, from: number, size: number): number[][] =>
+  size === 0
+    ? [[]]
+    : Array.from({ length: count - from }, (_, i) => from + i).flatMap((first) =>
+        subsets(count, first + 1, size - 1).map((rest) => [first, ...rest])
+      );
+
+/** Largest selections (eight scenarios at their maximum) that fit every rule and cap, and those
+ *  the XLM cap refuses. Pinned so a cost change shows up here. */
+const FITTED_AT_MAX = 63;
+const OVER_XLM_AT_MAX = 17;
 
 function messageOf(selection: ScenarioSelection, registry?: readonly ScenarioDefinition[]): string {
   const result = validateSelection(selection, { registry });
@@ -138,31 +159,56 @@ describe("the safety caps", () => {
   });
 
   test("the largest real selections stay inside every cap", () => {
-    const atMax = SCENARIOS.map((def) => ({
-      id: def.id,
-      params: Object.fromEntries(Object.entries(def.params).map(([n, s]) => [n, s.max])),
-    }));
+    const atMax = SCENARIOS.map((def) => at(def, "max"));
     // Every scenario at once is more than a demo may hold; each largest selection that fits the
     // scenario cap, every scenario at its maximum, stays inside all the others.
     expect(atMax.length).toBeGreaterThan(MAX_SCENARIOS);
     expect(messageOf(pick(...atMax))).toBe(
       `A demo can include at most ${MAX_SCENARIOS} scenarios.`
     );
-    // Leaving out a token holding leaves five stale offers without the tokens they trade, which
-    // is refused for that reason and no cap.
-    const subsets = (from: number, size: number): number[][] =>
-      size === 0
-        ? [[]]
-        : Array.from({ length: atMax.length - from }, (_, i) => from + i).flatMap((first) =>
-            subsets(first + 1, size - 1).map((rest) => [first, ...rest])
-          );
+    // Leaving out a token holding leaves five stale offers without the tokens they trade, or
+    // without any token at all, which is refused for that reason. The only cap any of them reaches
+    // is the XLM one, and only with the Soroswap pool beside seven of the costliest classic
+    // scenarios.
     let fitted = 0;
-    for (const kept of subsets(0, MAX_SCENARIOS)) {
-      const result = validateSelection(pick(...kept.map((i) => atMax[i]!)));
+    let overXlm = 0;
+    for (const kept of subsets(atMax.length, 0, MAX_SCENARIOS)) {
+      const chosen = kept.map((i) => atMax[i]!);
+      const result = validateSelection(pick(...chosen));
       if (result.ok) fitted++;
-      else expect(result.message).toStartWith("Stale DEX offers can post at most");
+      else if (result.message.startsWith("This selection needs about")) {
+        overXlm++;
+        expect(chosen.map((c) => c.id)).toContain("soroswap-lp");
+        expect(result.message).toEndWith(`a demo can use at most ${MAX_SESSION_XLM}.`);
+      } else expect(result.message).toStartWith("Stale DEX offers ");
     }
-    expect(fitted).toBe(24);
+    expect({ fitted, overXlm }).toEqual({ fitted: FITTED_AT_MAX, overXlm: OVER_XLM_AT_MAX });
+  });
+
+  test("every selection the validator accepts is funded within the XLM cap", () => {
+    for (let size = 1; size <= MAX_SCENARIOS; size++) {
+      for (const kept of subsets(SCENARIOS.length, 0, size)) {
+        for (const end of ["min", "max"] as const) {
+          const result = validateSelection(pick(...kept.map((i) => at(SCENARIOS[i]!, end))));
+          if (result.ok) expect(result.plan.cost.xlm).toBeLessThanOrEqual(MAX_SESSION_XLM);
+        }
+      }
+    }
+  });
+
+  test("the Soroswap pool fits beside any other scenario, and beside each classic preset", () => {
+    const soroswap = { id: "soroswap-lp" as const, params: {} };
+    for (const def of SCENARIOS.filter((d) => d.id !== "soroswap-lp")) {
+      const result = validateSelection(pick(soroswap, at(def, "max")));
+      // Only a scenario that needs another beside it may refuse the pair, and for that reason.
+      if (!result.ok) {
+        expect(def.requiresAnyOf.length).toBeGreaterThan(0);
+        expect(result.message).toContain("needs one of these as well");
+      }
+    }
+    for (const preset of [STANDARD_SELECTION, FULL_SELECTION]) {
+      expect(validateSelection(pick(soroswap, ...preset.scenarios)).ok).toBe(true);
+    }
   });
 });
 

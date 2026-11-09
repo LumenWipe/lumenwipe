@@ -464,13 +464,19 @@ describe("the scenario picker", () => {
 
     test("a feature set with nothing to run says so and cannot be chosen", () => {
       rtl.render(<ScenarioPicker />);
-      const protocol = button(/Protocol exits/);
-      expect(protocol.getAttribute("aria-disabled")).toBe("true");
-      expect(protocol.textContent).toContain(
-        "No scenarios in this set run on this deployment yet."
-      );
-      rtl.fireEvent.click(protocol);
+      const api = button(/API, batch and exchange/);
+      expect(api.getAttribute("aria-disabled")).toBe("true");
+      expect(api.textContent).toContain("No scenarios in this set run on this deployment yet.");
+      rtl.fireEvent.click(api);
       expect(button(/Classic account teardown/).getAttribute("aria-pressed")).toBe("true");
+    });
+
+    test("a protocol scenario testnet cannot run is listed with its reason, never as a toggle", () => {
+      rtl.render(<ScenarioPicker />);
+      const reason = rtl.screen.getByText(/^Not on testnet: converting a Soroban token/);
+      expect(reason.closest("button")).toBeNull();
+      expect(rtl.screen.getByText("Soroban token conversion").closest("button")).toBeNull();
+      expect(rtl.screen.queryByRole("button", { name: /Soroban token conversion/ })).toBeNull();
     });
 
     test("a random wallet shows its replay code before anything runs", () => {

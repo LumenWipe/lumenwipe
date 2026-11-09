@@ -27,6 +27,7 @@ import {
   type AssetCode,
   type OfferAsset,
 } from "./catalog";
+import { PINNED_ASSETS, SOROSWAP_SEED } from "./pinned";
 import {
   DISPOSITION_CHOICES,
   type AssetDisposition,
@@ -56,6 +57,8 @@ export const ORDER = {
   offers: 40,
   claims: 50,
   sponsorships: 60,
+  /** Protocol positions, after every trustline and balance they are built from. */
+  protocol: 70,
   signers: 90,
   /** Last: once the thresholds are raised the master key alone cannot sign another step. */
   multisig: 95,
@@ -825,6 +828,113 @@ const multisig: ScenarioDefinition = {
   },
 };
 
+/** The most a Soroban call may pay, in XLM (lib/soroban-submit.ts `MAX_SOROBAN_FEE_STROOPS`). */
+const SOROBAN_FEE_CAP_XLM = 1;
+/** A Soroban step simulates, sends and waits for its ledger: slower than a classic one. */
+const SOROBAN_STEP_SECONDS = 10;
+
+const CIRCLE_USDC = PINNED_ASSETS["circle-usdc"];
+const circleUsdcNode = "tl:circle-usdc";
+
+const soroswapLp: ScenarioDefinition = {
+  id: "soroswap-lp",
+  featureSet: "protocol",
+  label: "Soroswap liquidity",
+  description:
+    "Circle's test USDC bought on the DEX and paired with XLM in a real Soroswap pool. The close withdraws it before the merge.",
+  params: {},
+  heldAssets: () => [],
+  requiresAnyOf: [],
+  conflicts: [],
+  build: () => {
+    const steps: OrderedStep[] = [
+      {
+        order: ORDER.trust + 9,
+        step: {
+          id: "TRUST_CIRCLE_USDC",
+          label: `Open ${CIRCLE_USDC.label} trustline`,
+          nodes: [{ id: circleUsdcNode, kind: "trustline", label: CIRCLE_USDC.label }],
+          balances: [],
+          action: {
+            kind: "pinned_trust",
+            asset: "circle-usdc",
+            amount: SOROSWAP_SEED.usdc,
+            maxXlm: SOROSWAP_SEED.buyMaxXlm,
+          },
+        },
+      },
+      {
+        order: ORDER.fund + 9,
+        step: {
+          id: "BUY_CIRCLE_USDC",
+          label: `Buy ${SOROSWAP_SEED.usdc} ${CIRCLE_USDC.label} with XLM on the DEX`,
+          nodes: [],
+          balances: [{ nodeId: circleUsdcNode, balance: SOROSWAP_SEED.usdc }],
+          action: {
+            kind: "pinned_buy",
+            asset: "circle-usdc",
+            amount: SOROSWAP_SEED.usdc,
+            maxXlm: SOROSWAP_SEED.buyMaxXlm,
+          },
+        },
+      },
+      {
+        order: ORDER.protocol,
+        step: {
+          id: "SOROSWAP_DEPOSIT",
+          label: "Add USDC and XLM to the Soroswap pool",
+          nodes: [{ id: "lp:soroswap", kind: "position", label: "Soroswap USDC/XLM" }],
+          balances: [{ nodeId: circleUsdcNode, balance: "0" }],
+          action: {
+            kind: "soroswap_deposit",
+            usdc: SOROSWAP_SEED.usdc,
+            maxXlm: SOROSWAP_SEED.depositMaxXlm,
+          },
+        },
+      },
+    ];
+    return {
+      ok: true,
+      build: {
+        steps,
+        ephemeralAssets: [],
+        expectation: {
+          // The pinned asset is not a playground code: the verifier adds it from the plan's steps.
+          assets: [],
+          offers: 0,
+          dataEntries: 0,
+          signers: 0,
+          // The USDC the exit pays back returns to its issuer, then its trustline goes.
+          closeOperations: 2,
+          operationTypes: ["payment", "changeTrust", "invokeHostFunction"],
+          dispositions: [],
+          arrivingAssets: [],
+          sponsoredEntries: [],
+          resolutions: [],
+        },
+        cost: {
+          // The trustline's reserve, the purchase, the XLM the deposit locks until the exit pays it
+          // back, and the fee ceiling of the deposit and of the exit.
+          xlm:
+            BASE_RESERVE_XLM +
+            Number(SOROSWAP_SEED.buyMaxXlm) +
+            Number(SOROSWAP_SEED.depositMaxXlm) +
+            2 * SOROBAN_FEE_CAP_XLM,
+          classicTransactions: 2,
+          sorobanTransactions: 1,
+          seconds:
+            2 * MESS_STEP_SECONDS +
+            SOROBAN_STEP_SECONDS +
+            CLOSE_GROUP_SECONDS +
+            SOROBAN_STEP_SECONDS,
+          batchSize: 1,
+          subEntries: 1,
+        },
+      },
+    };
+  },
+};
+
 /** Every scenario, in the order a selection lists them. */
 export const SCENARIOS: readonly ScenarioDefinition[] = [
   lwdemoHolding,
@@ -837,4 +947,5 @@ export const SCENARIOS: readonly ScenarioDefinition[] = [
   claimableBalances,
   sponsoredReserves,
   multisig,
+  soroswapLp,
 ];

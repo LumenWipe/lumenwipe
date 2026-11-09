@@ -6,7 +6,7 @@ import OrbitalNode from "./OrbitalNode";
 import CoreAccount from "./CoreAccount";
 
 // Matches the radii in hooks/usePlaygroundExecution.ts's RING map - keep in sync.
-const RING_FRACTIONS = [150 / 280, 180 / 280, 210 / 280, 240 / 280];
+const RING_FRACTIONS = [150 / 280, 180 / 280, 210 / 280, 240 / 280, 265 / 280];
 
 export default function OrbitalScene() {
   const nodes = usePlaygroundStore((s) => s.nodes);

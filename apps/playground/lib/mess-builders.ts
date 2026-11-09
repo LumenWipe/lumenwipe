@@ -2,6 +2,7 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import {
   Account,
+  Address,
   Asset,
   Claimant,
   Keypair,
@@ -9,6 +10,7 @@ import {
   StrKey,
   TransactionBuilder,
   hash,
+  nativeToScVal,
   type Transaction,
   type xdr,
 } from "@stellar/stellar-sdk";
@@ -20,7 +22,8 @@ import {
   TxSubmitError,
   type NativeBalance,
 } from "./horizon-submit";
-import { formatStroops, networkStroops } from "./stroops";
+import { seedContractCall, type ContractCall } from "./soroban-seed";
+import { formatStroops, networkStroops, parseStroops } from "./stroops";
 import { standingLiquidityOps, type HorizonBalance, type HorizonOffer } from "./standing-liquidity";
 import type { SignerType } from "./session-store";
 import {
@@ -28,6 +31,8 @@ import {
   MULTISIG_THRESHOLD,
   TIME_GATE_SECONDS,
   SPONSORED_OFFER,
+  PINNED_ASSETS,
+  SOROSWAP,
   isPersistentAsset,
   type AssetCode,
   type ClaimIntent,
@@ -36,6 +41,7 @@ import {
   type MultisigVariant,
   type ResolutionKind,
   type OfferAsset,
+  type PinnedAssetId,
   type StepAction,
   type StepActionKind,
 } from "./scenarios";
@@ -137,6 +143,28 @@ export interface BuildSignSubmitDeps {
   loadNativeBalance?: (address: string) => Promise<NativeBalance>;
   submit?: (signedXdr: string) => Promise<{ txHash: string }>;
   sleep?: (ms: number) => Promise<void>;
+  /** The cheapest route the testnet DEX quotes for buying `amount` of `asset` with XLM. */
+  quoteBuy?: (asset: Asset, amount: string) => Promise<BuyQuote | null>;
+  /** Makes one contract call as `source` and waits for it (lib/soroban-seed.ts). */
+  contractCall?: (source: Keypair, call: ContractCall) => Promise<{ txHash: string }>;
+  now?: () => number;
+}
+
+/** A strict-receive route: the XLM it spends and the assets it crosses on the way. */
+export interface BuyQuote {
+  sourceAmount: string;
+  path: Asset[];
+}
+
+/**
+ * The testnet DEX cannot sell a pinned asset for what the scenario allows. Thrown before anything
+ * is signed for the step, and shown to the visitor in plain language (lib/error-copy.ts).
+ */
+export class LiquidityUnavailableError extends Error {
+  constructor(readonly asset: PinnedAssetId) {
+    super(`No testnet route sells ${asset} for XLM within the scenario's ceiling`);
+    this.name = "LiquidityUnavailableError";
+  }
 }
 
 export async function buildSignSubmit(
@@ -192,6 +220,97 @@ async function horizonJson<T>(path: string): Promise<T> {
   });
   if (!res.ok) throw new Error(`Horizon read failed (${res.status})`);
   return (await res.json()) as T;
+}
+
+interface HorizonPathRecord {
+  source_amount: string;
+  path: { asset_type: string; asset_code?: string; asset_issuer?: string }[];
+}
+
+const pathAsset = (p: HorizonPathRecord["path"][number]): Asset =>
+  p.asset_type === "native" ? Asset.native() : new Asset(p.asset_code!, p.asset_issuer);
+
+/** Horizon's cheapest strict-receive route from XLM to `amount` of `asset`, or null for none. */
+export async function quoteBuyOnHorizon(asset: Asset, amount: string): Promise<BuyQuote | null> {
+  const query = new URLSearchParams({
+    source_assets: "native",
+    destination_asset_type: asset.getAssetType(),
+    destination_asset_code: asset.getCode(),
+    destination_asset_issuer: asset.getIssuer() ?? "",
+    destination_amount: amount,
+  });
+  const body = await horizonJson<{ _embedded: { records: HorizonPathRecord[] } }>(
+    `/paths/strict-receive?${query.toString()}`
+  );
+  let best: BuyQuote | null = null;
+  for (const record of body._embedded.records) {
+    const cost = parseStroops(record.source_amount);
+    if (cost === null) continue;
+    if (best === null || cost < networkStroops(best.sourceAmount)) {
+      best = { sourceAmount: record.source_amount, path: record.path.map(pathAsset) };
+    }
+  }
+  return best;
+}
+
+/**
+ * The route a pinned asset is bought by, refused unless the DEX quotes one within `maxXlm`. Run
+ * before the trustline is opened as well as before the purchase, so no key signs anything for a
+ * scenario the testnet market cannot serve.
+ */
+export async function buyRoute(
+  id: PinnedAssetId,
+  amount: string,
+  maxXlm: string,
+  deps: Pick<BuildSignSubmitDeps, "quoteBuy">
+): Promise<BuyQuote> {
+  const quoteBuy = deps.quoteBuy ?? quoteBuyOnHorizon;
+  const quote = await quoteBuy(pinnedAsset(id), amount);
+  if (quote === null || networkStroops(quote.sourceAmount) > networkStroops(maxXlm)) {
+    throw new LiquidityUnavailableError(id);
+  }
+  return quote;
+}
+
+function pinnedAsset(id: PinnedAssetId): Asset {
+  const { code, issuer } = PINNED_ASSETS[id];
+  return new Asset(code, issuer);
+}
+
+/** How long a seeding call's deadline gives the router, in seconds. */
+const DEPOSIT_DEADLINE_SECONDS = 300;
+
+const scAddress = (address: string): xdr.ScVal => new Address(address).toScVal();
+const scI128 = (stroops: bigint): xdr.ScVal => nativeToScVal(stroops, { type: "i128" });
+
+/**
+ * The router call that pairs the demo's USDC with XLM: `add_liquidity(token_a, token_b,
+ * amount_a_desired, amount_b_desired, amount_a_min, amount_b_min, to, deadline)`, in the pair's
+ * own token order. The router takes all the USDC and only the XLM the pool's price needs, or the
+ * other way round if the price moved, so the minimums are one stroop: this is the demo's own
+ * deposit, and the exit's floors are what protect what comes back.
+ */
+export function soroswapDepositCall(
+  demoPublic: string,
+  usdc: string,
+  maxXlm: string,
+  nowMs: number
+): ContractCall {
+  const [usdcToken, xlmToken] = SOROSWAP.tokens;
+  return {
+    contract: SOROSWAP.router,
+    function: "add_liquidity",
+    args: [
+      scAddress(usdcToken),
+      scAddress(xlmToken),
+      scI128(networkStroops(usdc)),
+      scI128(networkStroops(maxXlm)),
+      scI128(BigInt(1)),
+      scI128(BigInt(1)),
+      scAddress(demoPublic),
+      nativeToScVal(BigInt(Math.floor(nowMs / 1000) + DEPOSIT_DEADLINE_SECONDS), { type: "u64" }),
+    ],
+  };
 }
 
 /** Posts or refills the market maker's standing offers; a no-op when they are all in place. */
@@ -353,6 +472,31 @@ export const MESS_EXECUTORS: { [K in StepActionKind]: Executor<K> } = {
       )
     ),
   add_signer: (_action, ctx, _submit, deps) => addForgottenSigner(ctx, deps),
+  pinned_trust: async (action, ctx, submit, deps) => {
+    await buyRoute(action.asset, action.amount, action.maxXlm, deps);
+    return submit(ctx.demo, [Operation.changeTrust({ asset: pinnedAsset(action.asset) })]);
+  },
+  pinned_buy: async (action, ctx, submit, deps) => {
+    const route = await buyRoute(action.asset, action.amount, action.maxXlm, deps);
+    return submit(ctx.demo, [
+      Operation.pathPaymentStrictReceive({
+        sendAsset: Asset.native(),
+        // The ceiling, not the quote: the price may move between the two, and the ceiling is the
+        // most the scenario agreed to spend.
+        sendMax: action.maxXlm,
+        destination: ctx.demo.publicKey(),
+        destAsset: pinnedAsset(action.asset),
+        destAmount: action.amount,
+        path: route.path,
+      }),
+    ]);
+  },
+  soroswap_deposit: async (action, ctx, _submit, deps) => {
+    const contractCall = deps.contractCall ?? seedContractCall;
+    const now = deps.now ?? Date.now;
+    const deposit = soroswapDepositCall(ctx.demo.publicKey(), action.usdc, action.maxXlm, now());
+    return (await contractCall(ctx.demo, deposit)).txHash;
+  },
   // Every signer is recorded before the transaction that adds it is sent. The thresholds rise in
   // the same transaction, which the master key alone still authorizes: signatures are checked
   // against the account as it was before any of its operations applies.

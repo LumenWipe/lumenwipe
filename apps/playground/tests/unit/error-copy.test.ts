@@ -10,6 +10,7 @@ const CODES = [
   "playground_busy",
   "rate_limited",
   "tx_failed",
+  "testnet_liquidity_unavailable",
   "demolish_failed",
   "demolish_outcome_unknown",
   "demolish_decision_unanswerable",

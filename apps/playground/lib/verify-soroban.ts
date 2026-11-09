@@ -1,5 +1,6 @@
 import "server-only";
 import { Address, scValToNative, Transaction, xdr } from "@stellar/stellar-sdk";
+import { SOROSWAP } from "./scenarios";
 
 // The structural check for a Soroban contract call in a playground close.
 //
@@ -11,14 +12,18 @@ import { Address, scValToNative, Transaction, xdr } from "@stellar/stellar-sdk";
 //
 // - the call is the transaction's only operation, it calls a contract function (never create or
 //   upload a contract), and it acts as the demo;
-// - the contract is pinned for its protocol below, or is an instance the session itself seeded for
-//   that protocol, and the protocol is one the session seeded at all;
+// - the contract is one the protocol's pinned row lets a call be made to, and the protocol is one
+//   the session's selection seeds;
 // - the function is in that protocol's allowlist, with exactly the arguments the protocol's exit
-//   uses: every argument that names the account paid or acted for equals the demo, and every
-//   minimum-out is greater than zero;
+//   uses: every argument that names the account paid or acted for equals the demo, every
+//   minimum-out and every amount moved is greater than zero, and the tokens named are exactly the
+//   pinned pool's;
 // - every authorization entry is satisfied by the transaction's own signature (source-account
 //   credentials, never a separate address signature), and every invocation in its tree stays in
-//   the protocol's family: its pinned contracts and the session's instances.
+//   the protocol's family: the contracts its row pins, the call targets and the pool or pair.
+//
+// Every contract is a pinned public testnet instance (lib/scenarios/pinned.ts): a session never
+// creates one, so there is nothing per session to record beyond which protocols it seeded.
 
 export class SorobanVerificationError extends Error {
   constructor(message: string) {
@@ -29,11 +34,8 @@ export class SorobanVerificationError extends Error {
 
 export type SorobanProtocol = "soroswap";
 
-/** A protocol the session seeded on testnet, with the contract instances it created for it. */
-export interface SeededProtocol {
-  protocol: SorobanProtocol;
-  instances: readonly string[];
-}
+/** A protocol the session's selection seeds on testnet, and the variant of its position. */
+export type SeededProtocol = { protocol: "soroswap"; variant: "lp" };
 
 /** What a session's Soroban calls may do: everything here comes from the session record. */
 export interface SorobanExpectation {
@@ -48,41 +50,57 @@ interface FunctionRule {
   accountArgs: readonly number[];
   /** Positions of minimum-out amounts: each must be an i128 greater than zero. */
   minOutArgs: readonly number[];
+  /** Positions of the amount the call moves: each must be an i128 greater than zero. */
+  positiveArgs: readonly number[];
+  /** Positions that must name, between them, exactly these token contracts, each once. */
+  tokenArgs: { at: readonly number[]; tokens: readonly string[] } | null;
 }
 
 interface ProtocolPins {
-  contracts: readonly string[];
+  /** The contracts a call may be made to. */
+  entry: readonly string[];
+  /** The other contracts its authorization tree may reach, such as the pool or pair. */
+  family: readonly string[];
   functions: Readonly<Record<string, FunctionRule>>;
 }
 
 /**
- * Testnet contracts restated, not imported, from apps/api/src/config/contract-registry.json (the
- * playground never imports apps/api). A row is added only with the protocol's seeding scenario.
+ * One row per protocol, from lib/scenarios/pinned.ts, added only with the protocol's seeding
+ * scenario.
  *
- * Soroswap: the router (registry entry `soroswap` / `router`, version v1). Its exit is the call
- * apps/api/src/lib/defi-exits/soroswap.ts builds:
- * `remove_liquidity(token_a, token_b, liquidity, amount_a_min, amount_b_min, to, deadline)`.
+ * Soroswap: the router (registry entry `soroswap` / `router`, version v1) and the Circle-USDC/XLM
+ * pair the scenario deposits in. Its exit is the call apps/api/src/lib/defi-exits/soroswap.ts
+ * builds: `remove_liquidity(token_a, token_b, liquidity, amount_a_min, amount_b_min, to,
+ * deadline)`, which authorizes moving the LP share from the demo into the pair, and nothing else.
  */
 export const PINNED_SOROBAN_PROTOCOLS: Readonly<Record<SorobanProtocol, ProtocolPins>> = {
   soroswap: {
-    contracts: ["CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"],
+    entry: [SOROSWAP.router],
+    family: [SOROSWAP.pair],
     functions: {
-      remove_liquidity: { arity: 7, accountArgs: [5], minOutArgs: [3, 4] },
+      remove_liquidity: {
+        arity: 7,
+        accountArgs: [5],
+        minOutArgs: [3, 4],
+        positiveArgs: [2],
+        tokenArgs: { at: [0, 1], tokens: SOROSWAP.tokens },
+      },
     },
   },
 };
 
 const PROTOCOLS = Object.keys(PINNED_SOROBAN_PROTOCOLS) as SorobanProtocol[];
 
-/** The protocol a contract belongs to, by the pinned table first, then the session's instances. */
-function protocolOf(contract: string, expected: SorobanExpectation): SorobanProtocol | null {
-  const pinned = PROTOCOLS.find((p) => PINNED_SOROBAN_PROTOCOLS[p].contracts.includes(contract));
-  if (pinned) return pinned;
-  return expected.seeded.find((s) => s.instances.includes(contract))?.protocol ?? null;
+/** The protocol a call to `contract` belongs to: the one whose row lets a call be made to it. */
+function protocolOf(contract: string): SorobanProtocol | null {
+  return PROTOCOLS.find((p) => PINNED_SOROBAN_PROTOCOLS[p].entry.includes(contract)) ?? null;
 }
 
 const addressOf = (val: xdr.ScVal | undefined): string | null =>
   val?.type === "scvAddress" ? Address.fromScAddress(val.address).toString() : null;
+
+const isPositiveI128 = (val: xdr.ScVal | undefined): boolean =>
+  val?.type === "scvI128" && (scValToNative(val) as bigint) > BigInt(0);
 
 function assertAuthTree(
   invocation: xdr.SorobanAuthorizedInvocation,
@@ -113,10 +131,11 @@ export function assertSorobanTransaction(tx: Transaction, expected: SorobanExpec
   const call = op.func.invokeContract;
   const contract = Address.fromScAddress(call.contractAddress).toString();
 
-  const protocol = protocolOf(contract, expected);
+  const protocol = protocolOf(contract);
   if (!protocol) throw new SorobanVerificationError("soroban_contract_not_pinned");
-  const seeded = expected.seeded.find((s) => s.protocol === protocol);
-  if (!seeded) throw new SorobanVerificationError("soroban_protocol_not_seeded");
+  if (!expected.seeded.some((s) => s.protocol === protocol)) {
+    throw new SorobanVerificationError("soroban_protocol_not_seeded");
+  }
   const pins = PINNED_SOROBAN_PROTOCOLS[protocol];
 
   const name = call.functionName.toString();
@@ -132,13 +151,25 @@ export function assertSorobanTransaction(tx: Transaction, expected: SorobanExpec
     }
   }
   for (const i of rule.minOutArgs) {
-    const arg = args[i];
-    if (arg?.type !== "scvI128" || !((scValToNative(arg) as bigint) > BigInt(0))) {
+    if (!isPositiveI128(args[i]))
       throw new SorobanVerificationError("soroban_min_out_not_positive");
+  }
+  for (const i of rule.positiveArgs) {
+    if (!isPositiveI128(args[i])) throw new SorobanVerificationError("soroban_amount_not_positive");
+  }
+  if (rule.tokenArgs) {
+    const named = rule.tokenArgs.at.map((i) => addressOf(args[i]));
+    const { tokens } = rule.tokenArgs;
+    if (
+      new Set(named).size !== named.length ||
+      named.length !== tokens.length ||
+      !named.every((t) => t !== null && tokens.includes(t))
+    ) {
+      throw new SorobanVerificationError("soroban_token_not_pinned");
     }
   }
 
-  const family = new Set([...pins.contracts, ...seeded.instances]);
+  const family = new Set([...pins.entry, ...pins.family]);
   for (const entry of op.auth ?? []) {
     if (entry.credentials.type !== "sorobanCredentialsSourceAccount") {
       throw new SorobanVerificationError("soroban_auth_credentials_not_source");

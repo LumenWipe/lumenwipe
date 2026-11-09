@@ -7,6 +7,7 @@ import {
   FEATURE_SETS,
   NO_SCENARIOS_REASON,
   SCENARIOS,
+  TESTNET_UNAVAILABLE,
   encodeSelection,
   formatReplayCode,
   generateRandomSelection,
@@ -350,6 +351,18 @@ export default function ScenarioPicker() {
                 </div>
               );
             })}
+            {TESTNET_UNAVAILABLE.filter((u) => u.featureSet === set.id).map((u, i) => (
+              // Not a toggle: nothing here can be picked, so it is text, not a disabled button.
+              <div
+                key={u.label}
+                className="rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 opacity-50"
+              >
+                <p className="text-xs text-white/60">{u.label}</p>
+                <p id={`testnet-unavailable-${set.id}-${i}`} className="text-[10px] text-value">
+                  {u.reason}
+                </p>
+              </div>
+            ))}
           </fieldset>
         );
       })}

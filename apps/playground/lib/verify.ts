@@ -4,6 +4,7 @@ import {
   exitExpectations,
   verifyCloseTransaction,
   type CloseExpectationInput,
+  type ExitExpectations,
   type TransferChoice,
 } from "@lumenwipe/verify";
 import type { CloseTransaction } from "@lumenwipe/sdk";
@@ -11,8 +12,11 @@ import {
   conversionFloorStroops,
   isPersistentAsset,
   MULTISIG_THRESHOLD,
+  PINNED_ASSETS,
   resolvePlan,
+  SOROSWAP,
   type CloseOperationType,
+  type MessStepDef,
 } from "./scenarios";
 import type { PlaygroundSession, SignerType } from "./session-store";
 import { parseStroops } from "./stroops";
@@ -37,9 +41,11 @@ import { assertSorobanTransaction, type SeededProtocol } from "./verify-soroban"
 // - a sponsorship may only be revoked on an entry the session recorded the demo sponsoring, and a
 //   claimable balance's sponsorship never;
 // - a Soroban contract call must first pass lib/verify-soroban.ts, which pins it to a protocol
-//   the session seeded, that protocol's contracts and the session's own instances of it, and the
-//   protocol's exit function with the demo as its recipient; no scenario seeds a protocol yet;
-// - no DeFi exit was chosen, so each of those is refused by the shared verifier as well.
+//   the session's selection seeds, that protocol's pinned contracts, and its exit function with
+//   the demo as its recipient; the shared verifier then holds it to the same protocol's exit
+//   contracts, functions and tokens, filled from the selection and lib/scenarios/pinned.ts (the
+//   way the web fills them from the account read the user reviewed), so both must pass. An exit
+//   is a transaction of its own, never beside the merge.
 //
 // The shared verifier holds a transfer to a floor; the playground also holds a transfer and a
 // conversion to at most the amount the mess paid in, so the two together pin a transfer exactly.
@@ -146,7 +152,7 @@ export interface PlaygroundCloseExpectation {
   /** Balances the demo can claim only after the session, answered `forfeit`. */
   forfeits: string[];
   sponsoredEntries: PlaygroundSponsoredEntry[];
-  /** The Soroban protocols the session seeded, with their instances; a call to any other is refused. */
+  /** The Soroban protocols the session's selection seeds; a call to any other is refused. */
   sorobanSeeded: SeededProtocol[];
 }
 
@@ -172,6 +178,12 @@ export function expectationFromSession(
 ): PlaygroundCloseExpectation {
   const plan = resolvePlan(session.selection);
   const planned = plan.expectation;
+  // A pinned asset's trustline is opened by its own step; its issuer is fixed configuration.
+  const pinnedAssets = plan.steps.flatMap((s): SessionAsset[] =>
+    s.action.kind === "pinned_trust"
+      ? [{ code: PINNED_ASSETS[s.action.asset].code, issuer: PINNED_ASSETS[s.action.asset].issuer }]
+      : []
+  );
   const issuerOf = (code: string): string => {
     if (isPersistentAsset(code)) return persistentIssuer;
     const issuer = session.ephemeralIssuers.find((e) => e.assetCode === code);
@@ -179,10 +191,13 @@ export function expectationFromSession(
     return issuer.publicKey;
   };
   // A balance claimed through a new trustline leaves its asset on the account, closed like any other.
-  const assets = [...planned.assets, ...planned.arrivingAssets].map((code): SessionAsset => ({
-    code,
-    issuer: issuerOf(code),
-  }));
+  const assets = [
+    ...[...planned.assets, ...planned.arrivingAssets].map((code): SessionAsset => ({
+      code,
+      issuer: issuerOf(code),
+    })),
+    ...pinnedAssets,
+  ];
   const claims = session.claimableBalances.flatMap((b): PlaygroundClaim[] =>
     b.intent === "claim" || b.intent === "add_trustline_then_claim"
       ? [{ id: b.id, asset: b.asset, addTrustline: b.intent === "add_trustline_then_claim" }]
@@ -223,9 +238,68 @@ export function expectationFromSession(
     claims,
     forfeits,
     sponsoredEntries,
-    // No scenario seeds a Soroban protocol yet, so every contract call is refused.
-    sorobanSeeded: [],
+    sorobanSeeded: seededProtocols(plan.steps),
   };
+}
+
+/**
+ * The protocols a plan seeds, read from its steps rather than from what has run: a seeding call
+ * whose outcome was lost may still have landed, and an exit only ever pays the demo.
+ */
+export function seededProtocols(steps: readonly MessStepDef[]): SeededProtocol[] {
+  return steps.some((s) => s.action.kind === "soroswap_deposit")
+    ? [{ protocol: "soroswap", variant: "lp" }]
+    : [];
+}
+
+type SorobanExitFields = Pick<
+  ExitExpectations,
+  | "exitContracts"
+  | "exitFunctions"
+  | "heldTokenContracts"
+  | "positionTokenContracts"
+  | "protectedTokenContracts"
+  | "ownTokensByContract"
+>;
+
+/**
+ * What the shared verifier admits for the session's protocol exits, built from the session's own
+ * assets and lib/scenarios/pinned.ts alone, never from the API's response: the fields the web
+ * fills from the account read, filled here from what the playground itself seeded.
+ *
+ * - `heldTokenContracts` / `protectedTokenContracts`: XLM and the Stellar Asset Contract of every
+ *   asset the session holds a trustline for. The playground holds no Soroban-only balance, so the
+ *   two are the same list.
+ * - Soroswap: the router is the call target and the pair the position, with the router's one exit
+ *   function and none on the pair (the shared verifier lets the router move the LP share into the
+ *   pair only when the pair has no exit function of its own); the pair's two tokens are what the
+ *   withdrawal pays out.
+ */
+export function sorobanExitExpectations(expected: PlaygroundCloseExpectation): SorobanExitFields {
+  const held = [
+    Asset.native().contractId(Networks.TESTNET),
+    ...expected.assets.map(({ code, issuer }) =>
+      new Asset(code, issuer).contractId(Networks.TESTNET)
+    ),
+  ];
+  const fields: SorobanExitFields = {
+    exitContracts: [],
+    exitFunctions: {},
+    heldTokenContracts: [...new Set(held)],
+    positionTokenContracts: [],
+    protectedTokenContracts: [...new Set(held)],
+    ownTokensByContract: {},
+  };
+  for (const { protocol } of expected.sorobanSeeded) {
+    if (protocol === "soroswap") {
+      fields.exitContracts.push(SOROSWAP.router, SOROSWAP.pair);
+      fields.exitFunctions[SOROSWAP.router] = ["remove_liquidity"];
+      fields.exitFunctions[SOROSWAP.pair] = [];
+      fields.positionTokenContracts.push(...SOROSWAP.tokens);
+      fields.ownTokensByContract[SOROSWAP.pair] = [...SOROSWAP.tokens];
+    }
+  }
+  return fields;
 }
 
 /**
@@ -258,7 +332,8 @@ export function sessionThresholds(expected: PlaygroundCloseExpectation): {
   return { low: t, med: t, high: t };
 }
 
-function sharedExpectation(expected: PlaygroundCloseExpectation): CloseExpectationInput {
+/** The shared verifier's expectation for a session, from its record and configuration alone. */
+export function sharedExpectation(expected: PlaygroundCloseExpectation): CloseExpectationInput {
   const transfers: Record<string, TransferChoice> = {};
   const classicConversions: Record<string, { minAmountOut: string }> = {};
   const converted = new Set(expected.conversions.map((c) => c.asset));
@@ -278,6 +353,7 @@ function sharedExpectation(expected: PlaygroundCloseExpectation): CloseExpectati
   }
   return {
     ...exitExpectations(null, "testnet"),
+    ...sorobanExitExpectations(expected),
     source: expected.demoPublic,
     destination: expected.sinkPublic,
     // The sink is not an exchange, so the mediated hand-off this would floor is refused anyway.
@@ -499,6 +575,8 @@ export function verifyDemolishTransaction(
     throw new PlaygroundVerificationError("operation_not_allowed");
   }
   if (!ops.some((op) => op.type === "accountMerge")) {
+    // A protocol exit: lib/verify-soroban.ts above already held it to one call, alone.
+    if (ops.length === 1 && ops[0].type === "invokeHostFunction") return;
     if (ops.length > 0 && ops.every((op) => op.type === "setOptions")) {
       assertNormalizationTransaction(ops, expected);
     } else {

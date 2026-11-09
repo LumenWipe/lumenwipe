@@ -1,8 +1,18 @@
 import { randomBytes } from "node:crypto";
 import { describe, expect, test } from "bun:test";
 import { NextRequest } from "next/server";
-import { Asset, Keypair, Networks, Transaction, TransactionBuilder } from "@stellar/stellar-sdk";
+import {
+  Account,
+  Address,
+  Asset,
+  Keypair,
+  Networks,
+  scValToNative,
+  Transaction,
+  TransactionBuilder,
+} from "@stellar/stellar-sdk";
 import { executeMessStep } from "@/lib/mess-builders";
+import { contractCallOp } from "@/lib/soroban-seed";
 import {
   maxOfferCount,
   selectionForMode,
@@ -12,7 +22,10 @@ import {
 import { handleCreateSession, handleMess } from "@/lib/route-handlers";
 import {
   JUNK_OFFERS,
+  PINNED_ASSETS,
   SCENARIOS,
+  SOROSWAP,
+  SOROSWAP_SEED,
   helperRoleOf,
   resolvePlan,
   validateSelection,
@@ -101,6 +114,19 @@ async function runAndCheck(selection: ScenarioSelection): Promise<void> {
               return { txHash: Buffer.from(tx.hash()).toString("hex") };
             },
             sleep: async () => {},
+            quoteBuy: async () => ({ sourceAmount: "2.6", path: [] }),
+            // The contract call as the seeding would send it, captured instead.
+            contractCall: async (source, call) => {
+              const tx = new TransactionBuilder(new Account(source.publicKey(), "100"), {
+                fee: "100",
+                networkPassphrase: Networks.TESTNET,
+              })
+                .addOperation(contractCallOp(call))
+                .setTimeout(60)
+                .build();
+              posted.push({ stepId: planned.id, tx });
+              return { txHash: Buffer.from(tx.hash()).toString("hex") };
+            },
           }),
       }
     );
@@ -139,7 +165,15 @@ async function runAndCheck(selection: ScenarioSelection): Promise<void> {
   );
 }
 
-const label = (asset: Asset): string => (asset.isNative() ? "native" : asset.getCode());
+const CIRCLE_USDC = PINNED_ASSETS["circle-usdc"];
+
+/** An asset as the scene names its trustline: a pinned asset by its id, any other by its code. */
+const label = (asset: Asset): string => {
+  if (asset.isNative()) return "native";
+  return asset.getCode() === CIRCLE_USDC.code && asset.getIssuer() === CIRCLE_USDC.issuer
+    ? "circle-usdc"
+    : asset.getCode();
+};
 
 function assertConsistent({
   plan,
@@ -173,6 +207,7 @@ function assertConsistent({
   let recipientsCreated = 0;
   let helperEntries = 0;
   let signersAdded = 0;
+  const positions: string[] = [];
 
   for (const { stepId, tx } of posted) {
     for (const op of tx.operations) {
@@ -224,6 +259,23 @@ function assertConsistent({
           expect(source).toBe(demoPublic);
           if (op.signer) signersAdded++;
           break;
+        case "invokeHostFunction": {
+          // The one seeding call: the demo pairs the USDC it bought with XLM in the pinned pair,
+          // through the pinned router, and the LP share is paid to the demo itself.
+          expect(source).toBe(demoPublic);
+          if (op.func.type !== "hostFunctionTypeInvokeContract") throw new Error("not a call");
+          const call = op.func.invokeContract;
+          const args = call.args.map((a) => scValToNative(a) as unknown);
+          expect(Address.fromScAddress(call.contractAddress).toString()).toBe(SOROSWAP.router);
+          expect(call.functionName.toString()).toBe("add_liquidity");
+          expect(args.slice(0, 2)).toEqual([...SOROSWAP.tokens]);
+          expect(args[2]).toBe(BigInt(Number(SOROSWAP_SEED.usdc) * 10_000_000));
+          expect(args[3]).toBe(BigInt(Number(SOROSWAP_SEED.depositMaxXlm) * 10_000_000));
+          expect(args[6]).toBe(demoPublic);
+          expect(trusted.has("circle-usdc")).toBe(true);
+          positions.push("lp:soroswap");
+          break;
+        }
       }
     }
   }
@@ -233,6 +285,9 @@ function assertConsistent({
   expect(dataNames).toEqual(nodes("data"));
   expect(offerNodes).toEqual(nodes("offer"));
   expect(signersAdded).toBe(nodes("signer").length);
+  expect(positions).toEqual(nodes("position"));
+  // A seeded protocol is one the verifier admits an exit for, and only then.
+  expect(expected.sorobanSeeded.length).toBe(positions.length);
   const fundRare = plan.steps.find((s) => s.id === "FUND_RARE");
   expect(airdrops).toEqual(fundRare ? fundRare.balances.map((b) => b.nodeId) : []);
   expect(createdIssuers).toEqual(issuers.map((i) => i.publicKey));
@@ -241,7 +296,10 @@ function assertConsistent({
   // The verifier's expectation counts exactly the entries the chain received.
   // A balance claimed through a new trustline adds an asset the close returns and removes.
   const arriving = plan.expectation.arrivingAssets;
-  expect(expected.assets.map((a) => a.code).sort()).toEqual([...trustlines, ...arriving].sort());
+  const codeOf = (l: string): string => (l === "circle-usdc" ? CIRCLE_USDC.code : l);
+  expect(expected.assets.map((a) => a.code).sort()).toEqual(
+    [...trustlines.map(codeOf), ...arriving].sort()
+  );
   // Each entry the demo sponsors on its beneficiary is one the close may revoke.
   expect(expected.sponsoredEntries).toHaveLength(helperEntries);
   expect(expected.offerCount).toBe(offerNodes.length);
@@ -357,8 +415,8 @@ describe("the plan, the chain and the close expectation agree", () => {
       cases++;
     }
     // Pinned so a change to the registry or its rules shows up here: 190 valid selections before
-    // the claimable-balance and sponsored-reserve scenarios, which fit beside most of them, and
-    // 764 before the multi-signature scenario.
-    expect(cases).toBe(1515);
+    // the claimable-balance and sponsored-reserve scenarios, which fit beside most of them, 764
+    // before the multi-signature scenario, and 1515 before the Soroswap pool.
+    expect(cases).toBe(2941);
   }, 120_000);
 });

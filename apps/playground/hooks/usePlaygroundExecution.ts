@@ -63,7 +63,7 @@ function api<T>(path: string, init?: RequestInit): Promise<T> {
 // Orbit radius/duration by node kind - adapted from the deleted
 // `lib/playground/scene-nodes.ts` (git show f416924^:apps/web/lib/playground/scene-nodes.ts),
 // inlined here since it was a small, single-purpose helper with no other
-// callers. One ring per kind is what OrbitalScene's four RING_FRACTIONS guide
+// callers. One ring per kind is what OrbitalScene's five RING_FRACTIONS guide
 // rings visually group by - keep these two in sync.
 //
 // Radii pushed out from the original's 95/135/175/215: CoreAccount grows up
@@ -76,6 +76,8 @@ const RING: Record<SceneNodeKind, { radius: number; durationSec: number }> = {
   trustline: { radius: 180, durationSec: 34 },
   data: { radius: 210, durationSec: 44 },
   offer: { radius: 240, durationSec: 56 },
+  // A protocol position orbits outside the account's own entries: it lives in a contract.
+  position: { radius: 265, durationSec: 64 },
   // Shares the outer guide ring: OrbitalScene draws one ring per planned kind.
   generic: { radius: 240, durationSec: 48 },
 };

@@ -1,4 +1,5 @@
 import type { IntentOperation } from "@lumenwipe/sdk";
+import { pinnedAssetOf, SOROSWAP } from "./scenarios";
 
 /** What a confirmed close operation does to the orbital scene. */
 export type SceneAction =
@@ -17,7 +18,14 @@ type Handler<T extends OperationType> = (
   live: readonly LiveNode[]
 ) => SceneAction | null;
 
-const trustlineNodeId = (asset: string): string => `tl:${asset.split(":")[0]}`;
+/** A pinned asset's node is named for the asset, so it never collides with a playground code. */
+const trustlineNodeId = (asset: string): string =>
+  `tl:${pinnedAssetOf(asset) ?? asset.split(":")[0]}`;
+
+/** The position node each protocol's exit call empties, by the contract it calls. */
+const POSITION_NODE_BY_EXIT: ReadonlyMap<string, { fn: string; nodeId: string }> = new Map([
+  [SOROSWAP.router, { fn: "remove_liquidity", nodeId: "lp:soroswap" }],
+]);
 
 const destroyIfLive = (live: readonly LiveNode[], nodeId: string): SceneAction | null =>
   live.some((n) => n.id === nodeId) ? { type: "destroy", nodeIds: [nodeId] } : null;
@@ -59,7 +67,10 @@ export const SCENE_HANDLERS: { [T in OperationType]: Handler<T> } = {
   path_payment_strict_send: (op, live) => pulseIfLive(live, trustlineNodeId(op.sendAsset)),
   claim_claimable_balance: noVisual,
   revoke_sponsorship: noVisual,
-  invoke_host_function: noVisual,
+  invoke_host_function: (op, live) => {
+    const exit = POSITION_NODE_BY_EXIT.get(op.contract);
+    return exit && exit.fn === op.function ? destroyIfLive(live, exit.nodeId) : null;
+  },
   unknown: noVisual,
 };
 
