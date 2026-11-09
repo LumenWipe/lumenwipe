@@ -11,6 +11,8 @@ version number before 0.4.0. Neither has a git tag.
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-09
+
 ### Added
 
 - `ErrorCode` gains `account_auth_immutable`, `liquidity_pool_shares_held`,
@@ -421,7 +423,8 @@ fee-bump/allowance endpoints above weren't added until after this tag.
 - Configurable timeout and custom `fetch` injection, for non-browser/non-Node environments and
   testing.
 
-[Unreleased]: https://github.com/LumenWipe/lumenwipe/compare/sdk-v0.10.2...HEAD
+[Unreleased]: https://github.com/LumenWipe/lumenwipe/compare/sdk-v0.11.0...HEAD
+[0.11.0]: https://github.com/LumenWipe/lumenwipe/compare/sdk-v0.10.2...sdk-v0.11.0
 [0.10.2]: https://github.com/LumenWipe/lumenwipe/compare/sdk-v0.10.1...sdk-v0.10.2
 [0.10.1]: https://github.com/LumenWipe/lumenwipe/compare/sdk-v0.10.0...sdk-v0.10.1
 [0.10.0]: https://github.com/LumenWipe/lumenwipe/compare/sdk-v0.9.0...sdk-v0.10.0

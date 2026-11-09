@@ -3946,6 +3946,35 @@ test("useCloseExecution › a pre-authorized submission with no answer is held a
   expect(useDemolishStore.getState().unconfirmedSubmission).toBeNull();
 });
 
+test("useCloseExecution › a pre-authorized submission the network refuses is a refusal: sent once, its reason surfaced, nothing held", async () => {
+  const destination = Keypair.random().publicKey();
+  const { preAuthXdr, signer } = preAuthSetup(
+    [Operation.accountMerge({ destination })],
+    [planStep(0, "MERGE", "pending")]
+  );
+  const reason =
+    "The signatures on this transaction do not reach the signing weight the account requires.";
+  const refusal = new ApiRequestError(422, reason, undefined, "submit_rejected");
+  let sends = 0;
+  stubSubmitViaApi(async () => {
+    sends++;
+    throw refusal;
+  });
+
+  const { result } = renderHook(() => useCloseExecution());
+  let error: unknown;
+  await act(async () => {
+    await result.current
+      .submitPreAuthTransaction(signer, preAuthXdr)
+      .catch((err: unknown) => (error = err));
+  });
+
+  expect(error).toBe(refusal);
+  expect(sends).toBe(1);
+  expect(useDemolishStore.getState().unconfirmedSubmission).toBeNull();
+  expect(useDemolishStore.getState().phase).not.toBe("STEP_UNCONFIRMED");
+});
+
 test("useCloseExecution › an account switched during a pre-authorized submission gets nothing written into it", async () => {
   const destination = Keypair.random().publicKey();
   const { preAuthXdr, signer } = preAuthSetup(

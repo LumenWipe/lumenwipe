@@ -20,6 +20,10 @@ export const PASSPHRASES: Record<ExampleNetwork, string> = {
 const FRIENDBOT_URL = "https://friendbot.stellar.org";
 const RETRYABLE_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
 const MAX_DELAY_MS = 30_000;
+/** One Friendbot request; a hung one is retried rather than holding the run open. */
+const FRIENDBOT_TIMEOUT_MS = 30_000;
+/** Friendbot can answer well after 15 s, and the account only appears once it does. */
+const NOT_FOUND_ATTEMPTS = 90;
 
 /** Friendbot answered with a non-2xx status. */
 export class FriendbotError extends Error {
@@ -39,10 +43,15 @@ export class FriendbotError extends Error {
  */
 export function isRetryable(error: unknown): boolean {
   if (error instanceof LumenWipeApiError) {
-    return error.code === "account_not_found" || RETRYABLE_STATUSES.has(error.status);
+    return isNotFound(error) || RETRYABLE_STATUSES.has(error.status);
   }
   if (error instanceof FriendbotError) return RETRYABLE_STATUSES.has(error.status);
+  if (error instanceof DOMException) return error.name === "TimeoutError";
   return error instanceof LumenWipeTimeoutError || error instanceof TypeError;
+}
+
+function isNotFound(error: unknown): boolean {
+  return error instanceof LumenWipeApiError && error.code === "account_not_found";
 }
 
 /** Every attempt failed with a retryable error; `cause` is the last one. */
@@ -58,6 +67,8 @@ export class RetriesExhaustedError extends Error {
 
 export interface RetryConfig {
   attempts?: number;
+  /** Budget for "account not found" alone; every other retryable error counts against `attempts`. */
+  notFoundAttempts?: number;
   delayMs?: number;
   sleep?: (ms: number) => Promise<void>;
 }
@@ -69,22 +80,28 @@ const defaultSleep = (ms: number): Promise<void> =>
 export async function withRetry<T>(
   label: string,
   operation: () => Promise<T>,
-  { attempts = 15, delayMs = 1000, sleep = defaultSleep }: RetryConfig = {}
+  {
+    attempts = 15,
+    notFoundAttempts = attempts,
+    delayMs = 1000,
+    sleep = defaultSleep,
+  }: RetryConfig = {}
 ): Promise<T> {
-  let last: unknown;
-  for (let attempt = 1; attempt <= attempts; attempt++) {
+  let notFound = 0;
+  let other = 0;
+  for (;;) {
     try {
       return await operation();
     } catch (error) {
       if (!isRetryable(error)) throw error;
-      last = error;
-      if (attempt < attempts) {
-        const hinted = error instanceof LumenWipeApiError ? error.retryAfterMs : undefined;
-        await sleep(Math.min(hinted ?? delayMs, MAX_DELAY_MS));
+      if (isNotFound(error) ? ++notFound >= notFoundAttempts : ++other >= attempts) {
+        const made = notFound + other;
+        throw new RetriesExhaustedError(`${label} did not succeed after ${made} attempts.`, error);
       }
+      const hinted = error instanceof LumenWipeApiError ? error.retryAfterMs : undefined;
+      await sleep(Math.min(hinted ?? delayMs, MAX_DELAY_MS));
     }
   }
-  throw new RetriesExhaustedError(`${label} did not succeed after ${attempts} attempts.`, last);
 }
 
 export function waitForAccount(
@@ -92,7 +109,10 @@ export function waitForAccount(
   address: string,
   config?: RetryConfig
 ): Promise<AccountState> {
-  return withRetry(`Reading ${address}`, () => read(address), config);
+  return withRetry(`Reading ${address}`, () => read(address), {
+    notFoundAttempts: NOT_FOUND_ATTEMPTS,
+    ...config,
+  });
 }
 
 export function fund(
@@ -102,7 +122,9 @@ export function fund(
   return withRetry(
     `Funding ${address}`,
     async () => {
-      const res = await doFetch(`${FRIENDBOT_URL}/?addr=${encodeURIComponent(address)}`);
+      const res = await doFetch(`${FRIENDBOT_URL}/?addr=${encodeURIComponent(address)}`, {
+        signal: AbortSignal.timeout(FRIENDBOT_TIMEOUT_MS),
+      });
       if (!res.ok) throw new FriendbotError(res.status, address);
     },
     { attempts: 3, ...config }

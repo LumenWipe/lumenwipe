@@ -8,16 +8,21 @@ export class InvalidSignatureError extends Error {
 }
 
 /**
- * Offline pre-submission signature check. Catches the two most common wallet
- * mistakes before spending a network round-trip:
+ * Offline pre-submission signature check for `POST /close/submit`, its only caller. It catches one
+ * wallet mistake before spending a network round-trip: a signature whose hint matches the source
+ * account's last-4-byte fingerprint but that does not verify (wrong key, or a corrupted signature).
  *
- *  1. Wallet returned the XDR unsigned (no signatures at all).
- *  2. Wallet signed with the wrong key - hint matches the source account's
- *     last-4-byte fingerprint, but the actual signature does not verify.
+ * An envelope with no signatures is not refused here. A transaction can be fully authorized with
+ * none: a pre-authorized transaction (signer key `preAuthTx`) is authorized by its own hash, which
+ * is the documented "paste the exact pre-authorized transaction" flow. The network is the authority
+ * on whether the signing weight is met, and an envelope short of it comes back as `tx_bad_auth`.
  *
- * When the hint does NOT match the source account the signature is treated as
- * an unrecognized co-signer (multisig cosigner) and we defer to the network,
- * which is the authority on threshold satisfaction.
+ * When the hint does NOT match the source account the signature is treated as an unrecognized
+ * co-signer (multisig cosigner) and we defer to the network, for the same reason.
+ *
+ * This is a UX shortcut on a relay, not an authorization gate: anything `/close/submit` accepts
+ * could be sent to the network directly. Never reuse it to decide whether the service signs,
+ * sponsors or co-signs anything; those paths need their own checks.
  *
  * Fee-bump envelopes are not checked here: they come only from the fee-bump sponsor endpoint
  * (`/fee-bump/sponsor`, architecture.md §8.1), whose outer signature is the sponsor account's
@@ -27,12 +32,6 @@ export class InvalidSignatureError extends Error {
  */
 export function checkTransactionSignatures(tx: Transaction | FeeBumpTransaction): void {
   if (tx instanceof FeeBumpTransaction) return;
-
-  if (tx.signatures.length === 0) {
-    throw new InvalidSignatureError(
-      "Transaction has no signatures. Please sign with your wallet before submitting."
-    );
-  }
 
   let sourceKey: Keypair;
   try {
@@ -59,5 +58,5 @@ export function checkTransactionSignatures(tx: Transaction | FeeBumpTransaction)
       "The transaction signature is invalid. Please reconnect your wallet and try again."
     );
   }
-  // All signatures belong to unrecognized cosigners; defer to network
+  // No signatures, or all of them from unrecognized cosigners; defer to the network
 }

@@ -85,6 +85,7 @@ export default function PlaygroundControls({
   const unavailable = usePlaygroundStore((s) => s.unavailable);
   const reset = usePlaygroundStore((s) => s.reset);
   const demolishFailed = usePlaygroundStore((s) => s.demolishFailed);
+  const linkPending = usePlaygroundStore((s) => s.linkPending);
 
   // "Start over" after a close stopped part way asks first: the account is abandoned on testnet.
   const [confirmingAbandon, setConfirmingAbandon] = useState(false);
@@ -120,7 +121,7 @@ export default function PlaygroundControls({
   const replayLine = seed ? (
     <span className="mt-1 block mkt-mono text-[11px] text-white/50">Replay code {seed}</span>
   ) : null;
-  const runnable = validateSelection(selection, { unavailable }).ok;
+  const runnable = !linkPending && validateSelection(selection, { unavailable }).ok;
 
   return (
     <div className="mkt-panel mkt-ticks relative rounded-lg p-5">

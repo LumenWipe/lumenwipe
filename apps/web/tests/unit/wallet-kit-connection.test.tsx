@@ -21,6 +21,8 @@ type StateListener = (event: { payload: { address: string | undefined } }) => vo
 let kit: {
   saved: string | null;
   network: { networkPassphrase: string } | Error;
+  /** While set, the network answer waits for it: a read still in flight. */
+  networkGate: Promise<void> | null;
   stateListeners: StateListener[];
   authModal: ReturnType<typeof mock>;
   fetchAddress: ReturnType<typeof mock>;
@@ -32,6 +34,7 @@ function installKit(): void {
   kit = {
     saved,
     network: { networkPassphrase: Networks.TESTNET },
+    networkGate: null,
     stateListeners: [],
     authModal: mock(async () => ({ address: saved })),
     fetchAddress: mock(async () => ({ address: saved })),
@@ -42,6 +45,7 @@ function installKit(): void {
       return { address: kit.saved };
     },
     getNetwork: async () => {
+      if (kit.networkGate) await kit.networkGate;
       if (kit.network instanceof Error) throw kit.network;
       return { network: "", ...kit.network };
     },
@@ -399,6 +403,67 @@ test("wallet connection › a guard refuses an unknown network whose confirmatio
   expect(await guardOutcome(guard)).toBeNull();
   act(() => result.current.confirmNetwork(false));
   expect(await guardOutcome(guard)).toBe("network-unconfirmed");
+});
+
+/** Connects through the panel with the wallet's network read held open until `settle` is called. */
+async function connectWithNetworkReadInFlight(): Promise<{
+  connection: () => WalletKitConnection;
+  settle: () => Promise<void>;
+}> {
+  kit.saved = null;
+  let open: () => void = () => {};
+  kit.networkGate = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  let latest: WalletKitConnection | null = null;
+  function Panel() {
+    const connection = useWalletKitConnection("testnet");
+    latest = connection;
+    return <WalletConnectPanel connection={connection} signingNetwork="testnet" />;
+  }
+  render(<Panel />);
+  await act(async () => {
+    screen.getByRole("button", { name: "Connect wallet" }).click();
+  });
+  await screen.findByText(/Connected:/);
+  const connection = (): WalletKitConnection => latest as unknown as WalletKitConnection;
+  await waitFor(() => expect(connection().checking).toBe(true));
+  return {
+    connection,
+    settle: async () => {
+      await act(async () => open());
+      await waitFor(() => expect(connection().checking).toBe(false));
+    },
+  };
+}
+
+test("wallet connection › right after a connect, the network is not asked while the wallet's answer is in flight", async () => {
+  const { connection, settle } = await connectWithNetworkReadInFlight();
+  expect(connection().network).toBe("unknown");
+  expect(connection().verified).toBe(false);
+  expect(screen.queryByRole("checkbox")?.outerHTML ?? null).toBeNull();
+
+  // The wallet then reports this page's network: nothing to confirm.
+  await settle();
+  expect(connection().network).toBe("yes");
+  expect(connection().verified).toBe(true);
+  expect(screen.queryByRole("checkbox")?.outerHTML ?? null).toBeNull();
+});
+
+test("wallet connection › once the read settles as unknown, the network is asked and signing waits for it", async () => {
+  kit.network = new Error("unsupported");
+  const { connection, settle } = await connectWithNetworkReadInFlight();
+  expect(screen.queryByRole("checkbox")?.outerHTML ?? null).toBeNull();
+
+  await settle();
+  expect(connection().network).toBe("unknown");
+  const box = screen.getByRole("checkbox", { name: /Your wallet does not report/ });
+  expect(connection().verified).toBe(false);
+  expect(await guardOutcome(connection().beforeSigning(saved))).toBe("network-unconfirmed");
+
+  await act(async () => (box as HTMLInputElement).click());
+  expect(connection().verified).toBe(true);
+  expect(await guardOutcome(connection().beforeSigning(saved))).toBeNull();
 });
 
 function withProjectId(id: string | undefined, fn: () => void): void {

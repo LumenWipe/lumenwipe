@@ -87,6 +87,9 @@ interface PlaygroundState {
   seed: string | null;
   /** Scenarios this deployment cannot run (GET /api/scenarios), with their reasons. */
   unavailable: ReadonlyMap<ScenarioId, string>;
+  /** A shared link (`?seed=` or `?selection=`) is still being applied: the run cannot start yet,
+   *  or it would start with the selection the link is about to replace. */
+  linkPending: boolean;
 
   setPhase: (phase: PlaygroundPhase) => void;
   startSession: (payload: {
@@ -111,6 +114,7 @@ interface PlaygroundState {
     seed?: string | null
   ) => void;
   setUnavailable: (unavailable: ReadonlyMap<ScenarioId, string>) => void;
+  setLinkPending: (linkPending: boolean) => void;
   /** Binds each offer node to the chain offer trading its pair. */
   bindOffers: (offers: readonly { id: string; selling: string; buying: string }[]) => void;
   reset: () => void;
@@ -144,6 +148,7 @@ export const usePlaygroundStore = create<PlaygroundState>((set) => ({
   preset: "classic",
   seed: null,
   unavailable: new Map(),
+  linkPending: false,
 
   setPhase: (phase) => set({ phase }),
 
@@ -200,6 +205,8 @@ export const usePlaygroundStore = create<PlaygroundState>((set) => ({
   setSelection: (selection, preset, seed = null) => set({ selection, preset, seed }),
 
   setUnavailable: (unavailable) => set({ unavailable }),
+
+  setLinkPending: (linkPending) => set({ linkPending }),
 
   bindOffers: (offers) =>
     set((state) => ({

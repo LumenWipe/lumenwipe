@@ -77,7 +77,7 @@ export default function WalletConnectPanel({
   signerKeys,
   signingNetwork,
 }: Props): JSX.Element {
-  const { address, status, connecting, error, network, connect, disconnect } = connection;
+  const { address, status, checking, connecting, error, network, connect, disconnect } = connection;
 
   if (address && status === "checking") {
     return (
@@ -122,7 +122,10 @@ export default function WalletConnectPanel({
       (network === "no"
         ? "Your wallet is on a different network than this page. Switch networks in your wallet, or disconnect and reconnect the right one."
         : null);
-    const askNetwork = signingNetwork !== undefined && network === "unknown" && !mismatchWarning;
+    // Asked only once the wallet's network read has settled: right after a connect the network is
+    // "unknown" until the wallet answers, and a wallet that reports it needs no confirmation.
+    const askNetwork =
+      signingNetwork !== undefined && network === "unknown" && !checking && !mismatchWarning;
 
     return (
       <div className="space-y-1.5">
