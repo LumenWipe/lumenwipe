@@ -9,6 +9,10 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   // One retry: each attempt funds fresh testnet accounts, and a second failure is a real one.
   retries: process.env.CI ? 1 : 0,
+  // Stops the run inside the nightly job's 90-minute limit, so a slow night ends as a failed run
+  // with its report (which files the tracking issue) rather than a runner kill reported as
+  // cancelled. The per-test budgets sum to about 89 minutes; a healthy run takes far less.
+  globalTimeout: process.env.CI ? 80 * 60_000 : undefined,
   // The github reporter writes no report directory on its own, so it is paired with html to give
   // the nightly something to upload.
   reporter: process.env.CI
