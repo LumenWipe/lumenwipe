@@ -85,6 +85,7 @@ async function runAndCheck(selection: ScenarioSelection): Promise<void> {
         store,
         issuer: () => issuer,
         mm: () => mm,
+        encrypt,
         decrypt,
         executeMessStep: (planned, ctx) =>
           executeMessStep(planned, ctx, {
@@ -344,6 +345,9 @@ describe("the plan, the chain and the close expectation agree", () => {
     for (let variant = 0; variant <= 2; variant++) {
       await runAndCheck({ scenarios: [{ id: "sponsored-reserves", params: { variant } }] });
     }
+    for (let variant = 0; variant <= 2; variant++) {
+      await runAndCheck({ scenarios: [{ id: "multisig", params: { variant } }] });
+    }
   });
 
   test("every subset of the registry at its smallest and largest parameters", async () => {
@@ -353,7 +357,8 @@ describe("the plan, the chain and the close expectation agree", () => {
       cases++;
     }
     // Pinned so a change to the registry or its rules shows up here: 190 valid selections before
-    // the claimable-balance and sponsored-reserve scenarios, which fit beside most of them.
-    expect(cases).toBe(764);
+    // the claimable-balance and sponsored-reserve scenarios, which fit beside most of them, and
+    // 764 before the multi-signature scenario.
+    expect(cases).toBe(1515);
   }, 120_000);
 });

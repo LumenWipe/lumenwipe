@@ -541,7 +541,7 @@ describe("the scenario picker", () => {
     test("every toggle has an accessible name and a pressed state", () => {
       rtl.render(<ScenarioPicker />);
       const toggles = [...document.querySelectorAll("fieldset button[aria-pressed]")];
-      expect(toggles.length).toBe(9);
+      expect(toggles.length).toBe(SCENARIOS.length);
       for (const toggle of toggles) expect(toggle.textContent?.length).toBeGreaterThan(0);
     });
   });

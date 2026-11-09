@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { decryptSecret } from "@/lib/crypto";
+import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { sessionStore } from "@/lib/session-store";
 import { getPlaygroundIssuerKeypair, getPlaygroundMmKeypair } from "@/lib/accounts";
 import { executeMessStep } from "@/lib/mess-builders";
@@ -13,6 +13,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     store: sessionStore,
     issuer: getPlaygroundIssuerKeypair,
     mm: getPlaygroundMmKeypair,
+    encrypt: encryptSecret,
     decrypt: decryptSecret,
     executeMessStep,
   });

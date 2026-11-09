@@ -3,7 +3,12 @@ import { CloseOutcomeUnknownError, LumenWipeApiError } from "@lumenwipe/sdk";
 import { PlaygroundConfigError } from "@/lib/crypto";
 import type { DemolishRoundResult } from "@/lib/demolish";
 import { readSessionState, runCleanup, runDemolishRound, runMessStep } from "@/lib/session-actions";
-import type { DemolishLogEntry, PendingDemolishTx, SessionStore } from "@/lib/session-store";
+import type {
+  DemolishLogEntry,
+  PendingDemolishTx,
+  RecordedSigner,
+  SessionStore,
+} from "@/lib/session-store";
 import type { MessStepDef } from "@/lib/scenarios";
 import { gate, memoryStore, newSessionData, tick } from "./session-fixtures";
 
@@ -453,19 +458,26 @@ test("the lock is released after a failed step, so a retry can run", async () =>
   expect(outcome(retried)).toBe("ok");
 });
 
+const signer = (key: string): RecordedSigner => ({
+  type: "ed25519_public_key",
+  key,
+  weight: 1,
+  encSecret: null,
+});
+
 test("signers the step records are kept in the session, alongside the completed step", async () => {
   const store = memoryStore();
   const session = await store.createSession(signerSessionData());
   const result = await runMessStep(store, session.id, "ADD_SIGNER", {
     executeStep: async (_step, _session, recordSigner) => {
-      await recordSigner("GSIGNER1");
-      await recordSigner("GSIGNER2");
+      await recordSigner(signer("GSIGNER1"));
+      await recordSigner(signer("GSIGNER2"));
       return "hash";
     },
   });
   expect(outcome(result)).toBe("ok");
   const stored = await store.loadSession(session.id);
-  expect(stored?.recordedSigners).toEqual(["GSIGNER1", "GSIGNER2"]);
+  expect(stored?.recordedSigners).toEqual([signer("GSIGNER1"), signer("GSIGNER2")]);
   expect(stored?.completedMessSteps).toEqual(["SETUP", "ADD_SIGNER"]);
 });
 
@@ -474,13 +486,13 @@ test("a signer recorded before its transaction failed stays recorded", async () 
   const session = await store.createSession(signerSessionData());
   const result = await runMessStep(store, session.id, "ADD_SIGNER", {
     executeStep: async (_step, _session, recordSigner) => {
-      await recordSigner("GSIGNER");
+      await recordSigner(signer("GSIGNER"));
       throw new Error("timeout after send");
     },
   });
   expect(result.status).toBe(502);
   const stored = await store.loadSession(session.id);
-  expect(stored?.recordedSigners).toEqual(["GSIGNER"]);
+  expect(stored?.recordedSigners).toEqual([signer("GSIGNER")]);
   expect(stored?.completedMessSteps).toEqual(["SETUP"]);
 });
 

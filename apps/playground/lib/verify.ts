@@ -1,5 +1,5 @@
 import "server-only";
-import { Asset, Networks, Transaction, TransactionBuilder } from "@stellar/stellar-sdk";
+import { Asset, Networks, StrKey, Transaction, TransactionBuilder } from "@stellar/stellar-sdk";
 import {
   exitExpectations,
   verifyCloseTransaction,
@@ -13,7 +13,7 @@ import {
   resolvePlan,
   type CloseOperationType,
 } from "./scenarios";
-import type { PlaygroundSession } from "./session-store";
+import type { PlaygroundSession, SignerType } from "./session-store";
 import { parseStroops } from "./stroops";
 
 // The check the playground's backend runs on every XDR the real API returns, before signing it.
@@ -29,7 +29,7 @@ import { parseStroops } from "./stroops";
 //   another disposition for it: a transfer goes only to the session's own recipient, and an asset
 //   chosen to convert can only be converted, to XLM, into the demo, for no less than the floor its
 //   recorded amount and the playground's standing price give;
-// - a signer may only be removed if the session recorded adding it;
+// - a signer may only be removed if the session recorded adding it, with the type it recorded;
 // - a claim may only take a balance the session recorded creating for the demo, once, and a
 //   trustline may only be added for the asset of such a balance, ahead of its claim;
 // - a sponsorship may only be revoked on an entry the session recorded the demo sponsoring, and a
@@ -44,10 +44,13 @@ import { parseStroops } from "./stroops";
 // transactions. The master key alone can sign, so the API adds no signer-normalization round, and
 // the session's entries stay far below one transaction's operation limit, so a playground close is
 // one transaction that ends in its merge, with no more operations than the session's entries can
-// explain. The one exception is a session that recorded claimable balances for the demo: the API
-// claims them in a transaction of its own first (one round per request, lib/demolish.ts), and that
-// transaction may hold nothing but those claims and the trustlines they need. Any other round that
-// is not the final merge is refused before it is signed.
+// explain. There are two exceptions. A session that recorded claimable balances for the demo: the
+// API claims them in a transaction of its own first (one round per request, lib/demolish.ts), and
+// that transaction may hold nothing but those claims and the trustlines they need. A session whose
+// mess raised the thresholds, so the master key alone cannot sign: the API removes the other
+// signers in a transaction of its own first, which may hold nothing but removals of recorded
+// signers, each once, and the reset to 0/1/1. Any other round that is not the final merge is
+// refused before it is signed.
 
 export class PlaygroundVerificationError extends Error {
   constructor(message: string) {
@@ -114,12 +117,20 @@ export type PlaygroundSponsoredEntry =
   | { kind: "trustline"; owner: string; asset: string }
   | { kind: "data_entry"; owner: string; name: string };
 
+/** A signer the session recorded adding, which the close may remove. */
+export interface PlaygroundSigner {
+  type: SignerType;
+  key: string;
+}
+
 /** What a demolish of one session may do, from the session record and the playground config. */
 export interface PlaygroundCloseExpectation {
   demoPublic: string;
   sinkPublic: string;
   assets: SessionAsset[];
-  recordedSigners: string[];
+  recordedSigners: PlaygroundSigner[];
+  /** The mess raised the thresholds, so the close removes the other signers in a round of its own. */
+  raisesThresholds: boolean;
   offerCount: number;
   dataEntryCount: number;
   transfers: PlaygroundTransfer[];
@@ -150,7 +161,8 @@ export function expectationFromSession(
   sinkPublic: string,
   persistentIssuer: string
 ): PlaygroundCloseExpectation {
-  const planned = resolvePlan(session.selection).expectation;
+  const plan = resolvePlan(session.selection);
+  const planned = plan.expectation;
   const issuerOf = (code: string): string => {
     if (isPersistentAsset(code)) return persistentIssuer;
     const issuer = session.ephemeralIssuers.find((e) => e.assetCode === code);
@@ -193,7 +205,8 @@ export function expectationFromSession(
     demoPublic: session.demoPublic,
     sinkPublic,
     assets,
-    recordedSigners: [...session.recordedSigners],
+    recordedSigners: session.recordedSigners.map(({ type, key }) => ({ type, key })),
+    raisesThresholds: plan.steps.some((s) => s.action.kind === "multisig"),
     offerCount: planned.offers,
     dataEntryCount: planned.dataEntries,
     transfers,
@@ -250,11 +263,10 @@ function sharedExpectation(expected: PlaygroundCloseExpectation): CloseExpectati
     claimTrustlineAssets: [
       ...new Set(expected.claims.filter((c) => c.addTrustline).map((c) => c.asset)),
     ],
-    accountSigners: [expected.demoPublic, ...expected.recordedSigners].map((key) => ({
-      key,
-      weight: 1,
-      type: "ed25519_public_key" as const,
-    })),
+    accountSigners: [
+      { key: expected.demoPublic, type: "ed25519_public_key" as const },
+      ...expected.recordedSigners,
+    ].map(({ key, type }) => ({ key, type, weight: 1 })),
     // The playground creates the demo account and never sets its thresholds.
     accountThresholds: { low: 0, med: 0, high: 0 },
     transfers,
@@ -343,6 +355,60 @@ function assertClaimTransaction(ops: Operations, expected: PlaygroundCloseExpect
   });
 }
 
+/** A setOptions signer as the close API names it, or null for a type the playground never adds. */
+function removedSigner(op: Operations[number]): PlaygroundSigner | null {
+  if (op.type !== "setOptions" || !op.signer) return null;
+  const signer = op.signer;
+  if ("ed25519PublicKey" in signer && signer.ed25519PublicKey) {
+    return { type: "ed25519_public_key", key: signer.ed25519PublicKey };
+  }
+  if ("sha256Hash" in signer && signer.sha256Hash) {
+    return { type: "hash_x", key: StrKey.encodeSha256Hash(Buffer.from(signer.sha256Hash)) };
+  }
+  if ("preAuthTx" in signer && signer.preAuthTx) {
+    return { type: "preauth_tx", key: StrKey.encodePreAuthTx(Buffer.from(signer.preAuthTx)) };
+  }
+  return null;
+}
+
+/**
+ * The transaction that removes the other signers ahead of a close the master key alone cannot
+ * sign: only removals of signers the session recorded, each once, then the threshold reset to
+ * exactly 0/1/1 as its last operation. The shared verifier has already refused a signer added or
+ * empowered, a master weight change and any flag, home domain or inflation change.
+ */
+function assertNormalizationTransaction(
+  ops: Operations,
+  expected: PlaygroundCloseExpectation
+): void {
+  if (!expected.raisesThresholds) throw new PlaygroundVerificationError("merge_not_final");
+  const removed = new Set<string>();
+  ops.forEach((op, i) => {
+    if (op.type !== "setOptions") throw new PlaygroundVerificationError("merge_not_final");
+    const last = i === ops.length - 1;
+    const thresholds = [op.lowThreshold, op.medThreshold, op.highThreshold];
+    if (!op.signer) {
+      const reset = op.lowThreshold === 0 && op.medThreshold === 1 && op.highThreshold === 1;
+      if (!last || !reset) {
+        throw new PlaygroundVerificationError("threshold_reset_invalid");
+      }
+      return;
+    }
+    if (last || thresholds.some((t) => t !== undefined)) {
+      throw new PlaygroundVerificationError("threshold_reset_invalid");
+    }
+    const signer = removedSigner(op);
+    if (
+      !signer ||
+      !expected.recordedSigners.some((s) => s.type === signer.type && s.key === signer.key)
+    ) {
+      throw new PlaygroundVerificationError("signer_not_recorded");
+    }
+    if (removed.has(signer.key)) throw new PlaygroundVerificationError("signer_removal_duplicate");
+    removed.add(signer.key);
+  });
+}
+
 /** In the merge transaction: no claim, no trustline added, and only recorded revokes, each once. */
 function assertMergeTransaction(ops: Operations, expected: PlaygroundCloseExpectation): void {
   const revoked = new Set<string>();
@@ -401,7 +467,11 @@ export function verifyDemolishTransaction(
     throw new PlaygroundVerificationError("operation_not_allowed");
   }
   if (!ops.some((op) => op.type === "accountMerge")) {
-    assertClaimTransaction(ops, expected);
+    if (ops.length > 0 && ops.every((op) => op.type === "setOptions")) {
+      assertNormalizationTransaction(ops, expected);
+    } else {
+      assertClaimTransaction(ops, expected);
+    }
     return;
   }
   assertMergeTransaction(ops, expected);

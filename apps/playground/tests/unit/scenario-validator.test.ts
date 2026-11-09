@@ -142,21 +142,27 @@ describe("the safety caps", () => {
       id: def.id,
       params: Object.fromEntries(Object.entries(def.params).map(([n, s]) => [n, s.max])),
     }));
-    // Every scenario at once is one more than a demo may hold; each largest selection that fits
-    // the scenario cap, every scenario at its maximum, stays inside all the others.
-    expect(atMax).toHaveLength(MAX_SCENARIOS + 1);
+    // Every scenario at once is more than a demo may hold; each largest selection that fits the
+    // scenario cap, every scenario at its maximum, stays inside all the others.
+    expect(atMax.length).toBeGreaterThan(MAX_SCENARIOS);
     expect(messageOf(pick(...atMax))).toBe(
       `A demo can include at most ${MAX_SCENARIOS} scenarios.`
     );
     // Leaving out a token holding leaves five stale offers without the tokens they trade, which
     // is refused for that reason and no cap.
+    const subsets = (from: number, size: number): number[][] =>
+      size === 0
+        ? [[]]
+        : Array.from({ length: atMax.length - from }, (_, i) => from + i).flatMap((first) =>
+            subsets(first + 1, size - 1).map((rest) => [first, ...rest])
+          );
     let fitted = 0;
-    for (let left = 0; left < atMax.length; left++) {
-      const result = validateSelection(pick(...atMax.filter((_, i) => i !== left)));
+    for (const kept of subsets(0, MAX_SCENARIOS)) {
+      const result = validateSelection(pick(...kept.map((i) => atMax[i]!)));
       if (result.ok) fitted++;
       else expect(result.message).toStartWith("Stale DEX offers can post at most");
     }
-    expect(fitted).toBe(6);
+    expect(fitted).toBe(24);
   });
 });
 
