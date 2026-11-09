@@ -7,6 +7,7 @@ import {
   type DemolishRoundHooks,
   type DemolishRoundResult,
 } from "./demolish";
+import { LiquidityUnavailableError } from "./mess-builders";
 import {
   resolvePlan,
   type HelperRole,
@@ -148,6 +149,10 @@ export async function runMessStep(
     });
   } catch (err) {
     if (isConfigError(err)) return NOT_CONFIGURED;
+    // Refused before anything was signed for the step, so a later try can still run it.
+    if (err instanceof LiquidityUnavailableError) {
+      return { status: 503, body: { error: "testnet_liquidity_unavailable" } };
+    }
     console.error("[playground] mess step failed", { stepId, sessionId: id }, err);
     return { status: 502, body: { error: "tx_failed" } };
   }

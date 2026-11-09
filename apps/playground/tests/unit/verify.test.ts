@@ -738,8 +738,8 @@ describe("the playground's close operation types", () => {
       if (!(parsed instanceof Transaction)) throw new Error("expected a transaction");
       for (const op of parsed.operations) types.add(op.type);
     }
-    // No scenario seeds a Soroban protocol yet, so no close holds a contract call; the type is
-    // covered by tests/unit/verify-soroban.test.ts.
+    // A protocol exit is a transaction of its own, never beside these; the type is covered by
+    // tests/unit/verify-soroban.test.ts.
     expect(types).toEqual(
       new Set(PLAYGROUND_CLOSE_OPERATION_TYPES.filter((t) => t !== "invokeHostFunction"))
     );

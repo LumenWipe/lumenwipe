@@ -4,6 +4,7 @@
 export * from "./caps";
 export * from "./catalog";
 export { SCENARIOS } from "./definitions";
+export * from "./pinned";
 export * from "./presets";
 export * from "./random";
 export * from "./resolve";

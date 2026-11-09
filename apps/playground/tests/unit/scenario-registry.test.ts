@@ -4,6 +4,7 @@ import { PLAYGROUND_CLOSE_OPERATION_TYPES } from "@/lib/verify";
 import {
   SCENARIOS,
   SCENE_NODE_KINDS,
+  SUB_ENTRY_NODE_KINDS,
   type ScenarioBuild,
   type ScenarioDefinition,
 } from "@/lib/scenarios";
@@ -95,11 +96,19 @@ describe.each(SCENARIOS.map((def) => [def.id, def] as const))("%s", (_id, def) =
       expect(new Set(nodes.map((n) => n.id)).size).toBe(nodes.length);
       const count = (kind: string): number => nodes.filter((n) => n.kind === kind).length;
       const { expectation } = build;
-      expect(count("trustline")).toBe(expectation.assets.length);
+      const actions = (kind: string): number =>
+        build.steps.filter(({ step }) => step.action.kind === kind).length;
+      // A pinned asset's trustline is the verifier's to add (lib/verify.ts), from its own step.
+      expect(count("trustline")).toBe(expectation.assets.length + actions("pinned_trust"));
       expect(count("offer")).toBe(expectation.offers);
       expect(count("data")).toBe(expectation.dataEntries);
       expect(count("signer")).toBe(expectation.signers);
-      expect(build.cost.subEntries).toBe(nodes.length);
+      // One position per seeding step, and its exit is a close transaction of its own.
+      expect(count("position")).toBe(actions("soroswap_deposit"));
+      if (count("position") > 0) expect(expectation.operationTypes).toContain("invokeHostFunction");
+      // Only the account's own entries hold a reserve; a position lives in a contract.
+      const subEntries = nodes.filter((n) => SUB_ENTRY_NODE_KINDS.includes(n.kind)).length;
+      expect(build.cost.subEntries).toBe(subEntries);
       const docked = new Set(nodes.map((n) => n.id));
       for (const { step } of build.steps) {
         for (const { nodeId } of step.balances) expect(docked.has(nodeId)).toBe(true);
