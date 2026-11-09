@@ -77,6 +77,7 @@ export class SeededRandom {
   }
 }
 
+/** The code for a known seed (a replayed code, a vector, a test); fresh codes come from newReplayCode. */
 export function formatReplayCode(seed: number, version = CURRENT_GENERATOR_VERSION): string {
   let body = "";
   let rest = seed;
@@ -115,10 +116,17 @@ export function parseReplayCode(text: string): { version: number; seed: number }
   return { version, seed };
 }
 
-/** A fresh seed, from the platform's cryptographic source rather than Math.random. */
-export function newSeed(): number {
-  const [high = 0, low = 0] = crypto.getRandomValues(new Uint32Array(2));
-  return (high & 0xff) * UINT32 + low;
+/**
+ * A fresh replay code from the platform's cryptographic source. Each random byte picks one of the
+ * 32 Crockford characters by its low five bits, which is unbiased because 256 is a multiple of 32;
+ * the seed is read back from the code with parseReplayCode.
+ */
+export function newReplayCode(): string {
+  let body = "";
+  for (const byte of crypto.getRandomValues(new Uint8Array(CODE_LENGTH))) {
+    body += CROCKFORD.charAt(byte & 31);
+  }
+  return `LW${CURRENT_GENERATOR_VERSION}-${body}`;
 }
 
 type Generator = (seed: number, options: ValidateOptions) => ScenarioSelection;

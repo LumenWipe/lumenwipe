@@ -10,7 +10,7 @@ import {
   encodeSelection,
   formatReplayCode,
   generateRandomSelection,
-  newSeed,
+  newReplayCode,
   parseReplayCode,
   presetSelection,
   setScenarioParam,
@@ -134,7 +134,7 @@ export default function ScenarioPicker() {
   }
 
   function rollRandom(): void {
-    replaySeed(formatReplayCode(newSeed()));
+    replaySeed(newReplayCode());
   }
 
   function submitReplay(event: FormEvent<HTMLFormElement>): void {

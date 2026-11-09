@@ -11,7 +11,7 @@ import {
   encodeSelection,
   formatReplayCode,
   generateRandomSelection,
-  newSeed,
+  newReplayCode,
   parseReplayCode,
   resolvePlan,
   validateSelection,
@@ -256,25 +256,33 @@ describe("replay codes", () => {
     }
   });
 
-  test("a fresh seed joins the low byte of one random word above another", () => {
+  test("a fresh code maps each random byte to the Crockford character of its low five bits", () => {
     const spy = spyOn(crypto, "getRandomValues").mockImplementation(
       <T extends ArrayBufferView | null>(array: T): T => {
-        if (array instanceof Uint32Array) array.set([0x1ff, 5]);
+        if (array instanceof Uint8Array) array.set([0, 31, 32, 255, 1, 10, 22, 0xe0]);
         return array;
       }
     );
     try {
-      expect(newSeed()).toBe(0xff * 2 ** 32 + 5);
+      expect(newReplayCode()).toBe("LW1-0Z0Z1AP0");
     } finally {
       spy.mockRestore();
     }
   });
 
-  test("a fresh seed is a 40-bit integer", () => {
-    for (let i = 0; i < 100; i++) {
-      const seed = newSeed();
-      expect(Number.isSafeInteger(seed) && seed >= 0 && seed <= MAX_SEED).toBe(true);
+  test("10,000 fresh codes are all valid, in the Crockford alphabet, with 40-bit seeds", () => {
+    const seen = new Set<string>();
+    for (let i = 0; i < 10_000; i++) {
+      const code = newReplayCode();
+      expect(code).toMatch(/^LW1-[0-9A-HJKMNP-TV-Z]{8}$/);
+      const parsed = parseReplayCode(code);
+      expect(parsed?.version).toBe(1);
+      const seed = parsed?.seed ?? -1;
+      expect(Number.isSafeInteger(seed) && seed >= 0 && seed < 2 ** 40).toBe(true);
+      expect(formatReplayCode(seed)).toBe(code);
+      seen.add(code);
     }
+    expect(seen.size).toBeGreaterThan(9_990);
   });
 });
 
