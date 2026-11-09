@@ -6,10 +6,12 @@
  *     bun run scripts/monitors/service-accounts.ts config|keys|balances|forward
  *
  * MEDIATOR_ADDRESS_MAINNET and FEE_ACCOUNT_ADDRESS_MAINNET add mainnet; MONITOR_HISTORY_HOURS
- * sets how far back keys and forward read.
+ * sets how far back keys and forward read. Each variable with a _RETIRED suffix adds an address
+ * rotated out, read by keys and forward only.
  */
 import { readFileSync } from "node:fs";
 import {
+  accountsFor,
   balanceFinding,
   forwardFinding,
   formatFinding,
@@ -17,6 +19,7 @@ import {
   incompleteHistoryFinding,
   loadServiceAccounts,
   plannedAccounts,
+  roleLabel,
   sourcedFinding,
   transactionsInWindow,
   type Finding,
@@ -60,7 +63,7 @@ async function history(account: ServiceAccount, hours: number, findings: Finding
 
 async function keys(accounts: ServiceAccount[], hours: number): Promise<Finding[]> {
   const findings: Finding[] = [];
-  for (const account of accounts) {
+  for (const account of accountsFor(accounts, "keys")) {
     const transactions = await history(account, hours, findings);
     let sourced = 0;
     for (const tx of transactions) {
@@ -71,7 +74,7 @@ async function keys(accounts: ServiceAccount[], hours: number): Promise<Finding[
       }
     }
     console.log(
-      `${account.role} (${account.network}): ${sourced} of ${transactions.length} transactions in the last ${hours} h sourced from it`
+      `${roleLabel(account)} (${account.network}): ${sourced} of ${transactions.length} transactions in the last ${hours} h sourced from it`
     );
   }
   return findings;
@@ -79,13 +82,13 @@ async function keys(accounts: ServiceAccount[], hours: number): Promise<Finding[
 
 async function balances(accounts: ServiceAccount[]): Promise<Finding[]> {
   const findings: Finding[] = [];
-  for (const account of accounts) {
+  for (const account of accountsFor(accounts, "balances")) {
     const record = await horizon<HorizonAccount>(account.network, `/accounts/${account.address}`);
     const finding = balanceFinding(account, record);
     if (finding) findings.push(finding);
     else
       console.log(
-        `${account.role} (${account.network}): balance at or above ${account.floorXlm} XLM`
+        `${roleLabel(account)} (${account.network}): balance at or above ${account.floorXlm} XLM`
       );
   }
   return findings;
@@ -93,7 +96,7 @@ async function balances(accounts: ServiceAccount[]): Promise<Finding[]> {
 
 async function forward(accounts: ServiceAccount[], hours: number): Promise<Finding[]> {
   const findings: Finding[] = [];
-  for (const account of accounts.filter((a) => a.role === "mediator")) {
+  for (const account of accountsFor(accounts, "forward")) {
     const transactions = await history(account, hours, findings);
     for (const tx of transactions) {
       await Bun.sleep(EFFECTS_DELAY_MS);
@@ -105,7 +108,7 @@ async function forward(accounts: ServiceAccount[], hours: number): Promise<Findi
       if (finding) findings.push(finding);
     }
     console.log(
-      `${account.role} (${account.network}): ${transactions.length} transactions in the last ${hours} h checked`
+      `${roleLabel(account)} (${account.network}): ${transactions.length} transactions in the last ${hours} h checked`
     );
   }
   return findings;
@@ -120,7 +123,7 @@ async function run(check: string | undefined): Promise<Finding[]> {
   const hours = historyWindowHours(process.env.MONITOR_HISTORY_HOURS);
   switch (check) {
     case "config":
-      for (const a of accounts) console.log(`${a.role} (${a.network}): ${a.address}`);
+      for (const a of accounts) console.log(`${roleLabel(a)} (${a.network}): ${a.address}`);
       console.log(`History window: ${hours} h. Variables, plan and stellar.toml agree.`);
       return [];
     case "keys":

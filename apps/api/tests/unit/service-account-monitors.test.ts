@@ -2,14 +2,17 @@ import { test, expect, describe } from "bun:test";
 import { readFileSync } from "node:fs";
 import {
   DEFAULT_HISTORY_HOURS,
+  accountsFor,
   addressVariable,
   balanceFinding,
+  formatFinding,
   forwardFinding,
   historyWindowHours,
   incompleteHistoryFinding,
   loadServiceAccounts,
   nativeBalanceStroops,
   plannedAccounts,
+  retiredVariable,
   sourcedFinding,
   transactionsInWindow,
   type HorizonTransaction,
@@ -195,6 +198,69 @@ describe("loadServiceAccounts", () => {
     expect(exitCode).toBe(1);
     expect(stderr).toContain("::error::MEDIATOR_ADDRESS_TESTNET is not set");
     expect(stderr).toContain("::error::FEE_ACCOUNT_ADDRESS_TESTNET is not set");
+  });
+});
+
+describe("a retired address", () => {
+  const retiredEnv = { ...testnetEnv, MEDIATOR_ADDRESS_TESTNET_RETIRED: OTHER };
+  const retired: ServiceAccount = {
+    role: "mediator",
+    network: "testnet",
+    address: OTHER,
+    floorXlm: "1",
+    retired: true,
+  };
+
+  test("is the address variable with a _RETIRED suffix", () => {
+    expect(retiredVariable("sponsor", "mainnet")).toBe("FEE_ACCOUNT_ADDRESS_MAINNET_RETIRED");
+  });
+
+  test("is watched alongside the current account, outside the plan", () => {
+    expect(loadServiceAccounts(retiredEnv, testnetOnly, {})).toEqual([
+      { role: "mediator", network: "testnet", address: MEDIATOR, floorXlm: "1" },
+      { role: "sponsor", network: "testnet", address: SPONSOR, floorXlm: "50" },
+      retired,
+    ]);
+  });
+
+  test("fails when it is not an account id", () => {
+    const env = { ...testnetEnv, FEE_ACCOUNT_ADDRESS_TESTNET_RETIRED: "not-an-account" };
+    expect(() => loadServiceAccounts(env, testnetOnly, {})).toThrow(
+      "FEE_ACCOUNT_ADDRESS_TESTNET_RETIRED is not a Stellar account id"
+    );
+  });
+
+  test("fails when it equals the current address", () => {
+    const env = { ...testnetEnv, MEDIATOR_ADDRESS_TESTNET_RETIRED: MEDIATOR };
+    expect(() => loadServiceAccounts(env, testnetOnly, {})).toThrow(
+      "MEDIATOR_ADDRESS_TESTNET_RETIRED is the current mediator (testnet) account"
+    );
+  });
+
+  test("does not have to be in stellar.toml, and may not stay listed there", () => {
+    const withMainnet: PlannedAccounts = {
+      testnet: { mediator: null, sponsor: null },
+      mainnet: { mediator: MEDIATOR, sponsor: null },
+    };
+    const env = { MEDIATOR_ADDRESS_MAINNET: MEDIATOR, MEDIATOR_ADDRESS_MAINNET_RETIRED: OTHER };
+    expect(loadServiceAccounts(env, withMainnet, { ACCOUNTS: [MEDIATOR] })).toHaveLength(2);
+    expect(() => loadServiceAccounts(env, withMainnet, { ACCOUNTS: [MEDIATOR, OTHER] })).toThrow(
+      `stellar.toml lists ${OTHER}`
+    );
+  });
+
+  test("is read by the keys and forward checks but has no balance floor", () => {
+    const accounts = loadServiceAccounts(retiredEnv, testnetOnly, {});
+    expect(accountsFor(accounts, "keys")).toContainEqual(retired);
+    expect(accountsFor(accounts, "forward")).toEqual([mediator, retired]);
+    expect(accountsFor(accounts, "balances")).not.toContainEqual(retired);
+    expect(accountsFor(accounts, "balances")).toHaveLength(2);
+  });
+
+  test("a finding names the account as retired", () => {
+    expect(formatFinding({ account: retired, message: "m" })).toBe(
+      `mediator (retired) (testnet, ${OTHER}): m`
+    );
   });
 });
 

@@ -121,6 +121,14 @@ unset, an address that differs from the table, a set variable whose row says not
 and the run stays red until both agree. The same comparison between the table and `stellar.toml` runs in the
 unit suite on every pull request.
 
+A rotation also keeps the address it drained watched for 24 hours: each variable has an optional `_RETIRED`
+counterpart (`MEDIATOR_ADDRESS_TESTNET_RETIRED` and so on) that holds the old address. A retired address is
+read by the source-account and forward checks only. It is in neither the table nor `stellar.toml`, and it has
+no balance floor, because the account no longer exists. A value that is not an account id, or that equals the
+current address, fails the config step. Any transaction the old key sources after the drain is a finding,
+reported as for the current account, so the drain itself is sourced from another account (see the
+rotation runbooks). The runbook deletes the variable once the 24 hours are over.
+
 The source-account and forward checks read the transactions of the last `MONITOR_HISTORY_HOURS` hours (an
 optional repository variable from 2 to 720; 168, one week, when unset), paging through Horizon 200 at a time.
 A transaction older than the window is no longer read, so a finding stops being reported once the transaction
