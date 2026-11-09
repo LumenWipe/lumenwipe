@@ -20,6 +20,7 @@ import {
   TimerReset,
 } from "lucide-react";
 import { usePlaygroundStore } from "@/store/playground";
+import { errorCopy, GENERIC_ERROR_COPY } from "@/lib/error-copy";
 import {
   DEFAULT_CUSTOM_CONFIG,
   PLAYGROUND_MODE_CONFIGS,
@@ -466,9 +467,12 @@ export default function PlaygroundControls({
 
       {phase === "EXPIRED" && (
         <>
-          <div className="mb-4 flex items-start gap-2 rounded-md border border-value/30 bg-[hsl(var(--value)/0.07)] px-4 py-3 text-sm text-white/75">
+          <div
+            role="alert"
+            className="mb-4 flex items-start gap-2 rounded-md border border-value/30 bg-[hsl(var(--value)/0.07)] px-4 py-3 text-sm text-white/75"
+          >
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-value" />
-            <span>This demo session expired. Start a fresh one - it only takes a few seconds.</span>
+            <span>{errorCopy("session_not_found")}</span>
           </div>
           <button
             className={`${primaryButton} bg-stellar text-black hover:opacity-90`}
@@ -482,9 +486,12 @@ export default function PlaygroundControls({
 
       {phase === "ERROR" && (
         <>
-          <div className="mb-4 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-white/75">
+          <div
+            role="alert"
+            className="mb-4 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-white/75"
+          >
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-            <span className="break-words">{lastError ?? "Something went wrong."}</span>
+            <span className="break-words">{lastError ?? GENERIC_ERROR_COPY}</span>
           </div>
           <button
             className={`${primaryButton} border border-white/15 text-white hover:bg-white/5`}

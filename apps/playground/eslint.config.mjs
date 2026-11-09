@@ -2,7 +2,15 @@ import coreWebVitals from "eslint-config-next/core-web-vitals";
 import prettier from "eslint-config-prettier";
 
 const config = [
-  { ignores: [".next/**", "node_modules/**", "next-env.d.ts"] },
+  {
+    ignores: [
+      ".next/**",
+      "node_modules/**",
+      "next-env.d.ts",
+      "playwright-report/**",
+      "test-results/**",
+    ],
+  },
   ...coreWebVitals,
   prettier,
   {
