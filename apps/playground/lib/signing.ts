@@ -26,6 +26,8 @@ const LEVELS: Readonly<Record<string, ThresholdCategory>> = {
   manageSellOffer: "med",
   revokeTrustlineSponsorship: "med",
   revokeDataSponsorship: "med",
+  // InvokeHostFunction does not override getThresholdLevel(): medium.
+  invokeHostFunction: "med",
 };
 
 /** SetOptions needs the high threshold only when it touches a signer, the master weight or a

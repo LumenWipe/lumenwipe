@@ -53,17 +53,17 @@ const config = [
   { rules: restrict() },
   { files: ["lib/scenarios/**"], rules: restrict(...registryPatterns) },
   {
-    files: ["lib/verify.ts"],
+    files: ["lib/verify.ts", "lib/verify-soroban.ts"],
     rules: restrict({
-      group: ["**/mess-builders"],
-      message: "The verifier never imports the mess executors.",
+      group: ["**/mess-builders", "**/soroban-seed", "**/soroban-submit"],
+      message: "The verifier never imports the mess executors or the seeding they use.",
     }),
   },
   {
-    files: ["lib/mess-builders.ts"],
+    files: ["lib/mess-builders.ts", "lib/soroban-seed.ts", "lib/soroban-submit.ts"],
     rules: restrict({
-      group: ["**/verify", "@lumenwipe/verify"],
-      message: "The mess executors never import the verifier.",
+      group: ["**/verify", "**/verify-soroban", "@lumenwipe/verify"],
+      message: "The mess executors and their seeding never import the verifier.",
     }),
   },
 ];

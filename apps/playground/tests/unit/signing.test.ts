@@ -80,6 +80,14 @@ const CORE_LEVELS: Record<string, [ThresholdCategory, xdr.Operation]> = {
     Operation.revokeTrustlineSponsorship({ account: other, asset }),
   ],
   revokeDataSponsorship: ["med", Operation.revokeDataSponsorship({ account: other, name: "k" })],
+  invokeHostFunction: [
+    "med",
+    Operation.invokeContractFunction({
+      contract: "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+      function: "remove_liquidity",
+      args: [],
+    }),
+  ],
 };
 
 describe("threshold levels", () => {

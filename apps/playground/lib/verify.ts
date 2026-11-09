@@ -16,6 +16,7 @@ import {
 } from "./scenarios";
 import type { PlaygroundSession, SignerType } from "./session-store";
 import { parseStroops } from "./stroops";
+import { assertSorobanTransaction, type SeededProtocol } from "./verify-soroban";
 
 // The check the playground's backend runs on every XDR the real API returns, before signing it.
 //
@@ -35,7 +36,10 @@ import { parseStroops } from "./stroops";
 //   trustline may only be added for the asset of such a balance, ahead of its claim;
 // - a sponsorship may only be revoked on an entry the session recorded the demo sponsoring, and a
 //   claimable balance's sponsorship never;
-// - no DeFi exit was chosen, so each of those is refused.
+// - a Soroban contract call must first pass lib/verify-soroban.ts, which pins it to a protocol
+//   the session seeded, that protocol's contracts and the session's own instances of it, and the
+//   protocol's exit function with the demo as its recipient; no scenario seeds a protocol yet;
+// - no DeFi exit was chosen, so each of those is refused by the shared verifier as well.
 //
 // The shared verifier holds a transfer to a floor; the playground also holds a transfer and a
 // conversion to at most the amount the mess paid in, so the two together pin a transfer exactly.
@@ -79,6 +83,8 @@ export const PLAYGROUND_CLOSE_OPERATION_TYPES: readonly CloseOperationType[] = [
   // A revoke of an entry the session recorded the demo sponsoring.
   "revokeTrustlineSponsorship",
   "revokeDataSponsorship",
+  // A protocol exit, held to lib/verify-soroban.ts before the shared verifier runs.
+  "invokeHostFunction",
 ];
 
 /** One asset the session can hold: its code and the issuer it returns to. */
@@ -140,6 +146,8 @@ export interface PlaygroundCloseExpectation {
   /** Balances the demo can claim only after the session, answered `forfeit`. */
   forfeits: string[];
   sponsoredEntries: PlaygroundSponsoredEntry[];
+  /** The Soroban protocols the session seeded, with their instances; a call to any other is refused. */
+  sorobanSeeded: SeededProtocol[];
 }
 
 /**
@@ -215,6 +223,8 @@ export function expectationFromSession(
     claims,
     forfeits,
     sponsoredEntries,
+    // No scenario seeds a Soroban protocol yet, so every contract call is refused.
+    sorobanSeeded: [],
   };
 }
 
@@ -467,6 +477,15 @@ export function verifyDemolishTransaction(
   // CAP-33: only a cooperating new sponsor can take a claimable balance's reserve over.
   if (parsed.operations.some((op) => op.type === "revokeClaimableBalanceSponsorship")) {
     throw new PlaygroundVerificationError("revoke_claimable_balance_refused");
+  }
+
+  // Before the shared verifier too: a contract call must pass the playground's own structural
+  // check, whatever the shared verifier would admit, and then the shared verifier as well.
+  if (parsed.operations.some((op) => op.type === "invokeHostFunction")) {
+    assertSorobanTransaction(parsed, {
+      demoPublic: expected.demoPublic,
+      seeded: expected.sorobanSeeded,
+    });
   }
 
   verifyCloseTransaction({
