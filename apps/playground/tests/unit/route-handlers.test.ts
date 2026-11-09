@@ -11,7 +11,7 @@ import {
   handleCleanup,
   handleCreateSession,
   handleCredentials,
-  handleDemolish,
+  handleDemolishRound,
   handleMess,
   handleState,
   parseCreateBody,
@@ -181,6 +181,7 @@ describe("create session", () => {
       completedMessSteps: [],
       recordedSigners: [],
       demolishLog: [],
+      demolishPending: null,
       demolishDone: false,
       fundRareAssets: ["AIRDROP1", "RUGPULL"],
       offerCount: 3,
@@ -470,12 +471,13 @@ describe("mess step", () => {
   });
 });
 
-// ─── POST /api/session/[id]/demolish ───────────────────────────────────────────
+// ─── POST /api/session/[id]/demolish/round ─────────────────────────────────────
 
 describe("demolish", () => {
   const issuer = Keypair.random();
   const mm = Keypair.random();
   const api = { apiUrl: "http://localhost:3001", apiKey: "test-api-key" };
+  const CLOSE_ENTRY = { txId: "tx-1", hash: "c".repeat(64), summary: "Close", operations: [] };
 
   function demolishDeps(store: SessionStore, runs: RunDemolishOptions[] = []) {
     return {
@@ -486,19 +488,23 @@ describe("demolish", () => {
       decrypt,
       runDemolish: async (opts: RunDemolishOptions) => {
         runs.push(opts);
-        opts.onConfirmed?.("tx-1", "c".repeat(64), "Close the account", []);
+        opts.hooks.onConfirmed(CLOSE_ENTRY, true);
+        return { done: true, remainingSteps: 0 };
       },
     };
   }
 
-  test("the close runs against the session record and marks the session done", async () => {
+  test("the round runs against the session record and marks the session done", async () => {
     const store = memoryStore();
     const signer = Keypair.random().publicKey();
     const seeded = await seed(store, { recordedSigners: [signer] });
     const runs: RunDemolishOptions[] = [];
-    const res = await handleDemolish(seeded.id, demolishDeps(store, runs));
+    const res = await handleDemolishRound(seeded.id, demolishDeps(store, runs));
 
-    expect(await outcome(res)).toEqual({ status: 200, body: { done: true } });
+    expect(await outcome(res)).toEqual({
+      status: 200,
+      body: { done: true, confirmed: [CLOSE_ENTRY], remainingSteps: 0 },
+    });
     expect(runs).toHaveLength(1);
     const opts = runs[0]!;
     expect(opts.demoKeypair.publicKey()).toBe(seeded.demo.publicKey());
@@ -521,9 +527,9 @@ describe("demolish", () => {
     const store = memoryStore();
     const seeded = await seed(store, { demolishDone: true });
     const runs: RunDemolishOptions[] = [];
-    expect(await outcome(await handleDemolish(seeded.id, demolishDeps(store, runs)))).toEqual({
+    expect(await outcome(await handleDemolishRound(seeded.id, demolishDeps(store, runs)))).toEqual({
       status: 200,
-      body: { done: true },
+      body: { done: true, confirmed: [], remainingSteps: 0 },
     });
     expect(runs).toEqual([]);
   });
@@ -540,7 +546,7 @@ describe("demolish", () => {
     ];
     for (const variant of variants) {
       const deps = { ...demolishDeps(counted.store), ...variant };
-      expect(await outcome(await handleDemolish(seeded.id, deps))).toEqual(NOT_CONFIGURED);
+      expect(await outcome(await handleDemolishRound(seeded.id, deps))).toEqual(NOT_CONFIGURED);
     }
     expect(counted.calls()).toBe(0);
   });
@@ -549,15 +555,37 @@ describe("demolish", () => {
     const clock = fakeClock();
     const store = memoryStore(clock);
     const seeded = await seed(store);
-    expect(await outcome(await handleDemolish(NOT_A_UUID, demolishDeps(store)))).toEqual(NOT_FOUND);
+    expect(await outcome(await handleDemolishRound(NOT_A_UUID, demolishDeps(store)))).toEqual(
+      NOT_FOUND
+    );
     expired(clock);
-    expect(await outcome(await handleDemolish(seeded.id, demolishDeps(store)))).toEqual(NOT_FOUND);
+    expect(await outcome(await handleDemolishRound(seeded.id, demolishDeps(store)))).toEqual(
+      NOT_FOUND
+    );
+  });
+
+  test("a round that is not the last answers not done, with what it confirmed and what is left", async () => {
+    const store = memoryStore();
+    const seeded = await seed(store);
+    const entry = { ...CLOSE_ENTRY, txId: "tx-0", hash: "d".repeat(64) };
+    const res = await handleDemolishRound(seeded.id, {
+      ...demolishDeps(store),
+      runDemolish: async (opts) => {
+        opts.hooks.onConfirmed(entry, false);
+        return { done: false, remainingSteps: 2 };
+      },
+    });
+    expect(await outcome(res)).toEqual({
+      status: 200,
+      body: { done: false, confirmed: [entry], remainingSteps: 2 },
+    });
+    expect((await store.loadSession(seeded.id))?.demolishDone).toBe(false);
   });
 
   test("a failed close is demolish_failed and leaves the session not done", async () => {
     const store = memoryStore();
     const seeded = await seed(store);
-    const res = await handleDemolish(seeded.id, {
+    const res = await handleDemolishRound(seeded.id, {
       ...demolishDeps(store),
       runDemolish: async () => {
         throw new Error("verification refused");

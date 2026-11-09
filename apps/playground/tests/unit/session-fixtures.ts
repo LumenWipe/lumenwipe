@@ -24,6 +24,7 @@ export function newSessionData(): NewSessionData {
     completedMessSteps: [],
     recordedSigners: [],
     demolishLog: [],
+    demolishPending: null,
     demolishDone: false,
     fundRareAssets: [],
     offerCount: 0,

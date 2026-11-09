@@ -1,14 +1,30 @@
 import { test, expect, describe } from "bun:test";
-import { LumenWipeApiError, type IntentOperation } from "@lumenwipe/sdk";
+import { CloseOutcomeUnknownError, LumenWipeApiError } from "@lumenwipe/sdk";
 import { PlaygroundConfigError } from "@/lib/crypto";
-import { readSessionState, runCleanup, runDemolishStep, runMessStep } from "@/lib/session-actions";
-import type { SessionStore } from "@/lib/session-store";
+import type { DemolishRoundResult } from "@/lib/demolish";
+import { readSessionState, runCleanup, runDemolishRound, runMessStep } from "@/lib/session-actions";
+import type { DemolishLogEntry, PendingDemolishTx, SessionStore } from "@/lib/session-store";
 import { gate, memoryStore, newSessionData, tick } from "./session-fixtures";
 
 const UNKNOWN_ID = "6f1c2a4e-3b5d-4c7e-9a8b-1d2e3f4a5b6c";
 
 const outcome = (r: { body: Record<string, unknown> }): string =>
   typeof r.body.error === "string" ? r.body.error : "ok";
+
+const DONE: DemolishRoundResult = { done: true, remainingSteps: 0 };
+
+const entry = (n: number): DemolishLogEntry => ({
+  txId: `tx-${n}`,
+  hash: String(n).repeat(64),
+  summary: `transaction ${n}`,
+  operations: [],
+});
+
+const pending = (n: number, closesAccount = false): PendingDemolishTx => ({
+  ...entry(n),
+  validUntil: 1_800_000_100,
+  closesAccount,
+});
 
 test("two simultaneous requests for the same mess step execute it once", async () => {
   const store = memoryStore();
@@ -87,32 +103,33 @@ test("two different mess steps on one session do not run at the same time", asyn
   expect(results.map(outcome).sort()).toEqual(["ok", "step_in_progress"]);
 });
 
-test("two simultaneous demolish requests on one session run one close loop", async () => {
+test("two simultaneous demolish rounds on one session run once", async () => {
   const store = memoryStore();
   const session = await store.createSession(newSessionData());
   const release = gate();
-  let loops = 0;
-  const demolish = async (): Promise<void> => {
-    loops++;
+  let rounds = 0;
+  const round = async (): Promise<DemolishRoundResult> => {
+    rounds++;
     await release.wait;
+    return DONE;
   };
 
-  const first = runDemolishStep(store, session.id, { demolish });
-  const second = runDemolishStep(store, session.id, { demolish });
+  const first = runDemolishRound(store, session.id, { round });
+  const second = runDemolishRound(store, session.id, { round });
   await tick();
   release.open();
   const results = await Promise.all([first, second]);
 
-  expect(loops).toBe(1);
+  expect(rounds).toBe(1);
   expect(results.map(outcome).sort()).toEqual(["ok", "step_in_progress"]);
   expect((await store.loadSession(session.id))?.demolishDone).toBe(true);
 });
 
-test("a demolish request while a mess step is in flight is refused", async () => {
+test("a demolish round while a mess step is in flight is refused", async () => {
   const store = memoryStore();
   const session = await store.createSession(newSessionData());
   const release = gate();
-  let loops = 0;
+  let rounds = 0;
 
   const mess = runMessStep(store, session.id, "SETUP", {
     executeStep: async () => {
@@ -121,32 +138,294 @@ test("a demolish request while a mess step is in flight is refused", async () =>
     },
   });
   await tick();
-  const demolish = await runDemolishStep(store, session.id, {
-    demolish: async () => void loops++,
+  const demolish = await runDemolishRound(store, session.id, {
+    round: async () => {
+      rounds++;
+      return DONE;
+    },
   });
   release.open();
   await mess;
 
   expect(outcome(demolish)).toBe("step_in_progress");
-  expect(loops).toBe(0);
+  expect(rounds).toBe(0);
 });
 
-test("every confirmed demolish transaction and the done flag are persisted", async () => {
+test("log updates from callbacks fired together are all kept, in order", async () => {
   const store = memoryStore();
   const session = await store.createSession(newSessionData());
-  const operations: IntentOperation[] = [];
 
-  const result = await runDemolishStep(store, session.id, {
-    demolish: async (_session, onConfirmed) => {
-      onConfirmed("tx-1", "hash-1", "first", operations);
-      onConfirmed("tx-2", "hash-2", "second", operations);
+  const result = await runDemolishRound(store, session.id, {
+    round: async (_session, hooks) => {
+      await hooks.persistPending(pending(1));
+      for (let n = 1; n <= 5; n++) hooks.onConfirmed(entry(n), n === 5);
+      return DONE;
     },
   });
 
-  expect(outcome(result)).toBe("ok");
+  expect(result.body.confirmed).toEqual([1, 2, 3, 4, 5].map(entry));
   const loaded = await store.loadSession(session.id);
-  expect(loaded?.demolishLog.map((e) => e.hash)).toEqual(["hash-1", "hash-2"]);
+  expect(loaded?.demolishLog.map((e) => e.txId)).toEqual(["tx-1", "tx-2", "tx-3", "tx-4", "tx-5"]);
+  expect(loaded?.demolishPending).toBeNull();
   expect(loaded?.demolishDone).toBe(true);
+});
+
+test("a round that is not the last leaves the session open and reports what is left", async () => {
+  const store = memoryStore();
+  const session = await store.createSession(newSessionData());
+
+  const result = await runDemolishRound(store, session.id, {
+    round: async (_session, hooks) => {
+      hooks.onConfirmed(entry(1), false);
+      return { done: false, remainingSteps: 2 };
+    },
+  });
+
+  expect(result).toEqual({
+    status: 200,
+    body: { done: false, confirmed: [entry(1)], remainingSteps: 2 },
+  });
+  expect((await store.loadSession(session.id))?.demolishDone).toBe(false);
+});
+
+test("a round that fails midway resumes with only what it had not confirmed", async () => {
+  const store = memoryStore();
+  const session = await store.createSession(newSessionData());
+  // The API is stateless: each round builds from the account as it now is, so a confirmed
+  // transaction is never handed out again. This fake plays that account.
+  const onChain = new Set<number>();
+  const batch = [1, 2, 3];
+  let failNext = true;
+  const round = async (
+    _s: unknown,
+    hooks: Parameters<Parameters<typeof runDemolishRound>[2]["round"]>[1]
+  ): Promise<DemolishRoundResult> => {
+    for (const n of batch.filter((b) => !onChain.has(b))) {
+      if (n === 2 && failNext) {
+        failNext = false;
+        throw new Error("tx_bad_seq");
+      }
+      await hooks.persistPending(pending(n, n === 3));
+      onChain.add(n);
+      hooks.settled();
+      hooks.onConfirmed(entry(n), n === 3);
+    }
+    return DONE;
+  };
+
+  const failed = await runDemolishRound(store, session.id, { round });
+  expect(failed).toEqual({ status: 502, body: { error: "demolish_failed" } });
+  expect((await store.loadSession(session.id))?.demolishLog).toEqual([entry(1)]);
+
+  const resumed = await runDemolishRound(store, session.id, { round });
+  expect(resumed.body).toEqual({ done: true, confirmed: [entry(2), entry(3)], remainingSteps: 0 });
+  const loaded = await store.loadSession(session.id);
+  expect(loaded?.demolishLog).toEqual([entry(1), entry(2), entry(3)]);
+  expect(loaded?.demolishPending).toBeNull();
+});
+
+test("a transaction in flight is recorded before it is sent and handed to the next round", async () => {
+  const store = memoryStore();
+  const session = await store.createSession(newSessionData());
+  const seen: (PendingDemolishTx | null)[] = [];
+
+  const unknown = await runDemolishRound(store, session.id, {
+    round: async (_session, hooks) => {
+      seen.push(hooks.pending);
+      await hooks.persistPending(pending(1, true));
+      throw new CloseOutcomeUnknownError({ hash: entry(1).hash, covers: ["MERGE"], validUntil: 0 });
+    },
+  });
+  expect(unknown).toEqual({ status: 502, body: { error: "demolish_outcome_unknown" } });
+  expect((await store.loadSession(session.id))?.demolishPending).toEqual(pending(1, true));
+
+  await runDemolishRound(store, session.id, {
+    round: async (_session, hooks) => {
+      seen.push(hooks.pending);
+      hooks.settled();
+      hooks.onConfirmed(entry(1), true);
+      return DONE;
+    },
+  });
+  expect(seen).toEqual([null, pending(1, true)]);
+  const loaded = await store.loadSession(session.id);
+  expect(loaded?.demolishLog).toEqual([entry(1)]);
+  expect(loaded?.demolishPending).toBeNull();
+  expect(loaded?.demolishDone).toBe(true);
+});
+
+test("a transaction that settles without confirming has its record cleared", async () => {
+  const store = memoryStore();
+  const session = await store.createSession(newSessionData());
+
+  const result = await runDemolishRound(store, session.id, {
+    round: async (_session, hooks) => {
+      await hooks.persistPending(pending(1));
+      hooks.settled();
+      throw new Error("tx_failed");
+    },
+  });
+  expect(outcome(result)).toBe("demolish_failed");
+  const loaded = await store.loadSession(session.id);
+  expect(loaded?.demolishPending).toBeNull();
+  expect(loaded?.demolishLog).toEqual([]);
+});
+
+/** A store whose next write that appends to the demolish log fails, once. */
+function failingLogWriteOnce(store: SessionStore): SessionStore {
+  let armed = true;
+  return {
+    ...store,
+    updateSession: async (lock, patch) => {
+      const current = await store.loadSession(lock.sessionId);
+      if (armed && current && patch(current).demolishLog) {
+        armed = false;
+        throw new Error("store unavailable");
+      }
+      return store.updateSession(lock, patch);
+    },
+  };
+}
+
+// The engine reports a settlement before the confirmation today; both orders are held here, so a
+// change in the engine cannot make the round drop a record whose log write failed.
+const ORDERS = ["settled, then confirmed", "confirmed, then settled"] as const;
+type Hooks = Parameters<Parameters<typeof runDemolishRound>[2]["round"]>[1];
+function settleAndConfirm(
+  hooks: Hooks,
+  order: (typeof ORDERS)[number],
+  logged: DemolishLogEntry,
+  closesAccount: boolean
+): void {
+  if (order === ORDERS[0]) hooks.settled();
+  hooks.onConfirmed(logged, closesAccount);
+  if (order === ORDERS[1]) hooks.settled();
+}
+
+describe("a confirmation whose log write failed keeps its record for the next round", () => {
+  for (const order of ORDERS) {
+    test(`a transaction that does not close the account (${order})`, async () => {
+      const store = memoryStore();
+      const session = await store.createSession(newSessionData());
+
+      const first = await runDemolishRound(failingLogWriteOnce(store), session.id, {
+        round: async (_session, hooks) => {
+          await hooks.persistPending(pending(1));
+          settleAndConfirm(hooks, order, entry(1), false);
+          return { done: false, remainingSteps: 1 };
+        },
+      });
+      expect(first.body).toEqual({ done: false, confirmed: [], remainingSteps: 1 });
+      const afterFirst = await store.loadSession(session.id);
+      expect(afterFirst?.demolishPending).toEqual(pending(1));
+      expect(afterFirst?.demolishLog).toEqual([]);
+
+      // The next round's lookup finds the transaction confirmed and reports it from the record.
+      const second = await runDemolishRound(store, session.id, {
+        round: async (_session, hooks) => {
+          expect(hooks.pending).toEqual(pending(1));
+          settleAndConfirm(hooks, order, entry(1), false);
+          return { done: false, remainingSteps: 1 };
+        },
+      });
+      expect(second.body).toEqual({ done: false, confirmed: [entry(1)], remainingSteps: 1 });
+      const afterSecond = await store.loadSession(session.id);
+      expect(afterSecond?.demolishLog).toEqual([entry(1)]);
+      expect(afterSecond?.demolishPending).toBeNull();
+    });
+
+    test(`the merge (${order})`, async () => {
+      const store = memoryStore();
+      const session = await store.createSession(newSessionData());
+
+      const result = await runDemolishRound(failingLogWriteOnce(store), session.id, {
+        round: async (_session, hooks) => {
+          await hooks.persistPending(pending(1, true));
+          settleAndConfirm(hooks, order, entry(1), true);
+          return DONE;
+        },
+      });
+
+      expect(result.body).toEqual({ done: true, confirmed: [entry(1)], remainingSteps: 0 });
+      const loaded = await store.loadSession(session.id);
+      expect(loaded?.demolishLog).toEqual([entry(1)]);
+      expect(loaded?.demolishPending).toBeNull();
+      expect(loaded?.demolishDone).toBe(true);
+    });
+  }
+});
+
+test("a record that cannot be written stops the round before anything is sent", async () => {
+  const store = memoryStore();
+  const session = await store.createSession(newSessionData());
+  let sent = 0;
+  const lockLosing: SessionStore = {
+    ...store,
+    updateSession: async () => {
+      throw new Error("lock lost");
+    },
+  };
+
+  const result = await runDemolishRound(lockLosing, session.id, {
+    round: async (_session, hooks) => {
+      await hooks.persistPending(pending(1));
+      sent++;
+      return DONE;
+    },
+  });
+  expect(outcome(result)).toBe("demolish_failed");
+  expect(sent).toBe(0);
+});
+
+test("a session already demolished answers done without another round", async () => {
+  const store = memoryStore();
+  const session = await store.createSession({ ...newSessionData(), demolishDone: true });
+  let rounds = 0;
+  const result = await runDemolishRound(store, session.id, {
+    round: async () => {
+      rounds++;
+      return DONE;
+    },
+  });
+  expect(result.body).toEqual({ done: true, confirmed: [], remainingSteps: 0 });
+  expect(rounds).toBe(0);
+});
+
+describe("the mess is frozen once the close has started", () => {
+  const cases: [string, Partial<ReturnType<typeof newSessionData>>][] = [
+    ["a confirmed transaction", { demolishLog: [entry(1)] }],
+    ["a transaction in flight", { demolishPending: pending(1) }],
+    ["a finished close", { demolishDone: true }],
+  ];
+  for (const [name, patch] of cases) {
+    test(name, async () => {
+      const store = memoryStore();
+      const session = await store.createSession({ ...newSessionData(), ...patch });
+      let executions = 0;
+      const result = await runMessStep(store, session.id, "SETUP", {
+        executeStep: async () => {
+          executions++;
+          return "hash";
+        },
+      });
+      expect(result).toEqual({ status: 409, body: { error: "demolish_started" } });
+      expect(executions).toBe(0);
+    });
+  }
+
+  test("a round that failed before confirming anything leaves the mess open", async () => {
+    const store = memoryStore();
+    const session = await store.createSession(newSessionData());
+    await runDemolishRound(store, session.id, {
+      round: async () => {
+        throw new Error("needs_decisions");
+      },
+    });
+    const result = await runMessStep(store, session.id, "SETUP", {
+      executeStep: async () => "hash",
+    });
+    expect(outcome(result)).toBe("ok");
+  });
 });
 
 test("the lock is released after a failed step, so a retry can run", async () => {
@@ -253,8 +532,8 @@ describe("failure responses carry a code and no upstream text", () => {
   test("a failed demolish", async () => {
     const store = memoryStore();
     const session = await store.createSession(newSessionData());
-    const result = await runDemolishStep(store, session.id, {
-      demolish: async () => {
+    const result = await runDemolishRound(store, session.id, {
+      round: async () => {
         throw new Error(UPSTREAM);
       },
     });
@@ -343,8 +622,8 @@ test("an id that is not a session uuid is a 404 and never reaches the store or t
         })
       ).toEqual(notFound);
       expect(
-        await runDemolishStep(watchedStore, id, {
-          demolish: async () => {
+        await runDemolishRound(watchedStore, id, {
+          round: async () => {
             throw new Error("must not run");
           },
         })

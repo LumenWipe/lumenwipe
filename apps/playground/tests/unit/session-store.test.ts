@@ -151,6 +151,26 @@ describe("schema version", () => {
     expect(await (await stored(v1)).loadSession(SID)).toBeNull();
   });
 
+  test("a version 2 session, saved before an in-flight close was recorded, reads as expired", async () => {
+    const { demolishPending: _omitted, ...v2 } = { ...current(), schemaVersion: 2 };
+    expect(await (await stored(v2)).loadSession(SID)).toBeNull();
+  });
+
+  test("a session with a demolish transaction in flight loads with it", async () => {
+    const inFlight = {
+      ...current(),
+      demolishPending: {
+        txId: "t",
+        hash: "h",
+        summary: "s",
+        operations: [],
+        validUntil: null,
+        closesAccount: true,
+      },
+    };
+    expect(await (await stored(inFlight)).loadSession(SID)).toEqual(inFlight);
+  });
+
   test("a malformed session reads as expired", async () => {
     for (const bad of [
       { ...current(), completedMessSteps: "SETUP" },
@@ -158,6 +178,19 @@ describe("schema version", () => {
       { ...current(), ephemeralIssuers: [{ publicKey: "G", assetCode: "X" }] },
       { ...current(), demolishLog: [{ txId: "t", hash: "h", summary: "s" }] },
       { ...current(), demolishDone: "no" },
+      { ...current(), demolishPending: undefined },
+      { ...current(), demolishPending: { txId: "t", hash: "h", summary: "s", operations: [] } },
+      {
+        ...current(),
+        demolishPending: {
+          txId: "t",
+          hash: "h",
+          summary: "s",
+          operations: [],
+          validUntil: "soon",
+          closesAccount: false,
+        },
+      },
       "not-a-session",
       [current()],
     ]) {

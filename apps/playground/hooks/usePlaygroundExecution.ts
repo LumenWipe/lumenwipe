@@ -29,12 +29,26 @@ interface SessionResponse {
   accounts: PlaygroundAccounts;
 }
 
+interface DemolishLogEntry {
+  txId: string;
+  hash: string;
+  summary: string;
+  operations: IntentOperation[];
+}
+
 interface StateResponse {
   demoPublic: string;
   accountState: AccountState | null;
   completedMessSteps: string[];
-  demolishLog: { txId: string; hash: string; summary: string; operations: IntentOperation[] }[];
+  demolishLog: DemolishLogEntry[];
   demolishDone: boolean;
+}
+
+/** One demolish round: what it confirmed, whether the account is gone, and the rounds left. */
+export interface DemolishRoundResponse {
+  done: boolean;
+  confirmed: DemolishLogEntry[];
+  remainingSteps: number | null;
 }
 
 interface UsePlaygroundExecutionResult {
@@ -136,16 +150,64 @@ function applyBalanceUpdates(step: MessStepDef): void {
   if (step.id === "FUND_EURC") updateNode("tl:EURC", { balance: EURC_DEMO_AMOUNT });
 }
 
-const DEMOLISH_REPLAY_STAGGER_MS = 500;
+const DEMOLISH_STAGGER_MS = 500;
+
+/** More rounds than any playground close takes (it needs one); a close that keeps asking for
+ *  another is stopped here instead of looping. */
+export const DEMOLISH_MAX_ROUNDS = 20;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** The progress line before round `round` (zero-based), "Round 2 of about 3" once the API has
+ *  estimated what is left. */
+export function demolishRoundStatus(round: number, remainingSteps: number | null): string {
+  if (round === 0) return "Closing the account...";
+  if (remainingSteps === null) return `Closing the account, round ${round + 1}...`;
+  const total = Math.max(round + 1, round + remainingSteps);
+  return `Closing the account, round ${round + 1} of about ${total}...`;
+}
+
+/** Plays one confirmed transaction on the scene, operation by operation, then logs it with its
+ *  hash (the log links it to the explorer). */
+async function animateConfirmed(entry: DemolishLogEntry): Promise<void> {
+  const store = usePlaygroundStore.getState();
+  for (const op of entry.operations) {
+    const liveNodeIds = usePlaygroundStore
+      .getState()
+      .nodes.filter((n) => n.status !== "destroyed")
+      .map((n) => n.id);
+    const action = operationToSceneAction(op, liveNodeIds);
+    if (!action) continue;
+
+    if (action.type === "destroy") {
+      store.destroyNodes(action.nodeIds, entry.hash);
+    } else if (action.type === "pulse") {
+      store.updateNode(action.nodeId, { status: "converting" });
+    }
+    // "merge" is handled once the close is done - not per-operation, since it's the terminal
+    // state for the whole scene.
+    await sleep(DEMOLISH_STAGGER_MS);
+
+    // A payment (issuer-return) pulse is transient: reset the node back to "docked" once its
+    // stagger window has passed so a round that splits the payment and trustline-removal across
+    // separate transactions doesn't leave the node stuck mid-animation.
+    if (action.type === "pulse") {
+      store.updateNode(action.nodeId, { status: "docked" });
+    }
+  }
+  store.addLog({ label: entry.summary, txHash: entry.hash, kind: "demolish" });
 }
 
 export function usePlaygroundExecution(): UsePlaygroundExecutionResult {
   const [progressStatus, setProgressStatus] = useState<string | null>(null);
   const running = useRef(false);
   const nodeSeq = useRef(0);
+  // Hashes already played on the scene, so a resumed close never plays a transaction twice.
+  const shown = useRef(new Set<string>());
+  // The balance before the close started, kept across resumes for the completion summary.
+  const preDemolishXlm = useRef<string | null>(null);
 
   const fail = useCallback((err: unknown) => {
     const store = usePlaygroundStore.getState();
@@ -171,6 +233,8 @@ export function usePlaygroundExecution(): UsePlaygroundExecutionResult {
     if (running.current) return;
     running.current = true;
     nodeSeq.current = 0;
+    shown.current = new Set();
+    preDemolishXlm.current = null;
     const store = usePlaygroundStore.getState();
 
     try {
@@ -229,76 +293,79 @@ export function usePlaygroundExecution(): UsePlaygroundExecutionResult {
     }
   }, [fail, refreshState]);
 
-  /** Phase B: run the real close engine server-side, then replay what it did. */
+  const showConfirmed = useCallback(async (entries: DemolishLogEntry[]) => {
+    for (const entry of entries) {
+      if (shown.current.has(entry.hash)) continue;
+      shown.current.add(entry.hash);
+      await animateConfirmed(entry);
+    }
+  }, []);
+
+  const complete = useCallback((sessionId: string) => {
+    if (preDemolishXlm.current) {
+      usePlaygroundStore.getState().setRecoveredXlm(preDemolishXlm.current);
+    }
+    usePlaygroundStore.getState().setPhase("COMPLETE");
+
+    fetch(`/api/session/${sessionId}/cleanup`, { method: "POST" }).catch((err) =>
+      console.error("[playground] cleanup request failed:", err)
+    );
+  }, []);
+
+  /**
+   * Phase B: run the real close engine server-side one round per request, playing each confirmed
+   * transaction as its round returns. Called again after an error, it resumes: the server carries
+   * on from the account's live state and settles anything left in flight.
+   */
   const demolish = useCallback(async () => {
     if (running.current) return;
     running.current = true;
+    const { sessionId } = usePlaygroundStore.getState();
 
     try {
-      const { sessionId } = usePlaygroundStore.getState();
       if (!sessionId) throw new Error("No active playground session");
 
-      // Captured before any further state-refreshing: once the demolish POST
-      // below completes, the account is merged away and /state's accountState
-      // goes null (the "account no longer exists" success path), so this is
-      // the last point the DIRTY-phase balance is still live in the store.
-      const preDemolishXlm =
-        usePlaygroundStore.getState().accountState?.nativeBalanceLumens ?? null;
+      const store = usePlaygroundStore.getState();
+      // Captured on the first attempt only: once rounds land, /state's accountState shrinks, and
+      // once the merge lands it goes null (the "account no longer exists" success path).
+      if (!store.demolishFailed) {
+        preDemolishXlm.current = store.accountState?.nativeBalanceLumens ?? null;
+      }
+      store.setDemolishFailed(false);
+      store.setLastError(null);
+      store.setPhase("DEMOLISHING");
 
-      usePlaygroundStore.getState().setPhase("DEMOLISHING");
-      setProgressStatus("Closing the account...");
-
-      const result = await api<{ done: boolean }>(`/session/${sessionId}/demolish`, {
-        method: "POST",
-      });
-      if (!result.done) throw new Error("The close did not complete");
-
-      const state = await refreshState();
-      if (!state) throw new Error("Session state unavailable after demolish");
-
-      for (const entry of state.demolishLog) {
-        const store = usePlaygroundStore.getState();
-        for (const op of entry.operations) {
-          const liveNodeIds = usePlaygroundStore
-            .getState()
-            .nodes.filter((n) => n.status !== "destroyed")
-            .map((n) => n.id);
-          const action = operationToSceneAction(op, liveNodeIds);
-          if (!action) continue;
-
-          if (action.type === "destroy") {
-            store.destroyNodes(action.nodeIds, entry.hash);
-          } else if (action.type === "pulse") {
-            store.updateNode(action.nodeId, { status: "converting" });
-          }
-          // "merge" is handled after the loop, once, below - not per-operation,
-          // since it's the terminal state for the whole scene.
-          await sleep(DEMOLISH_REPLAY_STAGGER_MS);
-
-          // A payment (issuer-return) pulse is transient: reset the node back
-          // to "docked" once its stagger window has passed so a future round
-          // that splits the payment and trustline-removal across separate
-          // transactions doesn't leave the node stuck mid-animation.
-          if (action.type === "pulse") {
-            store.updateNode(action.nodeId, { status: "docked" });
-          }
-        }
-        store.addLog({ label: entry.summary, txHash: entry.hash, kind: "demolish" });
+      let remainingSteps: number | null = null;
+      for (let round = 0; ; round++) {
+        if (round === DEMOLISH_MAX_ROUNDS) throw new Error("The close did not converge");
+        setProgressStatus(demolishRoundStatus(round, remainingSteps));
+        const result = await api<DemolishRoundResponse>(`/session/${sessionId}/demolish/round`, {
+          method: "POST",
+        });
+        await showConfirmed(result.confirmed);
+        if (result.done) break;
+        remainingSteps = result.remainingSteps;
       }
 
-      if (preDemolishXlm) usePlaygroundStore.getState().setRecoveredXlm(preDemolishXlm);
-      usePlaygroundStore.getState().setPhase("COMPLETE");
-
-      fetch(`/api/session/${sessionId}/cleanup`, { method: "POST" }).catch((err) =>
-        console.error("[playground] cleanup request failed:", err)
-      );
+      complete(sessionId);
     } catch (err) {
+      if (sessionId && !(err instanceof SessionExpiredError)) {
+        // What a failed round confirmed before it stopped is played too, and a close whose answer
+        // was lost after it finished completes instead of offering a resume.
+        const state = await refreshState().catch(() => null);
+        if (state) await showConfirmed(state.demolishLog);
+        if (state?.demolishDone) {
+          complete(sessionId);
+          return;
+        }
+        usePlaygroundStore.getState().setDemolishFailed(true);
+      }
       fail(err);
     } finally {
       setProgressStatus(null);
       running.current = false;
     }
-  }, [fail, refreshState]);
+  }, [complete, fail, refreshState, showConfirmed]);
 
   return { start, demolish, progressStatus };
 }

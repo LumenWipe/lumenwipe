@@ -1,14 +1,17 @@
 import "server-only";
-import { LumenWipeApiError, type AccountState, type IntentOperation } from "@lumenwipe/sdk";
+import { CloseOutcomeUnknownError, LumenWipeApiError, type AccountState } from "@lumenwipe/sdk";
 import { PlaygroundConfigError } from "./crypto";
+import type { DemolishRoundHooks, DemolishRoundResult } from "./demolish";
 import type { MessStepId } from "./mess-plan";
 import {
   PlaygroundStoreUnavailableError,
   type DemolishLogEntry,
   type PlaygroundSession,
   type SessionLock,
+  type SessionPatch,
   type SessionStore,
   isSessionId,
+  logEntryOf,
 } from "./session-store";
 
 export interface ActionResult {
@@ -22,13 +25,6 @@ export const NOT_CONFIGURED: ActionResult = { status: 503, body: { error: "not_c
 const SESSION_NOT_FOUND: ActionResult = { status: 404, body: { error: "session_not_found" } };
 const STEP_IN_PROGRESS: ActionResult = { status: 409, body: { error: "step_in_progress" } };
 
-export type OnDemolishConfirmed = (
-  txId: string,
-  hash: string,
-  summary: string,
-  operations: IntentOperation[]
-) => void;
-
 export interface MessStepDeps {
   /** `recordSigner` persists a signer the step is about to add, before its transaction is sent. */
   executeStep: (
@@ -38,8 +34,9 @@ export interface MessStepDeps {
   ) => Promise<string>;
 }
 
-export interface DemolishDeps {
-  demolish: (session: PlaygroundSession, onConfirmed: OnDemolishConfirmed) => Promise<void>;
+export interface DemolishRoundDeps {
+  /** Runs one round of the close (lib/demolish.ts `runCloseRound`). */
+  round: (session: PlaygroundSession, hooks: DemolishRoundHooks) => Promise<DemolishRoundResult>;
 }
 
 export interface CleanupDeps {
@@ -87,6 +84,11 @@ export async function runMessStep(
       if (session.completedMessSteps.includes(stepId)) {
         return { status: 409, body: { error: "step_already_executed" } };
       }
+      // Each demolish round releases the lock, so a step could otherwise land between two rounds
+      // of a close that has already started changing the account.
+      if (demolishStarted(session)) {
+        return { status: 409, body: { error: "demolish_started" } };
+      }
       // Recorded before the transaction is sent: a signer that never lands is harmless (removing
       // it would fail on chain), while one that lands unrecorded would make the demolish refuse.
       const recordSigner = async (publicKey: string): Promise<void> => {
@@ -107,46 +109,109 @@ export async function runMessStep(
   }
 }
 
-export async function runDemolishStep(
+function demolishStarted(session: PlaygroundSession): boolean {
+  return session.demolishDone || session.demolishPending !== null || session.demolishLog.length > 0;
+}
+
+/**
+ * Runs one demolish round under the session lock and returns the transactions it confirmed. The
+ * client calls again while `done` is false, and calling again after a failure is the resume: the
+ * API re-reads live state, and a transaction left in flight is settled from `demolishPending`.
+ *
+ * Every write goes through one chain, so writes land in order and none is lost to another's
+ * read-modify-write. A confirmed transaction's log entry, the clearing of its in-flight record and,
+ * for the merge, the done flag are one write: an interrupted request leaves either the record (the
+ * next round settles it by hash and logs it then) or the entry, never both and never neither.
+ */
+export async function runDemolishRound(
   store: SessionStore,
   id: string,
-  deps: DemolishDeps
+  deps: DemolishRoundDeps
 ): Promise<ActionResult> {
   try {
     return await withSessionLock(store, id, async (session, lock) => {
-      if (session.demolishDone) return { status: 200, body: { done: true } };
+      if (session.demolishDone) {
+        return { status: 200, body: { done: true, confirmed: [], remainingSteps: 0 } };
+      }
+      const logStart = session.demolishLog.length;
+      let latest = session;
+      let writes: Promise<void> = Promise.resolve();
+      const write = (patch: (current: PlaygroundSession) => SessionPatch): Promise<void> => {
+        const next = writes
+          .then(() => store.updateSession(lock, patch))
+          .then((written) => {
+            latest = written;
+          });
+        writes = next.catch(() => undefined);
+        return next;
+      };
+      // What became of the in-flight record (the left-over one, or the last one written). Read only
+      // once the round ends, so the order the engine reports a settlement and a confirmation in
+      // does not matter: a record that settled without confirming is cleared then, while a
+      // confirmed one is cleared by its own log write, or kept for the next round if that failed.
+      let settled = false;
+      let confirmed = false;
 
-      // Log appends are chained so they land in order and before the final update; a failed one
-      // only leaves the progress log behind, it must not abort the close.
-      let logWrites: Promise<void> = Promise.resolve();
-      const onConfirmed: OnDemolishConfirmed = (txId, hash, summary, operations) => {
-        const entry: DemolishLogEntry = { txId, hash, summary, operations };
-        logWrites = logWrites
-          .then(() =>
-            store.updateSession(lock, (current) => ({
-              demolishLog: [...current.demolishLog, entry],
-            }))
-          )
-          .then(
-            () => undefined,
-            (err: unknown) => {
-              console.error("[playground] demolish log update failed", { sessionId: id }, err);
-            }
-          );
+      const hooks: DemolishRoundHooks = {
+        pending: session.demolishPending,
+        persistPending: async (pending) => {
+          settled = false;
+          confirmed = false;
+          await write(() => ({ demolishPending: pending }));
+        },
+        settled: () => {
+          settled = true;
+        },
+        onConfirmed: (entry, closesAccount) => {
+          confirmed = true;
+          write((current) => ({
+            demolishLog: [...current.demolishLog, entry],
+            demolishPending: null,
+            ...(closesAccount && { demolishDone: true }),
+          })).catch((err: unknown) => {
+            // The record stays in flight, so the next round settles the transaction and logs it.
+            console.error("[playground] demolish log update failed", { sessionId: id }, err);
+          });
+        },
       };
 
+      let result: DemolishRoundResult;
       try {
-        await deps.demolish(session, onConfirmed);
+        result = await deps.round(session, hooks);
       } finally {
-        await logWrites;
+        await writes;
+        if (settled && !confirmed) {
+          await write(() => ({ demolishPending: null })).catch((err: unknown) => {
+            console.error("[playground] demolish pending clear failed", { sessionId: id }, err);
+          });
+        }
       }
-      await store.updateSession(lock, () => ({ demolishDone: true }));
-      return { status: 200, body: { done: true } };
+      if (result.done && !latest.demolishDone) {
+        // The merge confirmed under the playground's own hash but its log write failed, so its
+        // in-flight record is still there: it is the merge, and is logged from it now.
+        await write((current) => ({
+          demolishLog: current.demolishPending
+            ? [...current.demolishLog, logEntryOf(current.demolishPending)]
+            : current.demolishLog,
+          demolishPending: null,
+          demolishDone: true,
+        }));
+      }
+      return {
+        status: 200,
+        body: {
+          done: result.done,
+          confirmed: latest.demolishLog.slice(logStart),
+          remainingSteps: result.remainingSteps,
+        },
+      };
     });
   } catch (err) {
     if (isConfigError(err)) return NOT_CONFIGURED;
-    console.error("[playground] demolish failed", { sessionId: id }, err);
-    return { status: 502, body: { error: "demolish_failed" } };
+    console.error("[playground] demolish round failed", { sessionId: id }, err);
+    const error =
+      err instanceof CloseOutcomeUnknownError ? "demolish_outcome_unknown" : "demolish_failed";
+    return { status: 502, body: { error } };
   }
 }
 

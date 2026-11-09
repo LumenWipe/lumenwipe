@@ -48,6 +48,8 @@ interface PlaygroundState {
   lastError: string | null;
   /** XLM recovered so far during the demolish phase (for the core counter). */
   recoveredXlm: string | null;
+  /** The last error stopped a close that had started: the demo can resume it. */
+  demolishFailed: boolean;
   /** Mode selected on the IDLE screen. Survives COMPLETE/EXPIRED resets. */
   selectedMode: PlaygroundMode;
   customConfig: PlaygroundCustomConfig;
@@ -68,6 +70,7 @@ interface PlaygroundState {
   setAccountState: (state: AccountState | null) => void;
   setRecoveredXlm: (xlm: string) => void;
   setLastError: (error: string | null) => void;
+  setDemolishFailed: (failed: boolean) => void;
   setSelectedMode: (mode: PlaygroundMode) => void;
   setCustomConfig: (config: PlaygroundCustomConfig) => void;
   reset: () => void;
@@ -86,6 +89,7 @@ const sessionInitialState = {
   accountState: null,
   lastError: null,
   recoveredXlm: null,
+  demolishFailed: false,
 };
 
 let logCounter = 0;
@@ -142,6 +146,8 @@ export const usePlaygroundStore = create<PlaygroundState>((set) => ({
   setRecoveredXlm: (recoveredXlm) => set({ recoveredXlm }),
 
   setLastError: (lastError) => set({ lastError }),
+
+  setDemolishFailed: (demolishFailed) => set({ demolishFailed }),
 
   setSelectedMode: (selectedMode) => set({ selectedMode }),
 

@@ -14,6 +14,7 @@ import {
   FlaskConical,
   Loader2,
   Minus,
+  Play,
   Plus,
   RotateCcw,
   ShieldCheck,
@@ -260,7 +261,10 @@ export default function PlaygroundControls({
   const setSelectedMode = usePlaygroundStore((s) => s.setSelectedMode);
   const setCustomConfig = usePlaygroundStore((s) => s.setCustomConfig);
   const reset = usePlaygroundStore((s) => s.reset);
+  const demolishFailed = usePlaygroundStore((s) => s.demolishFailed);
 
+  // "Start over" after a close stopped part way asks first: the account is abandoned on testnet.
+  const [confirmingAbandon, setConfirmingAbandon] = useState(false);
   const [credentials, setCredentials] = useState<Credentials | null>(null);
   const [loadingCredentials, setLoadingCredentials] = useState(false);
   const [secretRevealed, setSecretRevealed] = useState(false);
@@ -493,13 +497,64 @@ export default function PlaygroundControls({
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
             <span className="break-words">{lastError ?? GENERIC_ERROR_COPY}</span>
           </div>
-          <button
-            className={`${primaryButton} border border-white/15 text-white hover:bg-white/5`}
-            onClick={start}
-          >
-            <RotateCcw className="h-4 w-4" />
-            Start over
-          </button>
+          {demolishFailed ? (
+            <div className="flex flex-col gap-2">
+              <button
+                className={`${primaryButton} bg-stellar text-black hover:opacity-90`}
+                onClick={() => {
+                  setConfirmingAbandon(false);
+                  demolish();
+                }}
+              >
+                <Play className="h-4 w-4" />
+                Resume the close
+              </button>
+              {confirmingAbandon ? (
+                <div className="rounded-md border border-value/30 bg-[hsl(var(--value)/0.07)] p-3">
+                  <p className="mb-3 flex items-start gap-2 text-xs leading-relaxed text-white/75">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-value" />
+                    <span>
+                      The demo account is still open on testnet, holding test XLM and what is left
+                      of its mess. Starting over abandons it there: nothing will close it later.
+                    </span>
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      className={`${primaryButton} border border-value/40 text-value hover:bg-white/5`}
+                      onClick={() => {
+                        setConfirmingAbandon(false);
+                        start();
+                      }}
+                    >
+                      Abandon it and start over
+                    </button>
+                    <button
+                      className={`${primaryButton} border border-white/15 text-white/70 hover:bg-white/5`}
+                      onClick={() => setConfirmingAbandon(false)}
+                    >
+                      Keep it
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  className={`${primaryButton} border border-white/15 text-white hover:bg-white/5`}
+                  onClick={() => (accountState ? setConfirmingAbandon(true) : start())}
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  Start over
+                </button>
+              )}
+            </div>
+          ) : (
+            <button
+              className={`${primaryButton} border border-white/15 text-white hover:bg-white/5`}
+              onClick={start}
+            >
+              <RotateCcw className="h-4 w-4" />
+              Start over
+            </button>
+          )}
         </>
       )}
     </div>

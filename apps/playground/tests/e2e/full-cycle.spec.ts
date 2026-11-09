@@ -12,6 +12,27 @@ interface CreatedSession {
   accounts: { mm: string };
 }
 
+/** The hashes a round response says it confirmed, read without trusting its shape. */
+function confirmedHashes(body: unknown): string[] {
+  if (typeof body !== "object" || body === null || !("confirmed" in body)) return [];
+  if (!Array.isArray(body.confirmed)) return [];
+  return body.confirmed.flatMap((tx: unknown) =>
+    typeof tx === "object" && tx !== null && "hash" in tx && typeof tx.hash === "string"
+      ? [tx.hash]
+      : []
+  );
+}
+
+const isDemolishRound = (res: Response): boolean => {
+  const url = new URL(res.url());
+  return (
+    url.origin === BASE &&
+    url.pathname.startsWith("/api/session/") &&
+    url.pathname.endsWith("/demolish/round") &&
+    res.request().method() === "POST"
+  );
+};
+
 const isCreateSession = (res: Response): boolean => {
   const url = new URL(res.url());
   return (
@@ -35,7 +56,15 @@ test("the standard recipe closes the demo account into the market maker", async 
   await expect(page.getByText("The account is now a mess")).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(0);
 
+  // The close runs one round per request; each confirmed transaction appears in the activity log,
+  // linked to the explorer, as its round returns.
+  const firstRound = page.waitForResponse(isDemolishRound, { timeout: 3 * 60_000 });
   await demolish.click();
+  const hashes = confirmedHashes(await (await firstRound).json());
+  expect(hashes.length).toBeGreaterThan(0);
+  for (const hash of hashes) {
+    await expect(page.locator(`a[href$="/tx/${hash}"]`)).toHaveCount(1);
+  }
   await expect(page.getByText("demo complete. The account was merged away")).toBeVisible({
     timeout: 3 * 60_000,
   });
