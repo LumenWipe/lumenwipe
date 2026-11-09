@@ -58,6 +58,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@lumenwipe/sdk": "workspace:*",
+        "@lumenwipe/verify": "workspace:*",
         "@stellar/stellar-sdk": "17.4.0",
         "@upstash/redis": "^1.39.0",
         "lucide-react": "^1.55.0",

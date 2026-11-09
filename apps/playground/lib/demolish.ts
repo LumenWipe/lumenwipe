@@ -9,11 +9,12 @@ import {
   type DecisionPoint,
   type IntentOperation,
 } from "@lumenwipe/sdk";
-import { verifyDemolishTransaction } from "./verify";
+import { verifyDemolishTransaction, type PlaygroundCloseExpectation } from "./verify";
 
 export interface RunDemolishOptions {
   demoKeypair: Keypair;
-  sinkPublic: string;
+  /** What the close may do, from the session record (`expectationFromSession`). */
+  expected: PlaygroundCloseExpectation;
   apiUrl: string;
   apiKey: string;
   onConfirmed?: (
@@ -79,7 +80,7 @@ export function buildDemolishDecisions(
 /**
  * Drives the real close engine against the demo account. This is the actual
  * production `apps/api` close/transactions -> submit loop - the playground
- * supplies its own verify (structural check against the fixed sink account)
+ * supplies its verify (`@lumenwipe/verify` held to the session record, see ./verify)
  * and sign (custodial, with the decrypted demo secret) instead of a browser
  * wallet.
  */
@@ -90,6 +91,7 @@ export async function runDemolish(opts: RunDemolishOptions): Promise<void> {
     network: "testnet",
   });
   const demoPublic = opts.demoKeypair.publicKey();
+  const sinkPublic = opts.expected.sinkPublic;
 
   // One advisory read, up front. `close/plan` tolerates an empty `decisions` array - it reports
   // what is unresolved instead of refusing - so this is the bootstrapping call whose answer set
@@ -97,20 +99,20 @@ export async function runDemolish(opts: RunDemolishOptions): Promise<void> {
   // destination is a 422 `destination_not_acknowledged`, and a funded trustline with no
   // disposition a 422 `needs_decisions`. The API is stateless per round, so the full set has to
   // travel on every call, not just the first.
-  const plan = await client.closePlan({ source: demoPublic, destination: opts.sinkPublic });
-  const decisions = buildDemolishDecisions(plan.decisionPoints, opts.sinkPublic);
+  const plan = await client.closePlan({ source: demoPublic, destination: sinkPublic });
+  const decisions = buildDemolishDecisions(plan.decisionPoints, sinkPublic);
 
   const deps: CloseEngineDeps = {
     getTransactions: async () => {
       const res = await client.closeTransactions({
         source: demoPublic,
-        destination: opts.sinkPublic,
+        destination: sinkPublic,
         decisions,
       });
       return res;
     },
     verify: (tx: CloseTransaction) => {
-      verifyDemolishTransaction(tx, { demoPublic, sinkPublic: opts.sinkPublic });
+      verifyDemolishTransaction(tx, opts.expected);
     },
     // The demo account is always single-sig from the master key's point of view:
     // ADD_SIGNER (mess step) only ever adds a co-signer, never raises the master

@@ -1,6 +1,17 @@
 import { test, expect } from "bun:test";
-import { Keypair, Operation } from "@stellar/stellar-sdk";
-import { loadAccountWithRetry, buildSignSubmit, TxSubmitError } from "@/lib/mess-builders";
+import {
+  Keypair,
+  Networks,
+  Operation,
+  Transaction,
+  TransactionBuilder,
+} from "@stellar/stellar-sdk";
+import {
+  addForgottenSigner,
+  loadAccountWithRetry,
+  buildSignSubmit,
+  TxSubmitError,
+} from "@/lib/mess-builders";
 
 const ADDR = "GBOYVOCQNI34T7IO6RPNE6RZCVD7WNTFJZJUEX64RSQF6IJT5NFDRGMN";
 const notFound = (addr: string) => new Error(`Account not found: ${addr}`);
@@ -129,4 +140,54 @@ test("buildSignSubmit gives up after the retry budget and rethrows", async () =>
     })
   ).rejects.toBeInstanceOf(TxSubmitError);
   expect(submits).toBe(5);
+});
+
+test("addForgottenSigner records the signer before sending the transaction that adds it", async () => {
+  const demo = Keypair.random();
+  const events: string[] = [];
+  let recorded = "";
+  const hash = await addForgottenSigner(
+    {
+      demo,
+      recordSigner: async (publicKey) => {
+        recorded = publicKey;
+        events.push("record");
+      },
+    },
+    {
+      loadAccount: async () => ({ sequenceNumber: () => "1" }),
+      submit: async (signedXdr) => {
+        events.push("submit");
+        const tx = TransactionBuilder.fromXDR(signedXdr, Networks.TESTNET) as Transaction;
+        const op = tx.operations[0] as Operation.SetOptions;
+        expect(op.signer).toEqual({ ed25519PublicKey: recorded, weight: 1 });
+        return { txHash: "added" };
+      },
+    }
+  );
+  expect(hash).toBe("added");
+  expect(events).toEqual(["record", "submit"]);
+  expect(recorded).toMatch(/^G[A-Z2-7]{55}$/);
+});
+
+test("addForgottenSigner sends nothing when the signer cannot be recorded", async () => {
+  let submitted = false;
+  await expect(
+    addForgottenSigner(
+      {
+        demo: Keypair.random(),
+        recordSigner: async () => {
+          throw new Error("store down");
+        },
+      },
+      {
+        loadAccount: async () => ({ sequenceNumber: () => "1" }),
+        submit: async () => {
+          submitted = true;
+          return { txHash: "added" };
+        },
+      }
+    )
+  ).rejects.toThrow("store down");
+  expect(submitted).toBe(false);
 });

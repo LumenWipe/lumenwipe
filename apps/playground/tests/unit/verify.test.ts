@@ -1,80 +1,91 @@
-import { test, expect } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import {
-  Keypair,
-  Operation,
-  TransactionBuilder,
   Account,
-  Networks,
   Asset,
-  xdr,
+  Keypair,
+  Memo,
+  Networks,
+  Operation,
+  Transaction,
+  TransactionBuilder,
+  type xdr,
 } from "@stellar/stellar-sdk";
-import { verifyDemolishTransaction, PlaygroundVerificationError } from "@/lib/verify";
+import { VerificationError } from "@lumenwipe/verify";
 import type { CloseTransaction } from "@lumenwipe/sdk";
+import {
+  expectationFromSession,
+  maxOperations,
+  PlaygroundVerificationError,
+  verifyDemolishTransaction,
+  type PlaygroundCloseExpectation,
+} from "@/lib/verify";
+import recipeFixture from "../fixtures/api-recipe-close.json";
 
+// The playground verifies with `@lumenwipe/verify`, the web app's own trust anchor, held to the
+// session record. These tests pin what each rule means for a playground close; the rules
+// themselves are tested where they live (apps/web/tests/unit/verify*.test.ts and the conformance
+// vectors in packages/verify).
+
+const NOW = 1_800_000_000;
 const PASSPHRASE = Networks.TESTNET;
 
-function buildTx(source: Keypair, ops: xdr.Operation[]): string {
-  const account = new Account(source.publicKey(), "1");
-  const builder = new TransactionBuilder(account, {
-    fee: "100",
+beforeEach(() => setSystemTime(new Date(NOW * 1000)));
+afterEach(() => setSystemTime());
+
+const demo = Keypair.random().publicKey();
+const sink = Keypair.random().publicKey();
+const lwdemoIssuer = Keypair.random().publicKey();
+const rugIssuer = Keypair.random().publicKey();
+const forgotten = Keypair.random().publicKey();
+const LWDEMO = new Asset("LWDEMO", lwdemoIssuer);
+const RUGPULL = new Asset("RUGPULL", rugIssuer);
+
+function expectation(): PlaygroundCloseExpectation {
+  return expectationFromSession(
+    {
+      demoPublic: demo,
+      ephemeralIssuers: [{ assetCode: "RUGPULL", publicKey: rugIssuer, encSecret: "enc" }],
+      recordedSigners: [forgotten],
+      offerCount: 2,
+      dataEntryCount: 2,
+    },
+    sink,
+    lwdemoIssuer
+  );
+}
+
+interface TxOptions {
+  source?: string;
+  fee?: number;
+  maxTime?: number;
+  memo?: string;
+}
+
+/** A transaction of `ops`, followed by the merge to the sink unless `merge` is false. */
+function envelope(ops: xdr.Operation[], opts: TxOptions = {}, merge = true): string {
+  const all = merge ? [...ops, Operation.accountMerge({ destination: sink })] : ops;
+  const builder = new TransactionBuilder(new Account(opts.source ?? demo, "1"), {
+    fee: String(opts.fee ?? 100),
     networkPassphrase: PASSPHRASE,
-  }).setTimeout(30);
-  ops.forEach((op) => builder.addOperation(op));
+    ...(opts.memo === undefined ? {} : { memo: Memo.text(opts.memo) }),
+  }).setTimebounds(0, opts.maxTime ?? NOW + 300);
+  all.forEach((op) => builder.addOperation(op));
   return builder.build().toEnvelope().toXdr("base64");
 }
 
-/**
- * Rewrites the first operation's `destMin` to 0. The SDK's own builder refuses a zero destMin,
- * so a transaction carrying one can only be produced by XDR surgery - which is exactly the
- * shape a compromised or buggy API could still hand us, and the case the floor check exists for.
- */
-function zeroOutDestMin(envelopeXdr: string): string {
-  const envelope = xdr.TransactionEnvelope.fromXdr(envelopeXdr, "base64");
-  if (envelope.type !== "envelopeTypeTx") throw new Error("expected a v1 envelope");
-  const tx = envelope.v1.tx;
-  const first = tx.operations[0]!;
-  if (first.body.type !== "pathPaymentStrictSend") throw new Error("expected a conversion");
-  const inner = first.body.pathPaymentStrictSendOp;
-  const rewritten = new xdr.Operation({
-    sourceAccount: first.sourceAccount,
-    body: xdr.OperationBody.pathPaymentStrictSend(
-      new xdr.PathPaymentStrictSendOp({
-        sendAsset: inner.sendAsset,
-        sendAmount: inner.sendAmount,
-        destination: inner.destination,
-        destAsset: inner.destAsset,
-        destMin: BigInt(0),
-        path: inner.path,
-      })
-    ),
-  });
-  const patched = new xdr.Transaction({
-    sourceAccount: tx.sourceAccount,
-    fee: tx.fee,
-    seqNum: tx.seqNum,
-    cond: tx.cond,
-    memo: tx.memo,
-    operations: [rewritten, ...tx.operations.slice(1)],
-    ext: tx.ext,
-  });
-  return xdr.TransactionEnvelope.envelopeTypeTx(
-    new xdr.TransactionV1Envelope({ tx: patched, signatures: envelope.v1.signatures })
-  ).toXdr("base64");
-}
-
-function closeTx(envelopeXdr: string): CloseTransaction {
+function closeTx(xdrBase64: string): CloseTransaction {
   return {
     id: "t1",
     order: 0,
     dependsOn: [],
-    xdr: envelopeXdr,
+    xdr: xdrBase64,
     networkPassphrase: PASSPHRASE,
     sourceSequence: "1",
     validUntilLedger: 100,
     covers: [],
     intent: {
       summary: "test fixture",
-      source: "G...",
+      source: demo,
       fee: "100",
       memo: null,
       memoType: null,
@@ -84,290 +95,279 @@ function closeTx(envelopeXdr: string): CloseTransaction {
   };
 }
 
-test("accepts a merge from the demo account to the sink account", () => {
-  const demo = Keypair.random();
-  const sink = Keypair.random();
-  const tx = buildTx(demo, [Operation.accountMerge({ destination: sink.publicKey() })]);
-  expect(() =>
-    verifyDemolishTransaction(closeTx(tx), {
-      demoPublic: demo.publicKey(),
-      sinkPublic: sink.publicKey(),
-    })
-  ).not.toThrow();
-});
-
-test("rejects a merge to any destination other than the sink", () => {
-  const demo = Keypair.random();
-  const sink = Keypair.random();
-  const rogue = Keypair.random();
-  const tx = buildTx(demo, [Operation.accountMerge({ destination: rogue.publicKey() })]);
-  expect(() =>
-    verifyDemolishTransaction(closeTx(tx), {
-      demoPublic: demo.publicKey(),
-      sinkPublic: sink.publicKey(),
-    })
-  ).toThrow(PlaygroundVerificationError);
-});
-
-test("rejects a transaction whose source is not the demo account", () => {
-  const demo = Keypair.random();
-  const other = Keypair.random();
-  const sink = Keypair.random();
-  const tx = buildTx(other, [Operation.accountMerge({ destination: sink.publicKey() })]);
-  expect(() =>
-    verifyDemolishTransaction(closeTx(tx), {
-      demoPublic: demo.publicKey(),
-      sinkPublic: sink.publicKey(),
-    })
-  ).toThrow(PlaygroundVerificationError);
-});
-
-test("rejects an operation type outside the closing allowlist", () => {
-  const demo = Keypair.random();
-  const sink = Keypair.random();
-  const tx = buildTx(demo, [
-    Operation.createAccount({ destination: Keypair.random().publicKey(), startingBalance: "1" }),
-  ]);
-  expect(() =>
-    verifyDemolishTransaction(closeTx(tx), {
-      demoPublic: demo.publicKey(),
-      sinkPublic: sink.publicKey(),
-    })
-  ).toThrow(/op_not_allowed/);
-});
-
-test("rejects setOptions that adds a signer instead of only removing one", () => {
-  const demo = Keypair.random();
-  const sink = Keypair.random();
-  const tx = buildTx(demo, [
-    Operation.setOptions({ signer: { ed25519PublicKey: Keypair.random().publicKey(), weight: 1 } }),
-  ]);
-  expect(() =>
-    verifyDemolishTransaction(closeTx(tx), {
-      demoPublic: demo.publicKey(),
-      sinkPublic: sink.publicKey(),
-    })
-  ).toThrow(/setOptions_must_only_remove_signers/);
-});
-
-test("accepts setOptions that removes a signer (weight 0)", () => {
-  const demo = Keypair.random();
-  const sink = Keypair.random();
-  const forgotten = Keypair.random();
-  const tx = buildTx(demo, [
-    Operation.setOptions({ signer: { ed25519PublicKey: forgotten.publicKey(), weight: 0 } }),
-  ]);
-  expect(() =>
-    verifyDemolishTransaction(closeTx(tx), {
-      demoPublic: demo.publicKey(),
-      sinkPublic: sink.publicKey(),
-    })
-  ).not.toThrow();
-});
-
-// ─── Destination rules, matched to what the real close builder emits ──────────
-//
-// apps/api's tx-builder/asset-conversion.ts builds a conversion whose destination is the account
-// being CLOSED (`assetConversionOp` passes `accountId`), and an unsellable-balance return whose
-// destination is the asset's OWN ISSUER (`issuerPaymentOp`). Neither is ever the sink - only the
-// ACCOUNT_MERGE is. These tests pin that, because the inverse (requiring the sink) rejects every
-// close the real API can produce.
-
-test("accepts a conversion path payment into the demo account itself, settling in XLM", () => {
-  const demo = Keypair.random();
-  const sink = Keypair.random();
-  const issuer = Keypair.random();
-  const tx = buildTx(demo, [
-    Operation.pathPaymentStrictSend({
-      sendAsset: new Asset("LWDEMO", issuer.publicKey()),
-      sendAmount: "25",
-      destination: demo.publicKey(),
-      destAsset: Asset.native(),
-      destMin: "1",
-      path: [],
-    }),
-  ]);
-  expect(() =>
-    verifyDemolishTransaction(closeTx(tx), {
-      demoPublic: demo.publicKey(),
-      sinkPublic: sink.publicKey(),
-    })
-  ).not.toThrow();
-});
-
-test("rejects a conversion whose proceeds leave the demo account", () => {
-  const demo = Keypair.random();
-  const sink = Keypair.random();
-  const issuer = Keypair.random();
-  const rogue = Keypair.random();
-  const tx = buildTx(demo, [
-    Operation.pathPaymentStrictSend({
-      sendAsset: new Asset("LWDEMO", issuer.publicKey()),
-      sendAmount: "25",
-      destination: rogue.publicKey(),
-      destAsset: Asset.native(),
-      destMin: "1",
-      path: [],
-    }),
-  ]);
-  expect(() =>
-    verifyDemolishTransaction(closeTx(tx), {
-      demoPublic: demo.publicKey(),
-      sinkPublic: sink.publicKey(),
-    })
-  ).toThrow(/conversion_destination_not_allowed/);
-});
-
-test("rejects a conversion that does not settle in XLM", () => {
-  const demo = Keypair.random();
-  const sink = Keypair.random();
-  const issuer = Keypair.random();
-  const tx = buildTx(demo, [
-    Operation.pathPaymentStrictSend({
-      sendAsset: new Asset("LWDEMO", issuer.publicKey()),
-      sendAmount: "25",
-      destination: demo.publicKey(),
-      destAsset: new Asset("RUGPULL", issuer.publicKey()),
-      destMin: "1",
-      path: [],
-    }),
-  ]);
-  expect(() =>
-    verifyDemolishTransaction(closeTx(tx), {
-      demoPublic: demo.publicKey(),
-      sinkPublic: sink.publicKey(),
-    })
-  ).toThrow(/conversion_must_settle_in_xlm/);
-});
-
-test("rejects a conversion with no minimum-received floor", () => {
-  const demo = Keypair.random();
-  const sink = Keypair.random();
-  const issuer = Keypair.random();
-  const tx = zeroOutDestMin(
-    buildTx(demo, [
-      Operation.pathPaymentStrictSend({
-        sendAsset: new Asset("LWDEMO", issuer.publicKey()),
-        sendAmount: "25",
-        destination: demo.publicKey(),
-        destAsset: Asset.native(),
-        destMin: "0.0000001",
-        path: [],
-      }),
-    ])
-  );
-  expect(() =>
-    verifyDemolishTransaction(closeTx(tx), {
-      demoPublic: demo.publicKey(),
-      sinkPublic: sink.publicKey(),
-    })
-  ).toThrow(/conversion_has_no_minimum/);
-});
-
-test("accepts a payment returning a balance to that asset's own issuer", () => {
-  const demo = Keypair.random();
-  const sink = Keypair.random();
-  const issuer = Keypair.random();
-  const tx = buildTx(demo, [
-    Operation.payment({
-      destination: issuer.publicKey(),
-      asset: new Asset("LWDEMO", issuer.publicKey()),
-      amount: "25",
-    }),
-  ]);
-  expect(() =>
-    verifyDemolishTransaction(closeTx(tx), {
-      demoPublic: demo.publicKey(),
-      sinkPublic: sink.publicKey(),
-    })
-  ).not.toThrow();
-});
-
-test("rejects a payment to an unrelated third party", () => {
-  const demo = Keypair.random();
-  const sink = Keypair.random();
-  const issuer = Keypair.random();
-  const rogue = Keypair.random();
-  const tx = buildTx(demo, [
-    Operation.payment({
-      destination: rogue.publicKey(),
-      asset: new Asset("LWDEMO", issuer.publicKey()),
-      amount: "25",
-    }),
-  ]);
-  expect(() =>
-    verifyDemolishTransaction(closeTx(tx), {
-      demoPublic: demo.publicKey(),
-      sinkPublic: sink.publicKey(),
-    })
-  ).toThrow(/payment_destination_not_allowed/);
-});
-
-// Even to the sink: the XLM balance leaves via the merge, so a native payment has no
-// legitimate role. The only native payment the API ever builds is the mediated forward, which
-// is sourced from the mediator and already refused by the op-source check.
-test("rejects a native payment, including one to the sink", () => {
-  const demo = Keypair.random();
-  const sink = Keypair.random();
-  const tx = buildTx(demo, [
-    Operation.payment({ destination: sink.publicKey(), asset: Asset.native(), amount: "1" }),
-  ]);
-  expect(() =>
-    verifyDemolishTransaction(closeTx(tx), {
-      demoPublic: demo.publicKey(),
-      sinkPublic: sink.publicKey(),
-    })
-  ).toThrow(/native_payment_not_allowed/);
-});
-
-test("accepts sponsorship revocation, which decodes to per-entry-kind op types", () => {
-  const demo = Keypair.random();
-  const sink = Keypair.random();
-  const owner = Keypair.random();
-  const tx = buildTx(demo, [
-    Operation.revokeAccountSponsorship({ account: owner.publicKey() }),
-    Operation.revokeDataSponsorship({ account: owner.publicKey(), name: "promo_code" }),
-    Operation.revokeSignerSponsorship({
-      account: owner.publicKey(),
-      signer: { ed25519PublicKey: Keypair.random().publicKey() },
-    }),
-  ]);
-  expect(() =>
-    verifyDemolishTransaction(closeTx(tx), {
-      demoPublic: demo.publicKey(),
-      sinkPublic: sink.publicKey(),
-    })
-  ).not.toThrow();
-});
-
-const NOW = 1_800_000_000;
-
-function mergeTx(demo: Keypair, sink: Keypair, fee: string, maxTime: number): string {
-  const builder = new TransactionBuilder(new Account(demo.publicKey(), "1"), {
-    fee,
-    networkPassphrase: PASSPHRASE,
-  }).setTimebounds(0, maxTime);
-  builder.addOperation(Operation.accountMerge({ destination: sink.publicKey() }));
-  return builder.build().toEnvelope().toXdr("base64");
+/** The refusal code, or "accepted". */
+function outcome(xdrBase64: string, expected = expectation()): string {
+  try {
+    verifyDemolishTransaction(closeTx(xdrBase64), expected);
+    return "accepted";
+  } catch (err) {
+    if (err instanceof VerificationError) return err.code;
+    if (err instanceof PlaygroundVerificationError) return err.message;
+    throw err;
+  }
 }
 
-test("refuses a fee above ten times the base fee per operation", () => {
-  const demo = Keypair.random();
-  const sink = Keypair.random();
-  const expected = { demoPublic: demo.publicKey(), sinkPublic: sink.publicKey() };
-  const run = (fee: string) =>
-    verifyDemolishTransaction(closeTx(mergeTx(demo, sink, fee, NOW + 300)), expected, NOW);
-  expect(() => run("1000")).not.toThrow();
-  expect(() => run("1001")).toThrow("fee_too_high");
+const returnToIssuer = (asset: Asset) =>
+  Operation.payment({ destination: asset.getIssuer() ?? "", asset, amount: "5" });
+
+type Recipe = (typeof recipeFixture.recipes)[number];
+
+function recipeExpectation(recipe: Recipe, recordedSigners: string[]): PlaygroundCloseExpectation {
+  const { session } = recipe;
+  return expectationFromSession(
+    {
+      demoPublic: session.demoPublic,
+      ephemeralIssuers: session.ephemeralIssuers.map((e) => ({ ...e, encSecret: "enc" })),
+      recordedSigners,
+      offerCount: session.offerCount,
+      dataEntryCount: session.dataEntryCount,
+    },
+    session.sinkPublic,
+    session.lwdemoIssuer
+  );
+}
+
+describe("the API's real transactions for today's recipes", () => {
+  // Built by apps/api's buildCloseTransactions (apps/api/tests/unit/playground-recipe.test.ts),
+  // which fails when the builder's output stops matching this fixture.
+  test("every transaction verifies against its session", () => {
+    setSystemTime(new Date(recipeFixture.builtAtSeconds * 1000));
+    for (const recipe of recipeFixture.recipes) {
+      const expected = recipeExpectation(recipe, recipe.session.recordedSigners);
+      expect(recipe.transactions.length).toBeGreaterThan(0);
+      for (const tx of recipe.transactions) {
+        expect({ recipe: recipe.name, outcome: outcome(tx, expected) }).toEqual({
+          recipe: recipe.name,
+          outcome: "accepted",
+        });
+      }
+    }
+  });
+
+  test("covers the light, full and largest custom recipes", () => {
+    expect(recipeFixture.recipes.map((r) => r.name)).toEqual(["light", "full", "custom-max"]);
+  });
+
+  test("the full recipe is refused without the signer the session recorded", () => {
+    setSystemTime(new Date(recipeFixture.builtAtSeconds * 1000));
+    const full = recipeFixture.recipes.find((r) => r.name === "full")!;
+    expect(outcome(full.transactions[0]!, recipeExpectation(full, []))).toBe("signer_unknown");
+  });
 });
 
-test("refuses a transaction that never expires or stays valid past fifteen minutes", () => {
-  const demo = Keypair.random();
-  const sink = Keypair.random();
-  const expected = { demoPublic: demo.publicKey(), sinkPublic: sink.publicKey() };
-  const run = (maxTime: number) =>
-    verifyDemolishTransaction(closeTx(mergeTx(demo, sink, "100", maxTime)), expected, NOW);
-  expect(() => run(0)).toThrow("no_expiry");
-  expect(() => run(NOW + 901)).toThrow("expiry_too_far");
-  expect(() => run(NOW + 900)).not.toThrow();
+describe("expectationFromSession", () => {
+  test("takes the assets from the persistent issuer and the session's ephemeral issuers", () => {
+    expect(expectation().assets).toEqual([
+      { code: "LWDEMO", issuer: lwdemoIssuer },
+      { code: "RUGPULL", issuer: rugIssuer },
+    ]);
+  });
+
+  test("copies the recorded signers rather than sharing the session's array", () => {
+    const recordedSigners = [forgotten];
+    const expected = expectationFromSession(
+      { demoPublic: demo, ephemeralIssuers: [], recordedSigners, offerCount: 0, dataEntryCount: 0 },
+      sink,
+      lwdemoIssuer
+    );
+    recordedSigners.push(Keypair.random().publicKey());
+    expect(expected.recordedSigners).toEqual([forgotten]);
+  });
+});
+
+describe("removal only", () => {
+  test("a trustline removal is accepted; a trustline with a limit is refused", () => {
+    const trust = (limit: string) => Operation.changeTrust({ asset: LWDEMO, limit });
+    expect(outcome(envelope([trust("0")]))).toBe("accepted");
+    expect(outcome(envelope([trust("1")]))).toBe("trustline_not_removal");
+  });
+
+  test("a data entry removal is accepted; a data entry write is refused", () => {
+    const data = (value: string | null) => Operation.manageData({ name: "promo_code", value });
+    expect(outcome(envelope([data(null)]))).toBe("accepted");
+    expect(outcome(envelope([data("x")]))).toBe("data_entry_not_removal");
+  });
+
+  test("an offer cancellation is accepted; an offer with an amount is refused", () => {
+    const offer = (amount: string) =>
+      Operation.manageSellOffer({
+        selling: Asset.native(),
+        buying: LWDEMO,
+        amount,
+        price: "2",
+        offerId: "1",
+      });
+    expect(outcome(envelope([offer("0")]))).toBe("accepted");
+    expect(outcome(envelope([offer("5")]))).toBe("offer_not_cancellation");
+  });
+});
+
+describe("setOptions", () => {
+  const signer = (key: string, weight: number) =>
+    Operation.setOptions({ signer: { ed25519PublicKey: key, weight } });
+
+  test("removing the signer the session recorded is accepted", () => {
+    expect(outcome(envelope([signer(forgotten, 0)]))).toBe("accepted");
+  });
+
+  test("removing a signer the session did not record is refused", () => {
+    expect(outcome(envelope([signer(Keypair.random().publicKey(), 0)]))).toBe("signer_unknown");
+  });
+
+  test("adding or empowering a signer is refused", () => {
+    expect(outcome(envelope([signer(forgotten, 1)]))).toBe("signer_added");
+  });
+
+  test("the master key's weight is kept", () => {
+    expect(outcome(envelope([Operation.setOptions({ masterWeight: 0 })]))).toBe(
+      "master_weight_changed"
+    );
+  });
+
+  test("thresholds may be reset to 0/1/1 but not raised", () => {
+    const reset = Operation.setOptions({ lowThreshold: 0, medThreshold: 1, highThreshold: 1 });
+    expect(outcome(envelope([reset]))).toBe("accepted");
+    expect(outcome(envelope([Operation.setOptions({ highThreshold: 2 })]))).toBe(
+      "thresholds_raised"
+    );
+  });
+
+  test("flags, the home domain and the inflation destination are not changed", () => {
+    for (const op of [
+      Operation.setOptions({ setFlags: 1 }),
+      Operation.setOptions({ clearFlags: 1 }),
+      Operation.setOptions({ homeDomain: "example.com" }),
+      Operation.setOptions({ inflationDest: sink }),
+    ]) {
+      expect(outcome(envelope([op]))).toBe("account_settings_changed");
+    }
+  });
+});
+
+describe("the merge", () => {
+  test("one merge to the sink, as the final operation, is accepted", () => {
+    expect(outcome(envelope([]))).toBe("accepted");
+  });
+
+  test("a merge to any other destination is refused", () => {
+    const op = Operation.accountMerge({ destination: Keypair.random().publicKey() });
+    expect(outcome(envelope([op], {}, false))).toBe("merge_destination_mismatch");
+  });
+
+  test("a transaction without a merge is refused", () => {
+    const op = Operation.manageData({ name: "promo_code", value: null });
+    expect(outcome(envelope([op], {}, false))).toBe("merge_not_final");
+  });
+
+  test("a merge that is not the final operation is refused", () => {
+    const ops = [
+      Operation.accountMerge({ destination: sink }),
+      Operation.manageData({ name: "promo_code", value: null }),
+    ];
+    expect(outcome(envelope(ops, {}, false))).toBe("merge_not_final");
+  });
+
+  test("a second merge is refused", () => {
+    expect(outcome(envelope([Operation.accountMerge({ destination: sink })]))).toBe(
+      "merge_multiple"
+    );
+  });
+});
+
+describe("memo", () => {
+  test("no memo is accepted; any memo is refused, since the session expects none", () => {
+    expect(outcome(envelope([]))).toBe("accepted");
+    expect(outcome(envelope([], { memo: "hi" }))).toBe("memo_unexpected");
+  });
+});
+
+describe("ceilings", () => {
+  test("the operation count is capped by what the session's entries can explain", () => {
+    // 2 assets x 2 + 2 offers + 2 data entries + 1 signer + threshold reset + merge.
+    expect(maxOperations(expectation())).toBe(11);
+    const removals = (n: number) =>
+      Array.from({ length: n }, () => Operation.manageData({ name: "promo_code", value: null }));
+    expect(outcome(envelope(removals(10)))).toBe("accepted");
+    expect(outcome(envelope(removals(11)))).toBe("too_many_operations");
+  });
+
+  test("the fee is capped at ten times the base fee per operation", () => {
+    expect(outcome(envelope([], { fee: 1000 }))).toBe("accepted");
+    expect(outcome(envelope([], { fee: 1001 }))).toBe("fee_above_cap");
+  });
+
+  test("the transaction expires within fifteen minutes", () => {
+    expect(outcome(envelope([], { maxTime: NOW + 900 }))).toBe("accepted");
+    expect(outcome(envelope([], { maxTime: NOW + 901 }))).toBe("expiry_too_far");
+    expect(outcome(envelope([], { maxTime: 0 }))).toBe("expiry_missing");
+  });
+});
+
+describe("payments", () => {
+  test("returning a session asset to its own issuer is accepted", () => {
+    expect(outcome(envelope([returnToIssuer(LWDEMO), returnToIssuer(RUGPULL)]))).toBe("accepted");
+  });
+
+  test("an asset from an issuer outside the session is refused, even paid to its issuer", () => {
+    const stranger = new Asset("RUGPULL", Keypair.random().publicKey());
+    expect(outcome(envelope([returnToIssuer(stranger)]))).toBe("transfer_not_chosen");
+  });
+
+  test("a session asset paid anywhere but its issuer is refused", () => {
+    const op = Operation.payment({ destination: sink, asset: LWDEMO, amount: "5" });
+    expect(outcome(envelope([op]))).toBe("transfer_destination_mismatch");
+  });
+
+  test("a native payment is refused, including one to the sink", () => {
+    const op = Operation.payment({ destination: sink, asset: Asset.native(), amount: "5" });
+    expect(outcome(envelope([op]))).toBe("transfer_not_chosen");
+  });
+});
+
+describe("what a playground close never contains", () => {
+  test("a conversion is refused: the playground never chooses one", () => {
+    const op = Operation.pathPaymentStrictSend({
+      sendAsset: LWDEMO,
+      sendAmount: "5",
+      destination: demo,
+      destAsset: Asset.native(),
+      destMin: "1",
+    });
+    expect(outcome(envelope([op]))).toBe("conversion_asset_not_chosen");
+  });
+
+  test("an operation the shared anchor does not recognize is refused", () => {
+    expect(outcome(envelope([Operation.bumpSequence({ bumpTo: "10" })]))).toBe("operation_unknown");
+    const create = Operation.createAccount({ destination: sink, startingBalance: "1" });
+    expect(outcome(envelope([create]))).toBe("operation_unknown");
+  });
+
+  test("a Soroban call is refused: the demo account holds no DeFi position", () => {
+    const op = Operation.invokeContractFunction({
+      contract: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+      function: "withdraw",
+      args: [],
+    });
+    expect(outcome(envelope([op], {}, false))).toBe("exit_contract_not_position");
+  });
+
+  test("an operation sent by another account is refused", () => {
+    const op = Operation.manageData({ name: "promo_code", value: null, source: sink });
+    expect(outcome(envelope([op]))).toBe("operation_source_mismatch");
+  });
+
+  test("a fee bump is refused", () => {
+    const inner = TransactionBuilder.fromXDR(envelope([]), PASSPHRASE) as Transaction;
+    const bump = TransactionBuilder.buildFeeBumpTransaction(sink, "200", inner, PASSPHRASE);
+    expect(outcome(bump.toEnvelope().toXdr("base64"))).toBe("transaction_source_mismatch");
+  });
+
+  test("a transaction for another account is refused", () => {
+    expect(outcome(envelope([], { source: sink }))).toBe("transaction_source_mismatch");
+  });
+
+  test("a sponsorship revocation, as the real builder emits it, is accepted", () => {
+    const op = Operation.revokeDataSponsorship({ account: demo, name: "promo_code" });
+    expect(outcome(envelope([op]))).toBe("accepted");
+  });
 });

@@ -3,16 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3002",
-    "build": "next build",
+    "dev": "bun run --filter '@lumenwipe/verify' build:js && next dev -p 3002",
+    "build": "bun run --filter '@lumenwipe/verify' build && next build",
     "start": "next start",
     "lint": "eslint .",
-    "type-check": "tsc --noEmit && tsc -p tests/tsconfig.json --noEmit",
-    "test": "bun test tests/unit",
+    "type-check": "bun run --filter '@lumenwipe/verify' build && tsc --noEmit && tsc -p tests/tsconfig.json --noEmit",
+    "test": "bun run --filter '@lumenwipe/verify' build:js && bun test tests/unit",
     "test:integration": "LUMENWIPE_RUN_INTEGRATION=1 bun test tests/integration"
   },
   "dependencies": {
     "@lumenwipe/sdk": "workspace:*",
+    "@lumenwipe/verify": "workspace:*",
     "@stellar/stellar-sdk": "17.4.0",
     "@upstash/redis": "^1.39.0",
     "lucide-react": "^1.55.0",

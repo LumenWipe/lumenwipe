@@ -11,7 +11,7 @@ import { DEV_STORE_FILE, devFileKv, upstashKv, type SessionKv } from "./kv";
 export const SESSION_TTL_SECONDS = 3600;
 
 /** Bumped whenever the stored shape changes; a session of any other version reads as expired. */
-export const SESSION_SCHEMA_VERSION = 1;
+export const SESSION_SCHEMA_VERSION = 2;
 
 /** Longer than any route's maxDuration, so a request the platform kills frees its session soon after. */
 export const SESSION_LOCK_TTL_MS = 150_000;
@@ -36,6 +36,9 @@ export interface PlaygroundSession {
   encDemoSecret: string;
   ephemeralIssuers: EphemeralIssuer[];
   completedMessSteps: string[];
+  /** Public keys of the signers the mess added to the demo account. The demolish may remove these
+   *  and no other signer (lib/verify.ts). Recorded here, never read back from the API. */
+  recordedSigners: string[];
   /** Confirmed demolish transaction hashes plus each transaction's operations, so the frontend can
    *  replay the close operation-by-operation instead of only transaction-by-transaction. */
   demolishLog: DemolishLogEntry[];
@@ -88,6 +91,7 @@ export function isPlaygroundSession(value: unknown): value is PlaygroundSession 
     Array.isArray(value.ephemeralIssuers) &&
     value.ephemeralIssuers.every(isEphemeralIssuer) &&
     isStringArray(value.completedMessSteps) &&
+    isStringArray(value.recordedSigners) &&
     Array.isArray(value.demolishLog) &&
     value.demolishLog.every(isDemolishLogEntry) &&
     typeof value.demolishDone === "boolean" &&

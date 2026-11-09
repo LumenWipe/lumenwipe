@@ -166,6 +166,37 @@ test("the lock is released after a failed step, so a retry can run", async () =>
   expect(outcome(retried)).toBe("ok");
 });
 
+test("signers the step records are kept in the session, alongside the completed step", async () => {
+  const store = memoryStore();
+  const session = await store.createSession(newSessionData());
+  const result = await runMessStep(store, session.id, "ADD_SIGNER", {
+    executeStep: async (_step, _session, recordSigner) => {
+      await recordSigner("GSIGNER1");
+      await recordSigner("GSIGNER2");
+      return "hash";
+    },
+  });
+  expect(outcome(result)).toBe("ok");
+  const stored = await store.loadSession(session.id);
+  expect(stored?.recordedSigners).toEqual(["GSIGNER1", "GSIGNER2"]);
+  expect(stored?.completedMessSteps).toEqual(["ADD_SIGNER"]);
+});
+
+test("a signer recorded before its transaction failed stays recorded", async () => {
+  const store = memoryStore();
+  const session = await store.createSession(newSessionData());
+  const result = await runMessStep(store, session.id, "ADD_SIGNER", {
+    executeStep: async (_step, _session, recordSigner) => {
+      await recordSigner("GSIGNER");
+      throw new Error("timeout after send");
+    },
+  });
+  expect(result.status).toBe(502);
+  const stored = await store.loadSession(session.id);
+  expect(stored?.recordedSigners).toEqual(["GSIGNER"]);
+  expect(stored?.completedMessSteps).toEqual([]);
+});
+
 test("an unknown session is a 404 and takes no lock", async () => {
   const store = memoryStore();
   const result = await runMessStep(store, UNKNOWN_ID, "SETUP", {

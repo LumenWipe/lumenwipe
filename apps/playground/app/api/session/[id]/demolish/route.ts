@@ -4,8 +4,9 @@ import { decryptSecret } from "@/lib/crypto";
 import { sessionStore } from "@/lib/session-store";
 import { actionResponse, notConfiguredResponse } from "@/lib/route-helpers";
 import { runDemolishStep } from "@/lib/session-actions";
-import { getPlaygroundMmKeypair } from "@/lib/accounts";
+import { getPlaygroundIssuerKeypair, getPlaygroundMmKeypair } from "@/lib/accounts";
 import { runDemolish } from "@/lib/demolish";
+import { expectationFromSession } from "@/lib/verify";
 
 // Must cover a full multi-round close plus network latency; the mess route
 // uses the same budget for the same reason (Vercel would otherwise kill the
@@ -16,15 +17,16 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
 
   const mm = getPlaygroundMmKeypair();
+  const issuer = getPlaygroundIssuerKeypair();
   const apiUrl = process.env.LUMENWIPE_API_URL;
   const apiKey = process.env.LUMENWIPE_API_KEY;
-  if (!mm || !apiUrl || !apiKey) return notConfiguredResponse();
+  if (!mm || !issuer || !apiUrl || !apiKey) return notConfiguredResponse();
 
   const result = await runDemolishStep(sessionStore, id, {
     demolish: (session, onConfirmed) =>
       runDemolish({
         demoKeypair: Keypair.fromSecret(decryptSecret(session.encDemoSecret)),
-        sinkPublic: mm.publicKey(),
+        expected: expectationFromSession(session, mm.publicKey(), issuer.publicKey()),
         apiUrl,
         apiKey,
         onConfirmed,

@@ -32,7 +32,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!issuer || !mm) return notConfiguredResponse();
 
   const result = await runMessStep(sessionStore, id, stepId, {
-    executeStep: (step, session) =>
+    executeStep: (step, session, recordSigner) =>
       executeMessStep(step, {
         demo: Keypair.fromSecret(decryptSecret(session.encDemoSecret)),
         ephemeralIssuers: new Map(
@@ -46,6 +46,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         fundRareAssets: session.fundRareAssets,
         offerCount: session.offerCount,
         dataEntryCount: session.dataEntryCount,
+        recordSigner,
       }),
   });
   return actionResponse(result);

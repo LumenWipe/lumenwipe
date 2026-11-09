@@ -1,49 +1,32 @@
-import { TransactionBuilder, Transaction, Networks, Operation } from "@stellar/stellar-sdk";
+import "server-only";
+import { Networks, TransactionBuilder, type Transaction } from "@stellar/stellar-sdk";
+import {
+  exitExpectations,
+  verifyCloseTransaction,
+  type CloseExpectationInput,
+  type TransferChoice,
+} from "@lumenwipe/verify";
 import type { CloseTransaction } from "@lumenwipe/sdk";
+import { LWDEMO_CODE } from "./mess-plan";
+import type { PlaygroundSession } from "./session-store";
 
-// Structural check the playground's backend runs on every XDR the real API
-// returns before signing it - defense in depth. The playground's "user" is a
-// fixed, backend-owned sink account (never a real, arbitrary address), so this
-// allowlist is intentionally narrower than apps/web/lib/stellar/verify.ts,
-// which has to validate against an arbitrary user-typed destination.
+// The check the playground's backend runs on every XDR the real API returns, before signing it.
 //
-// Narrower, but the same semantics where they overlap: only the ACCOUNT_MERGE
-// pays the sink. A conversion settles into the account being closed and a
-// payment goes back to its own asset issuer, so neither is checked against the
-// sink at all - checking it against the sink rejects every close the real
-// builder can produce.
-
-const ALLOWED_OP_TYPES = new Set([
-  "accountMerge",
-  "payment",
-  "pathPaymentStrictSend",
-  "changeTrust",
-  "manageSellOffer",
-  "manageData",
-  "setOptions",
-  "claimClaimableBalance",
-  // Sponsorship revocation, as the real close builder emits it (apps/api's tx-builder/
-  // sponsorship.ts). The SDK's *builder* input type is the single string "revokeSponsorship",
-  // but a DECODED operation never carries that: Operation.fromXdrObject expands the union into
-  // one concrete type per ledger-entry kind (see the SDK's base/operation.js
-  // `extractRevokeSponshipDetails`), so these are the strings that actually reach `op.type`.
-  // Only the kinds the builder can emit are listed; a claimable-balance sponsorship can never
-  // be self-revoked (CAP-33) and is refused as a blocker upstream.
-  "revokeAccountSponsorship",
-  "revokeTrustlineSponsorship",
-  "revokeOfferSponsorship",
-  "revokeDataSponsorship",
-  "revokeSignerSponsorship",
-  // Deliberately absent: "invokeHostFunction". A DeFi exit is a Soroban call, and the playground's
-  // throwaway demo accounts never hold DeFi positions, so a demolish carrying one is wrong by
-  // construction and is refused as op_not_allowed. The production anchor (apps/web/lib/stellar/
-  // verify.ts) is where an exit is verified structurally.
-]);
-
-// Mirrors apps/web/lib/stellar/verify.ts: ten times the base fee per operation, and an expiry no
-// later than fifteen minutes out.
-const MAX_FEE_PER_OPERATION_STROOPS = BigInt(1_000);
-const MAX_VALIDITY_SECONDS = BigInt(900);
+// The rules are not restated here. Every transaction goes through `@lumenwipe/verify`, the
+// verifier compiled from the web app's own trust anchor (apps/web/lib/stellar/verify.ts), so the
+// playground cannot drift from production: there is one allowlist and one set of operation rules.
+// What makes it narrower is what it is told to expect, all of it taken from the session record and
+// the playground's own configuration, never from the API's response:
+//
+// - the merge goes to the fixed sink, with no memo;
+// - a payment may only return an asset of the session to its own issuer;
+// - a signer may only be removed if the session recorded adding it;
+// - no transfer, conversion, claim or DeFi exit was chosen, so each of those is refused.
+//
+// On top of that, two rules the shared verifier cannot hold for every close, because the
+// exchange hand-off places its forward payment after the merge and a large close spans several
+// transactions: a playground close is one transaction that ends in its merge, with no more
+// operations than the session's own entries can explain.
 
 export class PlaygroundVerificationError extends Error {
   constructor(message: string) {
@@ -52,86 +35,110 @@ export class PlaygroundVerificationError extends Error {
   }
 }
 
+/** One asset the session can hold: its code and the issuer it returns to. */
+export interface SessionAsset {
+  code: string;
+  issuer: string;
+}
+
+/** What a demolish of one session may do, from the session record and the playground config. */
 export interface PlaygroundCloseExpectation {
   demoPublic: string;
   sinkPublic: string;
+  assets: SessionAsset[];
+  recordedSigners: string[];
+  offerCount: number;
+  dataEntryCount: number;
+}
+
+/**
+ * The expectation for a session's demolish. `lwdemoIssuer` is the playground's persistent issuer
+ * from its configuration; every other asset is one of the session's ephemeral issuers.
+ */
+export function expectationFromSession(
+  session: Pick<
+    PlaygroundSession,
+    "demoPublic" | "ephemeralIssuers" | "recordedSigners" | "offerCount" | "dataEntryCount"
+  >,
+  sinkPublic: string,
+  lwdemoIssuer: string
+): PlaygroundCloseExpectation {
+  return {
+    demoPublic: session.demoPublic,
+    sinkPublic,
+    assets: [
+      { code: LWDEMO_CODE, issuer: lwdemoIssuer },
+      ...session.ephemeralIssuers.map((e) => ({ code: e.assetCode, issuer: e.publicKey })),
+    ],
+    recordedSigners: [...session.recordedSigners],
+    offerCount: session.offerCount,
+    dataEntryCount: session.dataEntryCount,
+  };
+}
+
+/**
+ * The most operations a session's close can need: a return payment and a trustline removal per
+ * asset, one cancellation per offer, one removal per data entry and per recorded signer, the
+ * threshold reset that follows signer removal, and the merge.
+ */
+export function maxOperations(expected: PlaygroundCloseExpectation): number {
+  return (
+    2 * expected.assets.length +
+    expected.offerCount +
+    expected.dataEntryCount +
+    expected.recordedSigners.length +
+    2
+  );
+}
+
+function sharedExpectation(expected: PlaygroundCloseExpectation): CloseExpectationInput {
+  const transfers: Record<string, TransferChoice> = {};
+  for (const { code, issuer } of expected.assets) {
+    // A return to the issuer, as the web app expresses one: the destination is pinned to the
+    // issuer encoded in the asset itself, so the amount is no floor at all.
+    transfers[`${code}:${issuer}`] = { destination: issuer, amount: "0" };
+  }
+  return {
+    ...exitExpectations(null, "testnet"),
+    source: expected.demoPublic,
+    destination: expected.sinkPublic,
+    // The sink is not an exchange, so the mediated hand-off this would floor is refused anyway.
+    nativeBalance: "0",
+    memo: null,
+    memoType: null,
+    claimTrustlineAssets: [],
+    accountSigners: [expected.demoPublic, ...expected.recordedSigners].map((key) => ({
+      key,
+      weight: 1,
+      type: "ed25519_public_key" as const,
+    })),
+    // The playground creates the demo account and never sets its thresholds.
+    accountThresholds: { low: 0, med: 0, high: 0 },
+    transfers,
+    tokenTransfers: {},
+    classicConversions: {},
+    tokenConversions: {},
+  };
 }
 
 export function verifyDemolishTransaction(
   tx: CloseTransaction,
-  expected: PlaygroundCloseExpectation,
-  nowSeconds: number = Math.floor(Date.now() / 1000)
+  expected: PlaygroundCloseExpectation
 ): void {
-  const parsed = TransactionBuilder.fromXdr(tx.xdr, Networks.TESTNET);
-  if (!(parsed instanceof Transaction)) {
-    throw new PlaygroundVerificationError("fee_bump_not_allowed");
+  verifyCloseTransaction({
+    unsignedXdr: tx.xdr,
+    network: "testnet",
+    expected: sharedExpectation(expected),
+  });
+
+  // Decoded only after the shared verifier accepted it, which it never does for a fee bump: that
+  // envelope has no source account of its own, so it fails the transaction source check.
+  const ops = (TransactionBuilder.fromXdr(tx.xdr, Networks.TESTNET) as Transaction).operations;
+  if (ops.length > maxOperations(expected)) {
+    throw new PlaygroundVerificationError("too_many_operations");
   }
-
-  if (parsed.source !== expected.demoPublic) {
-    throw new PlaygroundVerificationError("source_not_allowed");
-  }
-
-  if (BigInt(parsed.fee) > BigInt(parsed.operations.length) * MAX_FEE_PER_OPERATION_STROOPS) {
-    throw new PlaygroundVerificationError("fee_too_high");
-  }
-
-  const maxTime = BigInt(parsed.timeBounds?.maxTime ?? "0");
-  if (maxTime === BigInt(0)) {
-    throw new PlaygroundVerificationError("no_expiry");
-  }
-  if (maxTime > BigInt(Math.floor(nowSeconds)) + MAX_VALIDITY_SECONDS) {
-    throw new PlaygroundVerificationError("expiry_too_far");
-  }
-
-  for (const op of parsed.operations) {
-    if (!ALLOWED_OP_TYPES.has(op.type)) {
-      throw new PlaygroundVerificationError(`op_not_allowed:${op.type}`);
-    }
-    if (op.source && op.source !== expected.demoPublic) {
-      throw new PlaygroundVerificationError("op_source_not_allowed");
-    }
-
-    // The merge is the only operation that may pay the sink: it is the whole point of the close.
-    if (op.type === "accountMerge" && op.destination !== expected.sinkPublic) {
-      throw new PlaygroundVerificationError("merge_destination_not_allowed");
-    }
-
-    // A conversion swaps a balance to XLM *into the account being closed*, never out of it -
-    // `assetConversionOp` in apps/api's tx-builder passes the closing account as `destination`.
-    // Mirrors the production rule in apps/web/lib/stellar/verify.ts ("Conversions must swap to
-    // XLM into the account itself, with a positive floor").
-    if (op.type === "pathPaymentStrictSend") {
-      if (op.destination !== expected.demoPublic) {
-        throw new PlaygroundVerificationError("conversion_destination_not_allowed");
-      }
-      if (!op.destAsset.isNative()) {
-        throw new PlaygroundVerificationError("conversion_must_settle_in_xlm");
-      }
-      // A zero floor is not a floor: it would let a conversion settle for nothing.
-      if (!(Number(op.destMin) > 0)) {
-        throw new PlaygroundVerificationError("conversion_has_no_minimum");
-      }
-    }
-
-    // A payment in a close is only ever a return-to-issuer: the asset paid back to the very
-    // issuer that is encoded in the asset itself, so the destination cannot be redirected
-    // (`issuerPaymentOp`). The playground never chooses the `transfer_to_account` disposition,
-    // so no other payment shape is legitimate here - and a native payment has no place at all,
-    // since the XLM balance leaves via the merge.
-    if (op.type === "payment") {
-      if (op.asset.isNative()) {
-        throw new PlaygroundVerificationError("native_payment_not_allowed");
-      }
-      if (op.destination !== op.asset.getIssuer()) {
-        throw new PlaygroundVerificationError("payment_destination_not_allowed");
-      }
-    }
-
-    if (op.type === "setOptions") {
-      const so = op as Operation.SetOptions;
-      if (so.signer && so.signer.weight !== 0) {
-        throw new PlaygroundVerificationError("setOptions_must_only_remove_signers");
-      }
-    }
+  // The shared verifier already refuses a second merge; this pins the one merge to the end.
+  if (ops[ops.length - 1]!.type !== "accountMerge") {
+    throw new PlaygroundVerificationError("merge_not_final");
   }
 }

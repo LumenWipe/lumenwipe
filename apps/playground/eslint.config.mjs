@@ -25,6 +25,11 @@ const config = [
               group: ["@lumenwipe/api", "@lumenwipe/api/*", "@lumenwipe/web", "@lumenwipe/web/*"],
               message: "apps/playground must not import apps/api or apps/web directly.",
             },
+            {
+              group: ["**/apps/web", "**/apps/web/**", "**/../web/**"],
+              message:
+                "apps/playground verifies with @lumenwipe/verify, the published build of the web's trust anchor, never by reaching into apps/web.",
+            },
           ],
         },
       ],
