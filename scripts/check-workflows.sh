@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
-# Fails when a workflow uses an action that is not pinned to a full commit SHA with a version
-# comment, or declares a job without timeout-minutes. Usage: scripts/check-workflows.sh [dir]
+# Fails when a workflow or a local composite action uses an action that is not pinned to a full
+# commit SHA with a version comment, or a workflow declares a job without timeout-minutes.
+# Usage: scripts/check-workflows.sh [dir]. With no dir it checks .github/workflows and every
+# .github/actions/*/action.yml; with a dir it checks the workflows in that dir only.
 set -euo pipefail
 
-dir="${1:-.github/workflows}"
 status=0
+if [ "$#" -gt 0 ]; then
+  files=("$1"/*.yml "$1"/*.yaml)
+else
+  files=(.github/workflows/*.yml .github/workflows/*.yaml .github/actions/*/action.yml .github/actions/*/action.yaml)
+fi
 
-for file in "$dir"/*.yml "$dir"/*.yaml; do
+for file in "${files[@]}"; do
   [ -e "$file" ] || continue
   awk -v file="$file" '
     function flush() {
