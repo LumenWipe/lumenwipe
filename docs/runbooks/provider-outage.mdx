@@ -1,0 +1,51 @@
+---
+title: "Provider outage"
+description: "What the API does when an RPC or Horizon-compatible provider fails or rate limits, and when and how to change the provider list."
+icon: "plug-circle-xmark"
+---
+
+Each network reads through an ordered list of RPC URLs (`STELLAR_RPC_<NET>`) and of Horizon-compatible URLs (`PATH_ROUTING_API_<NET>`). The full rules are in [Provider failover](/architecture#provider-failover); the parts that matter during an outage:
+
+- A provider that answers `429` or a `5xx` ends that request with `503 service_unavailable` and `Retry-After: 30`, and cools down for 30 seconds (`RPC_PROVIDER_COOLDOWN_MS`). The client's retry pins the next provider. A cooling provider is still tried when every other one fails.
+- A timeout is a `503` too, but starts no cooldown, so a provider that hangs keeps being probed first. That is the case to act on by hand.
+- A provider outage becomes a retryable `503`, never a wrong answer about an account, and a send never goes to a second provider.
+
+## Blast radius
+
+- **One provider down, list of two or more**: some requests get a `503` and succeed on retry. No action is needed unless it lasts.
+- **Every provider down, or a single provider**: every read on that network fails with `503`. Closes cannot be planned or built. Nothing is lost: a close in progress resumes once reads come back ([Recovery](/guides/recovery#the-service-is-unavailable)).
+- **Only DeFi detection or token quotes down** (OctoPos, Soroswap, xBull): those have one provider each. Closes still run; position detection falls back to a classic-only close and token conversion is unavailable.
+
+## Steps
+
+1. **Find which provider fails**:
+
+   ```bash
+   curl -s "$API/health/dependencies" | jq '.dependencies[] | {upstream, network, state, lastErrorClass, lastSuccessAt}'
+   ```
+
+   Expected while healthy: `"state": "up"` everywhere. During an outage, the failing upstream shows `degraded` (some providers failing) or `down` (all), with `lastErrorClass` such as `rate_limited`, `unavailable`, `timeout` or `bad_response`. Probe results are cached for one minute (five for `paths` and `defi`). Check the provider's own status page.
+
+2. **Rate limiting or short errors**: wait. The cooldown already routes around it, and the outage shows as `degraded`, not `down`.
+
+3. **A provider that times out or stays down for more than 15 minutes**: take it out of the list, keeping the order of the rest. The value contains commas, so use the delimiter syntax:
+
+   ```bash
+   gcloud run services describe lumenwipe-api --region us-central1 --format='yaml(spec.template.spec.containers[0].env)' | grep -A1 'STELLAR_RPC_<NET>'
+   gcloud run services update lumenwipe-api --region us-central1 --update-env-vars='^@^STELLAR_RPC_<NET>=<remaining url>,<other url>'
+   ```
+
+   Each URL keeps its own auth header by position: if you remove the first URL, move its `_2` header variables to the unsuffixed names in the same command. A list is checked at boot (https, no duplicates); a bad one refuses to start, and the previous revision keeps serving. Expected: `Done.` and the new revision serving.
+
+4. **Every provider down**: add a working public provider to the list in the same way, or wait for the provider. If it lasts, post the public update from [Incident response](/runbooks/incident-response#public-update-template).
+
+5. **When the provider recovers**, restore the original list with the same command.
+
+## Confirm the fix
+
+```bash
+curl -s "$API/health/dependencies" | jq '.dependencies[] | select(.network=="<net>") | {upstream, state}'
+curl -s -o /dev/null -w '%{http_code}\n' "$API/health/deep"
+```
+
+Expected: `"state": "up"` for `rpc`, `horizon` and `paths`, and `200` from `/health/deep`. Then plan a testnet close on the site: it loads without a `503`.

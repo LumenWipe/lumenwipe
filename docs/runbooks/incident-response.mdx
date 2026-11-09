@@ -1,0 +1,124 @@
+---
+title: "Incident response"
+description: "Severities, who may act without waiting, the kill switches and rollback, and the templates for the public update and the post-mortem."
+icon: "triangle-exclamation"
+---
+
+<Note>
+  Not yet rehearsed end to end: the kill-switch and rollback steps have not been followed by a
+  second maintainer against testnet. The walkthrough will correct this page.
+</Note>
+
+## Severities
+
+The severity of an alert is the one in the [monitoring plan](/monitoring-plan#5-what-happens-when-an-alert-fires); anything reported by a person gets one here.
+
+| Severity | Means                                                  | Examples                                                                                                      | Response                                              |
+| -------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| SEV1     | Funds can be lost or a signing key may be exposed      | A service key sourced a transaction; a forward paid out more than the merge; a contract changed under an exit | Act now. Turn the path off first, investigate second  |
+| SEV2     | A path is down or wrong for everyone, no funds at risk | A bad deploy; every provider failing; an expired registry; a drained sponsor                                  | Act within the hour. Roll back or switch the path off |
+| SEV3     | Degraded or affecting a few users                      | One provider rate limiting; Firestore errors on usage; a single stuck close                                   | Act within the working day                            |
+
+When in doubt, pick the higher severity. Lowering it later costs nothing.
+
+## Who may act
+
+Any maintainer with access to the Cloud Run service may, without waiting for anyone else:
+
+- turn a kill switch off (and back on once the cause is fixed),
+- roll traffic back to a known-good revision,
+- rotate a key by the rotation runbooks.
+
+The maintainer who acts says so in the team channel at once, with what they changed and the command they ran. A second maintainer reviews the change afterwards, not before: for a SEV1, waiting for a review is the larger risk.
+
+## First fifteen minutes
+
+1. **Decide the severity** from the table above, and post it with the alert or report that triggered it.
+2. **Stop the harm.** For a SEV1 or SEV2, turn off the affected path with its kill switch, or roll back. A switch is read on every request, refuses the path before it builds anything, and so never leaves a close half done:
+
+   | Problem in                          | Switch to turn off                                       |
+   | ----------------------------------- | -------------------------------------------------------- |
+   | The relay account (exchange closes) | `MEDIATOR_FORWARD_ENABLED`                               |
+   | The fee sponsor                     | `FEE_SPONSORSHIP_ENABLED`                                |
+   | One protocol's exits                | `<PROTOCOL>_EXIT_ENABLED`                                |
+   | Soroban token conversion            | `SOROBAN_CONVERSION_ENABLED`, `XBULL_CONVERSION_ENABLED` |
+
+   ```bash
+   gcloud run services update lumenwipe-api --region us-central1 --update-env-vars=MEDIATOR_FORWARD_ENABLED=false
+   gcloud run services describe lumenwipe-api --region us-central1 --format='value(spec.template.spec.containers[0].env)'
+   ```
+
+   Expected: the update ends with `Done.` and the new revision serving 100 percent of traffic, about 40 seconds after it began; the read-back lists `MEDIATOR_FORWARD_ENABLED` with value `false`. The full list and the pinned-traffic case are in [RELEASING.md, Kill switches](https://github.com/LumenWipe/lumenwipe/blob/main/RELEASING.md#kill-switches). For a deploy that went bad, follow [Bad deploy](/runbooks/bad-deploy) instead.
+
+3. **Confirm the path is off** from outside. For the relay account:
+
+   ```bash
+   curl -s -X POST "$API/v1/testnet/mediator/sign" -H "Authorization: Bearer $KEY" \
+     -H 'content-type: application/json' -d '{"transaction":"AAAA"}'
+   ```
+
+   Expected: `503` with `"code":"exchange_forward_paused"`. A plan for an affected close lists the path as a blocker.
+
+4. **Open a private incident record** with the severity, the time the alert fired, and every command run so far.
+5. **Post the public update** below if users can notice: any SEV1, and a SEV2 lasting more than 15 minutes.
+
+## Resolving
+
+1. Fix the cause by the matching runbook.
+2. Turn the switch back on and read it back: `--update-env-vars=MEDIATOR_FORWARD_ENABLED=true`, then the `describe` above. Expected: `true`.
+3. Confirm the path works: one testnet close through it (see each runbook's confirmation step), then the [on-chain monitors](/monitoring-plan#how-the-live-ones-run) run green from the Actions tab.
+4. Post the resolved update, and write the post-mortem within five working days for any SEV1 or SEV2.
+
+## Public update template
+
+Post on GitHub (pinned issue or discussion) and the [community channels](/community-and-communications#4-where-the-project-communicates). Say what users see and what to do; never post an address, a key detail or an unconfirmed cause.
+
+```text
+[Investigating | Identified | Resolved] <short title>
+
+What is affected: <closes into exchanges | sponsored fees | <protocol> exits | the API>
+on <mainnet | testnet>, since <time UTC>.
+
+What you should do: <nothing: closes that did not complete can be resumed, see
+https://docs.lumenwipe.com/guides/recovery | do not retry until the next update>.
+
+Funds: <no funds are at risk | <what is known, without speculation>>.
+
+Next update: <time UTC> or sooner if this changes.
+```
+
+## Post-mortem template
+
+Blameless: describe what the system and the procedure allowed, not who made the mistake.
+
+```markdown
+# <Title> (<SEV>), <date>
+
+## Summary
+
+Two or three sentences: what broke, for whom, for how long, and whether any funds moved.
+
+## Timeline (UTC)
+
+- hh:mm alert or report
+- hh:mm severity decided, path turned off (command)
+- hh:mm cause identified
+- hh:mm fix deployed, path turned back on
+- hh:mm confirmed resolved
+
+## Impact
+
+Requests refused, closes affected, funds at risk or lost, duration.
+
+## Root cause
+
+What happened and why the existing checks did not stop it.
+
+## What went well / what did not
+
+Including every step of a runbook that was wrong or unclear.
+
+## Actions
+
+Each with an owner and an issue link: runbook corrections, tests, monitors.
+```

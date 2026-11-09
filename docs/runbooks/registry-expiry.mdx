@@ -1,0 +1,59 @@
+---
+title: "Registry expiry"
+description: "Re-verify and restamp the exchange or contract registry before its validUntil date, or recover exchange closes and conversions after it."
+icon: "calendar-xmark"
+---
+
+Two registries carry a `lastVerified` and a `validUntil` date, and both fail closed once `validUntil` has passed (the date counts until 23:59:59 UTC):
+
+| Registry                                     | Past `validUntil`                                                                                                                                                                                                      |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api/src/config/exchange-registry.json` | A close into a listed exchange is refused with `503 registry_expired`, because a wrong memo rule credits nobody. Closes into any other destination are unaffected. The API logs a warning at boot from 30 days before. |
+| `apps/api/src/config/contract-registry.json` | Soroban token conversion through Soroswap finds no allowed contract, and DeFi detection's direct-read fallback no longer reports a clean sweep as confirmed. The hash comparison monitor keeps running.                |
+
+Expiry is a date on a file, so it is the one incident that can always be prevented. The fix is a reviewed pull request, never a configuration change: there is no switch that skips the check.
+
+## Blast radius
+
+- **Exchange registry**: every exchange close, on both networks, until the restamped registry deploys. No funds are at risk; users can close into a wallet they control meanwhile.
+- **Contract registry**: token conversion and the confirmed state of DeFi detection. Exits that the registry already verified keep their hash check.
+
+## Steps
+
+1. **Check the days left**:
+
+   ```bash
+   curl -s "$API/health/deep" | jq '.details.exchange_registry'
+   jq -r '.validUntil' apps/api/src/config/exchange-registry.json apps/api/src/config/contract-registry.json
+   ```
+
+   Expected: `daysRemaining` positive, and both dates in the future. Start step 2 at 30 days left, when the boot warning appears.
+
+2. **Re-verify every entry against its source**, never against another registry:
+   - Exchange registry: each deposit address, memo requirement and memo type against the exchange's own deposit documentation, by [CONTRIBUTING, Contributing to registries](https://github.com/LumenWipe/lumenwipe/blob/main/CONTRIBUTING.md#9-contributing-to-registries).
+   - Contract registry: each entry's code hash re-read from the ledger, by `apps/api/src/lib/contract-registry/README.md` ("Refreshing it"):
+
+     ```bash
+     stellar contract fetch --id <contract address> --network <net> | sha256sum
+     ```
+
+     Expected: the entry's `wasmHash`. A different hash is an upgrade: follow `S7.Tampering.1.M.1` in the [monitoring plan](/monitoring-plan#5-what-happens-when-an-alert-fires) for that entry before restamping anything.
+
+3. **Restamp**: set `lastVerified` to today and `validUntil` to 90 days later, as the current files do, and change any entry that moved. Run the registry tests:
+
+   ```bash
+   cd apps/api && bun test tests/unit/contract-registry.test.ts && bun run test
+   ```
+
+   Expected: all pass.
+
+4. **Open the pull request** with what you checked for every entry, and merge it after review. The merge deploys the API.
+
+## Confirm the fix
+
+```bash
+curl -s "$API/health/deep" | jq '.details.exchange_registry.daysRemaining'
+curl -s "$API/v1/config/exchange-registry" | jq -r '.validUntil'
+```
+
+Expected: the new number of days, and the new `validUntil`. A close into a listed exchange then plans without `registry_expired`.

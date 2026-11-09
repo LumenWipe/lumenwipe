@@ -1,0 +1,43 @@
+---
+title: "Firestore outage"
+description: "What fails and what keeps working when the API cannot reach Firestore, and how to confirm it is back."
+icon: "database"
+---
+
+The API keeps its durable state in Firestore: self-serve API key hashes, per-integrator usage, the public merge counter and the upstream counts ([architecture, data flows](/architecture)). It reaches Firestore through the Cloud Run service account, so there is no credential to rotate here. Closes themselves keep no state in Firestore.
+
+## Blast radius
+
+| Keeps working                                                                         | Fails or degrades                                                                               |
+| ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Every request authenticated by a static key in `API_KEYS`, which includes the web app | Requests with a self-serve key not resolved in the last 60 seconds: the key cannot be read      |
+| Planning, building, co-signing and submitting a close                                 | The self-service key page: listing, creating, rotating and revoking keys fail                   |
+| Fee sponsorship and the relay account                                                 | `/v1/<net>/stats` answers `503 stats_unavailable`; merges verified meanwhile are not counted    |
+|                                                                                       | Usage and upstream counts written meanwhile are lost (writes are batched and logged on failure) |
+
+No funds are at risk. Severity is SEV3, or SEV2 if self-serve integrators are refused for more than 15 minutes.
+
+## Steps
+
+1. **Confirm it is Firestore**:
+
+   ```bash
+   curl -s -o /dev/null -w '%{http_code}\n' "$API/v1/testnet/stats"
+   gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="lumenwipe-api" AND severity>=ERROR' --freshness=30m --limit=20 --format='value(textPayload,jsonPayload.message)'
+   ```
+
+   Expected during an outage: `503`, and error lines naming the Firestore store or the stats store. Check the Google Cloud status page for Firestore in the project's region.
+
+2. **Do not unset `FIRESTORE_PROJECT_ID`.** Without it the API falls back to in-memory stores: self-serve keys would stop resolving altogether and counts would reset on every restart. Waiting is the better choice.
+
+3. **If self-serve integrators are blocked for long**, provision a temporary static key for an affected partner by the [static API key steps](/runbooks/rotate-secrets#static-api-keys), and remove it once Firestore is back.
+
+4. **Post the public update** if integrators are affected, from [Incident response](/runbooks/incident-response#public-update-template).
+
+## Confirm the fix
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' "$API/v1/testnet/stats"
+```
+
+Expected: `200`. Then sign in on the key page with a testnet wallet: the keys list loads. Merges that landed during the outage stay uncounted; the counter is a public total, not a ledger of record.

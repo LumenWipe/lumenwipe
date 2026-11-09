@@ -1,0 +1,60 @@
+---
+title: "Close stuck mid-flow"
+description: "Triage a close that a user or integrator reports as stopped partway: find the account's real state, the failing request, and what to tell them."
+icon: "hourglass-half"
+---
+
+This is the maintainer's side of [Recovery](/guides/recovery), which is what users follow. Read it first: most stuck closes resume by running the close again, because the API keeps no progress between rounds and every call re-reads the account from the ledger.
+
+## Blast radius
+
+One account, unless several reports share a cause. Funds are never held by LumenWipe in between: an account is either still open, with everything that has not been closed, or merged. The one irreversible failure is a close into an exchange whose memo was wrong, which [Recovery](/guides/recovery#funds-sent-to-an-exchange-were-not-credited) covers.
+
+## Steps
+
+1. **Collect the report**: network, source address, destination, transaction hash if any, and the reference id (`error.requestId` or the `X-Request-Id` header). Never ask for a secret key or a seed phrase.
+
+2. **Read the account's state from the ledger**, through the API:
+
+   ```bash
+   curl -s -H "Authorization: Bearer $KEY" "$API/v1/<net>/close/status?source=<source>" | jq
+   ```
+
+   Expected: the phase and the remaining work. An account already merged is no longer stuck: go to step 5.
+
+3. **Find the failing request** by its reference id:
+
+   ```bash
+   gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="lumenwipe-api" AND jsonPayload.requestId="<reference id>"' --freshness=7d --format=json | jq '.[] | .jsonPayload'
+   ```
+
+   Expected: the request's lines, with its route, status and error code. Addresses in logs are shortened hashes ([logging and privacy](/reference/logging-and-privacy)), so search by reference id, not by address.
+
+4. **Match the error code** and act:
+
+   | Code or symptom                                                         | Cause                                                     | Action                                                                                                           |
+   | ----------------------------------------------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+   | `service_unavailable`, `destination_read_failed`, any `503`             | A provider or the service                                 | Check [Provider outage](/runbooks/provider-outage); the user retries after `Retry-After`                         |
+   | `exchange_forward_paused`, `fee_sponsorship_paused`, `defi_exit_paused` | A kill switch is off                                      | Expected during an incident; the user waits or picks another destination                                         |
+   | `mediator_key_misconfiguration`                                         | The relay secret and public key disagree in this revision | SEV2: fix the binding as in [Rotate the relay account](/runbooks/rotate-relay-account#steps), step 5             |
+   | `transaction_structure_not_allowed` after a rotation                    | A close built for the old relay account                   | The user runs the close again; the new build names the new account                                               |
+   | `registry_expired`                                                      | The exchange registry is past `validUntil`                | [Registry expiry](/runbooks/registry-expiry)                                                                     |
+   | `state_changed`, `transaction_expired`                                  | The account changed, or the user signed too late          | The user runs the close again                                                                                    |
+   | `sponsorship_budget_exhausted`, a sponsored fee rejected                | The sponsor's budget or float                             | [Drained fee sponsor](/runbooks/drained-sponsor)                                                                 |
+   | A transaction hash that never confirmed                                 | Dropped or still pending                                  | `curl -s "$API/v1/<net>/transactions/<hash>"`; once its time bounds pass it cannot land, and a new build is safe |
+
+   For any other code, the [error reference](/api-reference/errors) says whether retrying helps.
+
+5. **For a merged account**, confirm what was delivered:
+
+   ```bash
+   curl -s -H "Authorization: Bearer $KEY" "$API/v1/<net>/close/delivered?destination=<destination>&hashes=<hash>" | jq
+   ```
+
+   Expected: the XLM each transaction delivered. If the destination is an exchange and the amount arrived but was not credited, the user contacts the exchange with the hash and memo, as Recovery describes.
+
+6. **If several reports share a code**, it is an incident: open one by [Incident response](/runbooks/incident-response).
+
+## Confirm the fix
+
+The user's close completes: `close/status` reports the account as merged, and `close/delivered` lists the amount at the destination.
