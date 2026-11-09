@@ -1,6 +1,9 @@
 "use client";
 
+import { useEffect } from "react";
 import { usePlaygroundStore } from "@/store/playground";
+import { parseUnavailable } from "@/lib/scenarios";
+import { playgroundRequest } from "@/lib/playground-api";
 import { usePlaygroundExecution } from "@/hooks/usePlaygroundExecution";
 import OrbitalScene from "@/components/scene/OrbitalScene";
 import PlaygroundControls from "@/components/scene/PlaygroundControls";
@@ -9,6 +12,13 @@ import TxLogPanel from "@/components/scene/TxLogPanel";
 export default function PlaygroundClient() {
   const { start, demolish, progressStatus } = usePlaygroundExecution();
   const phase = usePlaygroundStore((s) => s.phase);
+
+  // Until this answers, every scenario shows as available; the create route checks again anyway.
+  useEffect(() => {
+    playgroundRequest<unknown>(fetch, "/scenarios")
+      .then((body) => usePlaygroundStore.getState().setUnavailable(parseUnavailable(body)))
+      .catch(() => {});
+  }, []);
 
   return (
     <section className="mx-auto w-full max-w-6xl px-4 pb-24 pt-16 sm:px-6">

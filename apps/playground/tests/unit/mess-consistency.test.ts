@@ -53,6 +53,7 @@ async function runAndCheck(selection: ScenarioSelection): Promise<void> {
       fundAccount: async () => true,
       ensureMmOffer: async () => {},
       encrypt,
+      unavailable: () => new Map(),
     }
   );
   expect(created.status).toBe(200);

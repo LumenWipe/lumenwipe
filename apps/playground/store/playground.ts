@@ -1,10 +1,17 @@
 import { create } from "zustand";
 import type { AccountState } from "@lumenwipe/sdk";
-import type { PlaygroundCustomConfig, PlaygroundMode } from "@/lib/mess-plan";
-import { DEFAULT_CUSTOM_CONFIG } from "@/lib/mess-plan";
-import type { MessStepDef, SceneNodeKind } from "@/lib/scenarios";
+import {
+  STANDARD_SELECTION,
+  type FeatureSetId,
+  type MessStepDef,
+  type OfferAsset,
+  type SceneNodeKind as PlannedNodeKind,
+  type ScenarioId,
+  type ScenarioSelection,
+} from "@/lib/scenarios";
 
-export type { SceneNodeKind };
+/** The kinds the scene draws: every kind the registry plans, and a generic one for anything else. */
+export type SceneNodeKind = PlannedNodeKind | "generic";
 
 export type PlaygroundPhase =
   "IDLE" | "MESSING" | "DIRTY" | "DEMOLISHING" | "COMPLETE" | "EXPIRED" | "ERROR";
@@ -19,6 +26,9 @@ export interface SceneNode {
   status: SceneNodeStatus;
   txHash: string | null;
   orbit: { radius: number; durationSec: number; phaseDeg: number };
+  /** For an offer node: the pair it trades, and the chain's offer id once bound to it. */
+  offer: { selling: OfferAsset; buying: OfferAsset } | null;
+  offerId: string | null;
 }
 
 export interface LogEntry {
@@ -52,9 +62,12 @@ interface PlaygroundState {
   recoveredXlm: string | null;
   /** The last error stopped a close that had started: the demo can resume it. */
   demolishFailed: boolean;
-  /** Mode selected on the IDLE screen. Survives COMPLETE/EXPIRED resets. */
-  selectedMode: PlaygroundMode;
-  customConfig: PlaygroundCustomConfig;
+  /** The scenarios picked on the IDLE screen, and the preset they came from (null once edited).
+   *  Both survive COMPLETE/EXPIRED resets. */
+  selection: ScenarioSelection;
+  preset: FeatureSetId | null;
+  /** Scenarios this deployment cannot run (GET /api/scenarios), with their reasons. */
+  unavailable: ReadonlyMap<ScenarioId, string>;
 
   setPhase: (phase: PlaygroundPhase) => void;
   startSession: (payload: {
@@ -73,8 +86,10 @@ interface PlaygroundState {
   setRecoveredXlm: (xlm: string) => void;
   setLastError: (error: string | null) => void;
   setDemolishFailed: (failed: boolean) => void;
-  setSelectedMode: (mode: PlaygroundMode) => void;
-  setCustomConfig: (config: PlaygroundCustomConfig) => void;
+  setSelection: (selection: ScenarioSelection, preset: FeatureSetId | null) => void;
+  setUnavailable: (unavailable: ReadonlyMap<ScenarioId, string>) => void;
+  /** Binds each offer node to the chain offer trading its pair. */
+  bindOffers: (offers: readonly { id: string; selling: string; buying: string }[]) => void;
   reset: () => void;
 }
 
@@ -96,10 +111,14 @@ const sessionInitialState = {
 
 let logCounter = 0;
 
+/** "native" stays as is; "CODE:ISSUER" becomes its code, which is unique within a session. */
+const assetCode = (asset: string): string => asset.split(":")[0] ?? asset;
+
 export const usePlaygroundStore = create<PlaygroundState>((set) => ({
   ...sessionInitialState,
-  selectedMode: "standard",
-  customConfig: DEFAULT_CUSTOM_CONFIG,
+  selection: STANDARD_SELECTION,
+  preset: "classic",
+  unavailable: new Map(),
 
   setPhase: (phase) => set({ phase }),
 
@@ -112,8 +131,9 @@ export const usePlaygroundStore = create<PlaygroundState>((set) => ({
       expiresAt,
       accounts,
       messPlan,
-      selectedMode: state.selectedMode,
-      customConfig: state.customConfig,
+      selection: state.selection,
+      preset: state.preset,
+      unavailable: state.unavailable,
     })),
 
   setCurrentMessIndex: (currentMessIndex) => set({ currentMessIndex }),
@@ -151,14 +171,27 @@ export const usePlaygroundStore = create<PlaygroundState>((set) => ({
 
   setDemolishFailed: (demolishFailed) => set({ demolishFailed }),
 
-  setSelectedMode: (selectedMode) => set({ selectedMode }),
+  setSelection: (selection, preset) => set({ selection, preset }),
 
-  setCustomConfig: (customConfig) => set({ customConfig }),
+  setUnavailable: (unavailable) => set({ unavailable }),
+
+  bindOffers: (offers) =>
+    set((state) => ({
+      nodes: state.nodes.map((n) => {
+        const pair = n.offer;
+        if (!pair) return n;
+        const match = offers.find(
+          (o) => assetCode(o.selling) === pair.selling && assetCode(o.buying) === pair.buying
+        );
+        return match ? { ...n, offerId: match.id } : n;
+      }),
+    })),
 
   reset: () =>
     set((state) => ({
       ...sessionInitialState,
-      selectedMode: state.selectedMode,
-      customConfig: state.customConfig,
+      selection: state.selection,
+      preset: state.preset,
+      unavailable: state.unavailable,
     })),
 }));

@@ -52,6 +52,8 @@ export interface SceneNodeSpec {
   id: string;
   kind: SceneNodeKind;
   label: string;
+  /** For an offer node: the pair it trades, which binds it to the chain's offer id once posted. */
+  offer?: { selling: OfferAsset; buying: OfferAsset };
 }
 
 export interface MessStepDef {
@@ -141,8 +143,12 @@ export interface BuildContext {
 
 export type BuildResult = { ok: true; build: ScenarioBuild } | { ok: false; message: string };
 
+/** The feature sets presets and the toggle list are grouped by. */
+export type FeatureSetId = "classic" | "protocol" | "api";
+
 export interface ScenarioDefinition {
   id: ScenarioId;
+  featureSet: FeatureSetId;
   label: string;
   description: string;
   params: Readonly<Record<string, IntParam>>;

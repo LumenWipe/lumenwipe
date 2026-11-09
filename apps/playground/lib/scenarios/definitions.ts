@@ -69,6 +69,7 @@ const offerAssetLabel = (asset: OfferAsset): string => (asset === "native" ? "XL
 
 const lwdemoHolding: ScenarioDefinition = {
   id: "lwdemo-holding",
+  featureSet: "classic",
   label: "Demo token holding",
   description: "A trustline to the playground's own token, with a balance to return.",
   params: {},
@@ -107,6 +108,7 @@ const lwdemoHolding: ScenarioDefinition = {
 
 const junkAirdrops: ScenarioDefinition = {
   id: "junk-airdrops",
+  featureSet: "classic",
   label: "Junk airdrops",
   description: "Unsolicited tokens from throwaway issuers, each on its own trustline.",
   params: { tokens: { label: "Tokens", min: 1, max: AIRDROP_ASSETS.length, default: 2 } },
@@ -157,6 +159,7 @@ const FUND_SWAP_STEP: Record<(typeof SWAP_ASSETS)[number]["code"], MessStepId> =
 
 const stablecoinSwaps: ScenarioDefinition = {
   id: "stablecoin-swaps",
+  featureSet: "classic",
   label: "Stablecoin swaps",
   description: "Stablecoins bought with XLM on the DEX, left sitting on their trustlines.",
   params: { tokens: { label: "Tokens", min: 1, max: SWAP_ASSETS.length, default: 2 } },
@@ -204,6 +207,7 @@ const stablecoinSwaps: ScenarioDefinition = {
 
 const dataEntries: ScenarioDefinition = {
   id: "data-entries",
+  featureSet: "classic",
   label: "Leftover data entries",
   description: "Key-value entries an old app attached to the account.",
   params: { count: { label: "Entries", min: 1, max: JUNK_DATA_ENTRIES.length, default: 3 } },
@@ -244,6 +248,7 @@ const dataEntries: ScenarioDefinition = {
 
 const staleOffers: ScenarioDefinition = {
   id: "stale-offers",
+  featureSet: "classic",
   label: "Stale DEX offers",
   description: "Open offers that tie up balances, each on a pair the account holds.",
   params: { count: { label: "Offers", min: 1, max: JUNK_OFFERS.length, default: 3 } },
@@ -280,6 +285,7 @@ const staleOffers: ScenarioDefinition = {
                 id: `offer:${index}`,
                 kind: "offer",
                 label: `Sell ${offerAssetLabel(offer.selling)} → ${offerAssetLabel(offer.buying)}`,
+                offer: { selling: offer.selling, buying: offer.buying },
               })),
               balances: [],
               action: {
@@ -311,6 +317,7 @@ const staleOffers: ScenarioDefinition = {
 
 const forgottenSigner: ScenarioDefinition = {
   id: "forgotten-signer",
+  featureSet: "classic",
   label: "Forgotten co-signer",
   description: "An extra signer whose key nobody kept, which the close must remove.",
   params: {},

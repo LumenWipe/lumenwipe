@@ -3,13 +3,17 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import type { IntentOperation } from "@lumenwipe/sdk";
 import { errorCopy } from "@/lib/error-copy";
 import { getMessPlanForMode } from "@/lib/mess-plan";
+import { STANDARD_SELECTION, resolvePlan } from "@/lib/scenarios";
 import { usePlaygroundStore } from "@/store/playground";
-import { usePlaygroundExecution } from "@/hooks/usePlaygroundExecution";
+import { buildSceneNode, usePlaygroundExecution } from "@/hooks/usePlaygroundExecution";
 import PlaygroundControls from "@/components/scene/PlaygroundControls";
 import TxLogPanel from "@/components/scene/TxLogPanel";
+import ScenarioPicker from "@/components/scene/ScenarioPicker";
+import OrbitalNode from "@/components/scene/OrbitalNode";
 
-// The demolish as the visitor sees it: the hook, the control panel and the activity log, against
-// a fake of the playground's own routes. Each round's confirmed transactions must reach the scene
+// The playground as the visitor sees it. The scenario picker: presets, toggles, the live totals
+// and the step list, and how the scene draws what it is given. The demolish: the hook, the control
+// panel and the activity log, against a fake of the playground's own routes. Each round's confirmed transactions must reach the scene
 // and the log as that round returns, and an error part way through must offer a resume, with a
 // warning before "Start over" abandons the account.
 
@@ -70,7 +74,7 @@ class FakeRoutes {
   ]);
   state: Record<string, unknown> = {
     demoPublic: "GDEMO",
-    accountState: { nativeBalanceLumens: "9999.5", numSubEntries: 1 },
+    accountState: { nativeBalanceLumens: "9999.5", numSubEntries: 1, openOffers: [] },
     completedMessSteps: [],
     demolishLog: [],
     demolishDone: false,
@@ -238,5 +242,143 @@ describe("the demolish runs round by round", () => {
     rtl.fireEvent.click(rtl.screen.getByRole("button", { name: /^Start over$/ }));
     expect(rtl.screen.queryByText(/Starting over abandons it there/)).toBeNull();
     await rtl.waitFor(() => expect(routes.count("POST /api/session")).toBe(2));
+  });
+});
+
+describe("the scenario picker", () => {
+  beforeEach(() => {
+    usePlaygroundStore
+      .getState()
+      .setSelection(resolvePlan(STANDARD_SELECTION).selection, "classic");
+    usePlaygroundStore.getState().setUnavailable(new Map());
+  });
+
+  const button = (name: string | RegExp) => rtl.screen.getByRole("button", { name });
+  const totals = () => {
+    const values = [...document.querySelectorAll("dd")].map((d) => d.textContent);
+    const steps = [...document.querySelectorAll("ol li")].map((li) => li.textContent);
+    return { values, steps };
+  };
+
+  describe("presets and toggles", () => {
+    test("the classic preset is pressed and its totals and steps are shown before the run", () => {
+      rtl.render(<ScenarioPicker />);
+      expect(button(/Classic account teardown/).getAttribute("aria-pressed")).toBe("true");
+      const plan = resolvePlan(STANDARD_SELECTION);
+      expect(totals()).toEqual({
+        values: [String(plan.cost.xlm), String(plan.steps.length), "~2 min"],
+        steps: plan.steps.map((s) => s.label),
+      });
+    });
+
+    test("toggling a scenario off updates the totals and the steps, and leaves the preset", () => {
+      rtl.render(<ScenarioPicker />);
+      const signer = button(/^Forgotten co-signer/);
+      expect(signer.getAttribute("aria-pressed")).toBe("true");
+      rtl.fireEvent.click(signer);
+
+      expect(button(/^Forgotten co-signer/).getAttribute("aria-pressed")).toBe("false");
+      expect(button(/Classic account teardown/).getAttribute("aria-pressed")).toBe("false");
+      expect(totals().steps).not.toContain("Add a forgotten co-signer");
+      expect(totals().values[1]).toBe(String(resolvePlan(STANDARD_SELECTION).steps.length - 1));
+
+      rtl.fireEvent.click(button(/Classic account teardown/));
+      expect(totals().steps).toContain("Add a forgotten co-signer");
+    });
+
+    test("a parameter counter changes the plan", () => {
+      rtl.render(<ScenarioPicker />);
+      rtl.fireEvent.click(button("Fewer entries"));
+      expect(totals().steps).toContain("Attach 2 leftover data entries");
+    });
+
+    test("turning on a scenario that needs a token pulls one in", () => {
+      usePlaygroundStore
+        .getState()
+        .setSelection({ scenarios: [{ id: "data-entries", params: { count: 1 } }] }, null);
+      rtl.render(<ScenarioPicker />);
+      rtl.fireEvent.click(button(/^Stale DEX offers/));
+      expect(button(/^Demo token holding/).getAttribute("aria-pressed")).toBe("true");
+    });
+
+    test("a scenario switched off here is disabled with its reason", () => {
+      usePlaygroundStore
+        .getState()
+        .setUnavailable(new Map([["stale-offers", "Switched off on this deployment for now."]]));
+      rtl.render(<ScenarioPicker />);
+      const offers = button(/^Stale DEX offers/);
+      expect(offers.hasAttribute("disabled")).toBe(true);
+      const reason = document.getElementById(offers.getAttribute("aria-describedby") ?? "");
+      expect(reason?.textContent).toBe("Switched off on this deployment for now.");
+    });
+
+    test("a feature set with nothing to run says so and cannot be chosen", () => {
+      rtl.render(<ScenarioPicker />);
+      const protocol = button(/Protocol exits/);
+      expect(protocol.getAttribute("aria-disabled")).toBe("true");
+      expect(protocol.textContent).toContain(
+        "No scenarios in this set run on this deployment yet."
+      );
+      rtl.fireEvent.click(protocol);
+      expect(button(/Classic account teardown/).getAttribute("aria-pressed")).toBe("true");
+    });
+
+    test("an empty selection shows why it cannot run", () => {
+      usePlaygroundStore.getState().setSelection({ scenarios: [] }, null);
+      rtl.render(<ScenarioPicker />);
+      expect(rtl.screen.getByText("Pick at least one scenario.")).toBeTruthy();
+    });
+  });
+
+  describe("keyboard and names", () => {
+    test("arrow keys, Home and End move along the preset row", () => {
+      rtl.render(<ScenarioPicker />);
+      const row = rtl.screen.getByRole("group", { name: "Presets" });
+      const presets = [...row.querySelectorAll("button")];
+      presets[0]!.focus();
+      rtl.fireEvent.keyDown(row, { key: "ArrowRight" });
+      expect(document.activeElement).toBe(presets[1]!);
+      rtl.fireEvent.keyDown(row, { key: "End" });
+      expect(document.activeElement).toBe(presets[presets.length - 1]!);
+      rtl.fireEvent.keyDown(row, { key: "ArrowRight" });
+      expect(document.activeElement).toBe(presets[0]!);
+      rtl.fireEvent.keyDown(row, { key: "ArrowLeft" });
+      expect(document.activeElement).toBe(presets[presets.length - 1]!);
+      rtl.fireEvent.keyDown(row, { key: "Home" });
+      expect(document.activeElement).toBe(presets[0]!);
+    });
+
+    test("every toggle has an accessible name and a pressed state", () => {
+      rtl.render(<ScenarioPicker />);
+      const toggles = [...document.querySelectorAll("fieldset button[aria-pressed]")];
+      expect(toggles.length).toBe(6);
+      for (const toggle of toggles) expect(toggle.textContent?.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe("the scene", () => {
+    test("a node of a kind this client does not know renders as a generic node", () => {
+      const node = buildSceneNode({ id: "vault:1", kind: "vault", label: "Vault" }, 0);
+      expect(node.kind).toBe("generic");
+      rtl.render(<OrbitalNode node={{ ...node, status: "docked" }} />);
+      expect(rtl.screen.getByText("Vault")).toBeTruthy();
+    });
+
+    test("an offer node is bound to the chain offer that trades its pair", () => {
+      const spec = {
+        id: "offer:1",
+        kind: "offer",
+        label: "Sell AIRDROP1 → XLM",
+        offer: { selling: "AIRDROP1" as const, buying: "native" as const },
+      };
+      const store = usePlaygroundStore.getState();
+      store.reset();
+      store.dockNodes([buildSceneNode(spec, 0)], "h");
+      store.bindOffers([
+        { id: "7", selling: "native", buying: "LWDEMO:GISSUER" },
+        { id: "8", selling: "AIRDROP1:GISSUER", buying: "native" },
+      ]);
+      expect(usePlaygroundStore.getState().nodes[0]?.offerId).toBe("8");
+    });
   });
 });

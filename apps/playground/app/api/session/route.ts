@@ -5,6 +5,7 @@ import { getPlaygroundIssuerKeypair, getPlaygroundMmKeypair } from "@/lib/accoun
 import { ensureMmOffer } from "@/lib/mess-builders";
 import { handleCreateSession } from "@/lib/route-handlers";
 import { rateLimit } from "@/lib/rate-limit";
+import { unavailableScenarios } from "@/lib/scenario-availability";
 
 export const maxDuration = 60;
 
@@ -30,5 +31,6 @@ export async function POST(req: NextRequest) {
     fundAccount: fundWithFriendbot,
     ensureMmOffer,
     encrypt: encryptSecret,
+    unavailable: unavailableScenarios,
   });
 }

@@ -5,33 +5,21 @@ import {
   AlertTriangle,
   Bomb,
   Check,
-  ChevronDown,
-  ChevronUp,
   ClipboardCopy,
   Eye,
   EyeOff,
   ExternalLink,
   FlaskConical,
   Loader2,
-  Minus,
   Play,
-  Plus,
   RotateCcw,
   ShieldCheck,
   TimerReset,
 } from "lucide-react";
 import { usePlaygroundStore } from "@/store/playground";
 import { errorCopy, GENERIC_ERROR_COPY } from "@/lib/error-copy";
-import {
-  DEFAULT_CUSTOM_CONFIG,
-  MAX_CUSTOM_DATA_ENTRIES,
-  MAX_CUSTOM_TRUSTLINES,
-  PLAYGROUND_MODE_CONFIGS,
-  estimateSeconds,
-  maxOfferCount,
-  type PlaygroundCustomConfig,
-  type PlaygroundMode,
-} from "@/lib/mess-plan";
+import { FEATURE_SETS, validateSelection } from "@/lib/scenarios";
+import ScenarioPicker from "./ScenarioPicker";
 
 function CountdownBadge({ expiresAt }: { expiresAt: number }) {
   const [now, setNow] = useState(() => Date.now());
@@ -72,174 +60,6 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-function durationLabel(seconds: number): string {
-  if (seconds < 60) return `~${seconds}s`;
-  const mins = Math.round(seconds / 60);
-  return `~${mins} min`;
-}
-
-function Counter({
-  label,
-  value,
-  min,
-  max,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  onChange: (v: number) => void;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-2">
-      <span className="text-xs text-white/60">{label}</span>
-      <div className="flex items-center gap-1">
-        <button
-          onClick={() => onChange(Math.max(min, value - 1))}
-          disabled={value <= min}
-          className="flex h-6 w-6 items-center justify-center rounded border border-white/15 text-white/40 hover:border-white/30 hover:text-white/70 disabled:opacity-30 transition-colors"
-        >
-          <Minus className="h-3 w-3" />
-        </button>
-        <span className="w-5 text-center mkt-mono text-xs text-white/80">{value}</span>
-        <button
-          onClick={() => onChange(Math.min(max, value + 1))}
-          disabled={value >= max}
-          className="flex h-6 w-6 items-center justify-center rounded border border-white/15 text-white/40 hover:border-white/30 hover:text-white/70 disabled:opacity-30 transition-colors"
-        >
-          <Plus className="h-3 w-3" />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ModeSelector({
-  selected,
-  custom,
-  onSelectMode,
-  onCustomChange,
-}: {
-  selected: PlaygroundMode;
-  custom: PlaygroundCustomConfig;
-  onSelectMode: (m: PlaygroundMode) => void;
-  onCustomChange: (c: PlaygroundCustomConfig) => void;
-}) {
-  const [customOpen, setCustomOpen] = useState(selected === "custom");
-
-  function handleModeClick(m: PlaygroundMode) {
-    onSelectMode(m);
-    if (m === "custom") setCustomOpen(true);
-    else setCustomOpen(false);
-  }
-
-  function patchCustom(patch: Partial<PlaygroundCustomConfig>) {
-    const next = { ...custom, ...patch };
-    const cap = maxOfferCount(next.trustlineCount);
-    if (next.offerCount > cap) next.offerCount = cap;
-    onCustomChange(next);
-  }
-
-  const ICONS: Record<PlaygroundMode, string> = {
-    light: "⚡",
-    standard: "◎",
-    full: "✦",
-    custom: "⚙",
-  };
-
-  return (
-    <div className="space-y-2">
-      <div className="grid grid-cols-2 gap-1.5">
-        {PLAYGROUND_MODE_CONFIGS.map((cfg) => {
-          const active = selected === cfg.mode;
-          const secs = estimateSeconds(cfg.mode, custom);
-          return (
-            <button
-              key={cfg.mode}
-              onClick={() => handleModeClick(cfg.mode)}
-              className={`rounded-lg border px-3 py-2.5 text-left transition-colors ${
-                active
-                  ? "border-stellar/50 bg-stellar/10 text-white"
-                  : "border-white/10 bg-white/[0.02] text-white/60 hover:border-white/20 hover:text-white/80"
-              }`}
-            >
-              <div className="flex items-center justify-between gap-1 mb-0.5">
-                <span className="text-[11px] font-semibold flex items-center gap-1">
-                  <span>{ICONS[cfg.mode]}</span>
-                  {cfg.label}
-                </span>
-                {cfg.mode === "full" && (
-                  <span className="rounded-full bg-stellar/20 px-1.5 py-px text-[0.55rem] text-stellar font-medium">
-                    All
-                  </span>
-                )}
-              </div>
-              <p className="text-[10px] text-white/40 leading-tight">{cfg.description}</p>
-              <p className="mt-1 text-[10px] text-white/30 mkt-mono">{durationLabel(secs)}</p>
-            </button>
-          );
-        })}
-      </div>
-
-      {selected === "custom" && (
-        <div className="rounded-lg border border-white/10 bg-white/[0.02] overflow-hidden">
-          <button
-            onClick={() => setCustomOpen((v) => !v)}
-            className="flex w-full items-center justify-between px-3 py-2 text-xs text-white/50 hover:text-white/70 transition-colors"
-          >
-            <span>Configure</span>
-            {customOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-          </button>
-          {customOpen && (
-            <div className="border-t border-white/10 px-3 py-3 space-y-2.5">
-              <Counter
-                label="Trustlines"
-                value={custom.trustlineCount}
-                min={1}
-                max={MAX_CUSTOM_TRUSTLINES}
-                onChange={(v) => patchCustom({ trustlineCount: v })}
-              />
-              <Counter
-                label="DEX offers"
-                value={custom.offerCount}
-                min={0}
-                max={maxOfferCount(custom.trustlineCount)}
-                onChange={(v) => patchCustom({ offerCount: v })}
-              />
-              <Counter
-                label="Data entries"
-                value={custom.dataEntryCount}
-                min={0}
-                max={MAX_CUSTOM_DATA_ENTRIES}
-                onChange={(v) => patchCustom({ dataEntryCount: v })}
-              />
-              <div className="flex items-center justify-between gap-2 pt-0.5">
-                <span className="text-xs text-white/60">Extra signer</span>
-                <button
-                  onClick={() => patchCustom({ addSigner: !custom.addSigner })}
-                  className={`relative h-5 w-9 rounded-full transition-colors ${
-                    custom.addSigner ? "bg-stellar" : "bg-white/15"
-                  }`}
-                >
-                  <span
-                    className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
-                      custom.addSigner ? "translate-x-4" : ""
-                    }`}
-                  />
-                </button>
-              </div>
-              <p className="text-[10px] text-white/30 mkt-mono pt-0.5">
-                {durationLabel(estimateSeconds("custom", custom))} estimated
-              </p>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function PlaygroundControls({
   start,
   demolish,
@@ -255,10 +75,9 @@ export default function PlaygroundControls({
   const accountState = usePlaygroundStore((s) => s.accountState);
   const recoveredXlm = usePlaygroundStore((s) => s.recoveredXlm);
   const sessionId = usePlaygroundStore((s) => s.sessionId);
-  const selectedMode = usePlaygroundStore((s) => s.selectedMode);
-  const customConfig = usePlaygroundStore((s) => s.customConfig);
-  const setSelectedMode = usePlaygroundStore((s) => s.setSelectedMode);
-  const setCustomConfig = usePlaygroundStore((s) => s.setCustomConfig);
+  const selection = usePlaygroundStore((s) => s.selection);
+  const preset = usePlaygroundStore((s) => s.preset);
+  const unavailable = usePlaygroundStore((s) => s.unavailable);
   const reset = usePlaygroundStore((s) => s.reset);
   const demolishFailed = usePlaygroundStore((s) => s.demolishFailed);
 
@@ -289,7 +108,9 @@ export default function PlaygroundControls({
   const primaryButton =
     "flex w-full items-center justify-center gap-2 rounded-md px-4 py-3 font-display text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50";
 
-  const modeLabel = PLAYGROUND_MODE_CONFIGS.find((m) => m.mode === selectedMode)?.label ?? "Demo";
+  const presetLabel = FEATURE_SETS.find((f) => f.id === preset)?.label;
+  const demoLabel = presetLabel ?? "Custom";
+  const runnable = validateSelection(selection, { unavailable }).ok;
 
   return (
     <div className="mkt-panel mkt-ticks relative rounded-lg p-5">
@@ -302,12 +123,7 @@ export default function PlaygroundControls({
 
       {phase === "IDLE" && (
         <>
-          <ModeSelector
-            selected={selectedMode}
-            custom={customConfig}
-            onSelectMode={setSelectedMode}
-            onCustomChange={setCustomConfig}
-          />
+          <ScenarioPicker />
 
           <div className="my-4 flex items-start gap-2 rounded-md border border-white/10 bg-white/[0.03] px-3 py-2.5 text-xs text-white/45">
             <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-stellar/60" />
@@ -320,15 +136,10 @@ export default function PlaygroundControls({
           <button
             className={`${primaryButton} bg-stellar text-black hover:opacity-90`}
             onClick={start}
+            disabled={!runnable}
           >
             <FlaskConical className="h-4 w-4" />
-            {selectedMode === "light"
-              ? "Quick demo"
-              : selectedMode === "full"
-                ? "Full stress test"
-                : selectedMode === "custom"
-                  ? "Run custom demo"
-                  : "Create & trash a demo account"}
+            Create & trash a demo account
           </button>
         </>
       )}
@@ -437,7 +248,7 @@ export default function PlaygroundControls({
       {phase === "COMPLETE" && (
         <>
           <div className="mb-4 rounded-md border border-stellar/30 bg-[hsl(var(--stellar)/0.07)] px-4 py-3 text-sm text-white/75">
-            {modeLabel} demo complete. The account was merged away
+            {demoLabel} demo complete. The account was merged away
             {recoveredXlm ? (
               <>
                 {" "}
@@ -456,13 +267,13 @@ export default function PlaygroundControls({
               onClick={start}
             >
               <RotateCcw className="h-4 w-4" />
-              Run {modeLabel.toLowerCase()} again
+              Run the same demo again
             </button>
             <button
               className={`${primaryButton} border border-white/15 text-white/70 hover:bg-white/5`}
               onClick={reset}
             >
-              Choose a different mode
+              Choose different scenarios
             </button>
           </div>
         </>

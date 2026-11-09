@@ -28,6 +28,7 @@ function messageOf(selection: ScenarioSelection, registry?: readonly ScenarioDef
 function synthetic(id: ScenarioId, cost: Partial<ScenarioCost>): ScenarioDefinition {
   return {
     id,
+    featureSet: "classic",
     label: "Synthetic",
     description: "A test-only scenario.",
     params: {},

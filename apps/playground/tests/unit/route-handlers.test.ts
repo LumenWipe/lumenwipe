@@ -25,6 +25,7 @@ import {
   handleCredentials,
   handleDemolishRound,
   handleMess,
+  handleScenarios,
   handleState,
   parseCreateBody,
   type CreateSessionDeps,
@@ -137,6 +138,7 @@ describe("create session", () => {
     const funded: string[] = [];
     const store = memoryStore();
     const deps: CreateSessionDeps = {
+      unavailable: () => new Map(),
       store,
       rateLimit: allow,
       issuer: () => issuer,
@@ -344,6 +346,52 @@ describe("create session", () => {
       expect(funded).toEqual([]);
       expect(counted.calls()).toBe(0);
     }
+  });
+});
+
+describe("scenario availability", () => {
+  test("a scenario switched off here is refused at create, with its reason, before Friendbot", async () => {
+    const issuer = Keypair.random();
+    const funded: string[] = [];
+    const store = memoryStore();
+    const counted = countingStore(store);
+    const res = await handleCreateSession(
+      request("/api/session", { body: JSON.stringify({ mode: "standard" }) }),
+      {
+        store: counted.store,
+        rateLimit: allow,
+        issuer: () => issuer,
+        mm: () => issuer,
+        fundAccount: async (key) => {
+          funded.push(key);
+          return true;
+        },
+        ensureMmOffer: async () => {},
+        encrypt,
+        unavailable: () =>
+          new Map([["forgotten-signer", "Switched off on this deployment for now."]]),
+      }
+    );
+    expect(await outcome(res)).toEqual({
+      status: 400,
+      body: {
+        error: "invalid_selection",
+        message:
+          "Forgotten co-signer is not available here: Switched off on this deployment for now.",
+      },
+    });
+    expect(funded).toEqual([]);
+    expect(counted.calls()).toBe(0);
+  });
+
+  test("GET /api/scenarios lists the unavailable scenarios with their reasons, uncached", async () => {
+    const res = handleScenarios({
+      unavailable: () => new Map([["stale-offers", "Switched off on this deployment for now."]]),
+    });
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(await res.json()).toEqual({
+      unavailable: [{ id: "stale-offers", reason: "Switched off on this deployment for now." }],
+    });
   });
 });
 

@@ -17,6 +17,7 @@ import {
   parseSelection,
   validateSelection,
   type MessStepDef,
+  type ScenarioId,
   type ValidationResult,
 } from "./scenarios";
 import type { MessContext } from "./mess-builders";
@@ -61,6 +62,12 @@ export interface CreateSessionDeps extends PlaygroundKeys {
   fundAccount: (publicKey: string) => Promise<boolean>;
   ensureMmOffer: (mm: Keypair, issuerPublic: string) => Promise<void>;
   encrypt: (secret: string) => string;
+  /** Scenarios this deployment cannot run, with the reason shown to the visitor. */
+  unavailable: () => ReadonlyMap<ScenarioId, string>;
+}
+
+export interface ScenariosRouteDeps {
+  unavailable: () => ReadonlyMap<ScenarioId, string>;
 }
 
 export interface MessDeps extends PlaygroundKeys {
@@ -141,18 +148,27 @@ function legacyCustomConfig(raw: unknown): PlaygroundCustomConfig {
  * Reads the scenario selection from a create request and validates it. A body with `selection`
  * must be a valid one; a body without it is read as one of the original modes.
  */
-export function parseCreateBody(body: unknown): ValidationResult {
+export function parseCreateBody(
+  body: unknown,
+  unavailable: ReadonlyMap<ScenarioId, string> = new Map()
+): ValidationResult {
   if (isRecord(body) && body.selection !== undefined) {
     const selection = parseSelection(body.selection);
     if (!selection) return { ok: false, message: "The scenario selection could not be read." };
-    return validateSelection(selection);
+    return validateSelection(selection, { unavailable });
   }
   const mode = isRecord(body) ? parseMode(body.mode) : "standard";
   const custom =
     mode === "custom" && isRecord(body)
       ? legacyCustomConfig(body.customConfig)
       : DEFAULT_CUSTOM_CONFIG;
-  return validateSelection(selectionForMode(mode, custom));
+  return validateSelection(selectionForMode(mode, custom), { unavailable });
+}
+
+/** The scenarios this deployment cannot run, for the picker to show disabled with their reason. */
+export function handleScenarios(deps: ScenariosRouteDeps): NextResponse {
+  const unavailable = [...deps.unavailable()].map(([id, reason]) => ({ id, reason }));
+  return NextResponse.json({ unavailable }, { headers: { "cache-control": "no-store" } });
 }
 
 export async function handleCreateSession(
@@ -177,7 +193,7 @@ export async function handleCreateSession(
     // Malformed or absent body - use defaults.
     body = undefined;
   }
-  const parsed = parseCreateBody(body);
+  const parsed = parseCreateBody(body, deps.unavailable());
   if (!parsed.ok) {
     return NextResponse.json(
       { error: "invalid_selection", message: parsed.message },
