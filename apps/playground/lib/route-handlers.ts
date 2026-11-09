@@ -16,13 +16,13 @@ import {
   type MessStepId,
 } from "./mess-plan";
 import type { MessContext } from "./mess-builders";
-import type { RunDemolishOptions } from "./demolish";
+import type { DemolishRoundResult, RunDemolishOptions } from "./demolish";
 import { CREDENTIALS_PER_DAY_PER_IP, SESSIONS_PER_DAY_PER_IP, type RateLimit } from "./rate-limit";
 import { actionResponse, loadSessionOrErrorResponse, notConfiguredResponse } from "./route-helpers";
 import {
   readSessionState,
   runCleanup,
-  runDemolishStep,
+  runDemolishRound,
   runMessStep,
   type StateDeps,
 } from "./session-actions";
@@ -69,7 +69,8 @@ export interface DemolishRouteDeps extends PlaygroundKeys {
   store: SessionStore;
   api: () => ApiConfig;
   decrypt: (payload: string) => string;
-  runDemolish: (opts: RunDemolishOptions) => Promise<void>;
+  /** Runs one round of the close (lib/demolish.ts `runDemolish`). */
+  runDemolish: (opts: RunDemolishOptions) => Promise<DemolishRoundResult>;
 }
 
 export interface CleanupRouteDeps {
@@ -186,6 +187,7 @@ export async function handleCreateSession(
       completedMessSteps: [],
       recordedSigners: [],
       demolishLog: [],
+      demolishPending: null,
       demolishDone: false,
       fundRareAssets,
       offerCount,
@@ -256,20 +258,28 @@ export async function handleMess(
   return actionResponse(result);
 }
 
-export async function handleDemolish(id: string, deps: DemolishRouteDeps): Promise<NextResponse> {
+/**
+ * Runs one round of the close. The client calls again while `done` is false, and after a failure
+ * (the resume); each call takes the session lock for its own round only.
+ */
+export async function handleDemolishRound(
+  id: string,
+  deps: DemolishRouteDeps
+): Promise<NextResponse> {
   const mm = deps.mm();
   const issuer = deps.issuer();
   const { apiUrl, apiKey } = deps.api();
   if (!mm || !issuer || !apiUrl || !apiKey) return notConfiguredResponse();
 
-  const result = await runDemolishStep(deps.store, id, {
-    demolish: (session, onConfirmed) =>
+  const result = await runDemolishRound(deps.store, id, {
+    // The expectation is derived from the session as this round's lock read it.
+    round: (session, hooks) =>
       deps.runDemolish({
         demoKeypair: Keypair.fromSecret(deps.decrypt(session.encDemoSecret)),
         expected: expectationFromSession(session, mm.publicKey(), issuer.publicKey()),
         apiUrl,
         apiKey,
-        onConfirmed,
+        hooks,
       }),
   });
   return actionResponse(result);

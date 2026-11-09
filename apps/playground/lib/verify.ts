@@ -26,7 +26,10 @@ import type { PlaygroundSession } from "./session-store";
 // On top of that, two rules the shared verifier cannot hold for every close, because the
 // exchange hand-off places its forward payment after the merge and a large close spans several
 // transactions: a playground close is one transaction that ends in its merge, with no more
-// operations than the session's own entries can explain.
+// operations than the session's own entries can explain. The demolish runs one round per request
+// (lib/demolish.ts), and no session needs a second: the master key alone can sign, so the API adds
+// no signer-normalization round, and the session's entries stay far below one transaction's
+// operation limit. A round that is not the final merge is therefore refused before it is signed.
 
 export class PlaygroundVerificationError extends Error {
   constructor(message: string) {

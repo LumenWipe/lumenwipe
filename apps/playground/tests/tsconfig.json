@@ -1,6 +1,6 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": { "types": ["bun", "node"] },
-  "include": ["**/*.ts", "../lib/**/*.ts"],
+  "include": ["**/*.ts", "**/*.tsx", "../lib/**/*.ts"],
   "exclude": []
 }

@@ -8,7 +8,11 @@ const ERROR_COPY = new Map<string, string>(
     friendbot_failed: "Could not fund the demo account. Please try again.",
     rate_limited: "Too many attempts. Please wait a moment and try again.",
     tx_failed: "A setup transaction did not go through on the test network. Please try again.",
-    demolish_failed: "The close did not finish. Please try again.",
+    demolish_failed: "The close did not finish. Resume to carry on from where it stopped.",
+    demolish_outcome_unknown:
+      "The last close transaction is not confirmed yet. Wait a moment, then resume to check it.",
+    demolish_started:
+      "The close has already started for this demo. Start a new one to run the setup again.",
     state_read_failed: "Could not read the demo account from the test network. Please try again.",
     not_configured: NOT_CONFIGURED_COPY,
     step_in_progress: "This step is already running. Wait for it to finish.",

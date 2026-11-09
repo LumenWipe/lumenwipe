@@ -11,7 +11,7 @@ import { DEV_STORE_FILE, devFileKv, upstashKv, type SessionKv } from "./kv";
 export const SESSION_TTL_SECONDS = 3600;
 
 /** Bumped whenever the stored shape changes; a session of any other version reads as expired. */
-export const SESSION_SCHEMA_VERSION = 2;
+export const SESSION_SCHEMA_VERSION = 3;
 
 /** Longer than any route's maxDuration, so a request the platform kills frees its session soon after. */
 export const SESSION_LOCK_TTL_MS = 150_000;
@@ -29,6 +29,29 @@ export interface DemolishLogEntry {
   operations: IntentOperation[];
 }
 
+/**
+ * A demolish transaction handed to the network whose outcome is not settled yet, written before it
+ * is sent. A later round looks its hash up instead of building it again, and logs it from this
+ * record if it confirmed. `hash`, `validUntil` and `closesAccount` are computed by the playground
+ * from the envelope it signed, never taken from the API.
+ */
+export interface PendingDemolishTx extends DemolishLogEntry {
+  /** Unix seconds after which the envelope cannot land; null with no upper time bound. */
+  validUntil: number | null;
+  /** Whether the envelope merges the demo account away. */
+  closesAccount: boolean;
+}
+
+/** The log entry a confirmed in-flight record becomes. */
+export function logEntryOf({
+  txId,
+  hash,
+  summary,
+  operations,
+}: DemolishLogEntry): DemolishLogEntry {
+  return { txId, hash, summary, operations };
+}
+
 export interface PlaygroundSession {
   schemaVersion: typeof SESSION_SCHEMA_VERSION;
   id: string;
@@ -42,6 +65,8 @@ export interface PlaygroundSession {
   /** Confirmed demolish transaction hashes plus each transaction's operations, so the frontend can
    *  replay the close operation-by-operation instead of only transaction-by-transaction. */
   demolishLog: DemolishLogEntry[];
+  /** The demolish transaction in flight, if any (see PendingDemolishTx). */
+  demolishPending: PendingDemolishTx | null;
   demolishDone: boolean;
   createdAt: number;
   fundRareAssets: string[];
@@ -80,6 +105,15 @@ function isDemolishLogEntry(value: unknown): value is DemolishLogEntry {
   );
 }
 
+function isPendingDemolishTx(value: unknown): value is PendingDemolishTx {
+  return (
+    isDemolishLogEntry(value) &&
+    isRecord(value) &&
+    (value.validUntil === null || typeof value.validUntil === "number") &&
+    typeof value.closesAccount === "boolean"
+  );
+}
+
 /** Validates a stored session of the current schema version; anything else is treated as expired. */
 export function isPlaygroundSession(value: unknown): value is PlaygroundSession {
   return (
@@ -94,6 +128,7 @@ export function isPlaygroundSession(value: unknown): value is PlaygroundSession 
     isStringArray(value.recordedSigners) &&
     Array.isArray(value.demolishLog) &&
     value.demolishLog.every(isDemolishLogEntry) &&
+    (value.demolishPending === null || isPendingDemolishTx(value.demolishPending)) &&
     typeof value.demolishDone === "boolean" &&
     typeof value.createdAt === "number" &&
     isStringArray(value.fundRareAssets) &&

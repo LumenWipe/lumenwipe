@@ -45,12 +45,20 @@ test.skipIf(!RUN_INTEGRATION)(
     };
     expect(messedState.accountState).not.toBeNull();
 
-    const demolishRes = await fetch(`${BASE_URL}/api/session/${session.sessionId}/demolish`, {
-      method: "POST",
-    });
-    expect(demolishRes.ok).toBe(true);
-    const demolishResult = (await demolishRes.json()) as { done: boolean };
-    expect(demolishResult.done).toBe(true);
+    // One round per request, called again while the close is not done, as the client does.
+    const confirmed: { hash: string }[] = [];
+    let done = false;
+    for (let round = 0; round < 5 && !done; round++) {
+      const roundRes = await fetch(`${BASE_URL}/api/session/${session.sessionId}/demolish/round`, {
+        method: "POST",
+      });
+      expect(roundRes.ok).toBe(true);
+      const result = (await roundRes.json()) as { done: boolean; confirmed: { hash: string }[] };
+      confirmed.push(...result.confirmed);
+      done = result.done;
+    }
+    expect(done).toBe(true);
+    expect(confirmed.length).toBeGreaterThan(0);
 
     const stateAfterDemolish = await fetch(`${BASE_URL}/api/session/${session.sessionId}/state`);
     const finalState = (await stateAfterDemolish.json()) as { accountState: unknown | null };

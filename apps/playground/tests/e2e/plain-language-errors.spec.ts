@@ -20,6 +20,15 @@ const isCreate = (url: URL): boolean => url.origin === BASE && url.pathname === 
 const isMessStep = (url: URL): boolean =>
   url.origin === BASE && url.pathname.startsWith("/api/session/") && url.pathname.endsWith("/mess");
 
+const isState = (url: URL): boolean =>
+  url.origin === BASE &&
+  url.pathname.startsWith("/api/session/") &&
+  url.pathname.endsWith("/state");
+const isDemolishRound = (url: URL): boolean =>
+  url.origin === BASE &&
+  url.pathname.startsWith("/api/session/") &&
+  url.pathname.endsWith("/demolish/round");
+
 function reply(status: number, body: Record<string, unknown>) {
   return (route: Route) =>
     route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
@@ -68,4 +77,39 @@ test("a failed step shows the failed-transaction copy", async ({ page }) => {
   await page.route(isCreate, reply(200, fakeSession()));
   await page.route(isMessStep, reply(502, { error: "tx_failed", message: UPSTREAM }));
   await startAndExpectAlert(page, "tx_failed");
+});
+
+test("a close that stops part way offers a resume and warns before abandoning the account", async ({
+  page,
+}) => {
+  await page.route(isCreate, reply(200, fakeSession()));
+  await page.route(isMessStep, reply(200, { stepId: "SETUP", txHash: "c".repeat(64) }));
+  await page.route(
+    isState,
+    reply(200, {
+      demoPublic: Keypair.random().publicKey(),
+      accountState: { nativeBalanceLumens: "9999.5", numSubEntries: 1 },
+      completedMessSteps: [],
+      demolishLog: [],
+      demolishDone: false,
+    })
+  );
+  await page.route(
+    isDemolishRound,
+    reply(502, { error: "demolish_outcome_unknown", message: UPSTREAM })
+  );
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Create & trash a demo account" }).click();
+  await page.getByRole("button", { name: "Demolish it here" }).click({ timeout: 30_000 });
+
+  const alert = page.getByRole("alert");
+  await expect(alert).toHaveText(errorCopy("demolish_outcome_unknown"), { timeout: 30_000 });
+  expect(await alert.innerText()).not.toMatch(RAW_LEAK);
+  await expect(page.getByRole("button", { name: "Resume the close" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Start over", exact: true }).click();
+  await expect(page.getByText("Starting over abandons it there")).toBeVisible();
+  await page.getByRole("button", { name: "Keep it" }).click();
+  await expect(page.getByText("Starting over abandons it there")).toHaveCount(0);
 });
