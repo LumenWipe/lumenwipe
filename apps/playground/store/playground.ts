@@ -10,6 +10,9 @@ import {
   type ScenarioSelection,
 } from "@/lib/scenarios";
 
+/** A feature set's preset, or a random wallet. */
+export type PresetId = FeatureSetId | "random";
+
 /** The kinds the scene draws: every kind the registry plans, and a generic one for anything else. */
 export type SceneNodeKind = PlannedNodeKind | "generic";
 
@@ -65,7 +68,9 @@ interface PlaygroundState {
   /** The scenarios picked on the IDLE screen, and the preset they came from (null once edited).
    *  Both survive COMPLETE/EXPIRED resets. */
   selection: ScenarioSelection;
-  preset: FeatureSetId | null;
+  preset: PresetId | null;
+  /** The replay code the selection was generated from; null once it is edited by hand. */
+  seed: string | null;
   /** Scenarios this deployment cannot run (GET /api/scenarios), with their reasons. */
   unavailable: ReadonlyMap<ScenarioId, string>;
 
@@ -86,7 +91,11 @@ interface PlaygroundState {
   setRecoveredXlm: (xlm: string) => void;
   setLastError: (error: string | null) => void;
   setDemolishFailed: (failed: boolean) => void;
-  setSelection: (selection: ScenarioSelection, preset: FeatureSetId | null) => void;
+  setSelection: (
+    selection: ScenarioSelection,
+    preset: PresetId | null,
+    seed?: string | null
+  ) => void;
   setUnavailable: (unavailable: ReadonlyMap<ScenarioId, string>) => void;
   /** Binds each offer node to the chain offer trading its pair. */
   bindOffers: (offers: readonly { id: string; selling: string; buying: string }[]) => void;
@@ -118,6 +127,7 @@ export const usePlaygroundStore = create<PlaygroundState>((set) => ({
   ...sessionInitialState,
   selection: STANDARD_SELECTION,
   preset: "classic",
+  seed: null,
   unavailable: new Map(),
 
   setPhase: (phase) => set({ phase }),
@@ -133,6 +143,7 @@ export const usePlaygroundStore = create<PlaygroundState>((set) => ({
       messPlan,
       selection: state.selection,
       preset: state.preset,
+      seed: state.seed,
       unavailable: state.unavailable,
     })),
 
@@ -171,7 +182,7 @@ export const usePlaygroundStore = create<PlaygroundState>((set) => ({
 
   setDemolishFailed: (demolishFailed) => set({ demolishFailed }),
 
-  setSelection: (selection, preset) => set({ selection, preset }),
+  setSelection: (selection, preset, seed = null) => set({ selection, preset, seed }),
 
   setUnavailable: (unavailable) => set({ unavailable }),
 
@@ -192,6 +203,7 @@ export const usePlaygroundStore = create<PlaygroundState>((set) => ({
       ...sessionInitialState,
       selection: state.selection,
       preset: state.preset,
+      seed: state.seed,
       unavailable: state.unavailable,
     })),
 }));

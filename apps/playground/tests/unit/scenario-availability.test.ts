@@ -1,5 +1,9 @@
 import { expect, test } from "bun:test";
-import { SWITCHED_OFF_REASON, parseDisabledScenarios } from "@/lib/scenario-availability";
+import {
+  SWITCHED_OFF_REASON,
+  parseDisabledScenarios,
+  unavailableScenarios,
+} from "@/lib/scenario-availability";
 import { parseUnavailable } from "@/lib/scenarios";
 
 test("PLAYGROUND_DISABLED_SCENARIOS switches off the listed scenarios", () => {
@@ -30,5 +34,19 @@ test("the client reads the route's list and skips anything malformed", () => {
   expect([...parseUnavailable(body)]).toEqual([["stale-offers", "Switched off."]]);
   for (const bad of [null, "x", [], {}, { unavailable: "all" }]) {
     expect(parseUnavailable(bad).size).toBe(0);
+  }
+});
+
+test("the reason is plain language, and the list is read from the environment on each call", () => {
+  expect(SWITCHED_OFF_REASON).toBe("Switched off on this deployment for now.");
+  const previous = process.env.PLAYGROUND_DISABLED_SCENARIOS;
+  try {
+    process.env.PLAYGROUND_DISABLED_SCENARIOS = "data-entries";
+    expect([...unavailableScenarios().keys()]).toEqual(["data-entries"]);
+    delete process.env.PLAYGROUND_DISABLED_SCENARIOS;
+    expect(unavailableScenarios().size).toBe(0);
+  } finally {
+    if (previous === undefined) delete process.env.PLAYGROUND_DISABLED_SCENARIOS;
+    else process.env.PLAYGROUND_DISABLED_SCENARIOS = previous;
   }
 });

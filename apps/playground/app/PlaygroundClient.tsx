@@ -2,7 +2,8 @@
 
 import { useEffect } from "react";
 import { usePlaygroundStore } from "@/store/playground";
-import { parseUnavailable } from "@/lib/scenarios";
+import { decodeSelection, parseUnavailable } from "@/lib/scenarios";
+import { replaySeed } from "@/components/scene/ScenarioPicker";
 import { playgroundRequest } from "@/lib/playground-api";
 import { usePlaygroundExecution } from "@/hooks/usePlaygroundExecution";
 import OrbitalScene from "@/components/scene/OrbitalScene";
@@ -14,10 +15,19 @@ export default function PlaygroundClient() {
   const phase = usePlaygroundStore((s) => s.phase);
 
   // Until this answers, every scenario shows as available; the create route checks again anyway.
+  // A shared link then restores its wallet: `?seed=` replays a code, `?selection=` an exact
+  // selection (validated again when the run starts).
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
     playgroundRequest<unknown>(fetch, "/scenarios")
       .then((body) => usePlaygroundStore.getState().setUnavailable(parseUnavailable(body)))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        const seed = params.get("seed");
+        const shared = decodeSelection(params.get("selection") ?? "");
+        if (seed) replaySeed(seed);
+        else if (shared) usePlaygroundStore.getState().setSelection(shared, null);
+      });
   }, []);
 
   return (

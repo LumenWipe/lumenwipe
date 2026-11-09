@@ -77,6 +77,7 @@ export default function PlaygroundControls({
   const sessionId = usePlaygroundStore((s) => s.sessionId);
   const selection = usePlaygroundStore((s) => s.selection);
   const preset = usePlaygroundStore((s) => s.preset);
+  const seed = usePlaygroundStore((s) => s.seed);
   const unavailable = usePlaygroundStore((s) => s.unavailable);
   const reset = usePlaygroundStore((s) => s.reset);
   const demolishFailed = usePlaygroundStore((s) => s.demolishFailed);
@@ -108,8 +109,13 @@ export default function PlaygroundControls({
   const primaryButton =
     "flex w-full items-center justify-center gap-2 rounded-md px-4 py-3 font-display text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50";
 
-  const presetLabel = FEATURE_SETS.find((f) => f.id === preset)?.label;
+  const presetLabel =
+    preset === "random" ? "Random wallet" : FEATURE_SETS.find((f) => f.id === preset)?.label;
   const demoLabel = presetLabel ?? "Custom";
+  // Shown with the summary and every error, so a failed random wallet can be reported and replayed.
+  const replayLine = seed ? (
+    <span className="mt-1 block mkt-mono text-[11px] text-white/50">Replay code {seed}</span>
+  ) : null;
   const runnable = validateSelection(selection, { unavailable }).ok;
 
   return (
@@ -260,6 +266,7 @@ export default function PlaygroundControls({
               " and every locked reserve recovered"
             )}{" "}
             - check the activity log for the receipts.
+            {replayLine}
           </div>
           <div className="flex flex-col gap-2">
             <button
@@ -286,7 +293,10 @@ export default function PlaygroundControls({
             className="mb-4 flex items-start gap-2 rounded-md border border-value/30 bg-[hsl(var(--value)/0.07)] px-4 py-3 text-sm text-white/75"
           >
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-value" />
-            <span>{errorCopy("session_not_found")}</span>
+            <span>
+              {errorCopy("session_not_found")}
+              {replayLine}
+            </span>
           </div>
           <button
             className={`${primaryButton} bg-stellar text-black hover:opacity-90`}
@@ -305,7 +315,10 @@ export default function PlaygroundControls({
             className="mb-4 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-white/75"
           >
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
-            <span className="break-words">{lastError ?? GENERIC_ERROR_COPY}</span>
+            <span className="break-words">
+              {lastError ?? GENERIC_ERROR_COPY}
+              {replayLine}
+            </span>
           </div>
           {demolishFailed ? (
             <div className="flex flex-col gap-2">

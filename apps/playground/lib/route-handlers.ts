@@ -13,7 +13,9 @@ import {
 } from "./mess-plan";
 import {
   LWDEMO_CODE,
+  generateRandomSelection,
   isMessStepId,
+  parseReplayCode,
   parseSelection,
   validateSelection,
   type MessStepDef,
@@ -145,13 +147,22 @@ function legacyCustomConfig(raw: unknown): PlaygroundCustomConfig {
 }
 
 /**
- * Reads the scenario selection from a create request and validates it. A body with `selection`
- * must be a valid one; a body without it is read as one of the original modes.
+ * Reads the scenario selection from a create request and validates it: a replay code (`seed`), an
+ * explicit `selection`, or else one of the original modes.
  */
 export function parseCreateBody(
   body: unknown,
   unavailable: ReadonlyMap<ScenarioId, string> = new Map()
 ): ValidationResult {
+  // A seed is regenerated here, with this deployment's availability: whatever the client derived
+  // from it is not trusted, and an edited code still lands inside the caps.
+  if (isRecord(body) && body.seed !== undefined) {
+    const code = typeof body.seed === "string" ? parseReplayCode(body.seed) : null;
+    const selection =
+      code && generateRandomSelection(code.seed, { version: code.version, unavailable });
+    if (!selection) return { ok: false, message: "The replay code could not be read." };
+    return validateSelection(selection, { unavailable });
+  }
   if (isRecord(body) && body.selection !== undefined) {
     const selection = parseSelection(body.selection);
     if (!selection) return { ok: false, message: "The scenario selection could not be read." };

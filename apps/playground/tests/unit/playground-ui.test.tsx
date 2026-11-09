@@ -3,7 +3,13 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import type { IntentOperation } from "@lumenwipe/sdk";
 import { errorCopy } from "@/lib/error-copy";
 import { getMessPlanForMode } from "@/lib/mess-plan";
-import { STANDARD_SELECTION, resolvePlan } from "@/lib/scenarios";
+import {
+  SCENARIOS,
+  STANDARD_SELECTION,
+  generateRandomSelection,
+  parseReplayCode,
+  resolvePlan,
+} from "@/lib/scenarios";
 import { usePlaygroundStore } from "@/store/playground";
 import { buildSceneNode, usePlaygroundExecution } from "@/hooks/usePlaygroundExecution";
 import PlaygroundControls from "@/components/scene/PlaygroundControls";
@@ -51,6 +57,7 @@ type Handler = (method: string) => Promise<{ status: number; body: unknown }>;
 /** A fake of the playground routes, by path. A test replaces the handlers it cares about. */
 class FakeRoutes {
   readonly calls: string[] = [];
+  readonly bodies: string[] = [];
   handlers = new Map<string, Handler>([
     [
       "/api/session",
@@ -84,6 +91,7 @@ class FakeRoutes {
     const path = String(input);
     const method = init?.method ?? "GET";
     this.calls.push(`${method} ${path}`);
+    if (typeof init?.body === "string") this.bodies.push(init.body);
     const handler = this.handlers.get(path);
     const { status, body } = handler ? await handler(method) : { status: 404, body: {} };
     return new Response(JSON.stringify(body), {
@@ -125,6 +133,8 @@ beforeEach(() => {
   originalFetch = globalThis.fetch;
   globalThis.fetch = Object.assign(routes.fetch, { preconnect: originalFetch.preconnect });
   usePlaygroundStore.getState().reset();
+  // The picked scenarios survive reset by design; each test starts from the classic preset.
+  usePlaygroundStore.getState().setSelection(resolvePlan(STANDARD_SELECTION).selection, "classic");
 });
 
 afterEach(() => {
@@ -323,6 +333,46 @@ describe("the scenario picker", () => {
       expect(button(/Classic account teardown/).getAttribute("aria-pressed")).toBe("true");
     });
 
+    test("a random wallet shows its replay code before anything runs", () => {
+      rtl.render(<ScenarioPicker />);
+      rtl.fireEvent.click(button(/Random wallet/));
+      const { seed, selection, preset } = usePlaygroundStore.getState();
+      expect(preset).toBe("random");
+      expect(seed).toMatch(/^LW1-[0-9A-Z]{8}$/);
+      expect(rtl.screen.getByText(seed!)).toBeTruthy();
+      expect(button("Copy the replay code")).toBeTruthy();
+      const parsed = parseReplayCode(seed!)!;
+      expect(selection).toEqual(generateRandomSelection(parsed.seed)!);
+      expect(totals().steps).toEqual(resolvePlan(selection).steps.map((s) => s.label));
+    });
+
+    test("a replay code typed in replays that exact wallet; anything else says so", () => {
+      rtl.render(<ScenarioPicker />);
+      const input = rtl.screen.getByLabelText("Replay a seed");
+      rtl.fireEvent.change(input, { target: { value: "lw1-0g847jzv" } });
+      rtl.fireEvent.click(button("Replay"));
+      const state = usePlaygroundStore.getState();
+      expect(state.seed).toBe("LW1-0G847JZV");
+      expect(state.selection).toEqual(generateRandomSelection(17_452_747_771)!);
+
+      rtl.fireEvent.change(input, { target: { value: "LW1-NOPE" } });
+      rtl.fireEvent.click(button("Replay"));
+      expect(input.getAttribute("aria-invalid")).toBe("true");
+      expect(
+        rtl.screen.getByText(/That is not a replay code this playground can run/)
+      ).toBeTruthy();
+      expect(usePlaygroundStore.getState().seed).toBe("LW1-0G847JZV");
+    });
+
+    test("editing a random wallet by hand drops its replay code", () => {
+      rtl.render(<ScenarioPicker />);
+      rtl.fireEvent.click(button(/Random wallet/));
+      const first = usePlaygroundStore.getState().selection.scenarios[0]!;
+      const def = SCENARIOS.find((s) => s.id === first.id)!;
+      rtl.fireEvent.click(button(new RegExp(`^${def.label}`)));
+      expect(usePlaygroundStore.getState().seed).toBeNull();
+    });
+
     test("an empty selection shows why it cannot run", () => {
       usePlaygroundStore.getState().setSelection({ scenarios: [] }, null);
       rtl.render(<ScenarioPicker />);
@@ -380,5 +430,57 @@ describe("the scenario picker", () => {
       ]);
       expect(usePlaygroundStore.getState().nodes[0]?.offerId).toBe("8");
     });
+  });
+});
+
+describe("the replay code reaches the run, the summary and every error", () => {
+  const CODE = "LW1-0G847JZV";
+
+  test("a random wallet is sent as its code, which the server regenerates", async () => {
+    usePlaygroundStore
+      .getState()
+      .setSelection(generateRandomSelection(17_452_747_771)!, "random", CODE);
+    rtl.render(<Harness />);
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: /Create & trash a demo account/ }));
+    await rtl.screen.findByRole("button", { name: /Demolish it here/ }, { timeout: 5000 });
+    expect(JSON.parse(routes.bodies[0]!)).toEqual({ seed: CODE });
+  });
+
+  test("an error shows the code, so the wallet can be reported and replayed", async () => {
+    usePlaygroundStore
+      .getState()
+      .setSelection(generateRandomSelection(17_452_747_771)!, "random", CODE);
+    routes.handlers.set("/api/session", async () => ({
+      status: 502,
+      body: { error: "friendbot_failed" },
+    }));
+    rtl.render(<Harness />);
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: /Create & trash a demo account/ }));
+    const alert = await rtl.screen.findByRole("alert", undefined, { timeout: 5000 });
+    expect(alert.textContent).toBe(`${errorCopy("friendbot_failed")}Replay code ${CODE}`);
+  });
+
+  test("the summary shows the code", async () => {
+    usePlaygroundStore
+      .getState()
+      .setSelection(generateRandomSelection(17_452_747_771)!, "random", CODE);
+    usePlaygroundStore.getState().setPhase("COMPLETE");
+    rtl.render(<Harness />);
+    expect((await rtl.screen.findByText(/demo complete/)).textContent).toContain(
+      `Replay code ${CODE}`
+    );
+  });
+
+  test("a hand-picked selection is sent as itself, with no code anywhere", async () => {
+    usePlaygroundStore
+      .getState()
+      .setSelection(resolvePlan(STANDARD_SELECTION).selection, "classic");
+    rtl.render(<Harness />);
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: /Create & trash a demo account/ }));
+    await rtl.screen.findByRole("button", { name: /Demolish it here/ }, { timeout: 5000 });
+    expect(JSON.parse(routes.bodies[0]!)).toEqual({
+      selection: resolvePlan(STANDARD_SELECTION).selection,
+    });
+    expect(rtl.screen.queryByText(/Replay code/)).toBeNull();
   });
 });

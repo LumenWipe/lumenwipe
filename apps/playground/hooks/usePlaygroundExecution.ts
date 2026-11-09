@@ -199,10 +199,11 @@ export function usePlaygroundExecution(): UsePlaygroundExecutionResult {
       store.setPhase("MESSING");
       setProgressStatus("Creating & funding the demo account...");
 
-      const { selection } = usePlaygroundStore.getState();
+      // A random wallet is sent as its replay code, and the server regenerates it.
+      const { selection, seed } = usePlaygroundStore.getState();
       const session = await api<SessionResponse>("/session", {
         method: "POST",
-        body: JSON.stringify({ selection }),
+        body: JSON.stringify(seed ? { seed } : { selection }),
       });
       usePlaygroundStore.getState().startSession(session);
       usePlaygroundStore.getState().addLog({

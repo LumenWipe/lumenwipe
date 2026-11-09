@@ -1,12 +1,17 @@
 "use client";
 
-import type { KeyboardEvent } from "react";
-import { Minus, Plus } from "lucide-react";
+import { useState, type FormEvent, type KeyboardEvent } from "react";
+import { Check, ClipboardCopy, Dices, Link2, Minus, Plus } from "lucide-react";
 import { usePlaygroundStore } from "@/store/playground";
 import {
   FEATURE_SETS,
   NO_SCENARIOS_REASON,
   SCENARIOS,
+  encodeSelection,
+  formatReplayCode,
+  generateRandomSelection,
+  newSeed,
+  parseReplayCode,
   presetSelection,
   setScenarioParam,
   toggleScenario,
@@ -85,12 +90,39 @@ function rovingFocus(event: KeyboardEvent<HTMLDivElement>): void {
   buttons[next]?.focus();
 }
 
+/** Copies `text`, and says so for a moment. */
+function useCopy(): [string | null, (key: string, text: string) => void] {
+  const [copied, setCopied] = useState<string | null>(null);
+  const copy = (key: string, text: string): void => {
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopied(key);
+      setTimeout(() => setCopied(null), 1500);
+    });
+  };
+  return [copied, copy];
+}
+
+/** Applies a replay code; false when it is not one or this deployment can run none of its wallet. */
+export function replaySeed(code: string): boolean {
+  const { unavailable, setSelection } = usePlaygroundStore.getState();
+  const parsed = parseReplayCode(code);
+  const selection =
+    parsed && generateRandomSelection(parsed.seed, { version: parsed.version, unavailable });
+  if (!parsed || !selection) return false;
+  setSelection(selection, "random", formatReplayCode(parsed.seed, parsed.version));
+  return true;
+}
+
 /** The preset row and the scenario toggles, with the live cost and the steps the run will take. */
 export default function ScenarioPicker() {
   const selection = usePlaygroundStore((s) => s.selection);
   const preset = usePlaygroundStore((s) => s.preset);
   const unavailable = usePlaygroundStore((s) => s.unavailable);
   const setSelection = usePlaygroundStore((s) => s.setSelection);
+  const seed = usePlaygroundStore((s) => s.seed);
+  const [copied, copy] = useCopy();
+  const [replayText, setReplayText] = useState("");
+  const [replayError, setReplayError] = useState(false);
 
   const options = { unavailable };
   const result = validateSelection(selection, options);
@@ -99,6 +131,22 @@ export default function ScenarioPicker() {
   function choosePreset(id: FeatureSetId): void {
     const next = presetSelection(id, options);
     if (next) setSelection(next, id);
+  }
+
+  function rollRandom(): void {
+    replaySeed(formatReplayCode(newSeed()));
+  }
+
+  function submitReplay(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    const ok = replaySeed(replayText);
+    setReplayError(!ok);
+    if (ok) setReplayText("");
+  }
+
+  function selectionLink(): string {
+    const { origin, pathname } = window.location;
+    return `${origin}${pathname}?selection=${encodeSelection(selection)}`;
   }
 
   function toggle(id: ScenarioId): void {
@@ -147,7 +195,68 @@ export default function ScenarioPicker() {
             </button>
           );
         })}
+        <button
+          aria-pressed={preset === "random"}
+          onClick={rollRandom}
+          className={chip(preset === "random")}
+        >
+          <span className="flex items-center gap-1 font-semibold">
+            <Dices className="h-3 w-3" />
+            Random wallet
+          </span>
+        </button>
       </div>
+
+      {preset === "random" && seed && (
+        <div className="flex items-center justify-between gap-2 rounded-md border border-stellar/30 bg-[hsl(var(--stellar)/0.07)] px-3 py-2">
+          <span className="text-[11px] text-white/60">
+            Replay code <span className="mkt-mono text-stellar">{seed}</span>
+          </span>
+          <span className="flex items-center gap-2">
+            <button
+              aria-label="Copy the replay code"
+              onClick={() => copy("seed", seed)}
+              className="text-white/50 hover:text-white/80"
+            >
+              {copied === "seed" ? (
+                <Check className="h-3 w-3 text-stellar" />
+              ) : (
+                <ClipboardCopy className="h-3 w-3" />
+              )}
+            </button>
+            <button onClick={rollRandom} className="text-[11px] text-white/50 hover:text-white/80">
+              New seed
+            </button>
+          </span>
+        </div>
+      )}
+
+      <form onSubmit={submitReplay} className="flex items-center gap-1.5">
+        <label htmlFor="replay-seed" className="sr-only">
+          Replay a seed
+        </label>
+        <input
+          id="replay-seed"
+          value={replayText}
+          onChange={(e) => setReplayText(e.target.value)}
+          placeholder="Replay a seed, e.g. LW1-7Q2M4KD9"
+          aria-invalid={replayError}
+          aria-describedby={replayError ? "replay-seed-error" : undefined}
+          maxLength={16}
+          className="min-w-0 flex-1 rounded-md border border-white/10 bg-white/[0.03] px-2.5 py-1.5 mkt-mono text-[11px] text-white/80 placeholder:text-white/30"
+        />
+        <button
+          type="submit"
+          className="rounded-md border border-white/15 px-2.5 py-1.5 text-[11px] text-white/70 hover:bg-white/5"
+        >
+          Replay
+        </button>
+      </form>
+      {replayError && (
+        <p id="replay-seed-error" className="text-[10px] text-value">
+          That is not a replay code this playground can run. One looks like LW1-7Q2M4KD9.
+        </p>
+      )}
 
       {FEATURE_SETS.map((set) => {
         const scenarios = SCENARIOS.filter((s) => s.featureSet === set.id);
@@ -227,6 +336,17 @@ export default function ScenarioPicker() {
                 <li key={step.id}>{step.label}</li>
               ))}
             </ol>
+            <button
+              onClick={() => copy("link", selectionLink())}
+              className="mt-2 flex items-center gap-1 text-[10px] text-white/50 hover:text-white/80"
+            >
+              {copied === "link" ? (
+                <Check className="h-3 w-3 text-stellar" />
+              ) : (
+                <Link2 className="h-3 w-3" />
+              )}
+              Copy exact selection
+            </button>
           </>
         ) : (
           <p>{result.message}</p>
