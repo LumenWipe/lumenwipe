@@ -12,7 +12,18 @@ import {
 // executor for each step it declares, a scene node for each entry it creates, and only operation
 // types the playground verifier accepts.
 
-const ALL_ASSETS = ["LWDEMO", "AIRDROP1", "RUGPULL", "USDC", "EURC", "LWCOIN", "LWGEM"] as const;
+const ALL_ASSETS = [
+  "LWDEMO",
+  "AIRDROP1",
+  "RUGPULL",
+  "USDC",
+  "EURC",
+  "LWCOIN",
+  "LWGEM",
+  "BONUS",
+  "GIFT",
+  "PERK",
+] as const;
 
 /** Every combination of a scenario's parameters. */
 function paramCombos(def: ScenarioDefinition): Record<string, number>[] {

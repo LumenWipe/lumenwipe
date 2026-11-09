@@ -15,6 +15,18 @@ export class DecisionBlockedError extends PlaygroundApiError {
   }
 }
 
+/** The close stopped before building on a blocker the API reported. `resolvable` lists the ones
+ *  the session's own plan can resolve. */
+export class PlanBlockedError extends PlaygroundApiError {
+  constructor(
+    message: string,
+    readonly blockers: string[],
+    readonly resolvable: string[]
+  ) {
+    super(message);
+  }
+}
+
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -27,9 +39,10 @@ function errorCode(body: unknown): string | undefined {
   return typeof code === "string" ? code : undefined;
 }
 
-function decisionIds(body: unknown): string[] {
-  if (!isRecord(body) || !Array.isArray(body.decisions)) return [];
-  return body.decisions.filter((id): id is string => typeof id === "string");
+function stringsAt(body: unknown, key: string): string[] {
+  if (!isRecord(body)) return [];
+  const value = body[key];
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
 }
 
 /**
@@ -58,7 +71,12 @@ export async function playgroundRequest<T>(
     throw new SessionExpiredError(errorCopy(code));
   }
   if (code === "demolish_decision_unanswerable") {
-    throw new DecisionBlockedError(errorCopy(code), decisionIds(body));
+    throw new DecisionBlockedError(errorCopy(code), stringsAt(body, "decisions"));
+  }
+  if (code === "demolish_blocked") {
+    const blockers = stringsAt(body, "blockers");
+    const resolvable = stringsAt(body, "resolvable").filter((c) => blockers.includes(c));
+    throw new PlanBlockedError(errorCopy(code), blockers, resolvable);
   }
   throw new PlaygroundApiError(errorCopy(code, res.status));
 }

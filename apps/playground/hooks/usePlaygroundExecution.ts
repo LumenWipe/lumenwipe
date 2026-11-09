@@ -13,6 +13,7 @@ import type { AccountState, IntentOperation } from "@lumenwipe/sdk";
 import { GENERIC_ERROR_COPY } from "@/lib/error-copy";
 import {
   DecisionBlockedError,
+  PlanBlockedError,
   PlaygroundApiError,
   playgroundRequest,
   SessionExpiredError,
@@ -51,6 +52,7 @@ export interface DemolishRoundResponse {
 interface UsePlaygroundExecutionResult {
   start: () => void;
   demolish: () => void;
+  resolve: (blocker: string) => void;
   progressStatus: string | null;
 }
 
@@ -180,7 +182,11 @@ export function usePlaygroundExecution(): UsePlaygroundExecutionResult {
     if (!(err instanceof PlaygroundApiError)) console.error("[playground] unexpected error:", err);
     store.setLastError(
       err instanceof PlaygroundApiError ? err.message : GENERIC_ERROR_COPY,
-      err instanceof DecisionBlockedError ? err.decisionIds : null
+      err instanceof DecisionBlockedError
+        ? { decisionIds: err.decisionIds, blockers: [], resolvable: [] }
+        : err instanceof PlanBlockedError
+          ? { decisionIds: [], blockers: err.blockers, resolvable: err.resolvable }
+          : null
     );
     store.setPhase("ERROR");
   }, []);
@@ -334,5 +340,26 @@ export function usePlaygroundExecution(): UsePlaygroundExecutionResult {
     }
   }, [complete, fail, refreshState, showConfirmed]);
 
-  return { start, demolish, progressStatus };
+  /** Runs the session's planned fix for a blocker, then resumes the close, which plans again. */
+  const resolve = useCallback(
+    async (blocker: string) => {
+      const { sessionId } = usePlaygroundStore.getState();
+      if (!sessionId || running.current) return;
+      setProgressStatus("Clearing the blocker...");
+      try {
+        await api<{ ok: true }>(`/session/${sessionId}/resolve`, {
+          method: "POST",
+          body: JSON.stringify({ blocker }),
+        });
+      } catch (err) {
+        setProgressStatus(null);
+        fail(err);
+        return;
+      }
+      await demolish();
+    },
+    [demolish, fail]
+  );
+
+  return { start, demolish, resolve, progressStatus };
 }

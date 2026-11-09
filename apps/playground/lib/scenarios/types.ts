@@ -19,6 +19,9 @@ export const MESS_STEP_IDS = [
   "FUND_LWCOIN",
   "FUND_LWGEM",
   "OPEN_RECIPIENT",
+  "TRUST_BONUS",
+  "CLAIMABLE_BALANCES",
+  "SPONSORED_ENTRIES",
 ] as const;
 
 export type MessStepId = (typeof MESS_STEP_IDS)[number];
@@ -46,7 +49,62 @@ export type StepAction =
       offers: { selling: OfferAsset; buying: OfferAsset; amount: string; price: string }[];
     }
   | { kind: "add_signer" }
-  | { kind: "open_recipient"; fundingXlm: string; assets: AssetCode[] };
+  | { kind: "open_recipient"; fundingXlm: string; assets: AssetCode[] }
+  | { kind: "claimable_balances"; balances: ClaimableBalanceSpec[]; claimantFundingXlm: string }
+  | {
+      kind: "sponsored_entries";
+      variant: SponsorshipVariant;
+      asset: AssetCode;
+      dataEntry: { key: string; value: string };
+      helperFundingXlm: string;
+    };
+
+/**
+ * How the close treats a claimable balance the mess creates: the demo claims it, adds the trustline
+ * and then claims it, forfeits it (it cannot be claimed during the session), or, for a balance the
+ * demo itself created for the claimant helper, cannot revoke it until the helper claims it.
+ */
+export type ClaimIntent = "claim" | "add_trustline_then_claim" | "forfeit" | "demo_sponsored";
+
+export interface ClaimableBalanceSpec {
+  asset: AssetCode | "native";
+  amount: string;
+  intent: ClaimIntent;
+}
+
+/**
+ * sponsor_pays: a sponsor helper pays the reserves of the demo's entries. demo_sponsors: the demo
+ * pays for a beneficiary helper's entries, which the close revokes. unrevocable: the same, with a
+ * beneficiary that cannot take the reserves over, which the close reports as a blocker.
+ */
+export type SponsorshipVariant = "sponsor_pays" | "demo_sponsors" | "unrevocable";
+
+/** A playground-owned account a step creates beside the demo; its key is kept in the session. */
+export type HelperRole = "claimant" | "sponsor" | "beneficiary";
+
+/** The helper a step's action creates, if any. */
+export function helperRoleOf(action: StepAction): HelperRole | null {
+  if (action.kind === "claimable_balances") {
+    return action.balances.some((b) => b.intent === "demo_sponsored") ? "claimant" : null;
+  }
+  if (action.kind === "sponsored_entries") {
+    return action.variant === "sponsor_pays" ? "sponsor" : "beneficiary";
+  }
+  return null;
+}
+
+/** An entry of the beneficiary helper whose reserve the demo pays, which the close may revoke. */
+export type PlannedSponsoredEntry =
+  { kind: "trustline"; asset: AssetCode } | { kind: "data_entry"; name: string };
+
+/** What the playground does, with a helper's key, when the close reports a blocker it planned. */
+export type ResolutionKind = "claim_sponsored_balance" | "release_sponsored_entries";
+
+export interface PlannedResolution {
+  /** The API's blocker code. */
+  blocker: string;
+  kind: ResolutionKind;
+}
 
 export type StepActionKind = StepAction["kind"];
 
@@ -115,6 +173,12 @@ export interface ScenarioExpectation {
   operationTypes: CloseOperationType[];
   /** Assets closed other than by a return to the issuer; every other asset is returned. */
   dispositions: AssetDisposition[];
+  /** Assets the close adds a trustline for, claims, then returns and removes. */
+  arrivingAssets: AssetCode[];
+  /** Entries the demo sponsors on its beneficiary helper. */
+  sponsoredEntries: PlannedSponsoredEntry[];
+  /** Blockers this selection expects the close to report, each with its resolution. */
+  resolutions: PlannedResolution[];
 }
 
 export interface ScenarioCost {
@@ -144,7 +208,9 @@ export type ScenarioId =
   | "data-entries"
   | "stale-offers"
   | "forgotten-signer"
-  | "dispositions";
+  | "dispositions"
+  | "claimable-balances"
+  | "sponsored-reserves";
 
 export interface OrderedStep {
   /** Steps from every scenario are sorted by this key into one plan. */

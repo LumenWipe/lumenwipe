@@ -85,14 +85,16 @@ class FakeApi implements DemolishApi {
   buildsMerge = true;
   /** The decision points the plan asks for. */
   decisionPoints: DecisionPoint[] = [];
+  /** The blockers the plan reports. */
+  blockers: { code: string }[] = [];
   calls = { plan: 0, transactions: 0, submit: 0, lookup: 0 };
   /** Called whenever a transaction lands, to stop the request there. */
   onLanded: () => void = () => {};
 
-  async closePlan(): Promise<{ decisionPoints: DecisionPoint[] }> {
+  async closePlan(): Promise<{ decisionPoints: DecisionPoint[]; blockers: { code: string }[] }> {
     this.calls.plan++;
     if (!this.accountOpen) throw apiError(404, "account_not_found");
-    return { decisionPoints: this.decisionPoints };
+    return { decisionPoints: this.decisionPoints, blockers: this.blockers };
   }
 
   async closeTransactions(): Promise<TransactionsResponse> {
@@ -333,5 +335,63 @@ describe("a demolish round resumes from where a request died", () => {
     });
     expect([api.calls.transactions, api.calls.submit]).toEqual([0, 0]);
     expect((await store.loadSession(session.id))?.demolishPending).toBeNull();
+  });
+
+  test("a plan blocker stops the round before anything is built, naming what the session can resolve", async () => {
+    const store = memoryStore();
+    const session = await store.createSession({
+      ...newSessionData(),
+      demoPublic: demo.publicKey(),
+      selection: {
+        scenarios: [{ id: "claimable-balances", params: { add_trustline: 0, demo_sponsored: 1 } }],
+      },
+    });
+    const api = new FakeApi();
+    api.blockers = [
+      { code: "sponsorship_claimable_balance_unrevocable" },
+      { code: "sponsorship_claimable_balance_unrevocable" },
+      { code: "subentries_unenumerated" },
+    ];
+
+    const result = await runDemolishRound(store, session.id, {
+      round: (s, hooks) =>
+        runCloseRound(
+          api,
+          {
+            demoKeypair: demo,
+            expected: expectationFromSession(
+              {
+                ...s,
+                ephemeralIssuers: [{ assetCode: "BONUS", publicKey: lwdemoIssuer, encSecret: "e" }],
+              },
+              sink,
+              lwdemoIssuer
+            ),
+            apiUrl: "unused",
+            apiKey: "unused",
+            hooks,
+          },
+          noSleep
+        ),
+    });
+
+    expect(result).toEqual({
+      status: 422,
+      body: {
+        error: "demolish_blocked",
+        blockers: ["sponsorship_claimable_balance_unrevocable", "subentries_unenumerated"],
+        resolvable: ["sponsorship_claimable_balance_unrevocable"],
+      },
+    });
+    expect([api.calls.transactions, api.calls.submit]).toEqual([0, 0]);
+  });
+
+  test("a forfeited balance's blocker is the one the close builds past", async () => {
+    const store = memoryStore();
+    const session = await newSession(store);
+    const api = new FakeApi();
+    api.blockers = [{ code: "claimable_balance_forfeited" }];
+    const result = await round(store, session.id, api);
+    expect(result.body.done).toBe(true);
   });
 });

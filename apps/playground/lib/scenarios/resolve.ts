@@ -192,6 +192,9 @@ export function validateSelection(
     closeOperations: 0,
     operationTypes: ["accountMerge"],
     dispositions: [],
+    arrivingAssets: [],
+    sponsoredEntries: [],
+    resolutions: [],
   };
   const cost: ScenarioCost = {
     xlm: 2 * BASE_RESERVE_XLM,
@@ -213,6 +216,9 @@ export function validateSelection(
     expectation.signers += build.expectation.signers;
     expectation.closeOperations += build.expectation.closeOperations;
     expectation.dispositions.push(...build.expectation.dispositions);
+    expectation.arrivingAssets.push(...build.expectation.arrivingAssets);
+    expectation.sponsoredEntries.push(...build.expectation.sponsoredEntries);
+    expectation.resolutions.push(...build.expectation.resolutions);
     for (const type of build.expectation.operationTypes) {
       if (!expectation.operationTypes.includes(type)) expectation.operationTypes.push(type);
     }

@@ -1,5 +1,10 @@
-import { test, expect } from "bun:test";
-import { buildDemolishDecisions, DemolishDecisionUnanswerableError } from "@/lib/demolish";
+import { describe, test, expect } from "bun:test";
+import {
+  buildDemolishDecisions,
+  DemolishBlockedError,
+  DemolishDecisionUnanswerableError,
+  planAnswers,
+} from "@/lib/demolish";
 import type { PlaygroundCloseExpectation } from "@/lib/verify";
 import type { DecisionPoint } from "@lumenwipe/sdk";
 
@@ -30,6 +35,9 @@ function expected(over: Partial<PlaygroundCloseExpectation> = {}): PlaygroundClo
     dataEntryCount: 0,
     transfers: [],
     conversions: [],
+    claims: [],
+    forfeits: [],
+    sponsoredEntries: [],
     ...over,
   };
 }
@@ -227,5 +235,69 @@ test("the stop names itself, so a log line reads as what it is", () => {
     "DemolishDecisionUnanswerableError",
     "The close needs a decision the playground cannot make",
     ["claim:1"],
+  ]);
+});
+
+describe("claimable balances", () => {
+  const id = (fill: string) => `00000000${fill.repeat(64)}`;
+  const withClaims = () =>
+    expected({
+      claims: [
+        { id: id("1"), asset: `BONUS:${ISSUER}`, addTrustline: false },
+        { id: id("2"), asset: `GIFT:${ISSUER}`, addTrustline: true },
+      ],
+      forfeits: [id("3")],
+    });
+  const claimPoint = (balanceId: string, pointId = `claim:${balanceId}`): DecisionPoint => ({
+    id: pointId,
+    type: "claimable_balance",
+    subject: { kind: "claimable_balance", balanceId, asset: `BONUS:${ISSUER}` },
+    options: [{ id: "claim" }, { id: "forfeit" }],
+    default: "",
+    required: true,
+  });
+
+  test("the plan is asked with the destination and every recorded balance already answered", () => {
+    expect(planAnswers(withClaims())).toEqual([
+      destinationAck,
+      { id: `claim:${id("1")}`, choice: "claim" },
+      { id: `claim:${id("2")}`, choice: "add_trustline_then_claim" },
+      { id: `claim:${id("3")}`, choice: "forfeit" },
+    ]);
+    expect(planAnswers(expected())).toEqual([destinationAck]);
+  });
+
+  test("each recorded balance is answered by its intent; any other is unanswerable", () => {
+    const points = [
+      claimPoint(id("1")),
+      claimPoint(id("2")),
+      claimPoint(id("3")),
+      claimPoint(id("9")),
+    ];
+    const { answers, unanswerable } = buildDemolishDecisions(points, withClaims());
+    expect(answers.slice(1)).toEqual([
+      { id: `claim:${id("1")}`, choice: "claim" },
+      { id: `claim:${id("2")}`, choice: "add_trustline_then_claim" },
+      { id: `claim:${id("3")}`, choice: "forfeit" },
+    ]);
+    expect(unanswerable).toEqual([`claim:${id("9")}`]);
+  });
+
+  test("a point whose id does not name its own balance is not answered", () => {
+    const mismatched = claimPoint(id("1"), `claim:${id("2")}`);
+    const noId: DecisionPoint = { ...claimPoint(id("1")), subject: { kind: "claimable_balance" } };
+    expect(buildDemolishDecisions([mismatched, noId], withClaims()).unanswerable).toEqual([
+      mismatched.id,
+      noId.id,
+    ]);
+  });
+});
+
+test("a plan blocker stop names itself and its codes", () => {
+  const err = new DemolishBlockedError(["sponsorship_unaffordable"]);
+  expect([err.name, err.message, err.blockers]).toEqual([
+    "DemolishBlockedError",
+    "The close reported a blocker",
+    ["sponsorship_unaffordable"],
   ]);
 });

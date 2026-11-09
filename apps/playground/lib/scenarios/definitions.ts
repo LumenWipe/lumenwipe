@@ -9,6 +9,17 @@ import {
   LWDEMO_AMOUNT,
   LWDEMO_CODE,
   RECIPIENT_FUNDING_XLM,
+  BENEFICIARY_DATA_ENTRY,
+  BENEFICIARY_FUNDING_XLM,
+  CLAIM_BONUS_AMOUNT,
+  CLAIM_GIFT_AMOUNT,
+  CLAIMANT_FUNDING_XLM,
+  DEMO_SPONSORED_CLAIM_XLM,
+  SPONSOR_FUNDING_XLM,
+  SPONSORED_DATA_ENTRY,
+  SPONSORED_OFFER,
+  TIME_GATED_AMOUNT,
+  UNREVOCABLE_BENEFICIARY_FUNDING_XLM,
   SWAP_ASSETS,
   type AssetCode,
   type OfferAsset,
@@ -16,6 +27,8 @@ import {
 import {
   DISPOSITION_CHOICES,
   type AssetDisposition,
+  type ClaimableBalanceSpec,
+  type SponsorshipVariant,
   type CloseOperationType,
   type DispositionChoice,
   type MessStepDef,
@@ -30,9 +43,20 @@ export const CLOSE_GROUP_SECONDS = 8;
 
 const ISSUER_FUNDING = Number(EPHEMERAL_ISSUER_FUNDING_XLM);
 
-export const ORDER = { setup: 0, trust: 10, fund: 20, data: 30, offers: 40, signers: 90 } as const;
+export const ORDER = {
+  setup: 0,
+  trust: 10,
+  fund: 20,
+  data: 30,
+  offers: 40,
+  claims: 50,
+  sponsorships: 60,
+  signers: 90,
+} as const;
 
-const TRUST_STEP: Record<AssetCode, MessStepId> = {
+/** The assets the demo opens a trustline to during the mess; the others arrive in the close or
+ *  belong to a helper. */
+const TRUST_STEP: Partial<Record<AssetCode, MessStepId>> = {
   AIRDROP1: "TRUST_AIRDROP1",
   RUGPULL: "TRUST_RUGPULL",
   LWDEMO: "TRUST_LWDEMO",
@@ -40,6 +64,7 @@ const TRUST_STEP: Record<AssetCode, MessStepId> = {
   EURC: "TRUST_EURC",
   LWCOIN: "TRUST_LWCOIN",
   LWGEM: "TRUST_LWGEM",
+  BONUS: "TRUST_BONUS",
 };
 
 /** Trustlines open in this order, so the offers that need them line up with the catalog. */
@@ -51,15 +76,18 @@ const TRUST_ORDER: readonly AssetCode[] = [
   "EURC",
   "LWCOIN",
   "LWGEM",
+  "BONUS",
 ];
 
 const trustlineNode = (code: AssetCode): string => `tl:${code}`;
 
 function trustStep(code: AssetCode): OrderedStep {
+  const id = TRUST_STEP[code];
+  if (!id) throw new Error(`No trust step for ${code}`);
   return {
     order: ORDER.trust + TRUST_ORDER.indexOf(code),
     step: {
-      id: TRUST_STEP[code],
+      id,
       label: `Open ${code} trustline`,
       nodes: [{ id: trustlineNode(code), kind: "trustline", label: code }],
       balances: [],
@@ -117,6 +145,9 @@ const lwdemoHolding: ScenarioDefinition = {
         closeOperations: 2,
         operationTypes: ["payment", "changeTrust"],
         dispositions: [],
+        arrivingAssets: [],
+        sponsoredEntries: [],
+        resolutions: [],
       },
       cost: cost(2, 1, BASE_RESERVE_XLM, 1),
     },
@@ -163,6 +194,9 @@ const junkAirdrops: ScenarioDefinition = {
           closeOperations: 2 * tokens,
           operationTypes: ["payment", "changeTrust"],
           dispositions: [],
+          arrivingAssets: [],
+          sponsoredEntries: [],
+          resolutions: [],
         },
         cost: cost(tokens + 1, tokens, tokens * (ISSUER_FUNDING + BASE_RESERVE_XLM), tokens),
       },
@@ -212,6 +246,9 @@ const stablecoinSwaps: ScenarioDefinition = {
           closeOperations: 2 * tokens,
           operationTypes: ["payment", "changeTrust"],
           dispositions: [],
+          arrivingAssets: [],
+          sponsoredEntries: [],
+          resolutions: [],
         },
         cost: cost(
           2 * tokens,
@@ -259,6 +296,9 @@ const dataEntries: ScenarioDefinition = {
           closeOperations: count,
           operationTypes: ["manageData"],
           dispositions: [],
+          arrivingAssets: [],
+          sponsoredEntries: [],
+          resolutions: [],
         },
         cost: cost(1, 1, count * BASE_RESERVE_XLM, count),
       },
@@ -329,6 +369,9 @@ const staleOffers: ScenarioDefinition = {
           closeOperations: count,
           operationTypes: ["manageSellOffer"],
           dispositions: [],
+          arrivingAssets: [],
+          sponsoredEntries: [],
+          resolutions: [],
         },
         cost: cost(1, 1, count * BASE_RESERVE_XLM + lockedXlm, count),
       },
@@ -369,6 +412,9 @@ const forgottenSigner: ScenarioDefinition = {
         closeOperations: 1,
         operationTypes: ["setOptions"],
         dispositions: [],
+        arrivingAssets: [],
+        sponsoredEntries: [],
+        resolutions: [],
       },
       cost: cost(1, 1, BASE_RESERVE_XLM, 1),
     },
@@ -468,12 +514,218 @@ const dispositions: ScenarioDefinition = {
           closeOperations: 2 * codes.length,
           operationTypes,
           dispositions: chosen.filter((d) => d.choice !== "burn"),
+          arrivingAssets: [],
+          sponsoredEntries: [],
+          resolutions: [],
         },
         cost: cost(
           steps.length,
           codes.length,
           codes.length * BASE_RESERVE_XLM + recipientXlm,
           codes.length
+        ),
+      },
+    };
+  },
+};
+
+const ON_OFF = ["Off", "On"] as const;
+const toggle = (label: string, on: boolean) => ({
+  label,
+  min: 0,
+  max: 1,
+  default: on ? 1 : 0,
+  choices: ON_OFF,
+});
+
+const claimableBalances: ScenarioDefinition = {
+  id: "claimable-balances",
+  featureSet: "classic",
+  label: "Claimable balances",
+  description:
+    "A balance waiting for the demo to claim, and optionally one that needs a trustline first, one locked past the session, and one the demo itself created, which blocks the merge until it is claimed.",
+  params: {
+    add_trustline: toggle("Needs a trustline", true),
+    time_gated: toggle("Locked for two hours", false),
+    demo_sponsored: toggle("Created by the demo", false),
+  },
+  heldAssets: () => ["BONUS"],
+  requiresAnyOf: [],
+  conflicts: [],
+  build: ({ add_trustline, time_gated, demo_sponsored }) => {
+    const balances: ClaimableBalanceSpec[] = [
+      { asset: "BONUS", amount: CLAIM_BONUS_AMOUNT, intent: "claim" },
+    ];
+    if (add_trustline) {
+      balances.push({
+        asset: "GIFT",
+        amount: CLAIM_GIFT_AMOUNT,
+        intent: "add_trustline_then_claim",
+      });
+    }
+    if (time_gated) balances.push({ asset: "BONUS", amount: TIME_GATED_AMOUNT, intent: "forfeit" });
+    if (demo_sponsored) {
+      balances.push({
+        asset: "native",
+        amount: DEMO_SPONSORED_CLAIM_XLM,
+        intent: "demo_sponsored",
+      });
+    }
+    const trusted: AssetCode[] = ["BONUS"];
+    const arriving: AssetCode[] = add_trustline ? ["GIFT"] : [];
+    const steps: OrderedStep[] = [
+      ...trusted.map(trustStep),
+      {
+        order: ORDER.claims,
+        step: {
+          id: "CLAIMABLE_BALANCES",
+          label: `Leave ${balances.length} claimable ${plural(balances.length, "balance", "balances")}`,
+          nodes: [],
+          balances: [],
+          action: {
+            kind: "claimable_balances",
+            balances,
+            claimantFundingXlm: CLAIMANT_FUNDING_XLM,
+          },
+        },
+      },
+    ];
+    const issuers = [...new Set([...trusted, ...arriving])];
+    const sponsoredXlm = demo_sponsored
+      ? Number(DEMO_SPONSORED_CLAIM_XLM) + BASE_RESERVE_XLM + Number(CLAIMANT_FUNDING_XLM)
+      : 0;
+    return {
+      ok: true,
+      build: {
+        steps,
+        ephemeralAssets: issuers,
+        expectation: {
+          assets: trusted,
+          offers: 0,
+          dataEntries: 0,
+          signers: 0,
+          closeOperations: 2 * (trusted.length + arriving.length),
+          operationTypes: ["payment", "changeTrust", "claimClaimableBalance"],
+          dispositions: [],
+          arrivingAssets: arriving,
+          sponsoredEntries: [],
+          resolutions: demo_sponsored
+            ? [
+                {
+                  blocker: "sponsorship_claimable_balance_unrevocable",
+                  kind: "claim_sponsored_balance",
+                },
+              ]
+            : [],
+        },
+        cost: cost(
+          steps.length,
+          2,
+          issuers.length * ISSUER_FUNDING + trusted.length * BASE_RESERVE_XLM + sponsoredXlm,
+          trusted.length
+        ),
+      },
+    };
+  },
+};
+
+const VARIANTS: readonly SponsorshipVariant[] = ["sponsor_pays", "demo_sponsors", "unrevocable"];
+
+const sponsoredReserves: ScenarioDefinition = {
+  id: "sponsored-reserves",
+  featureSet: "classic",
+  label: "Sponsored reserves",
+  description:
+    "Reserves paid by another account: the demo's own entries paid by a sponsor, or another account's entries paid by the demo, which the close revokes or reports when it cannot.",
+  params: {
+    variant: {
+      label: "Who pays",
+      min: 0,
+      max: VARIANTS.length - 1,
+      default: 0,
+      choices: [
+        "A sponsor pays for the demo's entries",
+        "The demo pays for another account's entries",
+        "The demo pays, and the other account cannot take over",
+      ],
+    },
+  },
+  heldAssets: ({ variant }) => (VARIANTS[variant ?? 0] === "sponsor_pays" ? ["PERK"] : []),
+  requiresAnyOf: [],
+  conflicts: [],
+  build: ({ variant: index }) => {
+    const variant = VARIANTS[index ?? 0];
+    if (!variant) return { ok: false, message: "Sponsored reserves has no such variant." };
+    const sponsorPays = variant === "sponsor_pays";
+    const dataEntry = sponsorPays ? SPONSORED_DATA_ENTRY : BENEFICIARY_DATA_ENTRY;
+    const helperFundingXlm = sponsorPays
+      ? SPONSOR_FUNDING_XLM
+      : variant === "demo_sponsors"
+        ? BENEFICIARY_FUNDING_XLM
+        : UNREVOCABLE_BENEFICIARY_FUNDING_XLM;
+    const step: MessStepDef = {
+      id: "SPONSORED_ENTRIES",
+      label: sponsorPays
+        ? "Open a trustline, a data entry and an offer whose reserves a sponsor pays"
+        : "Pay the reserves of another account's trustline and data entry",
+      nodes: sponsorPays
+        ? [
+            { id: trustlineNode("PERK"), kind: "trustline", label: "PERK" },
+            { id: `data:${dataEntry.key}`, kind: "data", label: dataEntry.key },
+            {
+              id: "offer:sponsored",
+              kind: "offer",
+              label: `Sell XLM → PERK`,
+              offer: { selling: SPONSORED_OFFER.selling, buying: SPONSORED_OFFER.buying },
+            },
+          ]
+        : [],
+      balances: [],
+      action: { kind: "sponsored_entries", variant, asset: "PERK", dataEntry, helperFundingXlm },
+    };
+    // The demo's own reserves when it sponsors: one per entry it pays for.
+    const demoReserves = sponsorPays ? 0 : 2 * BASE_RESERVE_XLM;
+    return {
+      ok: true,
+      build: {
+        steps: [{ order: ORDER.sponsorships, step }],
+        ephemeralAssets: ["PERK"],
+        expectation: sponsorPays
+          ? {
+              assets: ["PERK"],
+              offers: 1,
+              dataEntries: 1,
+              signers: 0,
+              closeOperations: 4,
+              operationTypes: ["changeTrust", "manageData", "manageSellOffer"],
+              dispositions: [],
+              arrivingAssets: [],
+              sponsoredEntries: [],
+              resolutions: [],
+            }
+          : {
+              assets: [],
+              offers: 0,
+              dataEntries: 0,
+              signers: 0,
+              closeOperations: 2,
+              operationTypes: ["revokeTrustlineSponsorship", "revokeDataSponsorship"],
+              dispositions: [],
+              arrivingAssets: [],
+              sponsoredEntries: [
+                { kind: "trustline", asset: "PERK" },
+                { kind: "data_entry", name: dataEntry.key },
+              ],
+              resolutions:
+                variant === "unrevocable"
+                  ? [{ blocker: "sponsorship_unaffordable", kind: "release_sponsored_entries" }]
+                  : [],
+            },
+        cost: cost(
+          1,
+          1,
+          ISSUER_FUNDING + Number(helperFundingXlm) + demoReserves,
+          sponsorPays ? 3 : 0
         ),
       },
     };
@@ -489,4 +741,6 @@ export const SCENARIOS: readonly ScenarioDefinition[] = [
   staleOffers,
   forgottenSigner,
   dispositions,
+  claimableBalances,
+  sponsoredReserves,
 ];

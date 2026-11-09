@@ -2,9 +2,11 @@ import "server-only";
 import {
   Account,
   Asset,
+  Claimant,
   Keypair,
   Operation,
   TransactionBuilder,
+  type Transaction,
   type xdr,
 } from "@stellar/stellar-sdk";
 import {
@@ -16,9 +18,14 @@ import {
 import {
   PERSISTENT_ASSETS,
   STANDING_LIQUIDITY_PRICE,
+  TIME_GATE_SECONDS,
+  SPONSORED_OFFER,
   isPersistentAsset,
   type AssetCode,
+  type ClaimIntent,
+  type HelperRole,
   type MessStepDef,
+  type ResolutionKind,
   type OfferAsset,
   type StepAction,
   type StepActionKind,
@@ -44,8 +51,26 @@ export interface MessContext {
   mmPublic: string;
   /** The session's transfer recipient, which the OPEN_RECIPIENT step creates; null without one. */
   transferRecipient: Keypair | null;
+  /** The claimant, sponsor or beneficiary the session holds a key for. */
+  helpers: ReadonlyMap<HelperRole, Keypair>;
   /** Persists a signer in the session record before the step adds it to the demo account. */
   recordSigner: (publicKey: string) => Promise<void>;
+  /** Records the claimable balances a signed transaction creates, before it is sent. Each attempt
+   *  replaces the last: only the transaction that lands creates balances. */
+  recordClaimableBalances: (balances: ClaimableBalanceRecord[]) => Promise<void>;
+}
+
+export interface ClaimableBalanceRecord {
+  id: string;
+  /** `CODE:ISSUER` or `native`. */
+  asset: string;
+  intent: ClaimIntent;
+}
+
+function helper(role: HelperRole, ctx: Pick<MessContext, "helpers">): Keypair {
+  const kp = ctx.helpers.get(role);
+  if (!kp) throw new Error(`No ${role} account in the session`);
+  return kp;
 }
 
 function ephemeralIssuer(code: string, ctx: MessContext): Keypair {
@@ -95,7 +120,8 @@ export async function buildSignSubmit(
   sourceKeypair: Keypair,
   ops: xdr.Operation[],
   extraSigners: Keypair[] = [],
-  deps: BuildSignSubmitDeps = {}
+  deps: BuildSignSubmitDeps = {},
+  onSigned?: (tx: Transaction) => Promise<void>
 ): Promise<string> {
   const loadAccount = deps.loadAccount ?? loadHorizonAccount;
   const submit = deps.submit ?? submitClassicViaHorizon;
@@ -114,6 +140,7 @@ export async function buildSignSubmit(
 
     const tx = builder.build();
     tx.sign(sourceKeypair, ...extraSigners);
+    if (onSigned) await onSigned(tx);
 
     try {
       const { txHash } = await submit(tx.toEnvelope().toXdr("base64"));
@@ -262,7 +289,12 @@ export function retireRecipientOps(
   ];
 }
 
-type Submit = (source: Keypair, ops: xdr.Operation[], extraSigners?: Keypair[]) => Promise<string>;
+type Submit = (
+  source: Keypair,
+  ops: xdr.Operation[],
+  extraSigners?: Keypair[],
+  onSigned?: (tx: Transaction) => Promise<void>
+) => Promise<string>;
 
 type Executor<K extends StepActionKind> = (
   action: Extract<StepAction, { kind: K }>,
@@ -375,7 +407,147 @@ export const MESS_EXECUTORS: { [K in StepActionKind]: Executor<K> } = {
       [recipient]
     );
   },
+  claimable_balances: (action, ctx, submit) => {
+    const demo = ctx.demo.publicKey();
+    const ops: xdr.Operation[] = [];
+    const signers = new Map<string, Keypair>();
+    const created: { index: number; asset: string; intent: ClaimIntent }[] = [];
+    const sponsoredByDemo = action.balances.some((b) => b.intent === "demo_sponsored");
+    if (sponsoredByDemo) {
+      ops.push(
+        Operation.createAccount({
+          destination: helper("claimant", ctx).publicKey(),
+          startingBalance: action.claimantFundingXlm,
+        })
+      );
+    }
+    for (const balance of action.balances) {
+      if (balance.intent === "demo_sponsored") {
+        // Created, and so sponsored, by the demo for the claimant: the demo is not a claimant.
+        created.push({ index: ops.length, asset: "native", intent: balance.intent });
+        ops.push(
+          Operation.createClaimableBalance({
+            asset: Asset.native(),
+            amount: balance.amount,
+            claimants: [new Claimant(helper("claimant", ctx).publicKey())],
+          })
+        );
+        continue;
+      }
+      if (balance.asset === "native") throw new Error("Only the demo creates a native balance");
+      const issuer = ephemeralIssuer(balance.asset, ctx);
+      const asset = resolveAsset(balance.asset, ctx);
+      // A forfeited balance also names its issuer, so cleanup can claim it back and merge it.
+      const claimants =
+        balance.intent === "forfeit"
+          ? [
+              new Claimant(
+                demo,
+                Claimant.predicateNot(Claimant.predicateBeforeRelativeTime(TIME_GATE_SECONDS))
+              ),
+              new Claimant(issuer.publicKey()),
+            ]
+          : [new Claimant(demo)];
+      created.push({
+        index: ops.length,
+        asset: `${asset.getCode()}:${asset.getIssuer()}`,
+        intent: balance.intent,
+      });
+      ops.push(
+        Operation.createClaimableBalance({
+          source: issuer.publicKey(),
+          asset,
+          amount: balance.amount,
+          claimants,
+        })
+      );
+      signers.set(issuer.publicKey(), issuer);
+    }
+    return submit(ctx.demo, ops, [...signers.values()], (tx) =>
+      ctx.recordClaimableBalances(
+        created.map(({ index, asset, intent }) => ({
+          id: tx.getClaimableBalanceId(index),
+          asset,
+          intent,
+        }))
+      )
+    );
+  },
+  sponsored_entries: (action, ctx, submit) => {
+    const demo = ctx.demo.publicKey();
+    const asset = resolveAsset(action.asset, ctx);
+    const { key, value } = action.dataEntry;
+    if (action.variant === "sponsor_pays") {
+      const sponsor = helper("sponsor", ctx);
+      return submit(
+        ctx.demo,
+        [
+          Operation.createAccount({
+            destination: sponsor.publicKey(),
+            startingBalance: action.helperFundingXlm,
+          }),
+          Operation.beginSponsoringFutureReserves({
+            source: sponsor.publicKey(),
+            sponsoredId: demo,
+          }),
+          Operation.changeTrust({ asset }),
+          Operation.manageData({ name: key, value }),
+          Operation.manageSellOffer({
+            selling: Asset.native(),
+            buying: asset,
+            amount: SPONSORED_OFFER.amount,
+            price: SPONSORED_OFFER.price,
+          }),
+          Operation.endSponsoringFutureReserves({}),
+        ],
+        [sponsor]
+      );
+    }
+    const beneficiary = helper("beneficiary", ctx);
+    const owner = beneficiary.publicKey();
+    return submit(
+      ctx.demo,
+      [
+        Operation.createAccount({ destination: owner, startingBalance: action.helperFundingXlm }),
+        Operation.beginSponsoringFutureReserves({ sponsoredId: owner }),
+        Operation.changeTrust({ source: owner, asset }),
+        Operation.manageData({ source: owner, name: key, value }),
+        Operation.endSponsoringFutureReserves({ source: owner }),
+      ],
+      [beneficiary]
+    );
+  },
 };
+
+export interface ResolutionContext {
+  helpers: ReadonlyMap<HelperRole, Keypair>;
+  /** The balance the demo created for the claimant, as the session recorded it. */
+  demoSponsoredBalanceId: string | null;
+  /** The beneficiary's sponsored trustline asset and data entry, from the plan. */
+  sponsored: { asset: Asset; dataKey: string } | null;
+}
+
+/** The transaction each planned resolution sends, signed by the helper that owns the entry. */
+export function resolutionTransaction(
+  kind: ResolutionKind,
+  ctx: ResolutionContext
+): { source: Keypair; ops: xdr.Operation[] } {
+  if (kind === "claim_sponsored_balance") {
+    if (!ctx.demoSponsoredBalanceId) throw new Error("No recorded balance to claim");
+    return {
+      source: helper("claimant", ctx),
+      ops: [Operation.claimClaimableBalance({ balanceId: ctx.demoSponsoredBalanceId })],
+    };
+  }
+  if (!ctx.sponsored) throw new Error("No sponsored entries to release");
+  return {
+    source: helper("beneficiary", ctx),
+    ops: [
+      Operation.changeTrust({ asset: ctx.sponsored.asset, limit: "0" }),
+      Operation.manageData({ name: ctx.sponsored.dataKey, value: null }),
+    ],
+  };
+}
 
 function runAction<K extends StepActionKind>(
   action: Extract<StepAction, { kind: K }>,
@@ -393,8 +565,8 @@ export function executeMessStep(
   ctx: MessContext,
   deps: BuildSignSubmitDeps = {}
 ): Promise<string> {
-  const submit: Submit = (source, ops, extraSigners = []) =>
-    buildSignSubmit(source, ops, extraSigners, deps);
+  const submit: Submit = (source, ops, extraSigners = [], onSigned) =>
+    buildSignSubmit(source, ops, extraSigners, deps, onSigned);
   return runAction(step.action, ctx, submit, deps);
 }
 

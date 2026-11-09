@@ -13,6 +13,12 @@ const ERROR_COPY = new Map<string, string>(
       "The last close transaction is not confirmed yet. Wait a moment, then resume to check it.",
     demolish_decision_unanswerable:
       "The close stopped before signing anything: the LumenWipe API asked for a decision this demo has no answer for.",
+    demolish_blocked:
+      "The close stopped before signing anything: the account cannot be merged until a blocker is cleared.",
+    demolish_in_progress: "The close has already started, so this cannot be done now.",
+    resolution_unavailable: "This demo has no automatic fix for that blocker.",
+    resolution_not_recorded: "The demo has not created what this fix acts on yet.",
+    resolve_failed: "The fix did not go through on the test network. Please try again.",
     demolish_started:
       "The close has already started for this demo. Start a new one to run the setup again.",
     state_read_failed: "Could not read the demo account from the test network. Please try again.",
@@ -30,6 +36,22 @@ const ERROR_COPY = new Map<string, string>(
 );
 
 export const GENERIC_ERROR_COPY = "Something went wrong. Please try again.";
+
+const BLOCKER_COPY = new Map<string, string>(
+  Object.entries({
+    sponsorship_claimable_balance_unrevocable:
+      "The demo created a claimable balance for another account, so it sponsors that balance and cannot be merged until the balance is claimed.",
+    sponsorship_unaffordable:
+      "The demo pays the reserve of another account's entries, and that account cannot afford to take the reserve over, so the sponsorship cannot be revoked.",
+  })
+);
+
+export const GENERIC_BLOCKER_COPY = "The close reported a blocker this demo has no fix for.";
+
+/** Plain-language copy for a close blocker code the API reports. */
+export function blockerCopy(code: string): string {
+  return BLOCKER_COPY.get(code) ?? GENERIC_BLOCKER_COPY;
+}
 
 export function errorCopy(code: string | undefined, status?: number): string {
   const copy = code === undefined ? undefined : ERROR_COPY.get(code);

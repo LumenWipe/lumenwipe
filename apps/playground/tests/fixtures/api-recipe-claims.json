@@ -1,0 +1,91 @@
+{
+  "builtAtSeconds": 1800000000,
+  "recipes": [
+    {
+      "name": "claimable",
+      "selection": {
+        "scenarios": [
+          {
+            "id": "claimable-balances",
+            "params": {
+              "add_trustline": 1,
+              "time_gated": 1,
+              "demo_sponsored": 0
+            }
+          }
+        ]
+      },
+      "session": {
+        "demoPublic": "GDKUEB62DFEXPXHUNLN75QV4FZ23KLK2RJBBQT7N7XAAAJHQ4PUNUPKW",
+        "sinkPublic": "GBIRYNFBULFVEHPRNOZENOG6RZ4ZPTRDLR7HNMRKHV2QHISIDHOYV6ZN",
+        "ephemeralIssuers": [
+          {
+            "assetCode": "BONUS",
+            "publicKey": "GAY55PSV2N6HEJ3IWE3RGHFKMCDQQCZOBNQLSS6XQXIUK5OPUSMLYTS3"
+          },
+          {
+            "assetCode": "GIFT",
+            "publicKey": "GBJUOCLCKWFG4CBZAIVOMXDLE4R3GJ3S4XAML5DXNS4ONI7BBORPH6AS"
+          }
+        ],
+        "helperAccounts": [],
+        "claimableBalances": [
+          {
+            "id": "000000001111111111111111111111111111111111111111111111111111111111111111",
+            "asset": "BONUS:GAY55PSV2N6HEJ3IWE3RGHFKMCDQQCZOBNQLSS6XQXIUK5OPUSMLYTS3",
+            "intent": "claim"
+          },
+          {
+            "id": "000000002222222222222222222222222222222222222222222222222222222222222222",
+            "asset": "GIFT:GBJUOCLCKWFG4CBZAIVOMXDLE4R3GJ3S4XAML5DXNS4ONI7BBORPH6AS",
+            "intent": "add_trustline_then_claim"
+          },
+          {
+            "id": "000000003333333333333333333333333333333333333333333333333333333333333333",
+            "asset": "BONUS:GAY55PSV2N6HEJ3IWE3RGHFKMCDQQCZOBNQLSS6XQXIUK5OPUSMLYTS3",
+            "intent": "forfeit"
+          }
+        ]
+      },
+      "requiresAnotherCall": [true, false],
+      "transactions": [
+        "AAAAAgAAAADVQgfaGUl33PRq2/7CvC51tS1aikIYT+39wAAk8OPo2gAAASwAAAAAAAAAZQAAAAEAAAAAAAAAAAAAAABrSdMsAAAAAAAAAAMAAAAAAAAABgAAAAFHSUZUAAAAAFNHCWJVim4IOQIq5lxrJyOzJ3LlwMX0d2y45qPhC6Lzf/////////8AAAAAAAAADwAAAAAREREREREREREREREREREREREREREREREREREREREREQAAAAAAAAAPAAAAACIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiAAAAAAAAAAA=",
+        "AAAAAgAAAADVQgfaGUl33PRq2/7CvC51tS1aikIYT+39wAAk8OPo2gAAAfQAAAAAAAAAZgAAAAEAAAAAAAAAAAAAAABrSdMsAAAAAAAAAAUAAAAAAAAAAQAAAAAx3r5V03xyJ2ixNxMcqmCHCAsuC2C5S9eF0UV1z6SYvAAAAAJCT05VUwAAAAAAAAAAAAAAMd6+VdN8cidosTcTHKpghwgLLgtguUvXhdFFdc+kmLwAAAAAHc1lAAAAAAAAAAABAAAAAFNHCWJVim4IOQIq5lxrJyOzJ3LlwMX0d2y45qPhC6LzAAAAAUdJRlQAAAAAU0cJYlWKbgg5AirmXGsnI7MncuXAxfR3bLjmo+ELovMAAAAAEeGjAAAAAAAAAAAGAAAAAkJPTlVTAAAAAAAAAAAAAAAx3r5V03xyJ2ixNxMcqmCHCAsuC2C5S9eF0UV1z6SYvAAAAAAAAAAAAAAAAAAAAAYAAAABR0lGVAAAAABTRwliVYpuCDkCKuZcaycjsydy5cDF9HdsuOaj4Qui8wAAAAAAAAAAAAAAAAAAAAgAAAAAURw0oaLLUh3xa7JGuN6OeZfOI1x+drIqPXUDokgZ3YoAAAAAAAAAAA=="
+      ]
+    },
+    {
+      "name": "sponsoring",
+      "selection": {
+        "scenarios": [
+          {
+            "id": "sponsored-reserves",
+            "params": {
+              "variant": 1
+            }
+          }
+        ]
+      },
+      "session": {
+        "demoPublic": "GDKUEB62DFEXPXHUNLN75QV4FZ23KLK2RJBBQT7N7XAAAJHQ4PUNUPKW",
+        "sinkPublic": "GBIRYNFBULFVEHPRNOZENOG6RZ4ZPTRDLR7HNMRKHV2QHISIDHOYV6ZN",
+        "ephemeralIssuers": [
+          {
+            "assetCode": "PERK",
+            "publicKey": "GAY7GMRNJER5G3CBYEE33MAJSGJRQ67NTGKCBFXESJVCJR367UGS6MOR"
+          }
+        ],
+        "helperAccounts": [
+          {
+            "role": "beneficiary",
+            "publicKey": "GBSMGCAV74TNLRFP7DQRE5FDR3LN2BKTASO2JQIDOKUVOW32O5UQSZWQ"
+          }
+        ],
+        "claimableBalances": []
+      },
+      "requiresAnotherCall": [false],
+      "transactions": [
+        "AAAAAgAAAADVQgfaGUl33PRq2/7CvC51tS1aikIYT+39wAAk8OPo2gAAASwAAAAAAAAAZQAAAAEAAAAAAAAAAAAAAABrSdMsAAAAAAAAAAMAAAAAAAAAEgAAAAAAAAABAAAAAGTDCBX/JtXEr/jhEnSjjtbdBVMEnaTBA3KpV1t6d2kJAAAAAVBFUksAAAAAMfMyLUkj02xBwQm9sAmRkxh77ZmUIJbkkmokx379DS8AAAAAAAAAEgAAAAAAAAADAAAAAGTDCBX/JtXEr/jhEnSjjtbdBVMEnaTBA3KpV1t6d2kJAAAAEXNwb25zb3JlZF9ieV9kZW1vAAAAAAAAAAAAAAgAAAAAURw0oaLLUh3xa7JGuN6OeZfOI1x+drIqPXUDokgZ3YoAAAAAAAAAAA=="
+      ]
+    }
+  ]
+}

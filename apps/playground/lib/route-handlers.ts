@@ -1,6 +1,6 @@
 import "server-only";
 import { NextRequest, NextResponse } from "next/server";
-import { Keypair, type xdr } from "@stellar/stellar-sdk";
+import { Asset, Keypair, Operation, type xdr } from "@stellar/stellar-sdk";
 import { PlaygroundConfigError } from "./crypto";
 import {
   DEFAULT_CUSTOM_CONFIG,
@@ -14,16 +14,23 @@ import {
 import {
   LWDEMO_CODE,
   generateRandomSelection,
+  helperRoleOf,
   isMessStepId,
   parseReplayCode,
   parseSelection,
   resolvePlan,
   validateSelection,
+  type HelperRole,
   type MessStepDef,
   type ScenarioId,
   type ValidationResult,
 } from "./scenarios";
-import { retireRecipientOps, type MessContext } from "./mess-builders";
+import {
+  resolutionTransaction,
+  retireRecipientOps,
+  type MessContext,
+  type ResolutionContext,
+} from "./mess-builders";
 import type { DemolishRoundResult, RunDemolishOptions } from "./demolish";
 import { CREDENTIALS_PER_DAY_PER_IP, SESSIONS_PER_DAY_PER_IP, type RateLimit } from "./rate-limit";
 import { actionResponse, loadSessionOrErrorResponse, notConfiguredResponse } from "./route-helpers";
@@ -32,11 +39,13 @@ import {
   runCleanup,
   runDemolishRound,
   runMessStep,
+  runResolve,
   type StateDeps,
 } from "./session-actions";
 import {
   PlaygroundStoreUnavailableError,
   sessionExpiresAt,
+  type PlaygroundSession,
   type SessionStore,
 } from "./session-store";
 import { expectationFromSession } from "./verify";
@@ -97,6 +106,13 @@ export interface CleanupRouteDeps {
   merge: (source: Keypair, destination: string) => Promise<unknown>;
   /** Signs and submits `ops` from `source`. */
   submit: (source: Keypair, ops: xdr.Operation[]) => Promise<unknown>;
+}
+
+export interface ResolveRouteDeps {
+  store: SessionStore;
+  decrypt: (payload: string) => string;
+  /** Signs and submits `ops` from `source`; returns the hash. */
+  submit: (source: Keypair, ops: xdr.Operation[]) => Promise<string>;
 }
 
 export interface CredentialsDeps {
@@ -227,6 +243,10 @@ export async function handleCreateSession(
   const recipient = plan.steps.some((s) => s.action.kind === "open_recipient")
     ? Keypair.random()
     : null;
+  const helpers = plan.steps.flatMap((s) => {
+    const role = helperRoleOf(s.action);
+    return role ? [{ role, keypair: Keypair.random() }] : [];
+  });
 
   if (!(await deps.fundAccount(demo.publicKey()))) {
     return NextResponse.json({ error: "friendbot_failed" }, { status: 502 });
@@ -257,6 +277,12 @@ export async function handleCreateSession(
         publicKey: recipient.publicKey(),
         encSecret: deps.encrypt(recipient.secret()),
       },
+      helperAccounts: helpers.map(({ role, keypair }) => ({
+        role,
+        publicKey: keypair.publicKey(),
+        encSecret: deps.encrypt(keypair.secret()),
+      })),
+      claimableBalances: [],
     });
 
     return NextResponse.json({
@@ -270,6 +296,7 @@ export async function handleCreateSession(
         lwdemoAsset: `${LWDEMO_CODE}:${issuer.publicKey()}`,
         ephemeral: ephemeral.map((e) => ({ code: e.assetCode, publicKey: e.keypair.publicKey() })),
         transferRecipient: recipient?.publicKey() ?? null,
+        helpers: helpers.map(({ role, keypair }) => ({ role, publicKey: keypair.publicKey() })),
       },
     });
   } catch (err) {
@@ -304,7 +331,7 @@ export async function handleMess(
   if (!issuer || !mm) return notConfiguredResponse();
 
   const result = await runMessStep(deps.store, id, stepId, {
-    executeStep: (step, session, recordSigner) =>
+    executeStep: (step, session, recordSigner, recordClaimableBalances) =>
       deps.executeMessStep(step, {
         demo: Keypair.fromSecret(deps.decrypt(session.encDemoSecret)),
         ephemeralIssuers: new Map(
@@ -318,8 +345,79 @@ export async function handleMess(
         transferRecipient:
           session.transferRecipient &&
           Keypair.fromSecret(deps.decrypt(session.transferRecipient.encSecret)),
+        helpers: helperKeys(session, deps.decrypt),
         recordSigner,
+        recordClaimableBalances,
       }),
+  });
+  return actionResponse(result);
+}
+
+function helperKeys(
+  session: PlaygroundSession,
+  decrypt: (payload: string) => string
+): Map<HelperRole, Keypair> {
+  return new Map(
+    session.helperAccounts.map((h) => [h.role, Keypair.fromSecret(decrypt(h.encSecret))])
+  );
+}
+
+/** The beneficiary's sponsored trustline asset and data entry key, from the session's plan. */
+function sponsoredEntriesOf(session: PlaygroundSession): { asset: Asset; dataKey: string } | null {
+  for (const step of resolvePlan(session.selection).steps) {
+    if (step.action.kind !== "sponsored_entries") continue;
+    const code = step.action.asset;
+    const issuer = session.ephemeralIssuers.find((e) => e.assetCode === code);
+    if (!issuer) return null;
+    return { asset: new Asset(code, issuer.publicKey), dataKey: step.action.dataEntry.key };
+  }
+  return null;
+}
+
+function resolutionContext(
+  session: PlaygroundSession,
+  decrypt: (payload: string) => string
+): ResolutionContext {
+  // The last recorded attempt is the transaction that landed: earlier attempts never did.
+  const sponsoredByDemo = session.claimableBalances.filter((b) => b.intent === "demo_sponsored");
+  return {
+    helpers: helperKeys(session, decrypt),
+    demoSponsoredBalanceId: sponsoredByDemo[sponsoredByDemo.length - 1]?.id ?? null,
+    sponsored: sponsoredEntriesOf(session),
+  };
+}
+
+/** Longest blocker code read from a resolve request; the API's codes are far shorter. */
+const MAX_BLOCKER_LENGTH = 64;
+
+/**
+ * Resolves a blocker the close reported, when the session's plan expects it: the helper that owns
+ * the entry claims the balance or releases its sponsored entries with its own key. The demo key
+ * signs nothing here.
+ */
+export async function handleResolve(
+  req: NextRequest,
+  id: string,
+  deps: ResolveRouteDeps
+): Promise<NextResponse> {
+  let blocker: unknown;
+  try {
+    const body: unknown = await req.json();
+    blocker = isRecord(body) ? body.blocker : undefined;
+  } catch {
+    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+  }
+  if (typeof blocker !== "string" || blocker.length === 0 || blocker.length > MAX_BLOCKER_LENGTH) {
+    return NextResponse.json({ error: "resolution_unavailable" }, { status: 400 });
+  }
+  const result = await runResolve(deps.store, id, blocker, {
+    resolve: (session, resolution) => {
+      const { source, ops } = resolutionTransaction(
+        resolution.kind,
+        resolutionContext(session, deps.decrypt)
+      );
+      return deps.submit(source, ops);
+    },
   });
   return actionResponse(result);
 }
@@ -388,9 +486,49 @@ export async function handleCleanup(id: string, deps: CleanupRouteDeps): Promise
           );
         }
       }
+      for (const h of session.helperAccounts) {
+        try {
+          const kp = Keypair.fromSecret(deps.decrypt(h.encSecret));
+          const sponsored = h.role === "beneficiary" ? sponsoredEntriesOf(session) : null;
+          // A beneficiary still holds its entries unless the resolution released them.
+          const released = sponsored
+            ? await deps
+                .submit(kp, [
+                  Operation.changeTrust({ asset: sponsored.asset, limit: "0" }),
+                  Operation.manageData({ name: sponsored.dataKey, value: null }),
+                  Operation.accountMerge({ destination: mm.publicKey() }),
+                ])
+                .then(() => true)
+                .catch(() => false)
+            : false;
+          if (!released) await deps.merge(kp, mm.publicKey());
+          recycled.push(h.publicKey);
+        } catch (err) {
+          console.error("[playground] cleanup helper failed", { helper: h.publicKey }, err);
+        }
+      }
       for (const eph of session.ephemeralIssuers) {
         try {
           const kp = Keypair.fromSecret(deps.decrypt(eph.encSecret));
+          // A forfeited balance names its issuer as a claimant; the issuer sponsors it, so it
+          // claims it back before it can merge.
+          const forfeited = session.claimableBalances.filter(
+            (b) => b.intent === "forfeit" && b.asset.endsWith(`:${eph.publicKey}`)
+          );
+          if (forfeited.length > 0) {
+            await deps
+              .submit(
+                kp,
+                forfeited.map((b) => Operation.claimClaimableBalance({ balanceId: b.id }))
+              )
+              .catch((err: unknown) => {
+                console.error(
+                  "[playground] cleanup claim-back failed",
+                  { issuer: eph.publicKey },
+                  err
+                );
+              });
+          }
           await deps.merge(kp, mm.publicKey());
           recycled.push(eph.publicKey);
         } catch (err) {

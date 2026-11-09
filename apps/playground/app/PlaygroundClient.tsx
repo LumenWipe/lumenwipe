@@ -11,7 +11,7 @@ import PlaygroundControls from "@/components/scene/PlaygroundControls";
 import TxLogPanel from "@/components/scene/TxLogPanel";
 
 export default function PlaygroundClient() {
-  const { start, demolish, progressStatus } = usePlaygroundExecution();
+  const { start, demolish, resolve, progressStatus } = usePlaygroundExecution();
   const phase = usePlaygroundStore((s) => s.phase);
 
   // Until this answers, every scenario shows as available; the create route checks again anyway.
@@ -50,7 +50,12 @@ export default function PlaygroundClient() {
         </div>
 
         <div className="flex min-w-0 flex-col gap-4">
-          <PlaygroundControls start={start} demolish={demolish} progressStatus={progressStatus} />
+          <PlaygroundControls
+            start={start}
+            demolish={demolish}
+            resolve={resolve}
+            progressStatus={progressStatus}
+          />
           <TxLogPanel />
         </div>
       </div>

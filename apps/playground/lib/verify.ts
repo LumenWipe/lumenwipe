@@ -1,5 +1,5 @@
 import "server-only";
-import { Networks, Transaction, TransactionBuilder, type Asset } from "@stellar/stellar-sdk";
+import { Asset, Networks, Transaction, TransactionBuilder } from "@stellar/stellar-sdk";
 import {
   exitExpectations,
   verifyCloseTransaction,
@@ -29,18 +29,24 @@ import type { PlaygroundSession } from "./session-store";
 //   chosen to convert can only be converted, to XLM, into the demo, for no less than the floor its
 //   recorded amount and the playground's standing price give;
 // - a signer may only be removed if the session recorded adding it;
-// - no claim or DeFi exit was chosen, so each of those is refused.
+// - a claim may only take a balance the session recorded creating for the demo, once, and a
+//   trustline may only be added for the asset of such a balance, ahead of its claim;
+// - a sponsorship may only be revoked on an entry the session recorded the demo sponsoring, and a
+//   claimable balance's sponsorship never;
+// - no DeFi exit was chosen, so each of those is refused.
 //
 // The shared verifier holds a transfer to a floor; the playground also holds a transfer and a
 // conversion to at most the amount the mess paid in, so the two together pin a transfer exactly.
 //
-// On top of that, two rules the shared verifier cannot hold for every close, because the
-// exchange hand-off places its forward payment after the merge and a large close spans several
-// transactions: a playground close is one transaction that ends in its merge, with no more
-// operations than the session's own entries can explain. The demolish runs one round per request
-// (lib/demolish.ts), and no session needs a second: the master key alone can sign, so the API adds
-// no signer-normalization round, and the session's entries stay far below one transaction's
-// operation limit. A round that is not the final merge is therefore refused before it is signed.
+// On top of that, rules the shared verifier cannot hold for every close, because the exchange
+// hand-off places its forward payment after the merge and a large close spans several
+// transactions. The master key alone can sign, so the API adds no signer-normalization round, and
+// the session's entries stay far below one transaction's operation limit, so a playground close is
+// one transaction that ends in its merge, with no more operations than the session's entries can
+// explain. The one exception is a session that recorded claimable balances for the demo: the API
+// claims them in a transaction of its own first (one round per request, lib/demolish.ts), and that
+// transaction may hold nothing but those claims and the trustlines they need. Any other round that
+// is not the final merge is refused before it is signed.
 
 export class PlaygroundVerificationError extends Error {
   constructor(message: string) {
@@ -63,12 +69,11 @@ export const PLAYGROUND_CLOSE_OPERATION_TYPES: readonly CloseOperationType[] = [
   "setOptions",
   // A conversion the session chose; the shared verifier refuses one of any other asset.
   "pathPaymentStrictSend",
-  // The API revokes a sponsorship it finds on one of these entries before removing it.
-  "revokeAccountSponsorship",
+  // A claim of a balance the session recorded, in its own transaction.
+  "claimClaimableBalance",
+  // A revoke of an entry the session recorded the demo sponsoring.
   "revokeTrustlineSponsorship",
-  "revokeOfferSponsorship",
   "revokeDataSponsorship",
-  "revokeSignerSponsorship",
 ];
 
 /** One asset the session can hold: its code and the issuer it returns to. */
@@ -94,6 +99,20 @@ export interface PlaygroundConversion {
   minAmountOut: string;
 }
 
+/** A balance the session recorded creating for the demo, which the close may claim once. */
+export interface PlaygroundClaim {
+  id: string;
+  /** `CODE:ISSUER` or `native`. */
+  asset: string;
+  /** The demo holds no trustline for it, so the claim transaction adds one first. */
+  addTrustline: boolean;
+}
+
+/** An entry of the beneficiary whose reserve the session recorded the demo paying. */
+export type PlaygroundSponsoredEntry =
+  | { kind: "trustline"; owner: string; asset: string }
+  | { kind: "data_entry"; owner: string; name: string };
+
 /** What a demolish of one session may do, from the session record and the playground config. */
 export interface PlaygroundCloseExpectation {
   demoPublic: string;
@@ -104,6 +123,10 @@ export interface PlaygroundCloseExpectation {
   dataEntryCount: number;
   transfers: PlaygroundTransfer[];
   conversions: PlaygroundConversion[];
+  claims: PlaygroundClaim[];
+  /** Balances the demo can claim only after the session, answered `forfeit`. */
+  forfeits: string[];
+  sponsoredEntries: PlaygroundSponsoredEntry[];
 }
 
 /**
@@ -115,7 +138,13 @@ export interface PlaygroundCloseExpectation {
 export function expectationFromSession(
   session: Pick<
     PlaygroundSession,
-    "demoPublic" | "ephemeralIssuers" | "recordedSigners" | "selection" | "transferRecipient"
+    | "demoPublic"
+    | "ephemeralIssuers"
+    | "recordedSigners"
+    | "selection"
+    | "transferRecipient"
+    | "helperAccounts"
+    | "claimableBalances"
   >,
   sinkPublic: string,
   persistentIssuer: string
@@ -127,7 +156,25 @@ export function expectationFromSession(
     if (!issuer) throw new PlaygroundVerificationError("session_issuer_missing");
     return issuer.publicKey;
   };
-  const assets = planned.assets.map((code): SessionAsset => ({ code, issuer: issuerOf(code) }));
+  // A balance claimed through a new trustline leaves its asset on the account, closed like any other.
+  const assets = [...planned.assets, ...planned.arrivingAssets].map((code): SessionAsset => ({
+    code,
+    issuer: issuerOf(code),
+  }));
+  const claims = session.claimableBalances.flatMap((b): PlaygroundClaim[] =>
+    b.intent === "claim" || b.intent === "add_trustline_then_claim"
+      ? [{ id: b.id, asset: b.asset, addTrustline: b.intent === "add_trustline_then_claim" }]
+      : []
+  );
+  const forfeits = session.claimableBalances.filter((b) => b.intent === "forfeit").map((b) => b.id);
+  const beneficiary = session.helperAccounts.find((h) => h.role === "beneficiary");
+  const sponsoredEntries = planned.sponsoredEntries.map((entry): PlaygroundSponsoredEntry => {
+    if (!beneficiary) throw new PlaygroundVerificationError("session_beneficiary_missing");
+    const owner = beneficiary.publicKey;
+    return entry.kind === "trustline"
+      ? { kind: "trustline", owner, asset: `${entry.asset}:${issuerOf(entry.asset)}` }
+      : { kind: "data_entry", owner, name: entry.name };
+  });
   const transfers: PlaygroundTransfer[] = [];
   const conversions: PlaygroundConversion[] = [];
   for (const { asset: code, choice, amount } of planned.dispositions) {
@@ -150,13 +197,17 @@ export function expectationFromSession(
     dataEntryCount: planned.dataEntries,
     transfers,
     conversions,
+    claims,
+    forfeits,
+    sponsoredEntries,
   };
 }
 
 /**
- * The most operations a session's close can need: a return payment and a trustline removal per
- * asset, one cancellation per offer, one removal per data entry and per recorded signer, the
- * threshold reset that follows signer removal, and the merge.
+ * The most operations a session's merge transaction can need: a return payment and a trustline
+ * removal per asset, one cancellation per offer, one removal per data entry and per recorded
+ * signer, one revoke per sponsored entry, the threshold reset that follows signer removal, and the
+ * merge.
  */
 export function maxOperations(expected: PlaygroundCloseExpectation): number {
   return (
@@ -164,6 +215,7 @@ export function maxOperations(expected: PlaygroundCloseExpectation): number {
     expected.offerCount +
     expected.dataEntryCount +
     expected.recordedSigners.length +
+    expected.sponsoredEntries.length +
     2
   );
 }
@@ -194,7 +246,9 @@ function sharedExpectation(expected: PlaygroundCloseExpectation): CloseExpectati
     nativeBalance: "0",
     memo: null,
     memoType: null,
-    claimTrustlineAssets: [],
+    claimTrustlineAssets: [
+      ...new Set(expected.claims.filter((c) => c.addTrustline).map((c) => c.asset)),
+    ],
     accountSigners: [expected.demoPublic, ...expected.recordedSigners].map((key) => ({
       key,
       weight: 1,
@@ -245,6 +299,81 @@ function assertWithinRecordedAmounts(
   }
 }
 
+type Operations = Transaction["operations"];
+
+const raisesTrustline = (op: Operations[number]): boolean =>
+  op.type === "changeTrust" && Number(op.limit) > 0;
+
+/**
+ * A transaction without a merge is the claim transaction, which a session that recorded claims
+ * may sign ahead of its close: nothing but claims of recorded balances, each once, and the
+ * trustlines their assets need, each once and followed later in the transaction by its claim.
+ */
+function assertClaimTransaction(ops: Operations, expected: PlaygroundCloseExpectation): void {
+  if (expected.claims.length === 0 || ops.length === 0) {
+    throw new PlaygroundVerificationError("merge_not_final");
+  }
+  const claimed = new Set<string>();
+  const added = new Set<string>();
+  ops.forEach((op, i) => {
+    if (op.type === "claimClaimableBalance") {
+      if (!expected.claims.some((c) => c.id === op.balanceId)) {
+        throw new PlaygroundVerificationError("claim_not_recorded");
+      }
+      if (claimed.has(op.balanceId)) throw new PlaygroundVerificationError("claim_duplicate");
+      claimed.add(op.balanceId);
+    } else if (op.type === "changeTrust" && raisesTrustline(op) && op.line instanceof Asset) {
+      const asset = assetKey(op.line);
+      const forAsset = expected.claims.filter((c) => c.addTrustline && c.asset === asset);
+      if (forAsset.length === 0) {
+        throw new PlaygroundVerificationError("claim_trustline_not_recorded");
+      }
+      if (added.has(asset)) throw new PlaygroundVerificationError("claim_trustline_duplicate");
+      added.add(asset);
+      const claimedLater = ops
+        .slice(i + 1)
+        .some(
+          (later) =>
+            later.type === "claimClaimableBalance" && forAsset.some((c) => c.id === later.balanceId)
+        );
+      if (!claimedLater) throw new PlaygroundVerificationError("claim_trustline_not_followed");
+    } else {
+      throw new PlaygroundVerificationError("merge_not_final");
+    }
+  });
+}
+
+/** In the merge transaction: no claim, no trustline added, and only recorded revokes, each once. */
+function assertMergeTransaction(ops: Operations, expected: PlaygroundCloseExpectation): void {
+  const revoked = new Set<string>();
+  for (const op of ops) {
+    if (op.type === "claimClaimableBalance") {
+      throw new PlaygroundVerificationError("claim_outside_claim_transaction");
+    }
+    if (raisesTrustline(op)) {
+      throw new PlaygroundVerificationError("trustline_add_outside_claim_transaction");
+    }
+    if (op.type !== "revokeTrustlineSponsorship" && op.type !== "revokeDataSponsorship") continue;
+    // Its source is already held to the demo by the shared verifier, like every operation's.
+    const entry =
+      op.type === "revokeTrustlineSponsorship"
+        ? expected.sponsoredEntries.find(
+            (e) =>
+              e.kind === "trustline" &&
+              e.owner === op.account &&
+              op.asset instanceof Asset &&
+              e.asset === assetKey(op.asset)
+          )
+        : expected.sponsoredEntries.find(
+            (e) => e.kind === "data_entry" && e.owner === op.account && e.name === op.name
+          );
+    if (!entry) throw new PlaygroundVerificationError("revoke_not_recorded");
+    const key = JSON.stringify(entry);
+    if (revoked.has(key)) throw new PlaygroundVerificationError("revoke_duplicate");
+    revoked.add(key);
+  }
+}
+
 export function verifyDemolishTransaction(
   tx: CloseTransaction,
   expected: PlaygroundCloseExpectation
@@ -253,6 +382,12 @@ export function verifyDemolishTransaction(
   const parsed = TransactionBuilder.fromXdr(tx.xdr, Networks.TESTNET);
   if (!(parsed instanceof Transaction)) {
     throw new PlaygroundVerificationError("fee_bump_not_allowed");
+  }
+
+  // Before the shared verifier, so this refusal does not depend on how it reads the operation.
+  // CAP-33: only a cooperating new sponsor can take a claimable balance's reserve over.
+  if (parsed.operations.some((op) => op.type === "revokeClaimableBalanceSponsorship")) {
+    throw new PlaygroundVerificationError("revoke_claimable_balance_refused");
   }
 
   verifyCloseTransaction({
@@ -265,6 +400,11 @@ export function verifyDemolishTransaction(
   if (!ops.every((op) => PLAYGROUND_CLOSE_OPERATION_TYPES.some((type) => type === op.type))) {
     throw new PlaygroundVerificationError("operation_not_allowed");
   }
+  if (!ops.some((op) => op.type === "accountMerge")) {
+    assertClaimTransaction(ops, expected);
+    return;
+  }
+  assertMergeTransaction(ops, expected);
   assertWithinRecordedAmounts(ops, expected);
   if (ops.length > maxOperations(expected)) {
     throw new PlaygroundVerificationError("too_many_operations");

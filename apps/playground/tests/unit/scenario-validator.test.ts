@@ -59,6 +59,9 @@ function synthetic(id: ScenarioId, cost: Partial<ScenarioCost>): ScenarioDefinit
           closeOperations: 1,
           operationTypes: ["setOptions"],
           dispositions: [],
+          arrivingAssets: [],
+          sponsoredEntries: [],
+          resolutions: [],
         },
         cost: {
           xlm: 0,
@@ -134,17 +137,26 @@ describe("the safety caps", () => {
     );
   });
 
-  test("the largest real selection stays inside every cap", () => {
-    const largest = pick(
-      ...SCENARIOS.map((def) => ({
-        id: def.id,
-        params: Object.fromEntries(Object.entries(def.params).map(([n, s]) => [n, s.max])),
-      }))
+  test("the largest real selections stay inside every cap", () => {
+    const atMax = SCENARIOS.map((def) => ({
+      id: def.id,
+      params: Object.fromEntries(Object.entries(def.params).map(([n, s]) => [n, s.max])),
+    }));
+    // Every scenario at once is one more than a demo may hold; each largest selection that fits
+    // the scenario cap, every scenario at its maximum, stays inside all the others.
+    expect(atMax).toHaveLength(MAX_SCENARIOS + 1);
+    expect(messageOf(pick(...atMax))).toBe(
+      `A demo can include at most ${MAX_SCENARIOS} scenarios.`
     );
-    const { cost } = resolvePlan(largest);
-    expect(cost.subEntries).toBe(18);
-    expect(cost.xlm).toBe(34);
-    expect(cost.seconds).toBe(186);
+    // Leaving out a token holding leaves five stale offers without the tokens they trade, which
+    // is refused for that reason and no cap.
+    let fitted = 0;
+    for (let left = 0; left < atMax.length; left++) {
+      const result = validateSelection(pick(...atMax.filter((_, i) => i !== left)));
+      if (result.ok) fitted++;
+      else expect(result.message).toStartWith("Stale DEX offers can post at most");
+    }
+    expect(fitted).toBe(6);
   });
 });
 
@@ -290,6 +302,9 @@ describe("the resolved plan", () => {
       closeOperations: 7,
       operationTypes: ["accountMerge", "payment", "changeTrust", "setOptions"],
       dispositions: [],
+      arrivingAssets: [],
+      sponsoredEntries: [],
+      resolutions: [],
     });
     expect(plan.cost.classicTransactions).toBe(plan.steps.length);
     expect(plan.cost.subEntries).toBe(4);

@@ -27,6 +27,7 @@ import {
   handleCredentials,
   handleDemolishRound,
   handleMess,
+  handleResolve,
   handleScenarios,
   handleState,
   parseCreateBody,
@@ -164,6 +165,31 @@ describe("create session", () => {
       request("/api/session", { body: body === undefined ? undefined : JSON.stringify(body) }),
       deps
     );
+
+  test("each helper the plan needs is created with an encrypted key, never returned", async () => {
+    const { deps, store, encrypted } = createDeps();
+    const res = await create(deps, {
+      selection: {
+        scenarios: [
+          { id: "claimable-balances", params: { demo_sponsored: 1 } },
+          { id: "sponsored-reserves", params: { variant: 0 } },
+        ],
+      },
+    });
+    const body = await jsonBody(res);
+    const stored = await store.loadSession(body.sessionId as string);
+    expect(stored?.helperAccounts.map((h) => h.role)).toEqual(["claimant", "sponsor"]);
+    expect(stored?.claimableBalances).toEqual([]);
+    for (const h of stored?.helperAccounts ?? []) {
+      const secret = encrypted.find((p) => Keypair.fromSecret(p).publicKey() === h.publicKey);
+      if (!secret) throw new Error("helper secret was not encrypted");
+      expect(h.encSecret).toBe(encrypt(secret));
+      expect(JSON.stringify(body)).not.toContain(secret);
+    }
+    expect((body.accounts as { helpers: unknown }).helpers).toEqual(
+      stored?.helperAccounts.map(({ role, publicKey }) => ({ role, publicKey }))
+    );
+  });
 
   test("a selection that transfers stores an encrypted recipient; any other stores none", async () => {
     const transferring = createDeps();
@@ -841,6 +867,224 @@ describe("demolish", () => {
   });
 });
 
+// ─── POST /api/session/[id]/resolve ─────────────────────────────────────────────
+
+describe("resolve", () => {
+  const claimant = Keypair.random();
+  const beneficiary = Keypair.random();
+  const perk = Keypair.random();
+  const SPONSORED_ID = `00000000${"5".repeat(64)}`;
+  const CLAIMS: ScenarioSelection = {
+    scenarios: [
+      { id: "claimable-balances", params: { add_trustline: 0, time_gated: 0, demo_sponsored: 1 } },
+    ],
+  };
+  const UNREVOCABLE: ScenarioSelection = {
+    scenarios: [{ id: "sponsored-reserves", params: { variant: 2 } }],
+  };
+  const helper = (role: "claimant" | "beneficiary", kp: Keypair) => ({
+    role,
+    publicKey: kp.publicKey(),
+    encSecret: encrypt(kp.secret()),
+  });
+
+  async function seedClaims(store: SessionStore, overrides: Partial<NewSessionData> = {}) {
+    return seed(store, {
+      selection: CLAIMS,
+      completedMessSteps: resolvePlan(CLAIMS).steps.map((st) => st.id),
+      helperAccounts: [helper("claimant", claimant)],
+      claimableBalances: [
+        { id: `00000000${"4".repeat(64)}`, asset: "BONUS:GISSUER", intent: "claim" },
+        { id: SPONSORED_ID, asset: "native", intent: "demo_sponsored" },
+      ],
+      ...overrides,
+    });
+  }
+
+  function resolveDeps(store: SessionStore, sent: [string, xdr.Operation[]][] = []) {
+    return {
+      store,
+      decrypt,
+      submit: async (source: Keypair, ops: xdr.Operation[]) => {
+        sent.push([source.publicKey(), ops]);
+        return "f".repeat(64);
+      },
+    };
+  }
+  const resolve = (id: string, body: unknown, deps: Parameters<typeof handleResolve>[2]) =>
+    handleResolve(
+      request(`/api/session/${id}/resolve`, {
+        body: typeof body === "string" ? body : JSON.stringify(body),
+      }),
+      id,
+      deps
+    );
+  const decoded = (ops: xdr.Operation[]) => ops.map((op) => Operation.fromXDRObject(op));
+
+  test("the claimant claims the balance the demo created, with its own key", async () => {
+    const store = memoryStore();
+    const seeded = await seedClaims(store);
+    const sent: [string, xdr.Operation[]][] = [];
+    const res = await resolve(
+      seeded.id,
+      { blocker: "sponsorship_claimable_balance_unrevocable" },
+      resolveDeps(store, sent)
+    );
+    expect(await outcome(res)).toEqual({
+      status: 200,
+      body: {
+        ok: true,
+        blocker: "sponsorship_claimable_balance_unrevocable",
+        txHash: "f".repeat(64),
+      },
+    });
+    expect(sent.map(([source]) => source)).toEqual([claimant.publicKey()]);
+    const [claim] = decoded(sent[0]![1]);
+    if (claim?.type !== "claimClaimableBalance") throw new Error("expected a claim");
+    expect(claim.balanceId).toBe(SPONSORED_ID);
+  });
+
+  test("the beneficiary releases its own sponsored entries, with its own key", async () => {
+    const store = memoryStore();
+    const seeded = await seed(store, {
+      selection: UNREVOCABLE,
+      ephemeralIssuers: [
+        { assetCode: "PERK", publicKey: perk.publicKey(), encSecret: encrypt(perk.secret()) },
+      ],
+      completedMessSteps: resolvePlan(UNREVOCABLE).steps.map((st) => st.id),
+      helperAccounts: [helper("beneficiary", beneficiary)],
+    });
+    const sent: [string, xdr.Operation[]][] = [];
+    const res = await resolve(
+      seeded.id,
+      { blocker: "sponsorship_unaffordable" },
+      resolveDeps(store, sent)
+    );
+    expect(res.status).toBe(200);
+    expect(sent.map(([source]) => source)).toEqual([beneficiary.publicKey()]);
+    const [trust, data] = decoded(sent[0]![1]);
+    if (trust?.type !== "changeTrust" || data?.type !== "manageData") {
+      throw new Error("expected a trustline and a data entry removal");
+    }
+    expect([trust.limit, data.name, data.value]).toEqual([
+      "0.0000000",
+      "sponsored_by_demo",
+      undefined,
+    ]);
+  });
+
+  test("a blocker the session's plan has no resolution for is refused, and nothing is sent", async () => {
+    const store = memoryStore();
+    const seeded = await seedClaims(store);
+    const sent: [string, xdr.Operation[]][] = [];
+    for (const blocker of ["sponsorship_unaffordable", "plan_blocker", "x".repeat(65), "", 7]) {
+      expect(
+        await outcome(await resolve(seeded.id, { blocker }, resolveDeps(store, sent)))
+      ).toEqual({
+        status: 400,
+        body: { error: "resolution_unavailable" },
+      });
+    }
+    expect(sent).toEqual([]);
+  });
+
+  test("a resolution the session has not recorded what it needs for is refused", async () => {
+    const variants: Partial<NewSessionData>[] = [
+      { claimableBalances: [] },
+      { helperAccounts: [] },
+      { completedMessSteps: ["SETUP"] },
+    ];
+    for (const overrides of variants) {
+      const store = memoryStore();
+      const seeded = await seedClaims(store, overrides);
+      const sent: [string, xdr.Operation[]][] = [];
+      expect(
+        await outcome(
+          await resolve(
+            seeded.id,
+            { blocker: "sponsorship_claimable_balance_unrevocable" },
+            resolveDeps(store, sent)
+          )
+        )
+      ).toEqual({ status: 409, body: { error: "resolution_not_recorded" } });
+      expect(sent).toEqual([]);
+    }
+  });
+
+  test("a resolution while a close transaction is in flight, or after the close, is refused", async () => {
+    const pending = {
+      txId: "t",
+      hash: "h",
+      summary: "s",
+      operations: [],
+      validUntil: null,
+      closesAccount: false,
+    };
+    for (const overrides of [{ demolishPending: pending }, { demolishDone: true }]) {
+      const store = memoryStore();
+      const seeded = await seedClaims(store, overrides);
+      const sent: [string, xdr.Operation[]][] = [];
+      expect(
+        await outcome(
+          await resolve(
+            seeded.id,
+            { blocker: "sponsorship_claimable_balance_unrevocable" },
+            resolveDeps(store, sent)
+          )
+        )
+      ).toEqual({ status: 409, body: { error: "demolish_in_progress" } });
+      expect(sent).toEqual([]);
+    }
+  });
+
+  test("a resolution while another request holds the session is refused, and nothing is sent", async () => {
+    const store = memoryStore();
+    const seeded = await seedClaims(store);
+    const held = await store.acquireLock(seeded.id);
+    if (!held) throw new Error("expected the lock");
+    const sent: [string, xdr.Operation[]][] = [];
+    expect(
+      await outcome(
+        await resolve(
+          seeded.id,
+          { blocker: "sponsorship_claimable_balance_unrevocable" },
+          resolveDeps(store, sent)
+        )
+      )
+    ).toEqual({ status: 409, body: { error: "step_in_progress" } });
+    expect(sent).toEqual([]);
+  });
+
+  test("a failed send is resolve_failed; a bad body is invalid_json; an unknown session is not found", async () => {
+    const store = memoryStore();
+    const seeded = await seedClaims(store);
+    const failing = {
+      ...resolveDeps(store),
+      submit: async () => {
+        throw new Error("op_does_not_exist");
+      },
+    };
+    expect(
+      await outcome(
+        await resolve(seeded.id, { blocker: "sponsorship_claimable_balance_unrevocable" }, failing)
+      )
+    ).toEqual({ status: 502, body: { error: "resolve_failed" } });
+    expect(await outcome(await resolve(seeded.id, "{", resolveDeps(store)))).toEqual({
+      status: 400,
+      body: { error: "invalid_json" },
+    });
+    expect(
+      await outcome(
+        await resolve(
+          UNKNOWN_ID,
+          { blocker: "sponsorship_claimable_balance_unrevocable" },
+          resolveDeps(store)
+        )
+      )
+    ).toEqual(NOT_FOUND);
+  });
+});
+
 // ─── POST /api/session/[id]/cleanup ────────────────────────────────────────────
 
 describe("cleanup", () => {
@@ -905,6 +1149,129 @@ describe("cleanup", () => {
     expect(await outcome(res)).toEqual({ status: 200, body: { ok: true, recycled: [] } });
     expect(merges).toBe(0);
     expect(await store.loadSession(seeded.id)).toBeNull();
+  });
+
+  describe("helpers and forfeited balances", () => {
+    test("a claimant or sponsor merges; a beneficiary releases its entries in its merge", async () => {
+      const store = memoryStore();
+      const perk = Keypair.random();
+      const [claimant, beneficiary] = [Keypair.random(), Keypair.random()];
+      const seeded = await seed(store, {
+        selection: {
+          scenarios: [
+            { id: "claimable-balances", params: { demo_sponsored: 1 } },
+            { id: "sponsored-reserves", params: { variant: 1 } },
+          ],
+        },
+        ephemeralIssuers: [
+          { assetCode: "PERK", publicKey: perk.publicKey(), encSecret: encrypt(perk.secret()) },
+        ],
+        helperAccounts: [
+          {
+            role: "claimant",
+            publicKey: claimant.publicKey(),
+            encSecret: encrypt(claimant.secret()),
+          },
+          {
+            role: "beneficiary",
+            publicKey: beneficiary.publicKey(),
+            encSecret: encrypt(beneficiary.secret()),
+          },
+        ],
+      });
+      const merges: string[] = [];
+      const submitted: [string, string[]][] = [];
+      const res = await handleCleanup(seeded.id, {
+        store,
+        mm: () => mm,
+        issuer: () => issuer,
+        decrypt,
+        merge: async (source) => {
+          merges.push(source.publicKey());
+        },
+        submit: async (source, ops) => {
+          submitted.push([source.publicKey(), ops.map((op) => Operation.fromXDRObject(op).type)]);
+        },
+      });
+      expect(await outcome(res)).toEqual({
+        status: 200,
+        body: {
+          ok: true,
+          recycled: [claimant.publicKey(), beneficiary.publicKey(), perk.publicKey()],
+        },
+      });
+      expect(submitted).toEqual([
+        [beneficiary.publicKey(), ["changeTrust", "manageData", "accountMerge"]],
+      ]);
+      expect(merges).toEqual([claimant.publicKey(), perk.publicKey()]);
+    });
+
+    test("a beneficiary whose entries are already gone merges plainly", async () => {
+      const store = memoryStore();
+      const perk = Keypair.random();
+      const beneficiary = Keypair.random();
+      const seeded = await seed(store, {
+        selection: { scenarios: [{ id: "sponsored-reserves", params: { variant: 2 } }] },
+        ephemeralIssuers: [
+          { assetCode: "PERK", publicKey: perk.publicKey(), encSecret: encrypt(perk.secret()) },
+        ],
+        helperAccounts: [
+          {
+            role: "beneficiary",
+            publicKey: beneficiary.publicKey(),
+            encSecret: encrypt(beneficiary.secret()),
+          },
+        ],
+      });
+      const merges: string[] = [];
+      await handleCleanup(seeded.id, {
+        store,
+        mm: () => mm,
+        issuer: () => issuer,
+        decrypt,
+        merge: async (source) => {
+          merges.push(source.publicKey());
+        },
+        submit: async () => {
+          throw new Error("op_no_trust");
+        },
+      });
+      expect(merges).toEqual([beneficiary.publicKey(), perk.publicKey()]);
+    });
+
+    test("an issuer claims back the balance the demo forfeited before it merges", async () => {
+      const store = memoryStore();
+      const bonus = Keypair.random();
+      const LATE = `00000000${"6".repeat(64)}`;
+      const seeded = await seed(store, {
+        selection: { scenarios: [{ id: "claimable-balances", params: { time_gated: 1 } }] },
+        ephemeralIssuers: [
+          { assetCode: "BONUS", publicKey: bonus.publicKey(), encSecret: encrypt(bonus.secret()) },
+        ],
+        claimableBalances: [
+          { id: `00000000${"7".repeat(64)}`, asset: `BONUS:${bonus.publicKey()}`, intent: "claim" },
+          { id: LATE, asset: `BONUS:${bonus.publicKey()}`, intent: "forfeit" },
+        ],
+      });
+      const order: string[] = [];
+      await handleCleanup(seeded.id, {
+        store,
+        mm: () => mm,
+        issuer: () => issuer,
+        decrypt,
+        merge: async (source) => {
+          order.push(`merge ${source.publicKey()}`);
+        },
+        submit: async (source, ops) => {
+          const claims = ops.map((op) => Operation.fromXDRObject(op));
+          for (const claim of claims) {
+            if (claim.type !== "claimClaimableBalance") throw new Error("expected a claim");
+            order.push(`claim ${source.publicKey()} ${claim.balanceId}`);
+          }
+        },
+      });
+      expect(order).toEqual([`claim ${bonus.publicKey()} ${LATE}`, `merge ${bonus.publicKey()}`]);
+    });
   });
 
   describe("the transfer recipient", () => {

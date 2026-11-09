@@ -20,7 +20,9 @@ import { verifyDemolishTransaction, type PlaygroundCloseExpectation } from "./ve
 
 /** The calls a demolish round makes to the LumenWipe API; `LumenWipeClient` provides them. */
 export interface DemolishApi {
-  closePlan(body: ClosePlanRequest): Promise<{ decisionPoints: DecisionPoint[] }>;
+  closePlan(
+    body: ClosePlanRequest
+  ): Promise<{ decisionPoints: DecisionPoint[]; blockers: { code: string }[] }>;
   closeTransactions(body: CloseTransactionsRequest): Promise<TransactionsResponse>;
   submit(signedXdr: string): Promise<{ hash: string }>;
   getTransaction(hash: string): Promise<TransactionLookupResponse>;
@@ -81,6 +83,46 @@ export class DemolishDecisionUnanswerableError extends Error {
   }
 }
 
+/** Plan blockers the close cannot build past, which stop the round before anything is built. */
+export class DemolishBlockedError extends Error {
+  constructor(readonly blockers: string[]) {
+    super("The close reported a blocker");
+    this.name = "DemolishBlockedError";
+  }
+}
+
+/**
+ * The one plan blocker a playground close builds past: a balance the session answered `forfeit`,
+ * which stays unclaimed after the merge by the session's own choice.
+ */
+const PASSABLE_BLOCKERS: ReadonlySet<string> = new Set(["claimable_balance_forfeited"]);
+
+/** The API's claimable-balance decision id (decisions.ts `claimableBalanceDecisionId`). */
+const claimDecisionId = (balanceId: string): string => `claim:${balanceId}`;
+
+/** The session's answer for a recorded balance, or null for one it never recorded. */
+function claimChoice(balanceId: string, expected: PlaygroundCloseExpectation): string | null {
+  const claim = expected.claims.find((c) => c.id === balanceId);
+  if (claim) return claim.addTrustline ? "add_trustline_then_claim" : "claim";
+  return expected.forfeits.includes(balanceId) ? "forfeit" : null;
+}
+
+/**
+ * The answers the plan itself needs to see the account as the close will leave it: the destination
+ * acknowledgement and a choice for every balance the session recorded, so a balance claimed
+ * through a new trustline already has its asset's disposition asked for.
+ */
+export function planAnswers(expected: PlaygroundCloseExpectation): DecisionAnswer[] {
+  const ids = [...expected.claims.map((c) => c.id), ...expected.forfeits];
+  return [
+    { id: destinationDecisionId(expected.sinkPublic), choice: DESTINATION_ACK_CHOICE },
+    ...ids.flatMap((id) => {
+      const choice = claimChoice(id, expected);
+      return choice ? [{ id: claimDecisionId(id), choice }] : [];
+    }),
+  ];
+}
+
 export interface DemolishDecisions {
   answers: DecisionAnswer[];
   /** The ids of the required points left unanswered. */
@@ -130,7 +172,13 @@ export function buildDemolishDecisions(
   for (const dp of decisionPoints) {
     if (dp.id === destinationId) continue;
     let answer: DecisionAnswer | null = null;
-    if (dp.type === "asset_disposition") {
+    if (dp.type === "claimable_balance") {
+      const { balanceId } = dp.subject;
+      if (typeof balanceId === "string" && dp.id === claimDecisionId(balanceId)) {
+        const choice = claimChoice(balanceId, expected);
+        if (choice) answer = { id: dp.id, choice };
+      }
+    } else if (dp.type === "asset_disposition") {
       // The point's own id already carries the API's encoding, so it is echoed back verbatim.
       const { kind, asset } = dp.subject;
       if (kind === "soroban_token") answer = { id: dp.id, choice: LEAVE_TOKEN_CHOICE };
@@ -207,7 +255,13 @@ export async function runCloseRound(
   const deps: CloseEngineDeps = {
     getTransactions: async () => {
       if (!decisions) {
-        const plan = await client.closePlan({ source: demoPublic, destination: sinkPublic });
+        const plan = await client.closePlan({
+          source: demoPublic,
+          destination: sinkPublic,
+          decisions: planAnswers(opts.expected),
+        });
+        const stops = plan.blockers.map((b) => b.code).filter((c) => !PASSABLE_BLOCKERS.has(c));
+        if (stops.length > 0) throw new DemolishBlockedError(stops);
         const built = buildDemolishDecisions(plan.decisionPoints, opts.expected);
         if (built.unanswerable.length > 0) {
           throw new DemolishDecisionUnanswerableError(built.unanswerable);

@@ -29,6 +29,8 @@ export function newSessionData(): NewSessionData {
     demolishDone: false,
     selection: selectionForMode("light"),
     transferRecipient: null,
+    helperAccounts: [],
+    claimableBalances: [],
   };
 }
 

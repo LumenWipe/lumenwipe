@@ -1,4 +1,4 @@
-import { test, expect } from "bun:test";
+import { describe, test, expect } from "bun:test";
 import {
   Keypair,
   Networks,
@@ -10,8 +10,12 @@ import {
   addForgottenSigner,
   loadAccountWithRetry,
   buildSignSubmit,
+  executeMessStep,
   TxSubmitError,
+  type ClaimableBalanceRecord,
+  type MessContext,
 } from "@/lib/mess-builders";
+import type { MessStepDef } from "@/lib/scenarios";
 
 const ADDR = "GBOYVOCQNI34T7IO6RPNE6RZCVD7WNTFJZJUEX64RSQF6IJT5NFDRGMN";
 const notFound = (addr: string) => new Error(`Account not found: ${addr}`);
@@ -190,4 +194,91 @@ test("addForgottenSigner sends nothing when the signer cannot be recorded", asyn
     )
   ).rejects.toThrow("store down");
   expect(submitted).toBe(false);
+});
+
+describe("claimable balances are recorded before each attempt is sent", () => {
+  const demo = Keypair.random();
+  const bonus = Keypair.random();
+  const claimant = Keypair.random();
+  const step: MessStepDef = {
+    id: "CLAIMABLE_BALANCES",
+    label: "Leave balances",
+    nodes: [],
+    balances: [],
+    action: {
+      kind: "claimable_balances",
+      claimantFundingXlm: "1.5",
+      balances: [
+        { asset: "BONUS", amount: "50", intent: "claim" },
+        { asset: "native", amount: "1", intent: "demo_sponsored" },
+      ],
+    },
+  };
+  function ctx(recorded: ClaimableBalanceRecord[][], events: string[]): MessContext {
+    return {
+      demo,
+      ephemeralIssuers: new Map([["BONUS", bonus]]),
+      persistentIssuer: Keypair.random(),
+      mmPublic: Keypair.random().publicKey(),
+      transferRecipient: null,
+      helpers: new Map([["claimant", claimant]]),
+      recordSigner: async () => {},
+      recordClaimableBalances: async (balances) => {
+        events.push("record");
+        recorded.push(balances);
+      },
+    };
+  }
+
+  test("each attempt's ids are the ones its signed transaction gives, recorded before it is sent", async () => {
+    const recorded: ClaimableBalanceRecord[][] = [];
+    const events: string[] = [];
+    const sent: Transaction[] = [];
+    let sequence = 1;
+    await executeMessStep(step, ctx(recorded, events), {
+      loadAccount: async () => ({ sequenceNumber: () => String(sequence++) }),
+      submit: async (signedXdr) => {
+        events.push("submit");
+        const tx = TransactionBuilder.fromXDR(signedXdr, Networks.TESTNET);
+        if (!(tx instanceof Transaction)) throw new Error("expected a transaction");
+        sent.push(tx);
+        if (sent.length === 1) throw new TxSubmitError("bad seq", "tx_bad_seq");
+        return { txHash: "landed" };
+      },
+      sleep: async () => {},
+    });
+    expect(events).toEqual(["record", "submit", "record", "submit"]);
+    // Attempts differ in sequence, so in ids: each record is its own attempt's.
+    expect(recorded).toEqual(
+      sent.map((tx) => [
+        { id: tx.getClaimableBalanceId(1), asset: `BONUS:${bonus.publicKey()}`, intent: "claim" },
+        { id: tx.getClaimableBalanceId(2), asset: "native", intent: "demo_sponsored" },
+      ])
+    );
+    expect(recorded[0]![0]!.id).not.toBe(recorded[1]![0]!.id);
+    const [create, bonusBalance, sponsored] = sent[1]!.operations;
+    expect([create?.type, bonusBalance?.source, sponsored?.source]).toEqual([
+      "createAccount",
+      bonus.publicKey(),
+      undefined,
+    ]);
+  });
+
+  test("nothing is sent when the balances cannot be recorded", async () => {
+    let submitted = false;
+    const failing = {
+      ...ctx([], []),
+      recordClaimableBalances: async () => Promise.reject(new Error("store down")),
+    };
+    await expect(
+      executeMessStep(step, failing, {
+        loadAccount: async () => ({ sequenceNumber: () => "1" }),
+        submit: async () => {
+          submitted = true;
+          return { txHash: "x" };
+        },
+      })
+    ).rejects.toThrow("store down");
+    expect(submitted).toBe(false);
+  });
 });
