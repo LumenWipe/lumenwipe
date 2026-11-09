@@ -219,7 +219,7 @@ export class CloseController {
 
   @ApiErrorResponse(
     400,
-    "Invalid network, or invalid or unsigned/undecodable transaction envelope.",
+    "Invalid network, an undecodable envelope, or a signature that names the source key and does not verify.",
     ["invalid_network", "invalid_signed_xdr", "invalid_signature", "invalid_body"]
   )
   @ApiErrorResponse(422, "The network rejected the transaction. Nothing in it took effect.", [

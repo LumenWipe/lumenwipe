@@ -1879,7 +1879,7 @@
             }
           },
           "400": {
-            "description": "Invalid network, or invalid or unsigned/undecodable transaction envelope.",
+            "description": "Invalid network, an undecodable envelope, or a signature that names the source key and does not verify.",
             "content": {
               "application/json": {
                 "schema": {
