@@ -24,6 +24,7 @@ import {
   maxOperations,
   PLAYGROUND_CLOSE_OPERATION_TYPES,
   PlaygroundVerificationError,
+  sessionThresholds,
   verifyDemolishTransaction,
   type PlaygroundCloseExpectation,
 } from "@/lib/verify";
@@ -479,6 +480,11 @@ describe("a multi-signature session's signer removal round", () => {
       "preauth_tx",
     ]);
     expect(expectation().raisesThresholds).toBe(false);
+  });
+
+  test("the account thresholds handed to the shared verifier are the ones the plan sets", () => {
+    expect(sessionThresholds(ALL)).toEqual({ low: 2, med: 2, high: 2 });
+    expect(sessionThresholds(expectation())).toEqual({ low: 0, med: 0, high: 0 });
   });
 
   test("removing every recorded signer, of each type, then the reset is accepted", () => {

@@ -10,6 +10,7 @@ import type { CloseTransaction } from "@lumenwipe/sdk";
 import {
   conversionFloorStroops,
   isPersistentAsset,
+  MULTISIG_THRESHOLD,
   resolvePlan,
   type CloseOperationType,
 } from "./scenarios";
@@ -234,6 +235,19 @@ export function maxOperations(expected: PlaygroundCloseExpectation): number {
   );
 }
 
+/**
+ * The thresholds the session's own plan leaves on the demo: the account is created with 0/0/0,
+ * and only a multi-signature step raises them, to `MULTISIG_THRESHOLD` in every category.
+ */
+export function sessionThresholds(expected: PlaygroundCloseExpectation): {
+  low: number;
+  med: number;
+  high: number;
+} {
+  const t = expected.raisesThresholds ? MULTISIG_THRESHOLD : 0;
+  return { low: t, med: t, high: t };
+}
+
 function sharedExpectation(expected: PlaygroundCloseExpectation): CloseExpectationInput {
   const transfers: Record<string, TransferChoice> = {};
   const classicConversions: Record<string, { minAmountOut: string }> = {};
@@ -267,8 +281,7 @@ function sharedExpectation(expected: PlaygroundCloseExpectation): CloseExpectati
       { key: expected.demoPublic, type: "ed25519_public_key" as const },
       ...expected.recordedSigners,
     ].map(({ key, type }) => ({ key, type, weight: 1 })),
-    // The playground creates the demo account and never sets its thresholds.
-    accountThresholds: { low: 0, med: 0, high: 0 },
+    accountThresholds: sessionThresholds(expected),
     transfers,
     tokenTransfers: {},
     classicConversions,
