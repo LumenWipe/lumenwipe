@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { Keypair, Operation } from "@stellar/stellar-sdk";
 import { decryptSecret } from "@/lib/crypto";
-import { deleteSession } from "@/lib/session-store";
-import { loadSessionOrErrorResponse } from "@/lib/route-helpers";
+import { sessionStore } from "@/lib/session-store";
+import { actionResponse } from "@/lib/route-helpers";
+import { runCleanup } from "@/lib/session-actions";
 import { getPlaygroundMmKeypair } from "@/lib/accounts";
 import { buildSignSubmit } from "@/lib/mess-builders";
 
@@ -15,24 +16,23 @@ export const maxDuration = 60;
  */
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = await loadSessionOrErrorResponse(id);
-  if (session instanceof NextResponse) return session;
-
   const mm = getPlaygroundMmKeypair();
-  const recycled: string[] = [];
 
-  if (mm) {
-    for (const eph of session.ephemeralIssuers) {
-      try {
-        const kp = Keypair.fromSecret(decryptSecret(eph.encSecret));
-        await buildSignSubmit(kp, [Operation.accountMerge({ destination: mm.publicKey() })]);
-        recycled.push(eph.publicKey);
-      } catch (err) {
-        console.error(`[playground] cleanup merge failed for ${eph.publicKey}:`, err);
+  const result = await runCleanup(sessionStore, id, {
+    recycle: async (session) => {
+      const recycled: string[] = [];
+      if (!mm) return recycled;
+      for (const eph of session.ephemeralIssuers) {
+        try {
+          const kp = Keypair.fromSecret(decryptSecret(eph.encSecret));
+          await buildSignSubmit(kp, [Operation.accountMerge({ destination: mm.publicKey() })]);
+          recycled.push(eph.publicKey);
+        } catch (err) {
+          console.error(`[playground] cleanup merge failed for ${eph.publicKey}:`, err);
+        }
       }
-    }
-  }
-
-  await deleteSession(id);
-  return NextResponse.json({ ok: true, recycled });
+      return recycled;
+    },
+  });
+  return actionResponse(result);
 }

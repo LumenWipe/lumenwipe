@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { Keypair } from "@stellar/stellar-sdk";
 import { encryptSecret, PlaygroundConfigError } from "@/lib/crypto";
 import {
-  createSession,
   sessionExpiresAt,
+  sessionStore,
   PlaygroundStoreUnavailableError,
 } from "@/lib/session-store";
 import { getPlaygroundIssuerKeypair, getPlaygroundMmKeypair } from "@/lib/accounts";
@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const session = await createSession({
+    const session = await sessionStore.createSession({
       demoPublic: demo.publicKey(),
       encDemoSecret: encryptSecret(demo.secret()),
       ephemeralIssuers: ephemeral.map((e) => ({

@@ -1,10 +1,8 @@
 import "server-only";
 import { v4 as uuidv4 } from "uuid";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import type { IntentOperation } from "@lumenwipe/sdk";
-import { isRedisConfigured, redis } from "./upstash-redis";
+import { isRedisConfigured } from "./upstash-redis";
+import { DEV_STORE_FILE, devFileKv, upstashKv, type SessionKv } from "./kv";
 
 // Server-only custodial session storage for the testnet playground.
 // Secrets are stored AES-256-GCM-encrypted (see ./crypto). Sessions expire
@@ -12,10 +10,20 @@ import { isRedisConfigured, redis } from "./upstash-redis";
 
 export const SESSION_TTL_SECONDS = 3600;
 
+/** Longer than any route's maxDuration, so a request the platform kills frees its session soon after. */
+export const SESSION_LOCK_TTL_MS = 150_000;
+
 export interface EphemeralIssuer {
   publicKey: string;
   encSecret: string;
   assetCode: string;
+}
+
+export interface DemolishLogEntry {
+  txId: string;
+  hash: string;
+  summary: string;
+  operations: IntentOperation[];
 }
 
 export interface PlaygroundSession {
@@ -24,12 +32,9 @@ export interface PlaygroundSession {
   encDemoSecret: string;
   ephemeralIssuers: EphemeralIssuer[];
   completedMessSteps: string[];
-  /** Confirmed demolish transaction hashes plus each transaction's operations
-   *  (already present on every CloseTransaction the real API returns, built
-   *  for apps/web's verify() - no new data, just no longer discarded), so
-   *  the frontend can replay the close operation-by-operation instead of only
-   *  transaction-by-transaction. */
-  demolishLog: { txId: string; hash: string; summary: string; operations: IntentOperation[] }[];
+  /** Confirmed demolish transaction hashes plus each transaction's operations, so the frontend can
+   *  replay the close operation-by-operation instead of only transaction-by-transaction. */
+  demolishLog: DemolishLogEntry[];
   demolishDone: boolean;
   createdAt: number;
   fundRareAssets: string[];
@@ -37,36 +42,12 @@ export interface PlaygroundSession {
   dataEntryCount: number;
 }
 
-const sessionKey = (id: string) => `playground:session:${id}`;
+export type NewSessionData = Omit<PlaygroundSession, "id" | "createdAt">;
+export type SessionPatch = Partial<Omit<PlaygroundSession, "id" | "createdAt">>;
 
-// Dev-only fallback so the playground works locally without Upstash Redis.
-// Not used in production: there we fail loudly instead of silently losing
-// sessions across serverless instances.
-//
-// Backed by a file, not an in-process Map: Next.js dev compiles each API
-// route as its own module graph, so a module-level Map does not survive a
-// request that touches a different route than the one that created it -
-// POST /api/session and POST /api/session/[id]/mess never actually shared
-// state, so "session_not_found" fired on the very first mess step in local
-// dev, even though the unit tests (which run in one process, no per-route
-// recompilation) never exercised this. The filesystem lives outside any
-// module's memory, so it survives across routes the same way real Redis would.
-type DevStoreEntry = { session: PlaygroundSession; expiresAt: number };
-type DevStore = Record<string, DevStoreEntry>;
-const DEV_STORE_FILE = join(tmpdir(), "lumenwipe-playground-dev-sessions.json");
-let warnedMemoryFallback = false;
-
-function readDevStore(): DevStore {
-  try {
-    if (!existsSync(DEV_STORE_FILE)) return {};
-    return JSON.parse(readFileSync(DEV_STORE_FILE, "utf8")) as DevStore;
-  } catch {
-    return {};
-  }
-}
-
-function writeDevStore(store: DevStore): void {
-  writeFileSync(DEV_STORE_FILE, JSON.stringify(store), "utf8");
+export interface SessionLock {
+  sessionId: string;
+  token: string;
 }
 
 export class PlaygroundStoreUnavailableError extends Error {
@@ -76,70 +57,89 @@ export class PlaygroundStoreUnavailableError extends Error {
   }
 }
 
-function assertStoreAvailable(): void {
-  if (isRedisConfigured()) return;
-  if (process.env.NODE_ENV === "production") {
-    throw new PlaygroundStoreUnavailableError();
+export class SessionLockLostError extends Error {
+  constructor(sessionId: string) {
+    super(`Session ${sessionId} lock expired or was taken over before the update`);
+    this.name = "SessionLockLostError";
   }
-  if (!warnedMemoryFallback) {
-    warnedMemoryFallback = true;
+}
+
+export interface SessionStore {
+  createSession(data: NewSessionData): Promise<PlaygroundSession>;
+  loadSession(id: string): Promise<PlaygroundSession | null>;
+  /** The one exclusive lock per session that every mutating action holds; null when it is taken. */
+  acquireLock(id: string): Promise<SessionLock | null>;
+  releaseLock(lock: SessionLock): Promise<void>;
+  /** Read-modify-write of the session, refused with SessionLockLostError unless `lock` is still held. */
+  updateSession(
+    lock: SessionLock,
+    patch: (session: PlaygroundSession) => SessionPatch
+  ): Promise<PlaygroundSession>;
+  deleteSession(lock: SessionLock): Promise<void>;
+}
+
+const sessionKey = (id: string): string => `playground:session:${id}`;
+const lockKey = (id: string): string => `playground:session-lock:${id}`;
+
+export function createSessionStore(resolveKv: () => SessionKv): SessionStore {
+  const loadSession = async (id: string): Promise<PlaygroundSession | null> => {
+    const value = await resolveKv().get(sessionKey(id));
+    return (value as PlaygroundSession | null) ?? null;
+  };
+
+  return {
+    async createSession(data) {
+      const session: PlaygroundSession = { ...data, id: uuidv4(), createdAt: Date.now() };
+      await resolveKv().set(sessionKey(session.id), session, SESSION_TTL_SECONDS);
+      return session;
+    },
+    loadSession,
+    async acquireLock(id) {
+      const lock = { sessionId: id, token: uuidv4() };
+      const acquired = await resolveKv().acquire(lockKey(id), lock.token, SESSION_LOCK_TTL_MS);
+      return acquired ? lock : null;
+    },
+    async releaseLock(lock) {
+      await resolveKv().releaseIfHeld(lockKey(lock.sessionId), lock.token);
+    },
+    async updateSession(lock, patch) {
+      const current = await loadSession(lock.sessionId);
+      if (!current) throw new Error(`Session ${lock.sessionId} no longer exists`);
+      const next: PlaygroundSession = { ...current, ...patch(current) };
+      const written = await resolveKv().setIfLockHeld(
+        lockKey(lock.sessionId),
+        lock.token,
+        sessionKey(lock.sessionId),
+        next,
+        SESSION_TTL_SECONDS
+      );
+      if (!written) throw new SessionLockLostError(lock.sessionId);
+      return next;
+    },
+    async deleteSession(lock) {
+      await resolveKv().del(sessionKey(lock.sessionId));
+    },
+  };
+}
+
+let warnedDevFallback = false;
+
+// Production fails loudly without Redis instead of silently losing sessions across serverless
+// instances; dev and test fall back to a file.
+function resolveDefaultKv(): SessionKv {
+  if (isRedisConfigured()) return upstashKv();
+  if (process.env.NODE_ENV === "production") throw new PlaygroundStoreUnavailableError();
+  if (!warnedDevFallback) {
+    warnedDevFallback = true;
     console.warn(
       `[playground] Upstash Redis not configured - using a file-backed dev session store at ${DEV_STORE_FILE} ` +
         "(dev/test only). Sessions are lost when that file is removed."
     );
   }
+  return devFileKv();
 }
 
-export async function createSession(
-  data: Omit<PlaygroundSession, "id" | "createdAt">
-): Promise<PlaygroundSession> {
-  assertStoreAvailable();
-  const session: PlaygroundSession = { ...data, id: uuidv4(), createdAt: Date.now() };
-  await saveSession(session);
-  return session;
-}
-
-export async function loadSession(id: string): Promise<PlaygroundSession | null> {
-  assertStoreAvailable();
-  if (!isRedisConfigured()) {
-    const store = readDevStore();
-    const entry = store[sessionKey(id)];
-    if (!entry) return null;
-    if (entry.expiresAt < Date.now()) {
-      delete store[sessionKey(id)];
-      writeDevStore(store);
-      return null;
-    }
-    return entry.session;
-  }
-  return redis().get<PlaygroundSession>(sessionKey(id));
-}
-
-/** Persists the session and refreshes its TTL. */
-export async function saveSession(session: PlaygroundSession): Promise<void> {
-  assertStoreAvailable();
-  if (!isRedisConfigured()) {
-    const store = readDevStore();
-    store[sessionKey(session.id)] = {
-      session,
-      expiresAt: Date.now() + SESSION_TTL_SECONDS * 1000,
-    };
-    writeDevStore(store);
-    return;
-  }
-  await redis().set(sessionKey(session.id), session, { ex: SESSION_TTL_SECONDS });
-}
-
-export async function deleteSession(id: string): Promise<void> {
-  assertStoreAvailable();
-  if (!isRedisConfigured()) {
-    const store = readDevStore();
-    delete store[sessionKey(id)];
-    writeDevStore(store);
-    return;
-  }
-  await redis().del(sessionKey(id));
-}
+export const sessionStore: SessionStore = createSessionStore(resolveDefaultKv);
 
 /** Seconds until the session expires (for the client countdown). */
 export function sessionExpiresAt(): number {
