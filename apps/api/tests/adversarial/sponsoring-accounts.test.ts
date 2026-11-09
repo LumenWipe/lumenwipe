@@ -99,6 +99,7 @@ test("build-transactions refuses a sponsorship the live re-read marks unaffordab
   // the entry at the merge (ACCOUNT_MERGE_IS_SPONSOR): the build is refused instead.
   spyOn(sponsorshipAffordabilityModule, "assessSponsorshipAffordability").mockResolvedValue({
     revocable: [],
+    unverifiedOwners: [],
     unaffordableOwners: new Map([[OWNER, { entries: SPONSORED_ENTRIES, shortfallXlm: "5" }]]),
   });
 
@@ -126,6 +127,7 @@ test("build-transactions includes the revoke when the live read confirms it's af
   spyOn(rpcModule, "getRpcServer").mockReturnValue(rpcServerStub());
   spyOn(sponsorshipAffordabilityModule, "assessSponsorshipAffordability").mockResolvedValue({
     revocable: SPONSORED_ENTRIES,
+    unverifiedOwners: [],
     unaffordableOwners: new Map(),
   });
 

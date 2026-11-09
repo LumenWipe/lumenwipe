@@ -139,6 +139,7 @@ export class CloseController {
       "sponsorship_claimable_balance_unrevocable",
       "sponsorship_unaffordable",
       "sponsorship_unenumerated",
+      "sponsorship_unverified",
       "issuer_supply_not_acknowledged",
       "claimable_balance_not_claimable_now",
       "claimable_balances_too_many",

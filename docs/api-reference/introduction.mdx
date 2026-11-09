@@ -211,6 +211,7 @@ Each endpoint page lists the codes that endpoint can return. Every error respons
 | `sponsorship_claimable_balance_unrevocable`   | 422    | The account sponsors a claimable balance, which it cannot revoke until a claimant claims it.                                   |
 | `sponsorship_unaffordable`                    | 422    | Revoking a sponsorship would leave the sponsored account below its minimum balance.                                            |
 | `sponsorship_unenumerated`                    | 422    | The account sponsors entries on other accounts that could not all be listed, so it cannot be merged yet.                       |
+| `sponsorship_unverified`                      | 422    | An account this one sponsors entries on could not be read, so the sponsorship cannot be revoked yet. Retry.                    |
 | `state_changed`                               | 409    | The account changed between reading and building. Nothing was submitted; plan again.                                           |
 | `stats_unavailable`                           | 503    | The stats store is unreachable. Retry.                                                                                         |
 | `subentries_unenumerated`                     | 422    | The account has entries that could not be listed, so the close cannot remove them.                                             |

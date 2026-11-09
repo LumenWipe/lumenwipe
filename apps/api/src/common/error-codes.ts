@@ -117,6 +117,7 @@ export const ERROR_CODES = [
   "sponsorship_claimable_balance_unrevocable",
   "sponsorship_unaffordable",
   "sponsorship_unenumerated",
+  "sponsorship_unverified",
   "state_changed",
   "stats_unavailable",
   "subentries_unenumerated",

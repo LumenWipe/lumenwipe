@@ -281,6 +281,7 @@ export function buildPlan(
   claimableBalanceSelections: Record<string, ClaimableBalanceSelection> = {},
   sponsorshipAffordability: SponsorshipAffordability = {
     revocable: [],
+    unverifiedOwners: [],
     unaffordableOwners: new Map(),
   },
   /** The user's per-asset choice, keyed by the canonical `CODE:ISSUER` asset string. Only the
@@ -367,6 +368,14 @@ export function buildPlan(
             `leave that account below its minimum balance - it needs ${info.shortfallXlm} more XLM first.`,
         });
       }
+    }
+    for (const owner of sponsorshipAffordability.unverifiedOwners) {
+      blockers.push({
+        code: "sponsorship_unverified",
+        message:
+          `${shortAddr(owner)}, an account this one sponsors entries on, could not be read, so ` +
+          "whether those sponsorships can be revoked is unknown. Retry in a moment.",
+      });
     }
   }
 

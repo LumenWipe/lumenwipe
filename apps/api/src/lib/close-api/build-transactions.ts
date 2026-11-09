@@ -348,7 +348,7 @@ export async function buildCloseTransactions(
     server.getLatestLedger(),
     assessIssuance(accountState.address, network, issuer.deps),
     accountState.sponsorshipEnumerationIncomplete
-      ? Promise.resolve({ revocable: [], unaffordableOwners: new Map() })
+      ? Promise.resolve({ revocable: [], unverifiedOwners: [], unaffordableOwners: new Map() })
       : assessSponsorshipAffordability(accountState.address, nonClaimableSponsoredEntries, network),
   ]);
   const issuanceBlockers = assessIssuanceBlockers(issuance, issuer.acknowledged ?? false);

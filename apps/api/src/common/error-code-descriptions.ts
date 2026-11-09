@@ -134,6 +134,8 @@ export const ERROR_CODE_DESCRIPTIONS: Record<ErrorCode, string> = {
     "Revoking a sponsorship would leave the sponsored account below its minimum balance.",
   sponsorship_unenumerated:
     "The account sponsors entries on other accounts that could not all be listed, so it cannot be merged yet.",
+  sponsorship_unverified:
+    "An account this one sponsors entries on could not be read, so the sponsorship cannot be revoked yet. Retry.",
   state_changed:
     "The account changed between reading and building. Nothing was submitted; plan again.",
   stats_unavailable: "The stats store is unreachable. Retry.",

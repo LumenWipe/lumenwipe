@@ -791,6 +791,7 @@ test("buildPlan › affordable sponsored entry → REVOKE_SPONSORSHIP step, no s
     {},
     {
       revocable: [entry],
+      unverifiedOwners: [],
       unaffordableOwners: new Map(),
     }
   );
@@ -813,6 +814,7 @@ test("buildPlan › unaffordable sponsored entry → per-owner blocker, no REVOK
     {},
     {
       revocable: [],
+      unverifiedOwners: [],
       unaffordableOwners: new Map([
         [SPONSORED_OWNER, { entries: [entry], shortfallXlm: "0.5000000" }],
       ]),
@@ -846,6 +848,7 @@ test("buildPlan › mixed affordable + unaffordable owners → partial resolutio
     {},
     {
       revocable: [affordableEntry],
+      unverifiedOwners: [],
       unaffordableOwners: new Map([
         [SPONSORED_OWNER, { entries: [unaffordableEntry], shortfallXlm: "0.5000000" }],
       ]),
@@ -875,6 +878,7 @@ test("buildPlan › sponsorshipEnumerationIncomplete → old blanket blocker, ig
     {},
     {
       revocable: [entry], // even though the caller says it's affordable, incompleteness wins
+      unverifiedOwners: [],
       unaffordableOwners: new Map(),
     }
   );
@@ -896,6 +900,7 @@ test("buildPlan › claimable-balance sponsorship is always a permanent blocker,
     {},
     {
       revocable: [],
+      unverifiedOwners: [],
       unaffordableOwners: new Map(),
     }
   );
@@ -936,7 +941,7 @@ test("buildPlan › step indices are sequential from 0 across every non-fused st
     false,
     false,
     { [makeClaimableBalance(`EURC:${ISSUER}`).id]: "add_trustline_then_claim" },
-    { revocable: [entry], unaffordableOwners: new Map() }
+    { revocable: [entry], unverifiedOwners: [], unaffordableOwners: new Map() }
   );
   expect(steps.length).toBeGreaterThan(5);
   steps.forEach((s, i) => expect(s.index).toBe(i));
@@ -963,6 +968,7 @@ test("buildPlan › unaffordable-owner blocker names the entry kind and shortens
     {},
     {
       revocable: [],
+      unverifiedOwners: [],
       unaffordableOwners: new Map([[owner, { entries: [entry], shortfallXlm: "1.5000000" }]]),
     }
   );
@@ -971,6 +977,27 @@ test("buildPlan › unaffordable-owner blocker names the entry kind and shortens
     `Revoking sponsorship of an account creation on ${owner.slice(0, 8)}…${owner.slice(-8)} would ` +
       `leave that account below its minimum balance - it needs 1.5000000 more XLM first.`
   );
+});
+
+test("buildPlan › a sponsored owner that could not be read blocks as unverified, retryable", () => {
+  const owner = Keypair.random().publicKey();
+  const entry: SponsoredEntry = { kind: "trustline", owner, asset: `USDC:${ISSUER}` };
+  const account = makeAccount({ numSponsoring: 1, sponsoredEntries: [entry] });
+  const { blockers } = buildPlan(
+    ALL_ON,
+    account,
+    false,
+    false,
+    {},
+    {
+      revocable: [],
+      unverifiedOwners: [owner],
+      unaffordableOwners: new Map(),
+    }
+  );
+  expect(blockers.map((b) => b.code)).toEqual(["sponsorship_unverified"]);
+  expect(blockers[0]!.message).toContain(`${owner.slice(0, 8)}…${owner.slice(-8)}`);
+  expect(blockers[0]!.message).toContain("Retry");
 });
 
 test.each([
@@ -991,6 +1018,7 @@ test.each([
     {},
     {
       revocable: [],
+      unverifiedOwners: [],
       unaffordableOwners: new Map([[owner, { entries: [entry], shortfallXlm: "1.0000000" }]]),
     }
   );
@@ -1139,6 +1167,7 @@ test("buildPlan › a single REVOKE_SPONSORSHIP batch has no '(batch n/m)' suffi
     {},
     {
       revocable: [entry],
+      unverifiedOwners: [],
       unaffordableOwners: new Map(),
     }
   );
@@ -1164,6 +1193,7 @@ test("buildPlan › 101 revocable sponsorships → 2 REVOKE_SPONSORSHIP batches,
     {},
     {
       revocable: entries,
+      unverifiedOwners: [],
       unaffordableOwners: new Map(),
     }
   );
@@ -1373,7 +1403,7 @@ test("buildPlan › fused close is refused when sponsoredEntries is non-empty ev
     false,
     true,
     {},
-    { revocable: [entry], unaffordableOwners: new Map() }
+    { revocable: [entry], unverifiedOwners: [], unaffordableOwners: new Map() }
   );
   expect(steps.some((s) => s.type === "CLOSE_ACCOUNT")).toBe(false);
 });
@@ -1488,6 +1518,7 @@ test("buildPlan › sponsored claimable-balance blocker message is exact", () =>
     {},
     {
       revocable: [],
+      unverifiedOwners: [],
       unaffordableOwners: new Map(),
     }
   );
@@ -1620,6 +1651,7 @@ test("buildPlan › describes a claimable_balance sponsored entry (even though b
     {},
     {
       revocable: [],
+      unverifiedOwners: [],
       unaffordableOwners: new Map([[owner, { entries: [entry], shortfallXlm: "1.0000000" }]]),
     }
   );

@@ -201,6 +201,7 @@ test("buildCloseTransactions › sponsored entry the live re-read marks revocabl
     rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
   spyOn(sponsorshipAffordability, "assessSponsorshipAffordability").mockResolvedValue({
     revocable: [SPONSORED_ENTRY],
+    unverifiedOwners: [],
     unaffordableOwners: new Map(),
   });
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
@@ -219,6 +220,7 @@ test("buildCloseTransactions › sponsored entry the live re-read marks unafford
     rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
   spyOn(sponsorshipAffordability, "assessSponsorshipAffordability").mockResolvedValue({
     revocable: [],
+    unverifiedOwners: [],
     unaffordableOwners: new Map([
       [ISSUER, { entries: [SPONSORED_ENTRY], shortfallXlm: "0.5000000" }],
     ]),

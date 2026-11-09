@@ -74,6 +74,7 @@ function stubRpc(): void {
 function unaffordable() {
   return spyOn(sponsorshipAffordability, "assessSponsorshipAffordability").mockResolvedValue({
     revocable: [],
+    unverifiedOwners: [],
     unaffordableOwners: new Map([[OWNER, { entries: [SPONSORED], shortfallXlm: "1.0000000" }]]),
   });
 }
@@ -177,6 +178,37 @@ describe("close/transactions refuses a plan blocker the merge cannot get past", 
         [balance.id]: "add_trustline_then_claim",
       })
     ).rejects.toMatchObject({ code: "sponsorship_unaffordable" });
+  });
+});
+
+describe("close/transactions and a sponsored account that could not be read", () => {
+  const sponsoring = () => state({ numSponsoring: 1, sponsoredEntries: [SPONSORED] });
+
+  test("the failed read refuses the build with sponsorship_unverified", async () => {
+    stubRpc();
+    spyOn(sponsorshipAffordability, "assessSponsorshipAffordability").mockResolvedValue({
+      revocable: [],
+      unaffordableOwners: new Map(),
+      unverifiedOwners: [OWNER],
+    });
+    await expect(
+      buildCloseTransactions(ALL_ON, sponsoring(), DEST, {}, "testnet")
+    ).rejects.toMatchObject({ code: "sponsorship_unverified", status: 422 });
+  });
+
+  test("a successful read of the same state builds the revoke and the merge", async () => {
+    stubRpc();
+    spyOn(sponsorshipAffordability, "assessSponsorshipAffordability").mockResolvedValue({
+      revocable: [SPONSORED],
+      unaffordableOwners: new Map(),
+      unverifiedOwners: [],
+    });
+    const result = await buildCloseTransactions(ALL_ON, sponsoring(), DEST, {}, "testnet");
+    const types = result.transactions.flatMap((t) =>
+      TransactionBuilder.fromXDR(t.xdr, Networks.TESTNET).operations.map((op) => op.type)
+    );
+    expect(types).toContain("revokeTrustlineSponsorship");
+    expect(types).toContain("accountMerge");
   });
 });
 
