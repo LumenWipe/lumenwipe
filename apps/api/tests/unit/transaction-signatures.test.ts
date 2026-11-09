@@ -137,3 +137,27 @@ test("close/submit refuses a signature that names the source key but does not ve
   });
   expect(sends()).toBe(0);
 });
+
+test("close/submit answers an envelope the network refuses for signing weight with a plain-language 422", async () => {
+  const badAuth = {
+    status: "ERROR",
+    errorResult: new xdr.TransactionResult({
+      feeCharged: 100n,
+      result: xdr.TransactionResultResult.txBadAuth(),
+      ext: xdr.TransactionResultExt.v0(),
+    }),
+  };
+  const { server, sends } = serverSending(badAuth);
+  expect(
+    await rejection(controllerOn(server).submit("testnet", { signedXdr: unsigned().toXDR() }))
+  ).toEqual({
+    status: 422,
+    error: {
+      code: "submit_rejected",
+      message:
+        "The signatures on this transaction do not reach the signing weight the account requires. Check that every required signer signed it, or that a pasted pre-authorized transaction is the exact one the account authorized.",
+      details: { resultCode: "tx_bad_auth" },
+    },
+  });
+  expect(sends()).toBe(1);
+});

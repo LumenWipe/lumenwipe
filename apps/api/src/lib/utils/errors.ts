@@ -43,7 +43,7 @@ const RESULT_CODE_MESSAGES: Record<string, string> = {
 
   // ── Transaction-level codes ─────────────────────────────────────────────────
   tx_bad_auth:
-    "The transaction signature does not meet the account's authorization requirements. Make sure you're using the correct secret key.",
+    "The signatures on this transaction do not reach the signing weight the account requires. Check that every required signer signed it, or that a pasted pre-authorized transaction is the exact one the account authorized.",
   tx_insufficient_fee: "The network fee was too low. Please retry.",
   tx_bad_seq: "Sequence number mismatch. Please retry - the account state has changed.",
   tx_no_account: "The source account does not exist on the network.",
