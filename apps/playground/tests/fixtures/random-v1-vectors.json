@@ -1,0 +1,1827 @@
+{
+  "generatorVersion": 1,
+  "vectors": [
+    {
+      "code": "LW1-00000000",
+      "seed": 0,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 3
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-0G847JZV",
+      "seed": 17452747771,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 3
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 1
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-10G8F5ZP",
+      "seed": 34905495542,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 4
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-1GRCPRZH",
+      "seed": 52358243313,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 4
+            }
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-210GYBZC",
+      "seed": 69810991084,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 4
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-2H8N5YZ7",
+      "seed": 87263738855,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-31GSDHZ2",
+      "seed": 104716486626,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 2
+            }
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-3HRXN4YX",
+      "seed": 122169234397,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 1
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 3
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-4211WQYR",
+      "seed": 139621982168,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 5
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-4J964AYK",
+      "seed": 157074729939,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 4
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 3
+            }
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-52HABXYE",
+      "seed": 174527477710,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 4
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 2
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-5JSEKGY9",
+      "seed": 191980225481,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 2
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 1
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-631JV3Y4",
+      "seed": 209432973252,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 2
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 2
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-6K9Q2PXZ",
+      "seed": 226885721023,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 4
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 4
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-73HVA9XT",
+      "seed": 244338468794,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-7KSZHWXN",
+      "seed": 261791216565,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 3
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 3
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-8423SFXG",
+      "seed": 279243964336,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 3
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-8MA812XB",
+      "seed": 296696712107,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 4
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 3
+            }
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-94JC8NX6",
+      "seed": 314149459878,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 2
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 1
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-9MTGG8X1",
+      "seed": 331602207649,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 2
+            }
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-A52MQVWW",
+      "seed": 349054955420,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 4
+            }
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-ANARZEWQ",
+      "seed": 366507703191,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-B5JX71WJ",
+      "seed": 383960450962,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 2
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-BNV1EMWD",
+      "seed": 401413198733,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 5
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 1
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-C635P7W8",
+      "seed": 418865946504,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 1
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 2
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-CPB9XTW3",
+      "seed": 436318694275,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 2
+            }
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-D6KE5DVY",
+      "seed": 453771442046,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 2
+            }
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-DPVJD0VS",
+      "seed": 471224189817,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 2
+            }
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-E73PMKVM",
+      "seed": 488676937588,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 3
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 3
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-EQBTW6VF",
+      "seed": 506129685359,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 2
+            }
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-F7KZ3SVA",
+      "seed": 523582433130,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 1
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-FQW3BCV5",
+      "seed": 541035180901,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 2
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 2
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-G847JZV0",
+      "seed": 558487928672,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 4
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-GRCBTJTV",
+      "seed": 575940676443,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-H8MG25TP",
+      "seed": 593393424214,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 1
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-HRWM9RTH",
+      "seed": 610846171985,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 5
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-J94RHBTC",
+      "seed": 628298919756,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-JSCWRYT7",
+      "seed": 645751667527,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 1
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 3
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-K9N10HT2",
+      "seed": 663204415298,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-KSX584SX",
+      "seed": 680657163069,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 3
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 2
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-MA59FQSR",
+      "seed": 698109910840,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 3
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-MTDDQASK",
+      "seed": 715562658611,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 2
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 1
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-NANHYXSE",
+      "seed": 733015406382,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 4
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-NTXP6GS9",
+      "seed": 750468154153,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-PB5TE3S4",
+      "seed": 767920901924,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 4
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-PVDYNPRZ",
+      "seed": 785373649695,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 3
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 3
+            }
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-QBP2X9RT",
+      "seed": 802826397466,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 4
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 4
+            }
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-QVY74WRN",
+      "seed": 820279145237,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 2
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 1
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-RC6BCFRG",
+      "seed": 837731893008,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-RWEFM2RB",
+      "seed": 855184640779,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 4
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-SCPKVNR6",
+      "seed": 872637388550,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-SWYR38R1",
+      "seed": 890090136321,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 1
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 2
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-TD6WAVQW",
+      "seed": 907542884092,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 3
+            }
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-TXF0JEQQ",
+      "seed": 924995631863,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 3
+            }
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-VDQ4T1QJ",
+      "seed": 942448379634,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-VXZ91MQD",
+      "seed": 959901127405,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 5
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-WE7D97Q8",
+      "seed": 977353875176,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 2
+            }
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-WYFHGTQ3",
+      "seed": 994806622947,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 3
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 3
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-XEQNRDPY",
+      "seed": 1012259370718,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 1
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 4
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-XYZT00PS",
+      "seed": 1029712118489,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 2
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 2
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 1
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-YF7Y7KPM",
+      "seed": 1047164866260,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 1
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-YZG2F6PF",
+      "seed": 1064617614031,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 2
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 2
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-ZFR6PSPA",
+      "seed": 1082070361802,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "stablecoin-swaps",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "code": "LW1-000AYCP5",
+      "seed": 11481797,
+      "selection": {
+        "scenarios": [
+          {
+            "id": "lwdemo-holding",
+            "params": {}
+          },
+          {
+            "id": "junk-airdrops",
+            "params": {
+              "tokens": 1
+            }
+          },
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 5
+            }
+          },
+          {
+            "id": "stale-offers",
+            "params": {
+              "count": 2
+            }
+          },
+          {
+            "id": "forgotten-signer",
+            "params": {}
+          }
+        ]
+      }
+    }
+  ]
+}

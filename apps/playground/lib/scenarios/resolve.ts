@@ -46,7 +46,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isScenarioId(value: unknown): value is ScenarioId {
+export function isScenarioId(value: unknown): value is ScenarioId {
   return SCENARIOS.some((s) => s.id === value);
 }
 
@@ -72,6 +72,18 @@ export function parseSelection(value: unknown): ScenarioSelection | null {
     scenarios.push(choice);
   }
   return { scenarios };
+}
+
+/** Reads the unavailable scenarios `GET /api/scenarios` returns; anything malformed is skipped. */
+export function parseUnavailable(value: unknown): Map<ScenarioId, string> {
+  const unavailable = new Map<ScenarioId, string>();
+  if (!isRecord(value) || !Array.isArray(value.unavailable)) return unavailable;
+  for (const entry of value.unavailable) {
+    if (isRecord(entry) && isScenarioId(entry.id) && typeof entry.reason === "string") {
+      unavailable.set(entry.id, entry.reason);
+    }
+  }
+  return unavailable;
 }
 
 const fail = (message: string): ValidationResult => ({ ok: false, message });

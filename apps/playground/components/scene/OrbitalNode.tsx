@@ -2,17 +2,18 @@
 
 import { useEffect } from "react";
 import { motion, useReducedMotion, useSpring, useTime, useTransform } from "motion/react";
-import { ArrowLeftRight, Database, Gem, KeyRound } from "lucide-react";
-import type { SceneNode } from "@/store/playground";
+import { ArrowLeftRight, CircleDot, Database, Gem, KeyRound } from "lucide-react";
+import type { SceneNode, SceneNodeKind } from "@/store/playground";
 
 const SCENE_HALF = 280;
 
-const KIND_ICON = {
+const KIND_ICON: Record<SceneNodeKind, typeof Gem> = {
   trustline: Gem,
   offer: ArrowLeftRight,
   data: Database,
   signer: KeyRound,
-} as const;
+  generic: CircleDot,
+};
 
 export default function OrbitalNode({ node }: { node: SceneNode }) {
   const time = useTime();
@@ -31,7 +32,8 @@ export default function OrbitalNode({ node }: { node: SceneNode }) {
   const left = useTransform(() => `${50 + Math.cos(angle.get()) * radius.get() * 50}%`);
   const top = useTransform(() => `${50 + Math.sin(angle.get()) * radius.get() * 50}%`);
 
-  const Icon = KIND_ICON[node.kind];
+  // buildSceneNode already maps unknown kinds to generic; this covers a node built any other way.
+  const Icon = KIND_ICON[node.kind] ?? CircleDot;
   const converting = node.status === "converting";
 
   return (

@@ -8,8 +8,7 @@ import {
   type SceneNodeKind,
 } from "@/store/playground";
 import { operationToSceneAction } from "@/lib/scene-actions";
-import type { MessStepDef, SceneNodeSpec } from "@/lib/scenarios";
-import { selectionForMode } from "@/lib/mess-plan";
+import { SCENE_NODE_KINDS, type MessStepDef, type SceneNodeSpec } from "@/lib/scenarios";
 import type { AccountState, IntentOperation } from "@lumenwipe/sdk";
 import { GENERIC_ERROR_COPY } from "@/lib/error-copy";
 import { PlaygroundApiError, playgroundRequest, SessionExpiredError } from "@/lib/playground-api";
@@ -70,11 +69,23 @@ const RING: Record<SceneNodeKind, { radius: number; durationSec: number }> = {
   trustline: { radius: 180, durationSec: 34 },
   data: { radius: 210, durationSec: 44 },
   offer: { radius: 240, durationSec: 56 },
+  // Shares the outer guide ring: OrbitalScene draws one ring per planned kind.
+  generic: { radius: 240, durationSec: 48 },
 };
 
 const GOLDEN_ANGLE = 137.5;
 
-function buildSceneNode({ id, kind, label }: SceneNodeSpec, seq: number): SceneNode {
+const sceneKind = (kind: string): SceneNodeKind =>
+  SCENE_NODE_KINDS.find((k) => k === kind) ?? "generic";
+
+/** A plan's node spec as the scene draws it. A kind this client does not know renders as a generic
+ *  node rather than failing the run, which would strand a funded account. */
+export function buildSceneNode(
+  spec: Omit<SceneNodeSpec, "kind"> & { kind: string },
+  seq: number
+): SceneNode {
+  const { id, label } = spec;
+  const kind = sceneKind(spec.kind);
   const ring = RING[kind];
   return {
     id,
@@ -88,6 +99,8 @@ function buildSceneNode({ id, kind, label }: SceneNodeSpec, seq: number): SceneN
       durationSec: ring.durationSec + (seq % 3) * 4,
       phaseDeg: (seq * GOLDEN_ANGLE) % 360,
     },
+    offer: spec.offer ?? null,
+    offerId: null,
   };
 }
 
@@ -121,11 +134,8 @@ export function demolishRoundStatus(round: number, remainingSteps: number | null
 async function animateConfirmed(entry: DemolishLogEntry): Promise<void> {
   const store = usePlaygroundStore.getState();
   for (const op of entry.operations) {
-    const liveNodeIds = usePlaygroundStore
-      .getState()
-      .nodes.filter((n) => n.status !== "destroyed")
-      .map((n) => n.id);
-    const action = operationToSceneAction(op, liveNodeIds);
+    const live = usePlaygroundStore.getState().nodes.filter((n) => n.status !== "destroyed");
+    const action = operationToSceneAction(op, live);
     if (!action) continue;
 
     if (action.type === "destroy") {
@@ -189,10 +199,11 @@ export function usePlaygroundExecution(): UsePlaygroundExecutionResult {
       store.setPhase("MESSING");
       setProgressStatus("Creating & funding the demo account...");
 
-      const { selectedMode, customConfig } = usePlaygroundStore.getState();
+      // A random wallet is sent as its replay code, and the server regenerates it.
+      const { selection, seed } = usePlaygroundStore.getState();
       const session = await api<SessionResponse>("/session", {
         method: "POST",
-        body: JSON.stringify({ selection: selectionForMode(selectedMode, customConfig) }),
+        body: JSON.stringify(seed ? { seed } : { selection }),
       });
       usePlaygroundStore.getState().startSession(session);
       usePlaygroundStore.getState().addLog({
@@ -230,6 +241,7 @@ export function usePlaygroundExecution(): UsePlaygroundExecutionResult {
       setProgressStatus("Reading the account state...");
       const state = await refreshState();
       if (!state?.accountState) throw new Error("Account state unavailable after the mess phase");
+      usePlaygroundStore.getState().bindOffers(state.accountState.openOffers);
 
       usePlaygroundStore.getState().setPhase("DIRTY");
     } catch (err) {

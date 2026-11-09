@@ -12,6 +12,8 @@ import {
 } from "@/lib/mess-plan";
 import {
   MAX_SCENARIOS,
+  formatReplayCode,
+  generateRandomSelection,
   resolvePlan,
   type MessStepDef,
   type ScenarioSelection,
@@ -25,6 +27,7 @@ import {
   handleCredentials,
   handleDemolishRound,
   handleMess,
+  handleScenarios,
   handleState,
   parseCreateBody,
   type CreateSessionDeps,
@@ -137,6 +140,7 @@ describe("create session", () => {
     const funded: string[] = [];
     const store = memoryStore();
     const deps: CreateSessionDeps = {
+      unavailable: () => new Map(),
       store,
       rateLimit: allow,
       issuer: () => issuer,
@@ -347,6 +351,52 @@ describe("create session", () => {
   });
 });
 
+describe("scenario availability", () => {
+  test("a scenario switched off here is refused at create, with its reason, before Friendbot", async () => {
+    const issuer = Keypair.random();
+    const funded: string[] = [];
+    const store = memoryStore();
+    const counted = countingStore(store);
+    const res = await handleCreateSession(
+      request("/api/session", { body: JSON.stringify({ mode: "standard" }) }),
+      {
+        store: counted.store,
+        rateLimit: allow,
+        issuer: () => issuer,
+        mm: () => issuer,
+        fundAccount: async (key) => {
+          funded.push(key);
+          return true;
+        },
+        ensureMmOffer: async () => {},
+        encrypt,
+        unavailable: () =>
+          new Map([["forgotten-signer", "Switched off on this deployment for now."]]),
+      }
+    );
+    expect(await outcome(res)).toEqual({
+      status: 400,
+      body: {
+        error: "invalid_selection",
+        message:
+          "Forgotten co-signer is not available here: Switched off on this deployment for now.",
+      },
+    });
+    expect(funded).toEqual([]);
+    expect(counted.calls()).toBe(0);
+  });
+
+  test("GET /api/scenarios lists the unavailable scenarios with their reasons, uncached", async () => {
+    const res = handleScenarios({
+      unavailable: () => new Map([["stale-offers", "Switched off on this deployment for now."]]),
+    });
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(await res.json()).toEqual({
+      unavailable: [{ id: "stale-offers", reason: "Switched off on this deployment for now." }],
+    });
+  });
+});
+
 describe("parseCreateBody", () => {
   const selectionOf = (body: unknown): ScenarioSelection => {
     const parsed = parseCreateBody(body);
@@ -379,6 +429,33 @@ describe("parseCreateBody", () => {
     expect(
       selectionOf({ mode: "custom", customConfig: { trustlineCount: 0, offerCount: 3 } })
     ).toEqual(mode("custom", one));
+  });
+
+  test("a replay code is regenerated on the server, and wins over a selection sent with it", () => {
+    const code = formatReplayCode(123_456_789);
+    const expected = generateRandomSelection(123_456_789)!;
+    expect(selectionOf({ seed: code, selection: { scenarios: [{ id: "data-entries" }] } })).toEqual(
+      expected
+    );
+    expect(selectionOf({ seed: code.toLowerCase() })).toEqual(expected);
+  });
+
+  test("a replay code is regenerated with this deployment's availability", () => {
+    const unavailable = new Map([["forgotten-signer" as const, "off"]]);
+    for (let seed = 0; seed < 200; seed++) {
+      const parsed = parseCreateBody({ seed: formatReplayCode(seed) }, unavailable);
+      if (!parsed.ok) throw new Error(parsed.message);
+      expect(parsed.plan.selection.scenarios.map((c) => c.id)).not.toContain("forgotten-signer");
+    }
+  });
+
+  test("a code that is not one is refused in plain language", () => {
+    for (const seed of ["LW9-00000000", "LW1-0000000U", "", 42, null, ["LW1-00000000"]]) {
+      expect(parseCreateBody({ seed })).toEqual({
+        ok: false,
+        message: "The replay code could not be read.",
+      });
+    }
   });
 
   test("a selection wins over a mode, and is validated rather than clamped", () => {

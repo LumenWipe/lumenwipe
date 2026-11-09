@@ -1,6 +1,10 @@
 "use client";
 
+import { useEffect } from "react";
 import { usePlaygroundStore } from "@/store/playground";
+import { decodeSelection, parseUnavailable } from "@/lib/scenarios";
+import { replaySeed } from "@/components/scene/ScenarioPicker";
+import { playgroundRequest } from "@/lib/playground-api";
 import { usePlaygroundExecution } from "@/hooks/usePlaygroundExecution";
 import OrbitalScene from "@/components/scene/OrbitalScene";
 import PlaygroundControls from "@/components/scene/PlaygroundControls";
@@ -9,6 +13,22 @@ import TxLogPanel from "@/components/scene/TxLogPanel";
 export default function PlaygroundClient() {
   const { start, demolish, progressStatus } = usePlaygroundExecution();
   const phase = usePlaygroundStore((s) => s.phase);
+
+  // Until this answers, every scenario shows as available; the create route checks again anyway.
+  // A shared link then restores its wallet: `?seed=` replays a code, `?selection=` an exact
+  // selection (validated again when the run starts).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    playgroundRequest<unknown>(fetch, "/scenarios")
+      .then((body) => usePlaygroundStore.getState().setUnavailable(parseUnavailable(body)))
+      .catch(() => {})
+      .finally(() => {
+        const seed = params.get("seed");
+        const shared = decodeSelection(params.get("selection") ?? "");
+        if (seed) replaySeed(seed);
+        else if (shared) usePlaygroundStore.getState().setSelection(shared, null);
+      });
+  }, []);
 
   return (
     <section className="mx-auto w-full max-w-6xl px-4 pb-24 pt-16 sm:px-6">

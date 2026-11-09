@@ -2,7 +2,6 @@ import { test, expect } from "bun:test";
 import { createHash } from "node:crypto";
 import {
   DEFAULT_CUSTOM_CONFIG,
-  estimateSeconds,
   getMessPlanForMode,
   maxOfferCount,
   selectionForMode,
@@ -94,10 +93,12 @@ test("every mode and custom config is a valid selection", () => {
 test("the duration estimate is pinned at the smallest, default and largest custom demos", () => {
   const smallest = { trustlineCount: 1, offerCount: 0, dataEntryCount: 0, addSigner: false };
   const largest = { trustlineCount: 5, offerCount: 5, dataEntryCount: 5, addSigner: true };
-  expect(estimateSeconds("custom", smallest)).toBe(39);
-  expect(estimateSeconds("custom", DEFAULT_CUSTOM_CONFIG)).toBe(83);
-  expect(estimateSeconds("custom", largest)).toBe(145);
-  expect(estimateSeconds("light")).toBe(39);
+  const seconds = (mode: PlaygroundMode, custom?: PlaygroundCustomConfig): number =>
+    resolvePlan(selectionForMode(mode, custom)).cost.seconds;
+  expect(seconds("custom", smallest)).toBe(39);
+  expect(seconds("custom", DEFAULT_CUSTOM_CONFIG)).toBe(83);
+  expect(seconds("custom", largest)).toBe(145);
+  expect(seconds("light")).toBe(39);
 });
 
 test("maxOfferCount is capped by both trustlineCount and the junk-offer catalog", () => {
