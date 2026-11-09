@@ -14,7 +14,8 @@
 #
 # Reads SERVICE, REGION, IMAGE, GITHUB_SHA, GITHUB_RUN_ID, GITHUB_RUN_ATTEMPT, and optionally
 # DRILL (none or fail-smoke) and API_SMOKE_KEY. Writes its progress to DEPLOY_STATE and a report
-# to GITHUB_STEP_SUMMARY. SMOKE_TRIES, VERIFY_TRIES and RETRY_DELAY tune the retries.
+# to GITHUB_STEP_SUMMARY. SMOKE_TRIES, VERIFY_TRIES and RETRY_DELAY tune the retries, and DEEP_TRIES
+# and DEEP_DELAY the candidate's /health/deep check.
 set -euo pipefail
 
 : "${SERVICE:?}" "${REGION:?}"
@@ -23,6 +24,11 @@ SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/null}"
 SMOKE_TRIES="${SMOKE_TRIES:-3}"
 VERIFY_TRIES="${VERIFY_TRIES:-6}"
 RETRY_DELAY="${RETRY_DELAY:-5}"
+# /health/deep fails a network whose RPC probe takes over 3 s, so a short slowdown of a public RPC
+# fails it too. Six tries 10 s apart (about 70 s) ride out a blip like the one in run 42546572053,
+# which cleared within a minute; the API caches the check for 2 s, so every try probes afresh.
+DEEP_TRIES="${DEEP_TRIES:-6}"
+DEEP_DELAY="${DEEP_DELAY:-10}"
 RESOURCE_FLAGS=(--min-instances=0 --max-instances=1 --cpu=1 --memory=512Mi --execution-environment=gen1 --cpu-boost)
 
 note() { printf '%s\n' "$*" >> "$SUMMARY"; }
@@ -72,6 +78,60 @@ check() {
   fi
 }
 
+# The body of a GET, then a line with its HTTP status (000 when nothing answered).
+reply() { curl -sS --max-time 10 -w '\n%{http_code}' "$1" 2> /dev/null || true; }
+
+# Reads a /health/deep body and prints the dependencies it reports down as a JSON array. Fails on
+# anything but a health result whose dependency names are plain words, so each name is safe to
+# print in the summary and in a workflow command.
+deep_down() {
+  jq -ce 'select((.status == "ok" or .status == "error") and (.details | type) == "object"
+      and (.details | keys | all(test("^[a-z0-9_]+$"))))
+    | [.details | to_entries[] | select(.value.status == "down") | .key]' 2> /dev/null
+}
+
+# /health/deep on the candidate. A dependency down there passes only when it is an RPC and the
+# revision serving now, reached on the service URL, reports it down too: an upstream outage both
+# share is not the candidate's fault. Anything that cannot be compared fails.
+check_deep() {
+  local url="$1" body down="" names i json prev svc_url serving only
+  for ((i = 1; i <= DEEP_TRIES; i++)); do
+    body="$(reply "$url/health/deep")"
+    if [ "${body##*$'\n'}" = 200 ] && jq -e '.status == "ok"' > /dev/null 2>&1 <<< "${body%$'\n'*}"; then
+      note "| /health/deep | pass |"
+      return 0
+    fi
+    # The last attempt's view is the one compared, as it is the closest in time to the serving read.
+    down="$(deep_down <<< "${body%$'\n'*}")" || down=""
+    [ "$i" -lt "$DEEP_TRIES" ] && sleep "$DEEP_DELAY"
+  done
+  if [ -z "$down" ] || [ "$down" = "[]" ]; then
+    note "| /health/deep | **fail** |"
+    return 1
+  fi
+  names="$(jq -r 'join(", ")' <<< "$down")"
+  if ! jq -e 'all(startswith("rpc_"))' > /dev/null <<< "$down"; then
+    note "| /health/deep | **fail** (down: $names) |"
+    return 1
+  fi
+  # Before promotion the service URL serves the captured revision at 100 percent; describe proves
+  # it still does, since only a traffic tag would give that revision a URL of its own.
+  prev="$(state_get prev)"
+  if ! json="$(describe)" || [ "$(serving_revision <<< "$json")" != "$prev" ] ||
+    ! svc_url="$(jq -er '.status.url // empty' <<< "$json")" ||
+    ! serving="$(reply "$svc_url/health/deep" | sed '$d' | deep_down)"; then
+    note "| /health/deep | **fail** (down: $names; $prev could not be read to compare) |"
+    return 1
+  fi
+  only="$(jq -nc --argjson c "$down" --argjson s "$serving" '$c - $s')"
+  if [ "$only" != "[]" ]; then
+    note "| /health/deep | **fail** (down only on the candidate: $(jq -r 'join(", ")' <<< "$only")) |"
+    return 1
+  fi
+  note "| /health/deep | upstream ($names) |"
+  warning "/health/deep reports $names down on the candidate and on $prev, which serves now: an upstream outage, so the smoke test continues. Check /health/deep once it clears (docs/runbooks/bad-deploy.mdx)"
+}
+
 remove_tag() {
   run_traffic --remove-tags="$1" || warning "could not remove the $1 tag; remove it with: gcloud run services update-traffic $SERVICE --region $REGION --remove-tags=$1"
 }
@@ -85,7 +145,7 @@ smoke_candidate() {
   note "| --- | --- |"
   check "/health" "$url/health" '.status == "ok"' "$SMOKE_TRIES" || return 1
   check "/ reports this commit" "$url/" ".gitSha == \$v" "$SMOKE_TRIES" "$expected" || return 1
-  check "/health/deep" "$url/health/deep" '.status == "ok"' "$SMOKE_TRIES" || return 1
+  check_deep "$url" || return 1
   registry="$(get "$url/v1/config/exchange-registry" '(.entries | length) > 0' "$SMOKE_TRIES")" || {
     note "| /v1/config/exchange-registry | **fail** |"
     return 1

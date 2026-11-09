@@ -34,6 +34,10 @@ interface Sim {
 interface Behaviour {
   gitSha?: string;
   deep?: number;
+  // Dependencies /health/deep reports down; any makes it answer 503, as Terminus does.
+  deepDown?: string[];
+  // Pins traffic to this revision when /health/deep is first asked of this image, as a hand edit would.
+  deepMovesTrafficTo?: string;
   serviceFails?: boolean;
   healthFails?: boolean;
 }
@@ -120,11 +124,17 @@ function respond(rev: Revision | undefined, path: string, req: Request, viaServi
   if (path === "/health")
     return b.healthFails ? new Response("down", { status: 503 }) : Response.json({ status: "ok" });
   if (path === "/") return Response.json({ gitSha: b.gitSha ?? null });
-  if (path === "/health/deep")
-    return Response.json(
-      { status: (b.deep ?? 200) === 200 ? "ok" : "error" },
-      { status: b.deep ?? 200 }
+  if (path === "/health/deep") {
+    const down = new Set(b.deepDown ?? []);
+    const status = b.deep ?? (down.size > 0 ? 503 : 200);
+    const details = Object.fromEntries(
+      ["rpc_mainnet", "rpc_testnet", "exchange_registry"].map((key) => [
+        key,
+        { status: down.has(key) ? "down" : "up" },
+      ])
     );
+    return Response.json({ status: status === 200 ? "ok" : "error", details }, { status });
+  }
   if (path === "/v1/config/exchange-registry")
     return Response.json({ entries: [{ address: EXCHANGE }] });
   const account = path.match(/^\/v1\/mainnet\/account\/(\w+)$/);
@@ -150,7 +160,16 @@ beforeAll(() => {
       const sim = readSim();
       const byName = (name: string) => sim.revisions.find((r) => r.name === name);
       const rev = url.pathname.match(/^\/rev\/([^/]+)(\/.*)?$/);
-      if (rev) return respond(byName(rev[1]), rev[2] ?? "/", req, false);
+      if (rev) {
+        const moveTo = behaviours[byName(rev[1])?.image ?? ""]?.deepMovesTrafficTo;
+        if (moveTo && rev[2] === "/health/deep") {
+          writeSim({
+            ...sim,
+            traffic: [{ revisionName: moveTo, percent: 100 }, ...sim.traffic.filter((t) => t.tag)],
+          });
+        }
+        return respond(byName(rev[1]), rev[2] ?? "/", req, false);
+      }
       const svc = url.pathname.match(/^\/svc(\/.*)?$/);
       if (svc) {
         const serving = sim.traffic.find((t) => t.percent === 100);
@@ -212,6 +231,8 @@ async function run(command: string, env: Record<string, string> = {}) {
       RETRY_DELAY: "0",
       SMOKE_TRIES: "2",
       VERIFY_TRIES: "2",
+      DEEP_TRIES: "2",
+      DEEP_DELAY: "0",
       SIM_STATE: statePath(),
       SIM_LOG: log,
       SIM_SERVED: served,
@@ -320,6 +341,104 @@ describe("deploy", () => {
     expect(r.summary).toContain("| / reports this commit | **fail** |");
     expect(r.everServed.has(CAND)).toBe(false);
     expect(r.sim.traffic).toEqual([{ latestRevision: true, percent: 100, revisionName: RESTORED }]);
+  });
+
+  test("an RPC down on the candidate and on the serving revision is an upstream outage: the smoke test continues", async () => {
+    behaviours[IMAGE] = { gitSha: SHA, deepDown: ["rpc_testnet"] };
+    behaviours[PREV_DIGEST] = { gitSha: "0".repeat(40), deepDown: ["rpc_testnet"] };
+    const r = await run("deploy");
+    expect(r.code).toBe(0);
+    expect(r.calls).toEqual([
+      ...CAPTURE,
+      DEPLOY_CANDIDATE,
+      "services describe",
+      "services describe",
+      "services describe",
+      "update-traffic --to-latest",
+      "services describe",
+      "update-traffic --remove-tags=candidate",
+    ]);
+    expect(r.summary).toContain("| /health/deep | upstream (rpc_testnet) |");
+    expect(r.summary).toContain("| /v1/config/exchange-registry | pass |");
+    expect(r.stdout).toContain(
+      "::warning::/health/deep reports rpc_testnet down on the candidate and on lumenwipe-api-a, which serves now"
+    );
+    expect(r.sim.traffic).toEqual([{ latestRevision: true, percent: 100, revisionName: CAND }]);
+  });
+
+  test.each([
+    ["only on the candidate", ["rpc_testnet"], [], "down only on the candidate: rpc_testnet"],
+    [
+      "on the candidate beyond what the serving revision shares",
+      ["rpc_mainnet", "rpc_testnet"],
+      ["rpc_testnet"],
+      "down only on the candidate: rpc_mainnet",
+    ],
+    [
+      "outside the RPCs, even when the serving revision shares it",
+      ["exchange_registry"],
+      ["exchange_registry"],
+      "down: exchange_registry",
+    ],
+  ])("a dependency down %s abandons the candidate", async (_, candidate, prev, reason) => {
+    behaviours[IMAGE] = { gitSha: SHA, deepDown: candidate };
+    behaviours[PREV_DIGEST] = { gitSha: "0".repeat(40), deepDown: prev };
+    const r = await run("deploy");
+    expect(r.code).toBe(1);
+    expect(r.summary).toContain(`| /health/deep | **fail** (${reason}) |`);
+    expect(r.summary).not.toContain("upstream");
+    // The serving revision is read to compare only when every dependency down is an RPC.
+    const compared = candidate.every((name) => name.startsWith("rpc_"));
+    expect(r.calls).toEqual([
+      ...CAPTURE,
+      DEPLOY_CANDIDATE,
+      "services describe",
+      ...(compared ? ["services describe"] : []),
+      "update-traffic --remove-tags=candidate",
+      ...RESTORE,
+    ]);
+    expect(r.everServed.has(CAND)).toBe(false);
+    expect(r.sim.traffic).toEqual([{ latestRevision: true, percent: 100, revisionName: RESTORED }]);
+  });
+
+  test("a serving revision that cannot be read abandons the candidate", async () => {
+    behaviours[IMAGE] = { gitSha: SHA, deepDown: ["rpc_testnet"] };
+    behaviours[PREV_DIGEST] = { gitSha: "0".repeat(40), serviceFails: true };
+    const r = await run("deploy");
+    expect(r.code).toBe(1);
+    expect(r.summary).toContain(
+      "| /health/deep | **fail** (down: rpc_testnet; lumenwipe-api-a could not be read to compare) |"
+    );
+    expect(r.everServed.has(CAND)).toBe(false);
+    expect(r.stdout).toContain(
+      `::error::the candidate failed its smoke test: ${CAND} received no traffic`
+    );
+  });
+
+  test("a service URL no longer serving the captured revision is never compared against", async () => {
+    // Traffic moved by hand to another revision mid-run: its view says nothing about the captured one.
+    behaviours[IMAGE] = {
+      gitSha: SHA,
+      deepDown: ["rpc_testnet"],
+      deepMovesTrafficTo: "lumenwipe-api-old",
+    };
+    behaviours["registry.example/lumenwipe-api@sha256:" + "0".repeat(64)] = {
+      deepDown: ["rpc_testnet"],
+    };
+    const r = await run("deploy");
+    expect(r.code).toBe(1);
+    expect(r.summary).toContain("could not be read to compare) |");
+    expect(r.everServed.has(CAND)).toBe(false);
+  });
+
+  test("the fail-smoke drill still fails when /health/deep would count as upstream", async () => {
+    behaviours[IMAGE] = { gitSha: SHA, deepDown: ["rpc_testnet"] };
+    behaviours[PREV_DIGEST] = { gitSha: "0".repeat(40), deepDown: ["rpc_testnet"] };
+    const r = await run("deploy", { DRILL: "fail-smoke" });
+    expect(r.code).toBe(1);
+    expect(r.summary).toContain("| / reports this commit | **fail** |");
+    expect(r.summary).not.toContain("/health/deep");
+    expect(r.everServed.has(CAND)).toBe(false);
   });
 
   test("a failure after promotion rolls back to the revision captured at the start, not the one before the candidate", async () => {

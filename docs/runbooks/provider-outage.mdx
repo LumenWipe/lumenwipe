@@ -15,6 +15,7 @@ Each network reads through an ordered list of RPC URLs (`STELLAR_RPC_<NET>`) and
 - **One provider down, list of two or more**: some requests get a `503` and succeed on retry. No action is needed unless it lasts.
 - **Every provider down, or a single provider**: every read on that network fails with `503`. Closes cannot be planned or built. Nothing is lost: a close in progress resumes once reads come back ([Recovery](/guides/recovery#the-service-is-unavailable)).
 - **Only DeFi detection or token quotes down** (OctoPos, Soroswap, xBull): those have one provider each. Closes still run; position detection falls back to a classic-only close and token conversion is unavailable.
+- **API deploys**: an RPC outage that the serving revision shares does not stop a deploy. The smoke test records `/health/deep` as `upstream` and the run warns; see [Bad deploy](/runbooks/bad-deploy#an-upstream-smoke-result) for the check once the provider recovers.
 
 ## Steps
 
