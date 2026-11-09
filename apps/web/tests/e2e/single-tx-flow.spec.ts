@@ -286,6 +286,10 @@ test("redesigned flow: non-convertible asset is returned to issuer, then merged 
   await page.reload();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Account successfully merged");
   await expect(page.getByText(shownHash!, { exact: true })).toBeVisible();
-  await expect(page.getByText("Assets handled")).toBeVisible();
+  // Each "what was done" group shows its heading and keeps its details closed until opened.
+  const assetsHandled = page.getByRole("button", { name: /^Assets handled/ });
+  await expect(assetsHandled).toHaveAttribute("aria-expanded", "false");
+  await assetsHandled.click();
+  await expect(assetsHandled).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByText("NOSWAP → returned to issuer")).toBeVisible();
 });
