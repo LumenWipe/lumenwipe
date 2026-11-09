@@ -20,10 +20,12 @@ import { connectStubWallet, installWalletStub } from "./helpers/wallet-stub";
 
 // E2E coverage for "the multisig path" - named as an explicit target in
 // docs/architecture.md §17 and never previously exercised end to end. Configures a real
-// 2-of-3 testnet account, then drives the UI through both signing rounds using the
-// secret-key path for both signers (no wallet browser extension is installable in
-// Playwright's CI environment; the secret-key tab exercises the identical
-// accumulate-then-switch-signer code path a connected wallet would).
+// 2-of-3 testnet account, then drives the UI through the close: no single key reaches the
+// thresholds, so the first transaction is the signer normalization alone (two keys), and the
+// merge follows under the master key alone. The first test uses the secret-key path for every
+// signer (no wallet browser extension is installable in Playwright's CI environment; the
+// secret-key tab exercises the identical accumulate-then-switch-signer code path a connected
+// wallet would).
 
 const FRIENDBOT = "https://friendbot.stellar.org";
 const HORIZON = "https://horizon-testnet.stellar.org";
@@ -107,8 +109,8 @@ test("multisig close: a 2-of-3 account signs with two keys in sequence and merge
 
   await driveToExecute(page, { source: master.publicKey(), destination: destination.publicKey() });
 
-  // Round 1: sign with the master key alone (weight 1) - insufficient for the high
-  // threshold (2) this fused merge needs.
+  // Round 1: sign with the master key alone (weight 1) - insufficient for the threshold (2)
+  // the signer normalization, the first transaction of this close, needs.
   await enterSecretKey(page, master.secret());
   await page.getByRole("checkbox").check();
   await page.getByRole("button", { name: /Sign .* execute close/i }).click();
@@ -117,17 +119,46 @@ test("multisig close: a 2-of-3 account signs with two keys in sequence and merge
   // second signer (SigningProgress.tsx L52-55: "needs N more signing weight").
   await expect(page.getByText(/more signing weight/i)).toBeVisible({ timeout: 30_000 });
 
-  // Round 2: swap to the second co-signer via the secret-key tab's "Forget key" control,
-  // then add its signature. Reselecting the already-active tab is a no-op, so the shared
-  // helper works here too rather than a second way of doing the same thing.
-  await page.getByRole("button", { name: /Forget key/i }).click();
+  // The paused round ends the master key's turn: its secret is wiped and the field is empty.
+  const keyField = page.getByPlaceholder("S...");
+  await expect(keyField).toHaveValue("");
+
+  // The second co-signer adds its signature. Reselecting the already-active tab is a no-op, so
+  // the shared helper works here too rather than a second way of doing the same thing.
+  const add = page.getByRole("button", { name: /Add signature/i });
   await enterSecretKey(page, coSignerB.secret());
-  await page.getByRole("button", { name: /Add signature/i }).click();
+  await expect(add).toBeEnabled();
+  await add.click();
+
+  // The normalization lands as its own transaction and the account stays open under the
+  // master key alone.
+  await expectSignerNormalizationConfirmed(page);
+  expect(await accountExists(master.publicKey())).toBe(true);
+
+  // The merge round pauses for the master key: the co-signer is no longer a signer, and its
+  // turn ended with its key wiped.
+  await expect(page.getByText(/more signing weight/i)).toBeVisible({
+    timeout: TESTNET_STEP_TIMEOUT,
+  });
+  await expect(keyField).toHaveValue("");
+  await enterSecretKey(page, master.secret());
+  await expect(add).toBeEnabled();
+  await add.click();
 
   await expect(page).toHaveURL(CLOSE_FINISHED_URL, { timeout: 90_000 });
 
   expect(await accountExists(master.publicKey())).toBe(false);
 });
+
+/** Waits until the plan's "Remove extra signers" step reads as confirmed on the network. */
+async function expectSignerNormalizationConfirmed(page: Page): Promise<void> {
+  await expect(
+    page
+      .getByRole("list", { name: "Plan steps" })
+      .getByRole("listitem")
+      .filter({ hasText: "Remove extra signers" })
+  ).toContainText("Confirmed", { timeout: 90_000 });
+}
 
 test("multisig close: a wallet that already signed cannot open a second prompt", async ({
   page,
@@ -165,12 +196,29 @@ test("multisig close: a wallet that already signed cannot open a second prompt",
   await add.click({ force: true });
   expect(wallet.signRequests).toHaveLength(1);
 
-  // A signer the round still needs finishes the close.
+  // A signer the round still needs completes the normalization. The wallet is not asked while
+  // the user is on the secret-key tab.
   await enterSecretKey(page, coSignerB.secret());
   await expect(add).toBeEnabled();
   await add.click();
-  await expect(page).toHaveURL(CLOSE_FINISHED_URL, { timeout: 90_000 });
+  await expectSignerNormalizationConfirmed(page);
+  expect(await accountExists(master.publicKey())).toBe(true);
+  await expect(page.getByText(/more signing weight/i)).toBeVisible({
+    timeout: TESTNET_STEP_TIMEOUT,
+  });
+  await expect(page.getByPlaceholder("S...")).toHaveValue("");
   expect(wallet.signRequests).toHaveLength(1);
+
+  // The merge round is a different transaction: the wallet, picked up again from its own tab,
+  // signs it, and that is the only second prompt it ever sees.
+  await page.getByRole("tab", { name: "Connect wallet" }).click();
+  await expect(page.getByTestId("active-signer")).toContainText(master.publicKey().slice(-4));
+  await expect(add).toBeEnabled();
+  await add.click();
+  await expect(page).toHaveURL(CLOSE_FINISHED_URL, { timeout: 90_000 });
+  expect(wallet.signRequests).toHaveLength(2);
+  expect(wallet.signRequests[1].transactionXdr).toBeDefined();
+  expect(wallet.signRequests[1].transactionXdr).not.toBe(wallet.signRequests[0].transactionXdr);
   expect(await accountExists(master.publicKey())).toBe(false);
 });
 
