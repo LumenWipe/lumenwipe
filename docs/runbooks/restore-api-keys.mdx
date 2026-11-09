@@ -147,23 +147,23 @@ gcloud firestore databases delete --database=<restore id> --project=<project>
 
 ## Migration check
 
-`scripts/migration-check.sh` is the required step after any project or organization move, and after any IAM, policy or service change. It is read-only: it only describes, lists and reads (`gcloud` describe, list and get-iam-policy, `gh run list`, `curl` GET). It prints PASS, FAIL or SKIPPED per check and exits non-zero on any failure.
+`scripts/migration-check.sh` is the required step after any project or organization move, and after any IAM, policy or service change. It is read-only: it only describes, lists and reads (`gcloud` describe, list and get-iam-policy, `gh run list`, `gh api` GET, `curl` GET). It prints PASS, FAIL or SKIPPED per check and exits non-zero on any failure.
 
-| Check             | Passes when                                                                                     |
-| ----------------- | ----------------------------------------------------------------------------------------------- |
-| `health`          | `/health` answers on the platform URL and the custom domain, and `/health/deep` on the domain   |
-| `ingress-invoker` | The service's ingress and its `roles/run.invoker` binding are the expected ones                 |
-| `deploy-pipeline` | The latest manual run of the deploy workflow succeeded, and the trust condition names this repo |
-| `revision`        | The latest revision booted (it read its secrets) and the service is ready                       |
-| `service-account` | The runtime account holds exactly the expected project roles                                    |
-| `test-key`        | A testnet test key resolves, which reads Firestore                                              |
-| `domain`          | The custom domain mapping is ready; the certificate expiry is printed                           |
-| `billing`         | Billing is enabled and a budget with an alert threshold exists                                  |
-| `logging`         | The `_Default` bucket keeps logs long enough and the `_Required` and `_Default` sinks are on    |
-| `alerting`        | Every alert policy is enabled and routed to the alert channel, and an uptime check exists       |
-| `org-policies`    | The organization policy constraints in force can be read; they are listed                       |
+| Check             | Passes when                                                                                                                                                                                                                   |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `health`          | `/health` answers on the platform URL and the custom domain, and `/health/deep` on the domain                                                                                                                                 |
+| `ingress-invoker` | The service's ingress and its `roles/run.invoker` binding are the expected ones                                                                                                                                               |
+| `deploy-pipeline` | The latest manual run of the deploy workflow succeeded (its date is printed), and the trust condition names this repo                                                                                                         |
+| `revision`        | The latest revision booted (it read its secrets) and the service is ready                                                                                                                                                     |
+| `service-account` | The runtime account holds exactly the expected project roles                                                                                                                                                                  |
+| `test-key`        | A testnet test key resolves, which reads Firestore                                                                                                                                                                            |
+| `domain`          | The custom domain mapping is ready; the certificate expiry is printed                                                                                                                                                         |
+| `billing`         | Billing is enabled and a budget with an alert threshold exists                                                                                                                                                                |
+| `logging`         | The `_Default` bucket keeps logs long enough and the `_Required` and `_Default` sinks are on                                                                                                                                  |
+| `alerting`        | The on-chain monitors workflow, which carries the alerts, is active and its latest scheduled run succeeded within 24 hours; any Cloud Monitoring alert policy is enabled and routed (none is fine); uptime checks are counted |
+| `org-policies`    | The project's parent and the organization policy constraints in force can be read; both are listed                                                                                                                            |
 
-Run it signed in to the project, after a manual run of the deploy workflow:
+Install the beta component once with `gcloud components install beta` (the `domain` check needs it; the script disables prompts, so a missing component fails that check and names the command). Then run it signed in to the project, after a manual run of the deploy workflow:
 
 ```bash
 GCP_PROJECT_ID=<project> GCP_REGION=us-central1 SERVICE=lumenwipe-api API_DOMAIN=<api domain> \
