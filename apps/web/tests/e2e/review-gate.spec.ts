@@ -132,14 +132,16 @@ test("begin execution lands on the review gate, not directly on execute", async 
   await expect(proceedButton).toBeVisible();
 
   // Renders the resolved destination (it appears in more than one summary card, so assert
-  // presence rather than a single strict-mode match) and the plan grouped by step type - not
-  // a generic "N steps" summary. This account's plan has exactly a REMOVE_DATA_ENTRIES group
-  // (from the manageData op above) and the trailing MERGE group.
+  // presence rather than a single strict-mode match) and the plan as an ordered list of every
+  // step, nothing folded away - not a generic "N steps" summary. This account's plan has exactly
+  // a REMOVE_DATA_ENTRIES step (from the manageData op above) and then the trailing MERGE step.
   await expect(
     page.getByText(new RegExp(destination.publicKey().slice(0, 8))).first()
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: /Remove data/i })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Merge account/i })).toBeVisible();
+  const planSteps = page.getByTestId("plan-step");
+  await expect(planSteps).toHaveCount(2);
+  await expect(planSteps.nth(0)).toContainText("Remove data entries");
+  await expect(planSteps.nth(1)).toContainText("Merge account");
 
   // Execution must not be reachable before the explicit acknowledgment is checked.
   await expect(proceedButton).toBeDisabled();
