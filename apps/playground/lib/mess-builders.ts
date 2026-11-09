@@ -14,17 +14,12 @@ import {
   TxSubmitError,
 } from "./horizon-submit";
 import {
-  DEMO_KEEP_XLM,
-  DEMO_SWAP_PRICE,
-  EPHEMERAL_ISSUER_FUNDING_XLM,
-  EURC_DEMO_AMOUNT,
-  JUNK_DATA_ENTRIES,
-  JUNK_OFFERS,
-  LWDEMO_AMOUNT,
   LWDEMO_CODE,
-  USDC_DEMO_AMOUNT,
-  type MessStepId,
-} from "./mess-plan";
+  type MessStepDef,
+  type OfferAsset,
+  type StepAction,
+  type StepActionKind,
+} from "./scenarios";
 
 export { TxSubmitError };
 
@@ -44,19 +39,20 @@ export interface MessContext {
   ephemeralIssuers: Map<string, Keypair>;
   persistentIssuer: Keypair;
   mmPublic: string;
-  fundRareAssets: string[];
-  offerCount: number;
-  dataEntryCount: number;
   /** Persists a signer in the session record before the step adds it to the demo account. */
   recordSigner: (publicKey: string) => Promise<void>;
 }
 
-function resolveAsset(code: string, ctx: MessContext): Asset {
-  if (code === "native") return Asset.native();
-  if (code === LWDEMO_CODE) return new Asset(LWDEMO_CODE, ctx.persistentIssuer.publicKey());
+function ephemeralIssuer(code: string, ctx: MessContext): Keypair {
   const issuer = ctx.ephemeralIssuers.get(code);
   if (!issuer) throw new Error(`Ephemeral issuer for ${code} not found in session`);
-  return new Asset(code, issuer.publicKey());
+  return issuer;
+}
+
+function resolveAsset(code: OfferAsset, ctx: MessContext): Asset {
+  if (code === "native") return Asset.native();
+  if (code === LWDEMO_CODE) return new Asset(LWDEMO_CODE, ctx.persistentIssuer.publicKey());
+  return new Asset(code, ephemeralIssuer(code, ctx).publicKey());
 }
 
 const isAccountNotFound = (err: unknown): boolean =>
@@ -178,160 +174,122 @@ export async function ensureMmOffer(mm: Keypair, issuerPublic: string): Promise<
   ]);
 }
 
+type Submit = (source: Keypair, ops: xdr.Operation[], extraSigners?: Keypair[]) => Promise<string>;
+
+type Executor<K extends StepActionKind> = (
+  action: Extract<StepAction, { kind: K }>,
+  ctx: MessContext,
+  submit: Submit,
+  deps: BuildSignSubmitDeps
+) => Promise<string>;
+
+/** One executor per step action kind in the scenario registry. */
+export const MESS_EXECUTORS: { [K in StepActionKind]: Executor<K> } = {
+  setup: (action, ctx, submit) => {
+    const ephemeralCost = action.ephemeralAssets.length * parseFloat(action.issuerFundingXlm);
+    const returnAmount = (
+      parseFloat(action.friendbotXlm) -
+      parseFloat(action.keepXlm) -
+      ephemeralCost
+    ).toFixed(7);
+    return submit(ctx.demo, [
+      ...action.ephemeralAssets.map((code) =>
+        Operation.createAccount({
+          destination: ephemeralIssuer(code, ctx).publicKey(),
+          startingBalance: action.issuerFundingXlm,
+        })
+      ),
+      Operation.payment({ destination: ctx.mmPublic, asset: Asset.native(), amount: returnAmount }),
+    ]);
+  },
+  change_trust: (action, ctx, submit) =>
+    submit(ctx.demo, [Operation.changeTrust({ asset: resolveAsset(action.asset, ctx) })]),
+  airdrops: (action, ctx, submit) => {
+    if (action.payments.length === 0) throw new Error("airdrops step with no payments");
+    const ops = action.payments.map(({ asset, amount }) =>
+      Operation.payment({
+        source: ephemeralIssuer(asset, ctx).publicKey(),
+        destination: ctx.demo.publicKey(),
+        asset: resolveAsset(asset, ctx),
+        amount,
+      })
+    );
+    const signers = action.payments.map(({ asset }) => ephemeralIssuer(asset, ctx));
+    return submit(ctx.demo, ops, signers);
+  },
+  issuer_payment: (action, ctx, submit) =>
+    submit(ctx.persistentIssuer, [
+      Operation.payment({
+        destination: ctx.demo.publicKey(),
+        asset: resolveAsset(action.asset, ctx),
+        amount: action.amount,
+      }),
+    ]),
+  dex_swap: (action, ctx, submit) => {
+    const issuer = ephemeralIssuer(action.asset, ctx);
+    const asset = resolveAsset(action.asset, ctx);
+    const cost = (parseFloat(action.amount) * parseFloat(action.price)).toFixed(7);
+    return submit(
+      ctx.demo,
+      [
+        Operation.manageSellOffer({
+          source: issuer.publicKey(),
+          selling: asset,
+          buying: Asset.native(),
+          amount: action.amount,
+          price: action.price,
+        }),
+        Operation.pathPaymentStrictReceive({
+          sendAsset: Asset.native(),
+          sendMax: cost,
+          destination: ctx.demo.publicKey(),
+          destAsset: asset,
+          destAmount: action.amount,
+          path: [],
+        }),
+      ],
+      [issuer]
+    );
+  },
+  manage_data: (action, ctx, submit) =>
+    submit(
+      ctx.demo,
+      action.entries.map(({ key, value }) => Operation.manageData({ name: key, value }))
+    ),
+  offers: (action, ctx, submit) =>
+    submit(
+      ctx.demo,
+      action.offers.map((o) =>
+        Operation.manageSellOffer({
+          selling: resolveAsset(o.selling, ctx),
+          buying: resolveAsset(o.buying, ctx),
+          amount: o.amount,
+          price: o.price,
+        })
+      )
+    ),
+  add_signer: (_action, ctx, _submit, deps) => addForgottenSigner(ctx, deps),
+};
+
+function runAction<K extends StepActionKind>(
+  action: Extract<StepAction, { kind: K }>,
+  ctx: MessContext,
+  submit: Submit,
+  deps: BuildSignSubmitDeps
+): Promise<string> {
+  const executor: Executor<K> = MESS_EXECUTORS[action.kind];
+  return executor(action, ctx, submit, deps);
+}
+
 /** `deps` reaches every submission, so a test can capture the signed transactions instead of sending them. */
-export async function executeMessStep(
-  stepId: MessStepId,
+export function executeMessStep(
+  step: MessStepDef,
   ctx: MessContext,
   deps: BuildSignSubmitDeps = {}
 ): Promise<string> {
-  const demoPublic = ctx.demo.publicKey();
-  const submit = (source: Keypair, ops: xdr.Operation[], extraSigners: Keypair[] = []) =>
+  const submit: Submit = (source, ops, extraSigners = []) =>
     buildSignSubmit(source, ops, extraSigners, deps);
-
-  switch (stepId) {
-    case "SETUP": {
-      const ephemeralCodes = [...ctx.ephemeralIssuers.keys()];
-      const ephemeralCost = ephemeralCodes.length * parseFloat(EPHEMERAL_ISSUER_FUNDING_XLM);
-      const returnAmount = (10000 - parseFloat(DEMO_KEEP_XLM) - ephemeralCost).toFixed(7);
-
-      const ops = [
-        ...ephemeralCodes.map((code) =>
-          Operation.createAccount({
-            destination: ctx.ephemeralIssuers.get(code)!.publicKey(),
-            startingBalance: EPHEMERAL_ISSUER_FUNDING_XLM,
-          })
-        ),
-        Operation.payment({
-          destination: ctx.mmPublic,
-          asset: Asset.native(),
-          amount: returnAmount,
-        }),
-      ];
-      return submit(ctx.demo, ops);
-    }
-
-    case "TRUST_AIRDROP1":
-      return submit(ctx.demo, [Operation.changeTrust({ asset: resolveAsset("AIRDROP1", ctx) })]);
-
-    case "TRUST_RUGPULL":
-      return submit(ctx.demo, [Operation.changeTrust({ asset: resolveAsset("RUGPULL", ctx) })]);
-
-    case "TRUST_LWDEMO":
-      return submit(ctx.demo, [Operation.changeTrust({ asset: resolveAsset(LWDEMO_CODE, ctx) })]);
-
-    case "TRUST_USDC":
-      return submit(ctx.demo, [Operation.changeTrust({ asset: resolveAsset("USDC", ctx) })]);
-
-    case "TRUST_EURC":
-      return submit(ctx.demo, [Operation.changeTrust({ asset: resolveAsset("EURC", ctx) })]);
-
-    case "FUND_RARE": {
-      const assetsToFund = ctx.fundRareAssets;
-      if (assetsToFund.length === 0) throw new Error("FUND_RARE called with no assets to fund");
-      const ops = assetsToFund.map((code) => {
-        const amount = code === "AIRDROP1" ? "1000000" : "13.37";
-        return Operation.payment({
-          source: ctx.ephemeralIssuers.get(code)!.publicKey(),
-          destination: demoPublic,
-          asset: resolveAsset(code, ctx),
-          amount,
-        });
-      });
-      const signers = assetsToFund.map((code) => ctx.ephemeralIssuers.get(code)!);
-      return submit(ctx.demo, ops, signers);
-    }
-
-    case "FUND_LWDEMO":
-      return submit(ctx.persistentIssuer, [
-        Operation.payment({
-          destination: demoPublic,
-          asset: resolveAsset(LWDEMO_CODE, ctx),
-          amount: LWDEMO_AMOUNT,
-        }),
-      ]);
-
-    case "FUND_USDC": {
-      const usdcIssuer = ctx.ephemeralIssuers.get("USDC")!;
-      const usdcAsset = resolveAsset("USDC", ctx);
-      const usdcCost = (parseFloat(USDC_DEMO_AMOUNT) * parseFloat(DEMO_SWAP_PRICE)).toFixed(7);
-      return submit(
-        ctx.demo,
-        [
-          Operation.manageSellOffer({
-            source: usdcIssuer.publicKey(),
-            selling: usdcAsset,
-            buying: Asset.native(),
-            amount: USDC_DEMO_AMOUNT,
-            price: DEMO_SWAP_PRICE,
-          }),
-          Operation.pathPaymentStrictReceive({
-            sendAsset: Asset.native(),
-            sendMax: usdcCost,
-            destination: demoPublic,
-            destAsset: usdcAsset,
-            destAmount: USDC_DEMO_AMOUNT,
-            path: [],
-          }),
-        ],
-        [usdcIssuer]
-      );
-    }
-
-    case "FUND_EURC": {
-      const eurcIssuer = ctx.ephemeralIssuers.get("EURC")!;
-      const eurcAsset = resolveAsset("EURC", ctx);
-      const eurcCost = (parseFloat(EURC_DEMO_AMOUNT) * parseFloat(DEMO_SWAP_PRICE)).toFixed(7);
-      return submit(
-        ctx.demo,
-        [
-          Operation.manageSellOffer({
-            source: eurcIssuer.publicKey(),
-            selling: eurcAsset,
-            buying: Asset.native(),
-            amount: EURC_DEMO_AMOUNT,
-            price: DEMO_SWAP_PRICE,
-          }),
-          Operation.pathPaymentStrictReceive({
-            sendAsset: Asset.native(),
-            sendMax: eurcCost,
-            destination: demoPublic,
-            destAsset: eurcAsset,
-            destAmount: EURC_DEMO_AMOUNT,
-            path: [],
-          }),
-        ],
-        [eurcIssuer]
-      );
-    }
-
-    case "DATA_ENTRIES": {
-      const count = Math.min(ctx.dataEntryCount, JUNK_DATA_ENTRIES.length);
-      return submit(
-        ctx.demo,
-        JUNK_DATA_ENTRIES.slice(0, count).map(({ key, value }) =>
-          Operation.manageData({ name: key, value })
-        )
-      );
-    }
-
-    case "OFFERS": {
-      const count = Math.min(ctx.offerCount, JUNK_OFFERS.length);
-      return submit(
-        ctx.demo,
-        JUNK_OFFERS.slice(0, count).map((o) =>
-          Operation.manageSellOffer({
-            selling: resolveAsset(o.selling, ctx),
-            buying: resolveAsset(o.buying, ctx),
-            amount: o.amount,
-            price: o.price,
-          })
-        )
-      );
-    }
-
-    case "ADD_SIGNER":
-      return addForgottenSigner(ctx, deps);
-  }
+  return runAction(step.action, ctx, submit, deps);
 }
 
 /**

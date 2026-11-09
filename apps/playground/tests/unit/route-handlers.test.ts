@@ -3,7 +3,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { Keypair } from "@stellar/stellar-sdk";
 import { LumenWipeApiError, type AccountState } from "@lumenwipe/sdk";
 import { PlaygroundConfigError } from "@/lib/crypto";
-import { DEFAULT_CUSTOM_CONFIG, getMessPlanForMode, type MessStepId } from "@/lib/mess-plan";
+import {
+  DEFAULT_CUSTOM_CONFIG,
+  getMessPlanForMode,
+  selectionForMode,
+  type PlaygroundCustomConfig,
+  type PlaygroundMode,
+} from "@/lib/mess-plan";
+import {
+  MAX_SCENARIOS,
+  resolvePlan,
+  type MessStepDef,
+  type ScenarioSelection,
+} from "@/lib/scenarios";
 import type { MessContext } from "@/lib/mess-builders";
 import type { RunDemolishOptions } from "@/lib/demolish";
 import type { RateLimit } from "@/lib/rate-limit";
@@ -77,9 +89,7 @@ async function seed(store: SessionStore, overrides: Partial<NewSessionData> = {}
       publicKey: kp.publicKey(),
       encSecret: encrypt(kp.secret()),
     })),
-    fundRareAssets: ["AIRDROP1", "RUGPULL"],
-    offerCount: 3,
-    dataEntryCount: 3,
+    selection: selectionForMode("standard"),
     ...overrides,
   });
   return { id: session.id, demo, issuers };
@@ -183,9 +193,7 @@ describe("create session", () => {
       demolishLog: [],
       demolishPending: null,
       demolishDone: false,
-      fundRareAssets: ["AIRDROP1", "RUGPULL"],
-      offerCount: 3,
-      dataEntryCount: 3,
+      selection: resolvePlan(selectionForMode("standard")).selection,
     });
     expect(decrypt(stored!.encDemoSecret)).toBe(encrypted[0]!);
   });
@@ -267,7 +275,9 @@ describe("create session", () => {
       expect(res.status).toBe(200);
       const body = await jsonBody(res);
       expect(body.messPlan).toEqual(getMessPlanForMode("standard"));
-      expect((await store.loadSession(body.sessionId as string))?.offerCount).toBe(3);
+      expect((await store.loadSession(body.sessionId as string))?.selection).toEqual(
+        resolvePlan(selectionForMode("standard")).selection
+      );
     }
   });
 
@@ -280,43 +290,107 @@ describe("create session", () => {
     const body = await jsonBody(res);
     const clamped = { trustlineCount: 5, offerCount: 5, dataEntryCount: 0, addSigner: false };
     expect(body.messPlan).toEqual(getMessPlanForMode("custom", clamped));
-    expect(await store.loadSession(body.sessionId as string)).toMatchObject({
-      offerCount: 5,
-      dataEntryCount: 0,
-      fundRareAssets: ["AIRDROP1", "RUGPULL"],
-    });
+    expect((await store.loadSession(body.sessionId as string))?.selection).toEqual(
+      resolvePlan(selectionForMode("custom", clamped)).selection
+    );
+  });
+
+  test("a scenario selection is stored as validated and its plan returned", async () => {
+    const { deps, store, encrypted } = createDeps();
+    const selection: ScenarioSelection = {
+      scenarios: [
+        { id: "stablecoin-swaps", params: { tokens: 1 } },
+        { id: "stale-offers", params: { count: 1 } },
+      ],
+    };
+    const body = await jsonBody(await create(deps, { selection }));
+    const plan = resolvePlan(selection);
+    expect(body.messPlan).toEqual(plan.steps);
+    expect((await store.loadSession(body.sessionId as string))?.selection).toEqual(plan.selection);
+    // The demo key and the one USDC issuer key the plan needs, nothing more.
+    expect(encrypted).toHaveLength(2);
+    const accounts = body.accounts as { ephemeral: { code: string }[] };
+    expect(accounts.ephemeral.map((e) => e.code)).toEqual(["USDC"]);
+  });
+
+  test("a selection the validator refuses is invalid_selection, before Friendbot or the store", async () => {
+    const tooMany = {
+      scenarios: Array.from({ length: MAX_SCENARIOS + 1 }, () => ({
+        id: "data-entries",
+        params: { count: 1 },
+      })),
+    };
+    const cases: [unknown, string][] = [
+      [{ scenarios: [] }, "Pick at least one scenario."],
+      [tooMany, `A demo can include at most ${MAX_SCENARIOS} scenarios.`],
+      [
+        { scenarios: [{ id: "drop-table", params: {} }] },
+        "The scenario selection could not be read.",
+      ],
+      ["standard", "The scenario selection could not be read."],
+      [
+        { scenarios: [{ id: "stale-offers", params: { count: 1 } }] },
+        "Stale DEX offers needs one of these as well: Demo token holding, Junk airdrops, Stablecoin swaps.",
+      ],
+    ];
+    for (const [selection, message] of cases) {
+      const { deps, store, funded } = createDeps();
+      const counted = countingStore(store);
+      const res = await create({ ...deps, store: counted.store }, { selection });
+      expect(await outcome(res)).toEqual({
+        status: 400,
+        body: { error: "invalid_selection", message },
+      });
+      expect(funded).toEqual([]);
+      expect(counted.calls()).toBe(0);
+    }
   });
 });
 
 describe("parseCreateBody", () => {
+  const selectionOf = (body: unknown): ScenarioSelection => {
+    const parsed = parseCreateBody(body);
+    if (!parsed.ok) throw new Error(parsed.message);
+    return parsed.plan.selection;
+  };
+  const mode = (m: PlaygroundMode, custom?: PlaygroundCustomConfig): ScenarioSelection =>
+    resolvePlan(selectionForMode(m, custom)).selection;
+
   test("only the four known modes are accepted", () => {
-    expect(parseCreateBody({ mode: "light" }).mode).toBe("light");
-    expect(parseCreateBody({ mode: "full" }).mode).toBe("full");
-    expect(parseCreateBody({ mode: "LIGHT" }).mode).toBe("standard");
-    expect(parseCreateBody({ mode: 1 }).mode).toBe("standard");
-    expect(parseCreateBody(null)).toEqual({
-      mode: "standard",
-      customConfig: DEFAULT_CUSTOM_CONFIG,
-    });
+    expect(selectionOf({ mode: "light" })).toEqual(mode("light"));
+    expect(selectionOf({ mode: "full" })).toEqual(mode("full"));
+    expect(selectionOf({ mode: "LIGHT" })).toEqual(mode("standard"));
+    expect(selectionOf({ mode: 1 })).toEqual(mode("standard"));
+    expect(selectionOf(null)).toEqual(mode("standard"));
   });
 
   test("a custom config is read only in custom mode", () => {
     const custom = { trustlineCount: 4, offerCount: 3, dataEntryCount: 1, addSigner: true };
-    expect(parseCreateBody({ mode: "light", customConfig: custom }).customConfig).toEqual(
-      DEFAULT_CUSTOM_CONFIG
-    );
-    expect(parseCreateBody({ mode: "custom", customConfig: custom }).customConfig).toEqual(custom);
-    expect(parseCreateBody({ mode: "custom" }).customConfig).toEqual(DEFAULT_CUSTOM_CONFIG);
+    expect(selectionOf({ mode: "light", customConfig: custom })).toEqual(mode("light"));
+    expect(selectionOf({ mode: "custom", customConfig: custom })).toEqual(mode("custom", custom));
+    expect(selectionOf({ mode: "custom" })).toEqual(mode("custom", DEFAULT_CUSTOM_CONFIG));
   });
 
   test("missing custom fields take defaults, and the offer default respects the trustlines", () => {
+    const one = { trustlineCount: 1, offerCount: 1, dataEntryCount: 2, addSigner: false };
+    expect(selectionOf({ mode: "custom", customConfig: { trustlineCount: 1 } })).toEqual(
+      mode("custom", one)
+    );
     expect(
-      parseCreateBody({ mode: "custom", customConfig: { trustlineCount: 1 } }).customConfig
-    ).toEqual({ trustlineCount: 1, offerCount: 1, dataEntryCount: 2, addSigner: false });
+      selectionOf({ mode: "custom", customConfig: { trustlineCount: 0, offerCount: 3 } })
+    ).toEqual(mode("custom", one));
+  });
+
+  test("a selection wins over a mode, and is validated rather than clamped", () => {
     expect(
-      parseCreateBody({ mode: "custom", customConfig: { trustlineCount: 0, offerCount: 3 } })
-        .customConfig
-    ).toMatchObject({ trustlineCount: 1, offerCount: 1 });
+      selectionOf({ mode: "full", selection: { scenarios: [{ id: "forgotten-signer" }] } })
+    ).toEqual({ scenarios: [{ id: "forgotten-signer", params: {} }] });
+    expect(
+      parseCreateBody({ selection: { scenarios: [{ id: "data-entries", params: { count: 6 } }] } })
+    ).toEqual({
+      ok: false,
+      message: "Leftover data entries: entries must be a whole number from 1 to 5.",
+    });
   });
 });
 
@@ -326,14 +400,14 @@ describe("mess step", () => {
   const issuer = Keypair.random();
   const mm = Keypair.random();
 
-  function messDeps(store: SessionStore, executed: [MessStepId, MessContext][] = []) {
+  function messDeps(store: SessionStore, executed: [MessStepDef, MessContext][] = []) {
     return {
       store,
       issuer: () => issuer,
       mm: () => mm,
       decrypt,
-      executeMessStep: async (stepId: MessStepId, ctx: MessContext) => {
-        executed.push([stepId, ctx]);
+      executeMessStep: async (planned: MessStepDef, ctx: MessContext) => {
+        executed.push([planned, ctx]);
         return "a".repeat(64);
       },
     };
@@ -347,10 +421,24 @@ describe("mess step", () => {
       deps
     );
 
-  test("a step runs with the session's keys and counts and is recorded", async () => {
+  test("a step runs as the session's plan defines it, with the session's keys, and is recorded", async () => {
     const store = memoryStore();
-    const seeded = await seed(store, { offerCount: 2, dataEntryCount: 1 });
-    const executed: [MessStepId, MessContext][] = [];
+    const selection: ScenarioSelection = {
+      scenarios: [
+        { id: "junk-airdrops", params: { tokens: 2 } },
+        { id: "data-entries", params: { count: 1 } },
+        { id: "stale-offers", params: { count: 2 } },
+      ],
+    };
+    const plan = resolvePlan(selection).steps;
+    const before = plan
+      .slice(
+        0,
+        plan.findIndex((s) => s.id === "OFFERS")
+      )
+      .map((s) => s.id);
+    const seeded = await seed(store, { selection, completedMessSteps: before });
+    const executed: [MessStepDef, MessContext][] = [];
     const res = await step(seeded.id, { stepId: "OFFERS" }, messDeps(store, executed));
 
     expect(await outcome(res)).toEqual({
@@ -358,29 +446,59 @@ describe("mess step", () => {
       body: { stepId: "OFFERS", txHash: "a".repeat(64) },
     });
     expect(executed).toHaveLength(1);
-    const [stepId, ctx] = executed[0]!;
-    expect(stepId).toBe("OFFERS");
+    const [planned, ctx] = executed[0]!;
+    expect(planned).toEqual(plan.find((s) => s.id === "OFFERS")!);
+    expect(planned.action).toMatchObject({ kind: "offers" });
+    expect(planned.action.kind === "offers" && planned.action.offers.length).toBe(2);
     expect(ctx.demo.publicKey()).toBe(seeded.demo.publicKey());
     expect(ctx.ephemeralIssuers.get("RUGPULL")?.publicKey()).toBe(
       seeded.issuers.get("RUGPULL")!.publicKey()
     );
     expect(ctx.persistentIssuer.publicKey()).toBe(issuer.publicKey());
     expect(ctx.mmPublic).toBe(mm.publicKey());
-    expect([ctx.offerCount, ctx.dataEntryCount]).toEqual([2, 1]);
-    expect(ctx.fundRareAssets).toEqual(["AIRDROP1", "RUGPULL"]);
-    expect((await store.loadSession(seeded.id))?.completedMessSteps).toEqual(["OFFERS"]);
+    expect((await store.loadSession(seeded.id))?.completedMessSteps).toEqual([...before, "OFFERS"]);
+  });
+
+  test("a light session refuses a step its plan does not contain, and nothing runs", async () => {
+    const store = memoryStore();
+    const seeded = await seed(store, {
+      selection: selectionForMode("light"),
+      ephemeralIssuers: [],
+    });
+    const executed: [MessStepDef, MessContext][] = [];
+    for (const stepId of ["ADD_SIGNER", "TRUST_USDC"]) {
+      expect(await outcome(await step(seeded.id, { stepId }, messDeps(store, executed)))).toEqual({
+        status: 400,
+        body: { error: "step_not_in_plan" },
+      });
+    }
+    expect(executed).toEqual([]);
+    expect((await store.loadSession(seeded.id))?.recordedSigners).toEqual([]);
+  });
+
+  test("a step ahead of the plan's order is step_out_of_order and nothing runs", async () => {
+    const store = memoryStore();
+    const seeded = await seed(store);
+    const executed: [MessStepDef, MessContext][] = [];
+    expect(
+      await outcome(await step(seeded.id, { stepId: "ADD_SIGNER" }, messDeps(store, executed)))
+    ).toEqual({ status: 409, body: { error: "step_out_of_order" } });
+    expect(executed).toEqual([]);
   });
 
   test("a signer the step records is persisted on the session", async () => {
     const store = memoryStore();
-    const seeded = await seed(store);
+    const plan = getMessPlanForMode("standard").map((s) => s.id);
+    const seeded = await seed(store, {
+      completedMessSteps: plan.filter((id) => id !== "ADD_SIGNER"),
+    });
     const signer = Keypair.random().publicKey();
     const res = await step(
       seeded.id,
       { stepId: "ADD_SIGNER" },
       {
         ...messDeps(store),
-        executeMessStep: async (_stepId, ctx) => {
+        executeMessStep: async (_planned, ctx) => {
           await ctx.recordSigner(signer);
           return "b".repeat(64);
         },
@@ -404,7 +522,7 @@ describe("mess step", () => {
   test("an unknown or missing step id is invalid_step and nothing runs", async () => {
     const store = memoryStore();
     const seeded = await seed(store);
-    const executed: [MessStepId, MessContext][] = [];
+    const executed: [MessStepDef, MessContext][] = [];
     for (const body of [{}, { stepId: 3 }, { stepId: "DROP_TABLE" }, { stepId: "setup" }]) {
       expect(await outcome(await step(seeded.id, body, messDeps(store, executed)))).toEqual({
         status: 400,

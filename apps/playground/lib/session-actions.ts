@@ -2,7 +2,7 @@ import "server-only";
 import { CloseOutcomeUnknownError, LumenWipeApiError, type AccountState } from "@lumenwipe/sdk";
 import { PlaygroundConfigError } from "./crypto";
 import type { DemolishRoundHooks, DemolishRoundResult } from "./demolish";
-import type { MessStepId } from "./mess-plan";
+import { resolvePlan, type MessStepDef, type MessStepId } from "./scenarios";
 import {
   PlaygroundStoreUnavailableError,
   type DemolishLogEntry,
@@ -24,11 +24,13 @@ export interface ActionResult {
 export const NOT_CONFIGURED: ActionResult = { status: 503, body: { error: "not_configured" } };
 const SESSION_NOT_FOUND: ActionResult = { status: 404, body: { error: "session_not_found" } };
 const STEP_IN_PROGRESS: ActionResult = { status: 409, body: { error: "step_in_progress" } };
+const STEP_NOT_IN_PLAN: ActionResult = { status: 400, body: { error: "step_not_in_plan" } };
+const STEP_OUT_OF_ORDER: ActionResult = { status: 409, body: { error: "step_out_of_order" } };
 
 export interface MessStepDeps {
   /** `recordSigner` persists a signer the step is about to add, before its transaction is sent. */
   executeStep: (
-    stepId: MessStepId,
+    step: MessStepDef,
     session: PlaygroundSession,
     recordSigner: (publicKey: string) => Promise<void>
   ) => Promise<string>;
@@ -81,6 +83,11 @@ export async function runMessStep(
 ): Promise<ActionResult> {
   try {
     return await withSessionLock(store, id, async (session, lock) => {
+      // The plan comes from the session's stored selection, never from the request: a step the
+      // session did not select would build entries its close expectation does not allow for.
+      const plan = resolvePlan(session.selection).steps;
+      const step = plan.find((s) => s.id === stepId);
+      if (!step) return STEP_NOT_IN_PLAN;
       if (session.completedMessSteps.includes(stepId)) {
         return { status: 409, body: { error: "step_already_executed" } };
       }
@@ -89,6 +96,8 @@ export async function runMessStep(
       if (demolishStarted(session)) {
         return { status: 409, body: { error: "demolish_started" } };
       }
+      const next = plan.find((s) => !session.completedMessSteps.includes(s.id));
+      if (next !== step) return STEP_OUT_OF_ORDER;
       // Recorded before the transaction is sent: a signer that never lands is harmless (removing
       // it would fail on chain), while one that lands unrecorded would make the demolish refuse.
       const recordSigner = async (publicKey: string): Promise<void> => {
@@ -96,7 +105,7 @@ export async function runMessStep(
           recordedSigners: [...current.recordedSigners, publicKey],
         }));
       };
-      const txHash = await deps.executeStep(stepId, session, recordSigner);
+      const txHash = await deps.executeStep(step, session, recordSigner);
       await store.updateSession(lock, (current) => ({
         completedMessSteps: [...current.completedMessSteps, stepId],
       }));

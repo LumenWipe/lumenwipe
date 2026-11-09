@@ -9,7 +9,7 @@ import {
   Operation,
   TransactionBuilder,
 } from "@stellar/stellar-sdk";
-import { LWDEMO_CODE } from "../../lib/mess-plan";
+import { LWDEMO_CODE } from "../../lib/scenarios";
 import { fundTestnetAccount, HORIZON } from "./testnet";
 
 // The e2e suite's playground server. It creates the playground's persistent testnet accounts for

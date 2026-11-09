@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from "uuid";
 import type { IntentOperation } from "@lumenwipe/sdk";
 import { isRedisConfigured } from "./upstash-redis";
 import { DEV_STORE_FILE, devFileKv, upstashKv, type SessionKv } from "./kv";
+import { parseSelection, validateSelection, type ScenarioSelection } from "./scenarios";
 
 // Server-only custodial session storage for the testnet playground.
 // Secrets are stored AES-256-GCM-encrypted (see ./crypto). Sessions expire
@@ -11,7 +12,7 @@ import { DEV_STORE_FILE, devFileKv, upstashKv, type SessionKv } from "./kv";
 export const SESSION_TTL_SECONDS = 3600;
 
 /** Bumped whenever the stored shape changes; a session of any other version reads as expired. */
-export const SESSION_SCHEMA_VERSION = 3;
+export const SESSION_SCHEMA_VERSION = 4;
 
 /** Longer than any route's maxDuration, so a request the platform kills frees its session soon after. */
 export const SESSION_LOCK_TTL_MS = 150_000;
@@ -69,9 +70,9 @@ export interface PlaygroundSession {
   demolishPending: PendingDemolishTx | null;
   demolishDone: boolean;
   createdAt: number;
-  fundRareAssets: string[];
-  offerCount: number;
-  dataEntryCount: number;
+  /** The validated scenario selection. The plan, the executor's steps and the close expectation
+   *  are recomputed from it on every request; nothing the client sends later can change it. */
+  selection: ScenarioSelection;
 }
 
 type FixedFields = "schemaVersion" | "id" | "createdAt";
@@ -84,6 +85,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((v) => typeof v === "string");
+}
+
+function isValidSelection(value: unknown): boolean {
+  const selection = parseSelection(value);
+  return selection !== null && validateSelection(selection).ok;
 }
 
 function isEphemeralIssuer(value: unknown): value is EphemeralIssuer {
@@ -131,9 +137,7 @@ export function isPlaygroundSession(value: unknown): value is PlaygroundSession 
     (value.demolishPending === null || isPendingDemolishTx(value.demolishPending)) &&
     typeof value.demolishDone === "boolean" &&
     typeof value.createdAt === "number" &&
-    isStringArray(value.fundRareAssets) &&
-    typeof value.offerCount === "number" &&
-    typeof value.dataEntryCount === "number"
+    isValidSelection(value.selection)
   );
 }
 

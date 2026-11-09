@@ -44,13 +44,14 @@ test("loading an unknown id returns null", async () => {
 
 test("updateSession merges the patch and keeps every other field", async () => {
   const store = memoryStore();
-  const session = await store.createSession({ ...newSessionData(), offerCount: 3 });
+  const selection = { scenarios: [{ id: "data-entries" as const, params: { count: 3 } }] };
+  const session = await store.createSession({ ...newSessionData(), selection });
   const lock = (await store.acquireLock(session.id))!;
   await store.updateSession(lock, (s) => ({ completedMessSteps: [...s.completedMessSteps, "A"] }));
   await store.updateSession(lock, (s) => ({ completedMessSteps: [...s.completedMessSteps, "B"] }));
   const loaded = await store.loadSession(session.id);
   expect(loaded?.completedMessSteps).toEqual(["A", "B"]);
-  expect(loaded?.offerCount).toBe(3);
+  expect(loaded?.selection).toEqual(selection);
   expect(loaded?.id).toBe(session.id);
 });
 
@@ -154,6 +155,24 @@ describe("schema version", () => {
   test("a version 2 session, saved before an in-flight close was recorded, reads as expired", async () => {
     const { demolishPending: _omitted, ...v2 } = { ...current(), schemaVersion: 2 };
     expect(await (await stored(v2)).loadSession(SID)).toBeNull();
+  });
+
+  test("a version 3 session, saved with counts instead of a scenario selection, reads as expired", async () => {
+    const { selection: _omitted, ...rest } = current();
+    const v3 = { ...rest, schemaVersion: 3, fundRareAssets: [], offerCount: 0, dataEntryCount: 0 };
+    expect(await (await stored(v3)).loadSession(SID)).toBeNull();
+  });
+
+  test("a session whose stored selection is not valid reads as expired", async () => {
+    for (const selection of [
+      undefined,
+      { scenarios: [] },
+      { scenarios: [{ id: "stale-offers", params: { count: 1 } }] },
+      { scenarios: [{ id: "data-entries", params: { count: 99 } }] },
+      { scenarios: [{ id: "no-such-scenario", params: {} }] },
+    ]) {
+      expect(await (await stored({ ...current(), selection })).loadSession(SID)).toBeNull();
+    }
   });
 
   test("a session with a demolish transaction in flight loads with it", async () => {

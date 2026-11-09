@@ -1,46 +1,18 @@
 import { test, expect } from "bun:test";
+import { createHash } from "node:crypto";
 import {
   DEFAULT_CUSTOM_CONFIG,
-  estimateCustomDuration,
-  getFundRareAssets,
-  getMessCounts,
+  estimateSeconds,
   getMessPlanForMode,
-  getNeededEphemeralCodes,
   maxOfferCount,
-  isMessStepId,
+  selectionForMode,
   type PlaygroundCustomConfig,
+  type PlaygroundMode,
 } from "@/lib/mess-plan";
+import { isMessStepId, resolvePlan } from "@/lib/scenarios";
 
-test("light mode is the shortest plan", () => {
-  const plan = getMessPlanForMode("light");
-  expect(plan.map((s) => s.id)).toEqual(["SETUP", "TRUST_LWDEMO", "FUND_LWDEMO"]);
-});
-
-test("full mode needs all four ephemeral assets", () => {
-  expect(getNeededEphemeralCodes("full")).toEqual(["AIRDROP1", "RUGPULL", "USDC", "EURC"]);
-});
-
-test("custom mode respects trustlineCount for ephemeral codes", () => {
-  expect(
-    getNeededEphemeralCodes("custom", {
-      trustlineCount: 3,
-      offerCount: 0,
-      dataEntryCount: 0,
-      addSigner: false,
-    })
-  ).toEqual(["AIRDROP1", "RUGPULL"]);
-});
-
-test("maxOfferCount is capped by both trustlineCount and the junk-offer catalog", () => {
-  expect(maxOfferCount(2)).toBe(2);
-  expect(maxOfferCount(10)).toBe(5); // JUNK_OFFERS.length
-});
-
-test("isMessStepId recognizes known step ids and rejects unknown ones", () => {
-  expect(isMessStepId("SETUP")).toBe(true);
-  expect(isMessStepId("DATA_ENTRIES")).toBe(true);
-  expect(isMessStepId("NOT_A_STEP")).toBe(false);
-});
+// The four original modes are named selections of the scenario registry. These tests hold them to
+// what they built before the registry existed.
 
 function* customConfigs(): Generator<PlaygroundCustomConfig> {
   for (let trustlineCount = 1; trustlineCount <= 5; trustlineCount++) {
@@ -54,85 +26,88 @@ function* customConfigs(): Generator<PlaygroundCustomConfig> {
   }
 }
 
-test("each fixed mode posts its documented offer and data entry counts", () => {
-  expect(getMessCounts("light")).toEqual({ offerCount: 0, dataEntryCount: 0 });
-  expect(getMessCounts("standard")).toEqual({ offerCount: 3, dataEntryCount: 3 });
-  expect(getMessCounts("full")).toEqual({ offerCount: 5, dataEntryCount: 3 });
-  expect(getMessCounts("custom", { ...DEFAULT_CUSTOM_CONFIG, offerCount: 1 })).toEqual({
-    offerCount: 1,
-    dataEntryCount: DEFAULT_CUSTOM_CONFIG.dataEntryCount,
-  });
+const allModes = (): [PlaygroundMode, PlaygroundCustomConfig | undefined][] => [
+  ["light", undefined],
+  ["standard", undefined],
+  ["full", undefined],
+  ...[...customConfigs()].map((c): ["custom", PlaygroundCustomConfig] => ["custom", c]),
+];
+
+/** Every observable output of a mode, in the shape the pre-registry functions returned it. */
+function legacyShape(mode: PlaygroundMode, custom?: PlaygroundCustomConfig) {
+  const plan = resolvePlan(selectionForMode(mode, custom));
+  const rare = plan.steps.find((s) => s.id === "FUND_RARE")?.action;
+  return {
+    steps: plan.steps.map((s) => [
+      s.id,
+      s.label,
+      s.nodes.map((n) => n.id),
+      s.balances.map((b) => b.nodeId),
+    ]),
+    ephemeral: plan.ephemeralAssets,
+    rare: rare?.kind === "airdrops" ? rare.payments.map((p) => p.asset) : [],
+    counts: { offerCount: plan.expectation.offers, dataEntryCount: plan.expectation.dataEntries },
+    seconds: mode === "custom" ? plan.cost.seconds : null,
+  };
+}
+
+test("all 243 modes and custom configs build exactly what they built before the registry", () => {
+  const shapes = allModes().map(([mode, custom]) => legacyShape(mode, custom));
+  expect(shapes).toHaveLength(243);
+  // sha256 of the same shape computed from getMessPlanForMode, getNeededEphemeralCodes,
+  // getFundRareAssets, getMessCounts and estimateCustomDuration at 47a0e27, with each balance
+  // update limited to nodes the plan docks: FUND_RARE used to name tl:RUGPULL even when only
+  // AIRDROP1 was trusted, a no-op on a node that never existed.
+  expect(createHash("sha256").update(JSON.stringify(shapes)).digest("hex")).toBe(
+    "844674a5f66008224311f06083e62fde4d6c252616040991b489001f2808ade0"
+  );
+});
+
+test("light, standard and full keep their step order and counts", () => {
+  expect(getMessPlanForMode("light").map((s) => s.id)).toEqual([
+    "SETUP",
+    "TRUST_LWDEMO",
+    "FUND_LWDEMO",
+  ]);
+  expect(getMessPlanForMode("standard").map((s) => s.id)).toEqual([
+    "SETUP",
+    "TRUST_AIRDROP1",
+    "TRUST_RUGPULL",
+    "TRUST_LWDEMO",
+    "FUND_RARE",
+    "FUND_LWDEMO",
+    "DATA_ENTRIES",
+    "OFFERS",
+    "ADD_SIGNER",
+  ]);
+  expect(legacyShape("standard").counts).toEqual({ offerCount: 3, dataEntryCount: 3 });
+  expect(legacyShape("full").counts).toEqual({ offerCount: 5, dataEntryCount: 3 });
+  expect(legacyShape("full").ephemeral).toEqual(["AIRDROP1", "RUGPULL", "USDC", "EURC"]);
+});
+
+test("every mode and custom config is a valid selection", () => {
+  for (const [mode, custom] of allModes()) {
+    expect(() => resolvePlan(selectionForMode(mode, custom))).not.toThrow();
+  }
 });
 
 test("the duration estimate is pinned at the smallest, default and largest custom demos", () => {
   const smallest = { trustlineCount: 1, offerCount: 0, dataEntryCount: 0, addSigner: false };
   const largest = { trustlineCount: 5, offerCount: 5, dataEntryCount: 5, addSigner: true };
-  expect(estimateCustomDuration(smallest)).toBe(39);
-  expect(estimateCustomDuration(DEFAULT_CUSTOM_CONFIG)).toBe(83);
-  expect(estimateCustomDuration(largest)).toBe(145);
+  expect(estimateSeconds("custom", smallest)).toBe(39);
+  expect(estimateSeconds("custom", DEFAULT_CUSTOM_CONFIG)).toBe(83);
+  expect(estimateSeconds("custom", largest)).toBe(145);
+  expect(estimateSeconds("light")).toBe(39);
 });
 
-test("the duration estimate spends five seconds per plan step and eight per close step", () => {
-  for (const config of customConfigs()) {
-    const messSeconds = getMessPlanForMode("custom", config).length * 5;
-    const closeSeconds = estimateCustomDuration(config) - messSeconds;
-    // The close always has at least the merge, one trustline and the trustline removal.
-    expect(closeSeconds % 8).toBe(0);
-    expect(closeSeconds).toBeGreaterThanOrEqual(3 * 8);
-  }
+test("maxOfferCount is capped by both trustlineCount and the junk-offer catalog", () => {
+  expect(maxOfferCount(2)).toBe(2);
+  expect(maxOfferCount(10)).toBe(5);
 });
 
-test("adding anything to a custom demo never shortens the estimate", () => {
-  for (const config of customConfigs()) {
-    const base = estimateCustomDuration(config);
-    if (config.trustlineCount < 5) {
-      expect(
-        estimateCustomDuration({ ...config, trustlineCount: config.trustlineCount + 1 })
-      ).toBeGreaterThan(base);
-    }
-    if (config.offerCount < maxOfferCount(config.trustlineCount)) {
-      expect(
-        estimateCustomDuration({ ...config, offerCount: config.offerCount + 1 })
-      ).toBeGreaterThanOrEqual(base);
-    }
-    if (config.dataEntryCount < 5) {
-      expect(
-        estimateCustomDuration({ ...config, dataEntryCount: config.dataEntryCount + 1 })
-      ).toBeGreaterThanOrEqual(base);
-    }
-    if (!config.addSigner) {
-      expect(estimateCustomDuration({ ...config, addSigner: true })).toBeGreaterThan(base);
-    }
-  }
-});
-
-test("the rare assets are the airdropped junk tokens each mode trusts", () => {
-  expect(getFundRareAssets("light")).toEqual([]);
-  expect(getFundRareAssets("standard")).toEqual(["AIRDROP1", "RUGPULL"]);
-  expect(getFundRareAssets("full")).toEqual(["AIRDROP1", "RUGPULL"]);
-  const custom = (trustlineCount: number) =>
-    getFundRareAssets("custom", { ...DEFAULT_CUSTOM_CONFIG, trustlineCount });
-  expect(custom(1)).toEqual([]);
-  expect(custom(2)).toEqual(["AIRDROP1"]);
-  expect(custom(3)).toEqual(["AIRDROP1", "RUGPULL"]);
-  expect(custom(5)).toEqual(["AIRDROP1", "RUGPULL"]);
-});
-
-test("a rare asset always has an issuer and a trustline, and FUND_RARE runs only when there is one", () => {
-  const cases: [Parameters<typeof getMessPlanForMode>[0], PlaygroundCustomConfig?][] = [
-    ["light"],
-    ["standard"],
-    ["full"],
-    ...[...customConfigs()].map((c): ["custom", PlaygroundCustomConfig] => ["custom", c]),
-  ];
-  for (const [mode, config] of cases) {
-    const rare = getFundRareAssets(mode, config);
-    const plan = getMessPlanForMode(mode, config).map((s): string => s.id);
-    const needed = getNeededEphemeralCodes(mode, config);
-    for (const code of rare) {
-      expect(needed).toContain(code);
-      expect(plan).toContain(`TRUST_${code}`);
-    }
-    expect(plan.includes("FUND_RARE")).toBe(rare.length > 0);
-  }
+test("isMessStepId recognizes known step ids and rejects unknown ones", () => {
+  expect(isMessStepId("SETUP")).toBe(true);
+  expect(isMessStepId("DATA_ENTRIES")).toBe(true);
+  expect(isMessStepId("NOT_A_STEP")).toBe(false);
+  expect(isMessStepId("setup")).toBe(false);
 });

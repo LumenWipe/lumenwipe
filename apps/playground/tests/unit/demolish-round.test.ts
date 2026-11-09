@@ -156,7 +156,7 @@ async function newSession(store: SessionStore): Promise<PlaygroundSession> {
   return store.createSession({
     ...newSessionData(),
     demoPublic: demo.publicKey(),
-    dataEntryCount: 1,
+    selection: { scenarios: [{ id: "data-entries", params: { count: 1 } }] },
   });
 }
 
