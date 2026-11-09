@@ -2,6 +2,7 @@ import type { ErrorCode } from "@lumenwipe/types";
 
 /** What each registered code means, for the generated table in docs/api-reference/introduction.mdx. */
 export const ERROR_CODE_DESCRIPTIONS: Record<ErrorCode, string> = {
+  account_auth_immutable: "The account has the AUTH_IMMUTABLE flag set, so it can never be merged.",
   account_not_found: "The account does not exist on this network.",
   account_read_failed: "The account could not be read. Retry.",
   account_too_large: "The account has too many entries to read in one request.",
@@ -81,6 +82,8 @@ export const ERROR_CODE_DESCRIPTIONS: Record<ErrorCode, string> = {
     "The account issues assets that are still held and the close was not acknowledged.",
   key_limit_reached: "The wallet already has the maximum number of active keys.",
   key_network_not_allowed: "The API key is not scoped to this network or route.",
+  liquidity_pool_shares_held:
+    "The account holds liquidity pool shares, which must be withdrawn before it can be merged.",
   mediator_key_misconfiguration: "The exchange flow is temporarily unavailable. Retry.",
   mediator_not_configured: "The exchange (mediator) flow is not configured on this server.",
   memo_required: "The destination requires a memo.",
@@ -125,9 +128,19 @@ export const ERROR_CODE_DESCRIPTIONS: Record<ErrorCode, string> = {
   sponsor_source_unusable:
     "The account to sponsor does not exist, or the transaction is not its next one.",
   sponsorship_budget_exhausted: "The fee sponsor's daily budget for this request is used up.",
+  sponsorship_claimable_balance_unrevocable:
+    "The account sponsors a claimable balance, which it cannot revoke until a claimant claims it.",
+  sponsorship_unaffordable:
+    "Revoking a sponsorship would leave the sponsored account below its minimum balance.",
+  sponsorship_unenumerated:
+    "The account sponsors entries on other accounts that could not all be listed, so it cannot be merged yet.",
+  sponsorship_unverified:
+    "An account this one sponsors entries on could not be read, so the sponsorship cannot be revoked yet. Retry.",
   state_changed:
     "The account changed between reading and building. Nothing was submitted; plan again.",
   stats_unavailable: "The stats store is unreachable. Retry.",
+  subentries_unenumerated:
+    "The account has entries that could not be listed, so the close cannot remove them.",
   submit_failed: "The outcome is unknown. Look the transaction up by hash before retrying.",
   submit_rejected: "The network rejected the transaction.",
   time_bounds_required: "The transaction must expire within a short window to be signed.",

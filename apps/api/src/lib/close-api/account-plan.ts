@@ -241,7 +241,7 @@ export async function buildAccountPlan(
   );
   const sponsorshipAffordabilityPromise: Promise<SponsorshipAffordability> =
     accountState.sponsorshipEnumerationIncomplete
-      ? Promise.resolve({ revocable: [], unaffordableOwners: new Map() })
+      ? Promise.resolve({ revocable: [], unverifiedOwners: [], unaffordableOwners: new Map() })
       : assessSponsorshipAffordability(source, nonClaimableSponsoredEntries, network);
   // Quoted across both providers (Soroswap and xBull), one quote per held token with readable
   // metadata, inside one time budget under the request deadline (token-quote-fanout.ts). A token

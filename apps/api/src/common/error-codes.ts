@@ -6,6 +6,7 @@ import type { ErrorCode } from "@lumenwipe/types";
  * to it at compile time: adding a code to one without the other fails the type check.
  */
 export const ERROR_CODES = [
+  "account_auth_immutable",
   "account_not_found",
   "account_read_failed",
   "account_too_large",
@@ -73,6 +74,7 @@ export const ERROR_CODES = [
   "issuer_supply_not_acknowledged",
   "key_limit_reached",
   "key_network_not_allowed",
+  "liquidity_pool_shares_held",
   "mediator_key_misconfiguration",
   "mediator_not_configured",
   "memo_required",
@@ -112,8 +114,13 @@ export const ERROR_CODES = [
   "source_sequence_too_far",
   "sponsor_source_unusable",
   "sponsorship_budget_exhausted",
+  "sponsorship_claimable_balance_unrevocable",
+  "sponsorship_unaffordable",
+  "sponsorship_unenumerated",
+  "sponsorship_unverified",
   "state_changed",
   "stats_unavailable",
+  "subentries_unenumerated",
   "submit_failed",
   "submit_rejected",
   "time_bounds_required",

@@ -11,6 +11,14 @@ version number before 0.4.0. Neither has a git tag.
 
 ## [Unreleased]
 
+### Added
+
+- `ErrorCode` gains `account_auth_immutable`, `liquidity_pool_shares_held`,
+  `subentries_unenumerated`, `sponsorship_claimable_balance_unrevocable`,
+  `sponsorship_unaffordable`, `sponsorship_unenumerated` and `sponsorship_unverified`: states in which the account cannot be
+  merged. Each is a plan blocker and a 422 from `close/transactions` before any transaction is
+  built.
+
 ## [0.10.2] - 2026-11-08
 
 ### Fixed

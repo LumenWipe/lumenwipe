@@ -61,6 +61,7 @@ test("assessSponsorshipAffordability › owner with enough spendable balance →
   const result = await assessSponsorshipAffordability(SPONSOR, entries, "testnet");
   expect(result.revocable).toEqual(entries);
   expect(result.unaffordableOwners.size).toBe(0);
+  expect(result.unverifiedOwners).toEqual([]);
 });
 
 test("assessSponsorshipAffordability › owner without enough spendable balance → entry is unaffordable with a shortfall", async () => {
@@ -188,4 +189,41 @@ test("assessSponsorshipAffordability › mixed owners → affordable owner's ent
   expect(result.revocable).toEqual([entries[0]]);
   expect(result.unaffordableOwners.has(OWNER_B)).toBe(true);
   expect(result.unaffordableOwners.has(OWNER)).toBe(false);
+});
+
+test("assessSponsorshipAffordability › owner whose read fails → reported unverified, never dropped", async () => {
+  statesFor({
+    [OWNER]: {
+      accountSponsor: null,
+      trustlineSponsors: {},
+      signerSponsors: {},
+      offerSponsors: {},
+      dataSponsors: {},
+      fetchFailed: true,
+      reserve: null,
+    },
+  });
+  const entries: SponsoredEntry[] = [{ kind: "trustline", owner: OWNER, asset: "USDC:GISSUER" }];
+  const result = await assessSponsorshipAffordability(SPONSOR, entries, "testnet");
+  expect(result.revocable).toEqual([]);
+  expect(result.unaffordableOwners.size).toBe(0);
+  expect(result.unverifiedOwners).toEqual([OWNER]);
+});
+
+test("assessSponsorshipAffordability › owner read without its reserve → reported unverified", async () => {
+  statesFor({
+    [OWNER]: {
+      accountSponsor: null,
+      trustlineSponsors: { "USDC:GISSUER": SPONSOR },
+      signerSponsors: {},
+      offerSponsors: {},
+      dataSponsors: {},
+      fetchFailed: false,
+      reserve: null,
+    },
+  });
+  const entries: SponsoredEntry[] = [{ kind: "trustline", owner: OWNER, asset: "USDC:GISSUER" }];
+  const result = await assessSponsorshipAffordability(SPONSOR, entries, "testnet");
+  expect(result.revocable).toEqual([]);
+  expect(result.unverifiedOwners).toEqual([OWNER]);
 });

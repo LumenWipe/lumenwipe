@@ -195,6 +195,7 @@ export function assessSignerNormalizationSafety(accountState: AccountState): Pla
   const masterWeight = signers.find((s) => s.key === masterKey)?.weight ?? 0;
   if (masterWeight < 1) {
     blockers.push({
+      code: "signer_normalization_unsafe",
       message:
         "The master key on this account has weight 0. Removing the account's other signers " +
         "would leave no key able to authorize any further changes to this account, so this " +
@@ -225,7 +226,7 @@ export function assessSignerNormalizationSafety(accountState: AccountState): Pla
           `signers or changing thresholds, but that requires weight ${thresholds.high} (the current ` +
           `high threshold). At least one of its signers cannot be authorized through this flow, so this ` +
           `change can never be fully authorized.`;
-    blockers.push({ message });
+    blockers.push({ code: "signer_normalization_unsafe", message });
   }
 
   return blockers;
@@ -280,6 +281,7 @@ export function buildPlan(
   claimableBalanceSelections: Record<string, ClaimableBalanceSelection> = {},
   sponsorshipAffordability: SponsorshipAffordability = {
     revocable: [],
+    unverifiedOwners: [],
     unaffordableOwners: new Map(),
   },
   /** The user's per-asset choice, keyed by the canonical `CODE:ISSUER` asset string. Only the
@@ -315,6 +317,7 @@ export function buildPlan(
   // as the first blocker so users don't read past a plan that can never execute.
   if (authImmutable) {
     blockers.push({
+      code: "account_auth_immutable",
       message:
         "This account has the AUTH_IMMUTABLE flag set. ACCOUNT_MERGE is permanently disabled " +
         "for AUTH_IMMUTABLE accounts - the flag cannot be cleared once set.",
@@ -337,6 +340,7 @@ export function buildPlan(
     (accountState.sponsorshipEnumerationIncomplete || noEntriesFound);
   if (sponsorshipUsesBlanketBlocker) {
     blockers.push({
+      code: "sponsorship_unenumerated",
       message:
         `This account is sponsoring ${accountState.numSponsoring} entr${accountState.numSponsoring === 1 ? "y" : "ies"} ` +
         `on other accounts. All sponsorships must be revoked before the account can be merged.`,
@@ -365,12 +369,21 @@ export function buildPlan(
         });
       }
     }
+    for (const owner of sponsorshipAffordability.unverifiedOwners) {
+      blockers.push({
+        code: "sponsorship_unverified",
+        message:
+          `${shortAddr(owner)}, an account this one sponsors entries on, could not be read, so ` +
+          "whether those sponsorships can be revoked is unknown. Retry in a moment.",
+      });
+    }
   }
 
   // Pool share blocker: liquidity pool share trustlines cost 2 base reserves each and must
   // be withdrawn from the pool (via a DEX UI) before the trustline can be removed.
   if (accountState.poolShares.length > 0) {
     blockers.push({
+      code: "liquidity_pool_shares_held",
       message:
         `This account holds ${accountState.poolShares.length} liquidity pool share(s). ` +
         `Withdraw from the pool using a DEX interface (e.g. Stellar Expert) before continuing.`,
@@ -381,6 +394,7 @@ export function buildPlan(
   // Proceeding would leave unknown entries behind - block rather than build an incomplete plan.
   if (accountState.subEntryMismatch) {
     blockers.push({
+      code: "subentries_unenumerated",
       message:
         "This account has entries that could not be enumerated. " +
         "The analysis may be incomplete - do not proceed until the discrepancy is resolved.",

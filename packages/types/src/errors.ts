@@ -4,6 +4,7 @@
  * (apps/api/src/common/error-codes.ts) is checked against this union at compile time.
  */
 export type ErrorCode =
+  | "account_auth_immutable"
   | "account_not_found"
   | "account_read_failed"
   | "account_too_large"
@@ -71,6 +72,7 @@ export type ErrorCode =
   | "issuer_supply_not_acknowledged"
   | "key_limit_reached"
   | "key_network_not_allowed"
+  | "liquidity_pool_shares_held"
   | "mediator_key_misconfiguration"
   | "mediator_not_configured"
   | "memo_required"
@@ -110,8 +112,13 @@ export type ErrorCode =
   | "source_sequence_too_far"
   | "sponsor_source_unusable"
   | "sponsorship_budget_exhausted"
+  | "sponsorship_claimable_balance_unrevocable"
+  | "sponsorship_unaffordable"
+  | "sponsorship_unenumerated"
+  | "sponsorship_unverified"
   | "state_changed"
   | "stats_unavailable"
+  | "subentries_unenumerated"
   | "submit_failed"
   | "submit_rejected"
   | "time_bounds_required"

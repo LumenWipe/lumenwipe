@@ -12,6 +12,10 @@ export interface SponsorshipAffordability {
    *  the owner needs. Never includes claimable_balance entries (excluded by callers -
    *  see the CAP-33 note in tx-builder/index.ts). */
   unaffordableOwners: Map<string, { entries: SponsoredEntry[]; shortfallXlm: string }>;
+  /** Owners whose live state could not be read, so neither the sponsorship nor the reserve could
+   *  be checked. Never dropped: the account may still sponsor their entries, which would fail
+   *  the merge with ACCOUNT_MERGE_IS_SPONSOR. */
+  unverifiedOwners: string[];
 }
 
 type OwnedEntry = Exclude<SponsoredEntry, { kind: "claimable_balance" }>;
@@ -36,7 +40,8 @@ function currentSponsorFor(live: OwnerLiveState, entry: OwnedEntry): string | nu
  * whether revoking every entry this account still sponsors for them leaves the owner at or
  * above its minimum balance. Doubles as the "live re-read before build" check: an entry no
  * longer live-sponsored by `address` (resolved by someone else, or the owner vanished) is
- * silently dropped from both `revocable` and `unaffordableOwners` - it needs no operation.
+ * silently dropped from both `revocable` and `unaffordableOwners` - it needs no operation. An
+ * owner whose read fails is reported in `unverifiedOwners` instead, never dropped.
  *
  * Decision granularity is per owner, not per entry: an owner's entries are all-revocable or
  * all-blocked together, based on the owner's TOTAL shifted reserve, so a build never leaves
@@ -58,6 +63,7 @@ export async function assessSponsorshipAffordability(
 
   const revocable: SponsoredEntry[] = [];
   const unaffordableOwners: SponsorshipAffordability["unaffordableOwners"] = new Map();
+  const unverifiedOwners: string[] = [];
 
   const owners = Array.from(byOwner.keys());
   const liveStateByOwner = await fetchOwnerLiveStatesBounded(owners, network);
@@ -65,7 +71,11 @@ export async function assessSponsorshipAffordability(
   owners.forEach((owner) => {
     const ownerEntries = byOwner.get(owner)!;
     const live = liveStateByOwner.get(owner)!;
-    if (live.fetchFailed || live.reserve === null) return; // can't verify - drop silently, matches "unknown, don't guess"
+    // Unknown, not "nothing to revoke": the caller blocks on it rather than guess.
+    if (live.fetchFailed || live.reserve === null) {
+      unverifiedOwners.push(owner);
+      return;
+    }
 
     const stillSponsored = ownerEntries.filter((e) => currentSponsorFor(live, e) === address);
     if (stillSponsored.length === 0) return; // fully resolved already
@@ -90,5 +100,5 @@ export async function assessSponsorshipAffordability(
     }
   });
 
-  return { revocable, unaffordableOwners };
+  return { revocable, unaffordableOwners, unverifiedOwners };
 }

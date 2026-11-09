@@ -9,7 +9,7 @@
  * its own comment ("Live re-read immediately before build... a deliberate, separate call, not a
  * reuse of the plan-time result"). Only the plan-time call site had test coverage before this file -
  * this proves the build-time call is a genuine live re-read, not a silent pass-through of whatever
- * `buildPlan()` decided minutes earlier.
+ * `buildPlan()` decided minutes earlier, and that what it finds unaffordable refuses the build.
  *
  * Spies directly on `assessSponsorshipAffordability`, the exact function build-transactions.ts
  * calls, with `spyOn` rather than `mock.module` - `mock.module` replaces a module's whole export
@@ -91,30 +91,43 @@ function opsOf(xdr: string) {
   return TransactionBuilder.fromXDR(xdr, Networks.TESTNET).operations;
 }
 
-test("build-transactions re-reads sponsorship affordability live, independent of any plan-time result", async () => {
+test("build-transactions refuses a sponsorship the live re-read marks unaffordable, before any round", async () => {
   spyOn(rpcModule, "getRpcServer").mockReturnValue(rpcServerStub());
   // Build-time: the live read now reports the owner as unaffordable - a real drift between
   // when a caller might have called /close/plan (which could have seen "affordable") and when
-  // it calls /close/transactions. If build-transactions.ts were reusing a stale plan-time
-  // assumption instead of calling this function fresh, this spy alone couldn't influence the
-  // built ops - the point is that this spy is the ONLY source of truth build-transactions.ts
-  // has for affordability here.
+  // it calls /close/transactions. The revoke cannot be built, so the account would still sponsor
+  // the entry at the merge (ACCOUNT_MERGE_IS_SPONSOR): the build is refused instead.
   spyOn(sponsorshipAffordabilityModule, "assessSponsorshipAffordability").mockResolvedValue({
     revocable: [],
+    unverifiedOwners: [],
     unaffordableOwners: new Map([[OWNER, { entries: SPONSORED_ENTRIES, shortfallXlm: "5" }]]),
   });
 
-  const result = await buildCloseTransactions(ALL_ON, accountState(), DEST, {}, "testnet");
+  await expect(
+    buildCloseTransactions(ALL_ON, accountState(), DEST, {}, "testnet")
+  ).rejects.toMatchObject({ code: "sponsorship_unaffordable", status: 422 });
+});
 
-  const ops = opsOf(result.transactions[0]!.xdr);
-  // Unaffordable per the live (build-time) read: no revoke-sponsorship op is built for it.
-  expect(ops.some((o) => o.type === "revokeTrustlineSponsorship")).toBe(false);
+test("build-transactions refuses an account that sponsors a claimable balance", async () => {
+  spyOn(rpcModule, "getRpcServer").mockReturnValue(rpcServerStub());
+  // A claimable-balance sponsorship cannot be revoked by its sponsor, so the merge would fail
+  // with ACCOUNT_MERGE_IS_SPONSOR whatever else the close does.
+  const state = {
+    ...accountState(),
+    sponsoredEntries: [{ kind: "claimable_balance" as const, balanceId: "00".repeat(36) }],
+  };
+
+  await expect(buildCloseTransactions(ALL_ON, state, DEST, {}, "testnet")).rejects.toMatchObject({
+    code: "sponsorship_claimable_balance_unrevocable",
+    status: 422,
+  });
 });
 
 test("build-transactions includes the revoke when the live read confirms it's affordable", async () => {
   spyOn(rpcModule, "getRpcServer").mockReturnValue(rpcServerStub());
   spyOn(sponsorshipAffordabilityModule, "assessSponsorshipAffordability").mockResolvedValue({
     revocable: SPONSORED_ENTRIES,
+    unverifiedOwners: [],
     unaffordableOwners: new Map(),
   });
 

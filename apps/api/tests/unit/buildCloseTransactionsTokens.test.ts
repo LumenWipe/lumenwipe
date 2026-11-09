@@ -211,7 +211,7 @@ test("a trustline cannot be left: the answer is refused by name, never converted
   await expect(promise).rejects.toMatchObject({ code: "trustline_cannot_be_left", status: 422 });
 });
 
-const affordability = { revocable: [], unaffordableOwners: new Map() };
+const affordability = { revocable: [], unverifiedOwners: [], unaffordableOwners: new Map() };
 
 test("the plan shows a token transfer as its own step ahead of the classic close, and the close no longer fuses", () => {
   const plan = buildPlan(

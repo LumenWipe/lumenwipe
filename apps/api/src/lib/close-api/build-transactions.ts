@@ -1,5 +1,6 @@
 import type { ErrorCode } from "@lumenwipe/types";
 import { isErrorCode } from "@/common/error-codes";
+import { DEFI_POSITION_LEFT_BEHIND_CODE } from "@/lib/defi-exits/plan-exits";
 import { Account, Memo, TransactionBuilder } from "@stellar/stellar-sdk";
 import {
   buildExitRound,
@@ -71,6 +72,7 @@ import type {
   ClaimableBalance,
   ClaimableBalanceSelection,
   CloseTransaction,
+  PlanBlocker,
   TransferDestinations,
 } from "@lumenwipe/types";
 import {
@@ -154,11 +156,42 @@ function trustlineCannotBeLeftMessage(code: string): string {
   );
 }
 
-/** Plan blockers a later round of the build raises from state already known at round 0. */
-const LATER_ROUND_PLAN_REFUSALS: ReadonlySet<string> = new Set([
-  "claimable_balance_reserve_short",
-  "claimable_balances_too_many",
+/**
+ * The only plan blockers a close is built past, with the three DeFi codes `isNonTrappingDefiBlocker`
+ * names. Every other blocker `buildPlan` raises, now or in
+ * the future, refuses the build (`planRefusal`), so a new blocker cannot reach a merge unchecked.
+ */
+const BUILDABLE_PLAN_BLOCKERS: ReadonlySet<string> = new Set([
+  // The user chose to give the balance up; the merge does not depend on it.
+  "claimable_balance_forfeited",
+  // The user chose to leave the position behind; it stays tied to the address after the merge.
+  DEFI_POSITION_LEFT_BEHIND_CODE,
+  // Estimated over every Soroban round ahead. Each round is held to its real fee instead
+  // (`assertOwnFeesFit`, `packCloseTransactions`, and the exchange cleanup and merge checks).
+  "close_fee_balance_short",
 ]);
+
+/** Plan blockers raised under a code the error registry names differently. */
+const PLAN_BLOCKER_ERROR_CODES: Readonly<Record<string, ErrorCode>> = {
+  // A balance with no answer that fits it; the claim round refuses it under this code too.
+  claimable_balance_unclaimable: "claimable_balance_not_claimable_now",
+};
+
+/**
+ * The refusal for the first plan blocker the build cannot go past, or null when there is none.
+ * Fails closed: a blocker without a code, or with one the registry does not know, is refused as
+ * `unprocessable_entity` rather than built around.
+ */
+export function planRefusal(blockers: readonly PlanBlocker[]): CloseBuildError | null {
+  const blocker = blockers.find(
+    (b) =>
+      b.code === undefined || !(BUILDABLE_PLAN_BLOCKERS.has(b.code) || isNonTrappingDefiBlocker(b))
+  );
+  if (!blocker) return null;
+  const mapped = blocker.code === undefined ? undefined : PLAN_BLOCKER_ERROR_CODES[blocker.code];
+  const code = mapped ?? (isErrorCode(blocker.code) ? blocker.code : "unprocessable_entity");
+  return new CloseBuildError(code, blocker.message, 422);
+}
 
 function feeBalanceShortError(shortStroops: bigint): CloseBuildError {
   return new CloseBuildError("close_fee_balance_short", closeFeeShortMessage(shortStroops), 422);
@@ -290,12 +323,14 @@ export async function buildCloseTransactions(
   // A switched-off path refuses here, before any read or round: an exchange close must never
   // clean an account up for a forward that cannot follow, and a paused exit, conversion or fee
   // sponsor must not leave the close half done.
+  const needsMediator = requiresMediatorForAddress(destinationAddress);
+  const conversionProviders = Object.fromEntries(
+    Object.entries(conversion.floors ?? {}).map(([contract, f]) => [contract, f.provider])
+  );
   const killed = killSwitchBlockers(accountState, switches, {
-    viaMediator: requiresMediatorForAddress(destinationAddress),
+    viaMediator: needsMediator,
     dispositions,
-    conversionProviders: Object.fromEntries(
-      Object.entries(conversion.floors ?? {}).map(([contract, f]) => [contract, f.provider])
-    ),
+    conversionProviders,
     claimableBalanceSelections,
   })[0];
   if (killed) throw new CloseBuildError(killed.code, killed.message, killed.status);
@@ -303,19 +338,48 @@ export async function buildCloseTransactions(
   // Settled here because `blendSdkNetwork` reads the pin synchronously during the exit round.
   await pinRpcProvider(network);
   const server = getRpcServer(network);
-  const [sequence, latest, issuance] = await Promise.all([
+  // Read live in this request, not reused from /close/plan: the sponsored owners' reserves can
+  // have changed since. Claimable-balance sponsorships are never revocable and are left out.
+  const nonClaimableSponsoredEntries = accountState.sponsoredEntries.filter(
+    (e) => e.kind !== "claimable_balance"
+  );
+  const [sequence, latest, issuance, sponsorshipAffordability] = await Promise.all([
     confirmLedgerState(accountState, server, rpcProviders(network).length > 1),
     server.getLatestLedger(),
     assessIssuance(accountState.address, network, issuer.deps),
+    accountState.sponsorshipEnumerationIncomplete
+      ? Promise.resolve({ revocable: [], unverifiedOwners: [], unaffordableOwners: new Map() })
+      : assessSponsorshipAffordability(accountState.address, nonClaimableSponsoredEntries, network),
   ]);
   const issuanceBlockers = assessIssuanceBlockers(issuance, issuer.acknowledged ?? false);
   if (issuanceBlockers.length > 0) {
     throw new CloseBuildError(issuanceBlockers[0]!.code, issuanceBlockers[0]!.message, 422);
   }
+
+  // The plan, rebuilt from this request's state and answers, refuses the close before any round
+  // is built: a caller that never asked for /close/plan (an SDK runClose) must not get a round
+  // whose close can never merge. Earlier rounds land on their own, so a merge refused only at
+  // the last round would leave the account half closed.
+  const ledgerCloseTime = parseLedgerCloseTime(latest.closeTime);
+  const plan = buildPlan(
+    switches,
+    { ...accountState, ledgerCloseTime: ledgerCloseTime ?? undefined },
+    needsMediator,
+    false,
+    claimableBalanceSelections,
+    sponsorshipAffordability,
+    dispositions,
+    transferDestinations,
+    accountState.defiPositions,
+    userVerifiedNoDefiPositions,
+    { blocked: new Map(), leftBehind: exitDeps.leaveBehind ?? new Set<string>() },
+    conversionProviders
+  );
+  const refusal = planRefusal(plan.blockers);
+  if (refusal) throw refusal;
   const sdkAccount = new Account(accountState.address, sequence);
   // Ledgers close roughly every 5s; surface an approximate ledger bound for the tx time bound.
   const validUntilLedger = latest.sequence + Math.ceil(TX_TIMEOUT_SECONDS / 5);
-  const needsMediator = requiresMediatorForAddress(destinationAddress);
   const sponsorConfigured = switches.feeSponsorship && switches.feeSponsorConfigured;
   // What each classic round leaves the account for the ones after it, so a fee the sponsor would
   // pay is not taken from XLM a later fee it would refuse needs.
@@ -329,27 +393,9 @@ export async function buildCloseTransactions(
 
   // Round 0 for an account no single key can close: signer normalization alone, ahead of every
   // other round, so each later one needs only the master key (docs/multisig-cosigning.md 3.1).
-  // It does not close the account, so it is refused while a later round is already known to be.
+  // It does not close the account, so the plan gate above refuses it while a later round is
+  // already known to be refused.
   if (normalizesSignersFirst(accountState)) {
-    const ledgerCloseTime = parseLedgerCloseTime(latest.closeTime);
-    const plan = buildPlan(
-      switches,
-      { ...accountState, ledgerCloseTime: ledgerCloseTime ?? undefined },
-      needsMediator,
-      false,
-      claimableBalanceSelections,
-      undefined,
-      dispositions,
-      transferDestinations,
-      accountState.defiPositions,
-      userVerifiedNoDefiPositions
-    );
-    const laterRefusal = plan.blockers.find(
-      (b) => b.code !== undefined && LATER_ROUND_PLAN_REFUSALS.has(b.code)
-    );
-    if (laterRefusal && isErrorCode(laterRefusal.code)) {
-      throw new CloseBuildError(laterRefusal.code, laterRefusal.message, 422);
-    }
     for (const tl of accountState.trustlines) {
       if (dispositions[tl.asset] === "leave") {
         throw new CloseBuildError(
@@ -722,20 +768,7 @@ export async function buildCloseTransactions(
   const exchange = lookupExchange(destinationAddress);
   const memoType = exchange?.memoType ?? (memo ? (requestedMemoType ?? "text") : null);
 
-  // Live re-read immediately before build: /close/plan may have assessed affordability
-  // minutes ago, and the sponsored owner's on-chain reserve state can have changed since -
-  // this is a deliberate, separate call, not a reuse of the plan-time result.
-  const nonClaimableSponsoredEntries = accountState.sponsoredEntries.filter(
-    (e) => e.kind !== "claimable_balance"
-  );
-  const sponsorshipAffordability = accountState.sponsorshipEnumerationIncomplete
-    ? { revocable: [], unaffordableOwners: new Map() }
-    : await assessSponsorshipAffordability(
-        accountState.address,
-        nonClaimableSponsoredEntries,
-        network
-      );
-
+  // Every sponsorship is revocable here: an unaffordable one refused the build above.
   const input: CloseOperationsInput = {
     needsSignerNormalization: computeNeedsSignerNormalization(accountState),
     signers: accountState.signers,
