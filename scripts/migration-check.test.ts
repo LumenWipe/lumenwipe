@@ -33,16 +33,18 @@ const GCLOUD_READS = [
   "run services get-iam-policy",
   "iam workload-identity-pools providers describe",
   "projects get-iam-policy",
-  "run domain-mappings describe",
+  "beta run domain-mappings describe",
   "billing projects describe",
   "billing budgets list",
   "logging buckets list",
   "logging sinks list",
-  "beta monitoring policies list",
+  "monitoring policies list",
   "monitoring uptime list-configs",
-  "org-policies list",
+  "resource-manager org-policies list",
+  "projects describe",
 ];
 const READ_VERBS = new Set(["describe", "list", "get-iam-policy", "list-configs"]);
+const GH_WRITE_FLAGS = /^(-X|--method|-f|--field|-F|--raw-field|--input)$/;
 const CURL_WRITE_FLAGS =
   /^(-X|--request|-d|--data.*|-F|--form.*|-T|--upload-file|-I|--head|--json|-G|--get)$/;
 
@@ -54,7 +56,10 @@ interface Http {
 type Gcloud = Record<string, unknown>;
 interface World {
   gcloud: Gcloud;
-  gh: unknown;
+  gh: {
+    runs: Record<string, Array<{ conclusion: string; createdAt: string; url?: string }>>;
+    workflowState: string;
+  };
   http: Record<string, Http>;
 }
 
@@ -74,9 +79,15 @@ if (tool === "gcloud") {
     console.error("ERROR: (gcloud) PERMISSION_DENIED: the caller does not have permission");
     process.exit(1);
   }
+  if (value && value.noComponent) {
+    console.error("ERROR: (gcloud) You do not currently have this command group installed. Using it requires the installation of components: [beta]");
+    process.exit(1);
+  }
   console.log(JSON.stringify(value));
 } else if (tool === "gh") {
-  if (positional.startsWith("run list")) console.log(JSON.stringify(world.gh));
+  const workflow = args[args.indexOf("--workflow") + 1];
+  if (positional.startsWith("run list") && workflow in world.gh.runs) console.log(JSON.stringify(world.gh.runs[workflow]));
+  else if (positional.startsWith("api repos/" + env.SIM_REPO + "/actions/workflows/onchain-monitors.yml") && args.includes("--jq")) console.log(world.gh.workflowState);
   else process.exit(3);
 } else if (tool === "curl") {
   let out, fmt, header, fail = false, verbose = false;
@@ -104,6 +115,9 @@ if (tool === "gcloud") {
 `;
 
 let dir: string;
+
+const hoursAgo = (hours: number) =>
+  new Date(Date.now() - hours * 3_600_000).toISOString().replace(/\.\d+Z$/, "Z");
 
 function healthyWorld(): World {
   const ready = [{ type: "Ready", status: "True" }];
@@ -134,7 +148,7 @@ function healthyWorld(): World {
           },
         ],
       },
-      "run domain-mappings describe": { status: { conditions: ready } },
+      "beta run domain-mappings describe": { status: { conditions: ready } },
       "billing projects describe": {
         billingEnabled: true,
         billingAccountName: "billingAccounts/000000-000000-000000",
@@ -147,13 +161,28 @@ function healthyWorld(): World {
         { name: `projects/${PROJECT}/locations/global/buckets/_Required`, retentionDays: 400 },
       ],
       "logging sinks list": [{ name: "_Required" }, { name: "_Default" }],
-      "beta monitoring policies list": [
+      "monitoring policies list": [
         { displayName: "API down", enabled: true, notificationChannels: [CHANNEL] },
       ],
       "monitoring uptime list-configs": [{ displayName: "API health" }],
-      "org-policies list": [{ constraint: "constraints/iam.allowedPolicyMemberDomains" }],
+      "resource-manager org-policies list": [
+        { constraint: "constraints/iam.allowedPolicyMemberDomains" },
+      ],
+      "projects describe": { projectId: PROJECT, parent: { type: "organization", id: "123" } },
     },
-    gh: [{ conclusion: "success", url: `https://github.com/${REPO}/actions/runs/1` }],
+    gh: {
+      runs: {
+        "deploy-api.yml": [
+          {
+            conclusion: "success",
+            url: `https://github.com/${REPO}/actions/runs/1`,
+            createdAt: hoursAgo(2),
+          },
+        ],
+        "onchain-monitors.yml": [{ conclusion: "success", createdAt: hoursAgo(1) }],
+      },
+      workflowState: "active",
+    },
     http: {
       [`${PLATFORM}/health`]: { status: 200, body: { status: "ok" } },
       [`https://${DOMAIN}/health`]: { status: 200, body: { status: "ok" } },
@@ -208,6 +237,7 @@ async function run(env: Record<string, string> = FULL_ENV) {
       GITHUB_STEP_SUMMARY: summary,
       SIM_WORLD: join(dir, "world.json"),
       SIM_LOG: log,
+      SIM_REPO: REPO,
       ...env,
     },
     stdout: "pipe",
@@ -237,7 +267,8 @@ function assertReadOnly(calls: string[][]) {
       expect(read, `gcloud ${positional}`).toBeDefined();
       expect(READ_VERBS.has(read!.split(" ").at(-1)!)).toBe(true);
     } else if (tool === "gh") {
-      expect(positional.startsWith("run list"), `gh ${positional}`).toBe(true);
+      expect(/^(run list|api) /.test(positional), `gh ${positional}`).toBe(true);
+      expect(args.filter((a) => GH_WRITE_FLAGS.test(a))).toEqual([]);
     } else {
       expect(tool).toBe("curl");
       expect(args.filter((a) => CURL_WRITE_FLAGS.test(a))).toEqual([]);
@@ -285,13 +316,14 @@ test("checks without their configuration are skipped, not failed", async () => {
     "deploy-pipeline": "SKIPPED",
     "test-key": "SKIPPED",
     domain: "SKIPPED",
+    alerting: "SKIPPED",
   });
   expect(code).toBe(0);
 });
 
 test("a read the identity is denied fails unless SKIP_DENIED=1", async () => {
   world.gcloud["billing projects describe"] = { denied: true };
-  world.gcloud["org-policies list"] = { denied: true };
+  world.gcloud["resource-manager org-policies list"] = { denied: true };
   const strict = await run();
   expect(strict.results.billing).toBe("FAIL");
   expect(strict.results["org-policies"]).toBe("FAIL");
@@ -340,9 +372,10 @@ const FAILURES: Array<[string, string, (w: World) => void]> = [
   [
     "the last manual deploy failed",
     "deploy-pipeline",
-    (w) => (w.gh = [{ conclusion: "failure", url: "u" }]),
+    (w) =>
+      (w.gh.runs["deploy-api.yml"] = [{ conclusion: "failure", url: "u", createdAt: hoursAgo(1) }]),
   ],
-  ["no manual deploy has run", "deploy-pipeline", (w) => (w.gh = [])],
+  ["no manual deploy has run", "deploy-pipeline", (w) => (w.gh.runs["deploy-api.yml"] = [])],
   [
     "the trust condition names another repository",
     "deploy-pipeline",
@@ -378,7 +411,7 @@ const FAILURES: Array<[string, string, (w: World) => void]> = [
   [
     "the domain mapping is not ready",
     "domain",
-    (w) => (w.gcloud["run domain-mappings describe"] = { status: { conditions: [] } }),
+    (w) => (w.gcloud["beta run domain-mappings describe"] = { status: { conditions: [] } }),
   ],
   [
     "billing is disabled",
@@ -411,7 +444,7 @@ const FAILURES: Array<[string, string, (w: World) => void]> = [
     "an alert policy is disabled",
     "alerting",
     (w) =>
-      (w.gcloud["beta monitoring policies list"] = [
+      (w.gcloud["monitoring policies list"] = [
         { enabled: false, notificationChannels: [CHANNEL] },
       ]),
   ],
@@ -419,15 +452,28 @@ const FAILURES: Array<[string, string, (w: World) => void]> = [
     "an alert policy is routed elsewhere",
     "alerting",
     (w) =>
-      (w.gcloud["beta monitoring policies list"] = [
+      (w.gcloud["monitoring policies list"] = [
         { enabled: true, notificationChannels: ["projects/x/notificationChannels/9"] },
       ]),
   ],
   [
-    "the uptime check is gone",
+    "the monitors workflow is disabled",
     "alerting",
-    (w) => (w.gcloud["monitoring uptime list-configs"] = []),
+    (w) => (w.gh.workflowState = "disabled_manually"),
   ],
+  [
+    "the last scheduled monitor run failed",
+    "alerting",
+    (w) =>
+      (w.gh.runs["onchain-monitors.yml"] = [{ conclusion: "failure", createdAt: hoursAgo(1) }]),
+  ],
+  [
+    "the last scheduled monitor run is older than 24 hours",
+    "alerting",
+    (w) =>
+      (w.gh.runs["onchain-monitors.yml"] = [{ conclusion: "success", createdAt: hoursAgo(25) }]),
+  ],
+  ["no scheduled monitor run exists", "alerting", (w) => (w.gh.runs["onchain-monitors.yml"] = [])],
 ];
 
 test.each(FAILURES)("%s fails %s and the run", async (_name, check, mutate) => {
@@ -435,6 +481,47 @@ test.each(FAILURES)("%s fails %s and the run", async (_name, check, mutate) => {
   const { code, results } = await run();
   expect(results).toEqual({ ...allAre("PASS"), [check]: "FAIL" });
   expect(code).toBe(1);
+});
+
+test("the deploy run's creation time is in the detail", async () => {
+  const { stdout } = await run();
+  expect(stdout).toContain(`created ${world.gh.runs["deploy-api.yml"]![0]!.createdAt}`);
+});
+
+test("a missing beta component fails the domain check and says so", async () => {
+  world.gcloud["beta run domain-mappings describe"] = { noComponent: true };
+  const { code, results, stdout } = await run();
+  expect(results).toEqual({ ...allAre("PASS"), domain: "FAIL" });
+  expect(stdout).toContain("gcloud components install beta");
+  expect(code).toBe(1);
+});
+
+test("zero alert policies and zero uptime checks pass and are counted", async () => {
+  world.gcloud["monitoring policies list"] = [];
+  world.gcloud["monitoring uptime list-configs"] = [];
+  const { code, results, stdout } = await run();
+  expect(results).toEqual(allAre("PASS"));
+  expect(stdout).toContain("0 alert policies enabled and routed, 0 uptime checks");
+  expect(code).toBe(0);
+});
+
+test("a project without an organization parent is reported, not failed", async () => {
+  world.gcloud["projects describe"] = { projectId: PROJECT };
+  const { results, stdout } = await run();
+  expect(results["org-policies"]).toBe("PASS");
+  expect(stdout).toContain("no organization parent");
+});
+
+test("no organization policy constraints is reported as none", async () => {
+  world.gcloud["resource-manager org-policies list"] = [];
+  const { results, stdout } = await run();
+  expect(results["org-policies"]).toBe("PASS");
+  expect(stdout).toContain("in force: none");
+});
+
+test("the organization parent is named when there is one", async () => {
+  const { stdout } = await run();
+  expect(stdout).toContain("parent organization/123");
 });
 
 test("the summary lists every check", async () => {

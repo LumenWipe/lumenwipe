@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
 # Read-only check of the API's infrastructure, run after any project or organization move, IAM or
 # policy change: prints PASS, FAIL or SKIPPED per check and exits 1 when any check fails. It only
-# describes, lists and reads (gcloud describe/list/get-iam-policy, gh run list, curl GET); it
-# never creates or changes anything.
+# describes, lists and reads (gcloud describe/list/get-iam-policy, gh run list, gh api GET, curl
+# GET); it never creates or changes anything.
+#
+# Prerequisites: gcloud with the beta component (gcloud components install beta), gh signed in
+# or GH_TOKEN set, jq and curl. Prompts are disabled, so a missing component fails the check that
+# needs it instead of offering to install it.
 #
 # Required: GCP_PROJECT_ID, GCP_REGION, SERVICE. Optional, each check that needs one is SKIPPED
 # without it:
 #   API_DOMAIN            custom domain of the API, without scheme
-#   GITHUB_REPOSITORY     owner/name of this repository, for the deploy run and its trust condition
+#   GITHUB_REPOSITORY     owner/name of this repository, for the deploy run, its trust condition
+#                         and the on-chain monitors workflow that carries the alerts
 #   WIF_PROVIDER          full resource name of the workload identity provider the deploy uses
 #   CHECK_API_KEY         a testnet self-serve test key, never an integrator's key
 #   ALERT_CHANNEL         notification channel resource name every alert policy must route to
@@ -27,6 +32,7 @@
 # <name> to CHECKS, extend the stubs in scripts/migration-check.test.ts so the new reads are
 # allowed, and list the check in docs/runbooks/restore-api-keys.mdx.
 set -uo pipefail
+export CLOUDSDK_CORE_DISABLE_PROMPTS=1
 
 : "${GCP_PROJECT_ID:?}" "${GCP_REGION:?}" "${SERVICE:?}"
 EXPECTED_INGRESS="${EXPECTED_INGRESS:-all}"
@@ -43,14 +49,20 @@ trap 'rm -rf "$work"' EXIT
 detail=""
 service_json=""
 
-# gcloud, read verbs only. A refusal for lack of permission leaves a marker the runner reads.
+# gcloud, read verbs only. A refusal for lack of permission leaves a marker the runner reads; a
+# missing component leaves one the check names.
 gc() {
   if gcloud "$@" --project="$GCP_PROJECT_ID" --format=json 2> "$work/stderr"; then return 0; fi
   if grep -qiE 'PERMISSION_DENIED|does not have .*permission|forbidden|403' "$work/stderr"; then
     touch "$work/denied"
   fi
+  if grep -qiE 'requires the installation of components|component.*not installed' "$work/stderr"; then
+    touch "$work/component"
+  fi
   return 1
 }
+
+missing_component() { [ -e "$work/component" ] && detail="the gcloud beta component is not installed: gcloud components install beta"; }
 
 gh_read() { gh "$@" 2> /dev/null; }
 
@@ -112,7 +124,7 @@ check_deploy_pipeline() {
     return 2
   fi
   run="$(gh_read run list --repo "$GITHUB_REPOSITORY" --workflow deploy-api.yml --branch main \
-    --event workflow_dispatch --limit 1 --json conclusion,url)" || { detail="cannot list deploy runs"; return 1; }
+    --event workflow_dispatch --limit 1 --json conclusion,url,createdAt)" || { detail="cannot list deploy runs"; return 1; }
   conclusion="$(jq -r '.[0].conclusion // "none"' <<< "$run")"
   if [ "$conclusion" != "success" ]; then
     detail="the latest manual deploy run concluded '$conclusion'; run the deploy workflow by hand first"
@@ -124,7 +136,7 @@ check_deploy_pipeline() {
     detail="the provider's attribute condition does not name $GITHUB_REPOSITORY"
     return 1
   fi
-  detail="manual deploy $(jq -r '.[0].url' <<< "$run") succeeded; trust condition names $GITHUB_REPOSITORY"
+  detail="manual deploy $(jq -r '.[0].url' <<< "$run") created $(jq -r '.[0].createdAt' <<< "$run") succeeded; trust condition names $GITHUB_REPOSITORY"
 }
 
 check_revision() {
@@ -182,7 +194,10 @@ check_test_key() {
 check_domain() {
   local mapping expiry
   [ -n "${API_DOMAIN:-}" ] || { detail="API_DOMAIN is not set"; return 2; }
-  mapping="$(gc run domain-mappings describe --domain="$API_DOMAIN" --region="$GCP_REGION")" || { detail="cannot read the domain mapping"; return 1; }
+  mapping="$(gc beta run domain-mappings describe --domain="$API_DOMAIN" --region="$GCP_REGION")" || {
+    missing_component || detail="cannot read the domain mapping"
+    return 1
+  }
   if ! jq -e 'any(.status.conditions[]?; .type == "Ready" and .status == "True")' > /dev/null <<< "$mapping"; then
     detail="the mapping for $API_DOMAIN is not Ready"
     return 1
@@ -223,12 +238,14 @@ check_logging() {
   detail="_Default retention ${retention}d; sinks: $(jq -r '[.[].name] | join(", ")' <<< "$sinks")"
 }
 
+# Alerts reach the team through the on-chain monitors workflow; Cloud Monitoring policies are
+# optional, but any that exist must be on and routed.
 check_alerting() {
-  local policies uptime
-  policies="$(gc beta monitoring policies list)" || { detail="cannot list alert policies"; return 1; }
+  local policies uptime state runs count
+  policies="$(gc monitoring policies list)" || { detail="cannot list alert policies"; return 1; }
   uptime="$(gc monitoring uptime list-configs)" || { detail="cannot list uptime checks"; return 1; }
-  if ! jq -e 'length > 0 and all(.[]; .enabled == true)' > /dev/null <<< "$policies"; then
-    detail="no alert policy, or one is disabled"
+  if ! jq -e 'all(.[]; .enabled == true)' > /dev/null <<< "$policies"; then
+    detail="an alert policy is disabled"
     return 1
   fi
   if ! jq -e --arg c "${ALERT_CHANNEL:-}" \
@@ -236,17 +253,35 @@ check_alerting() {
     detail="an alert policy is not routed to ${ALERT_CHANNEL:-any channel}"
     return 1
   fi
-  if ! jq -e 'length > 0' > /dev/null <<< "$uptime"; then
-    detail="no uptime check"
+  count="$(jq 'length' <<< "$policies") alert policies enabled and routed, $(jq 'length' <<< "$uptime") uptime checks"
+  if [ -z "${GITHUB_REPOSITORY:-}" ]; then
+    detail="GITHUB_REPOSITORY is not set, monitors workflow not checked; $count"
+    return 2
+  fi
+  state="$(gh_read api "repos/$GITHUB_REPOSITORY/actions/workflows/onchain-monitors.yml" --jq .state)" || { detail="cannot read the monitors workflow"; return 1; }
+  if [ "$state" != "active" ]; then
+    detail="onchain-monitors.yml is '$state', not active"
     return 1
   fi
-  detail="$(jq 'length' <<< "$policies") alert policies enabled and routed, $(jq 'length' <<< "$uptime") uptime check(s)"
+  runs="$(gh_read run list --repo "$GITHUB_REPOSITORY" --workflow onchain-monitors.yml --event schedule \
+    --limit 1 --json conclusion,createdAt)" || { detail="cannot list monitor runs"; return 1; }
+  if ! jq -e '.[0].conclusion == "success"' > /dev/null <<< "$runs"; then
+    detail="the latest scheduled monitor run concluded '$(jq -r '.[0].conclusion // "none"' <<< "$runs")'"
+    return 1
+  fi
+  if ! jq -e '(.[0].createdAt | fromdateiso8601) > (now - 86400)' > /dev/null <<< "$runs"; then
+    detail="the latest scheduled monitor run is older than 24 hours ($(jq -r '.[0].createdAt' <<< "$runs"))"
+    return 1
+  fi
+  detail="monitors workflow active, last scheduled run $(jq -r '.[0].createdAt' <<< "$runs") succeeded; $count"
 }
 
 check_org_policies() {
-  local list
-  list="$(gc org-policies list)" || { detail="cannot list organization policy constraints"; return 1; }
-  detail="in force: $(jq -r '[.[].constraint // .name | sub("^constraints/"; "")] | if length == 0 then "none" else join(", ") end' <<< "$list")"
+  local project list parent
+  project="$(gc projects describe "$GCP_PROJECT_ID")" || { detail="cannot read the project"; return 1; }
+  list="$(gc resource-manager org-policies list)" || { detail="cannot list organization policy constraints"; return 1; }
+  parent="$(jq -r 'if .parent.id then "parent \(.parent.type)/\(.parent.id)" else "no organization parent" end' <<< "$project")"
+  detail="$parent; in force: $(jq -r '[.[] | .constraint // .name | sub("^constraints/"; "")] | if length == 0 then "none" else join(", ") end' <<< "$list")"
 }
 
 passed=0
