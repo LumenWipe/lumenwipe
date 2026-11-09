@@ -2,6 +2,7 @@ import { test, expect } from "bun:test";
 import { errorCopy, GENERIC_ERROR_COPY } from "@/lib/error-copy";
 import {
   DecisionBlockedError,
+  PlanBlockedError,
   PlaygroundApiError,
   playgroundRequest,
   SessionExpiredError,
@@ -81,4 +82,18 @@ test("a round stopped on a decision carries the decision ids, and only strings a
   expect((bare as DecisionBlockedError).decisionIds).toEqual([]);
   const other = await failure(respond(422, { error: "invalid_selection", decisions: ["x"] }));
   expect(other).not.toBeInstanceOf(DecisionBlockedError);
+});
+
+test("a round stopped on a blocker carries its codes, and only the resolvable ones it names", async () => {
+  const err = await failure(
+    respond(422, {
+      error: "demolish_blocked",
+      blockers: ["sponsorship_unaffordable", 7, "subentries_unenumerated"],
+      resolvable: ["sponsorship_unaffordable", "not_a_blocker_here"],
+    })
+  );
+  if (!(err instanceof PlanBlockedError)) throw new Error("expected a PlanBlockedError");
+  expect(err.blockers).toEqual(["sponsorship_unaffordable", "subentries_unenumerated"]);
+  expect(err.resolvable).toEqual(["sponsorship_unaffordable"]);
+  expect(err.message).toBe(errorCopy("demolish_blocked"));
 });

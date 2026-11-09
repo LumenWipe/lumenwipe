@@ -12,6 +12,7 @@ import { handleCreateSession, handleMess } from "@/lib/route-handlers";
 import {
   JUNK_OFFERS,
   SCENARIOS,
+  helperRoleOf,
   resolvePlan,
   validateSelection,
   type MessStepId,
@@ -101,7 +102,27 @@ async function runAndCheck(selection: ScenarioSelection): Promise<void> {
     expected,
     issuers: session.ephemeralIssuers,
     recipient: session.transferRecipient?.publicKey ?? null,
+    helpers: session.helperAccounts.map((h) => h.publicKey),
   });
+
+  // Every balance the mess created is recorded under the id its own signed transaction gives it.
+  const balanceIds = posted.flatMap(({ tx }) =>
+    tx.operations.flatMap((op, i) =>
+      op.type === "createClaimableBalance" ? [tx.getClaimableBalanceId(i)] : []
+    )
+  );
+  expect(session.claimableBalances.map((b) => b.id)).toEqual(balanceIds);
+  const planned = plan.steps.flatMap((s) =>
+    s.action.kind === "claimable_balances" ? s.action.balances.map((b) => b.intent) : []
+  );
+  expect(session.claimableBalances.map((b) => b.intent)).toEqual(planned);
+  // Each helper the plan needs exists, once.
+  expect(session.helperAccounts.map((h) => h.role)).toEqual(
+    plan.steps.flatMap((s) => {
+      const role = helperRoleOf(s.action);
+      return role ? [role] : [];
+    })
+  );
 }
 
 const label = (asset: Asset): string => (asset.isNative() ? "native" : asset.getCode());
@@ -113,6 +134,7 @@ function assertConsistent({
   expected,
   issuers,
   recipient,
+  helpers,
 }: {
   plan: ReturnType<typeof resolvePlan>;
   demoPublic: string;
@@ -120,6 +142,7 @@ function assertConsistent({
   expected: ReturnType<typeof expectationFromSession>;
   issuers: { assetCode: string; publicKey: string }[];
   recipient: string | null;
+  helpers: string[];
 }): void {
   // Every plan step posted exactly one transaction, in plan order.
   expect(posted.map((p) => p.stepId)).toEqual(plan.steps.map((s) => s.id));
@@ -134,13 +157,20 @@ function assertConsistent({
   const airdrops: string[] = [];
   const recipientTrusts: string[] = [];
   let recipientsCreated = 0;
+  let helperEntries = 0;
   let signersAdded = 0;
 
   for (const { stepId, tx } of posted) {
     for (const op of tx.operations) {
       const source = op.source ?? tx.source;
+      // A helper's own entries are not the demo's; the expectation covers them separately.
+      if (helpers.includes(source)) {
+        if (op.type === "changeTrust" || op.type === "manageData") helperEntries++;
+        continue;
+      }
       switch (op.type) {
         case "createAccount":
+          if (helpers.includes(op.destination)) break;
           if (op.destination === recipient) recipientsCreated++;
           else createdIssuers.push(op.destination);
           break;
@@ -165,7 +195,7 @@ function assertConsistent({
           const index = JUNK_OFFERS.findIndex(
             (o) => o.selling === label(op.selling) && o.buying === label(op.buying)
           );
-          offerNodes.push(`offer:${index}`);
+          offerNodes.push(index >= 0 ? `offer:${index}` : "offer:sponsored");
           break;
         }
         case "payment":
@@ -195,7 +225,11 @@ function assertConsistent({
   expect(issuers.map((i) => i.assetCode)).toEqual(plan.ephemeralAssets);
 
   // The verifier's expectation counts exactly the entries the chain received.
-  expect(expected.assets.map((a) => a.code).sort()).toEqual([...trustlines].sort());
+  // A balance claimed through a new trustline adds an asset the close returns and removes.
+  const arriving = plan.expectation.arrivingAssets;
+  expect(expected.assets.map((a) => a.code).sort()).toEqual([...trustlines, ...arriving].sort());
+  // Each entry the demo sponsors on its beneficiary is one the close may revoke.
+  expect(expected.sponsoredEntries).toHaveLength(helperEntries);
   expect(expected.offerCount).toBe(offerNodes.length);
   expect(expected.dataEntryCount).toBe(dataNames.length);
   expect(expected.recordedSigners).toHaveLength(signersAdded);
@@ -203,7 +237,12 @@ function assertConsistent({
   // The close of these entries: a return and a removal per trustline, one operation per offer,
   // data entry and signer. The scenarios must declare exactly that, and the verifier's ceiling
   // must allow exactly that plus the threshold reset and the merge.
-  const closeOps = 2 * trustlines.length + offerNodes.length + dataNames.length + signersAdded;
+  const closeOps =
+    2 * (trustlines.length + arriving.length) +
+    offerNodes.length +
+    dataNames.length +
+    signersAdded +
+    helperEntries;
   expect(plan.expectation.closeOperations).toBe(closeOps);
   expect(maxOperations(expected)).toBe(closeOps + 2);
 
@@ -280,15 +319,28 @@ describe("the plan, the chain and the close expectation agree", () => {
     }
   });
 
+  test("every claimable-balance mix and every sponsored-reserve variant", async () => {
+    for (let mix = 0; mix < 8; mix++) {
+      const [add_trustline, time_gated, demo_sponsored] = [mix & 1, (mix >> 1) & 1, (mix >> 2) & 1];
+      await runAndCheck({
+        scenarios: [
+          { id: "claimable-balances", params: { add_trustline, time_gated, demo_sponsored } },
+        ],
+      });
+    }
+    for (let variant = 0; variant <= 2; variant++) {
+      await runAndCheck({ scenarios: [{ id: "sponsored-reserves", params: { variant } }] });
+    }
+  });
+
   test("every subset of the registry at its smallest and largest parameters", async () => {
     let cases = 0;
     for (const selection of registrySelections()) {
       await runAndCheck(selection);
       cases++;
     }
-    // Without the dispositions scenario, 59 subsets are valid at their minimum (stale offers needs
-    // a token) and 35 of them still are at their maximum, where five offers need every token. The
-    // dispositions scenario fits beside each of those 94 and alone, at both ends: 2 * 94 + 2.
-    expect(cases).toBe(190);
+    // Pinned so a change to the registry or its rules shows up here: 190 valid selections before
+    // the claimable-balance and sponsored-reserve scenarios, which fit beside most of them.
+    expect(cases).toBe(764);
   }, 120_000);
 });

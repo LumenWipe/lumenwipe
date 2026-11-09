@@ -42,6 +42,14 @@ export interface LogEntry {
   at: number;
 }
 
+/** Why the close stopped before building: decisions it could not answer, or blockers the API
+ *  reported, with the ones the session can resolve. */
+export interface StoppedClose {
+  decisionIds: string[];
+  blockers: string[];
+  resolvable: string[];
+}
+
 export interface PlaygroundAccounts {
   issuer: string;
   mm: string;
@@ -49,6 +57,8 @@ export interface PlaygroundAccounts {
   ephemeral: Array<{ code: string; publicKey: string }>;
   /** The account the session's transfers go to; null when it transfers nothing. */
   transferRecipient: string | null;
+  /** The claimant, sponsor or beneficiary accounts the session created. */
+  helpers: Array<{ role: string; publicKey: string }>;
 }
 
 interface PlaygroundState {
@@ -64,7 +74,7 @@ interface PlaygroundState {
   accountState: AccountState | null;
   lastError: string | null;
   /** The decision ids that stopped the close, when the last error was such a stop. */
-  blockedDecisions: string[] | null;
+  blocker: StoppedClose | null;
   /** XLM recovered so far during the demolish phase (for the core counter). */
   recoveredXlm: string | null;
   /** The last error stopped a close that had started: the demo can resume it. */
@@ -93,7 +103,7 @@ interface PlaygroundState {
   addLog: (entry: Omit<LogEntry, "id" | "at">) => void;
   setAccountState: (state: AccountState | null) => void;
   setRecoveredXlm: (xlm: string) => void;
-  setLastError: (error: string | null, blockedDecisions?: string[] | null) => void;
+  setLastError: (error: string | null, blocker?: StoppedClose | null) => void;
   setDemolishFailed: (failed: boolean) => void;
   setSelection: (
     selection: ScenarioSelection,
@@ -118,7 +128,7 @@ const sessionInitialState = {
   log: [],
   accountState: null,
   lastError: null,
-  blockedDecisions: null,
+  blocker: null,
   recoveredXlm: null,
   demolishFailed: false,
 };
@@ -183,7 +193,7 @@ export const usePlaygroundStore = create<PlaygroundState>((set) => ({
 
   setRecoveredXlm: (recoveredXlm) => set({ recoveredXlm }),
 
-  setLastError: (lastError, blockedDecisions = null) => set({ lastError, blockedDecisions }),
+  setLastError: (lastError, blocker = null) => set({ lastError, blocker }),
 
   setDemolishFailed: (demolishFailed) => set({ demolishFailed }),
 

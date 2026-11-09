@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { errorCopy, GENERIC_ERROR_COPY } from "@/lib/error-copy";
+import { blockerCopy, errorCopy, GENERIC_BLOCKER_COPY, GENERIC_ERROR_COPY } from "@/lib/error-copy";
 
 const CODES = [
   "session_not_found",
@@ -9,6 +9,11 @@ const CODES = [
   "demolish_failed",
   "demolish_outcome_unknown",
   "demolish_decision_unanswerable",
+  "demolish_blocked",
+  "demolish_in_progress",
+  "resolution_unavailable",
+  "resolution_not_recorded",
+  "resolve_failed",
   "demolish_started",
   "state_read_failed",
   "not_configured",
@@ -38,4 +43,14 @@ test("an unknown or missing code falls back to the generic plain-language line",
 test("a 503 without a known code says the demo is temporarily unavailable", () => {
   expect(errorCopy(undefined, 503)).toBe(errorCopy("not_configured"));
   expect(errorCopy(undefined, 503)).toMatch(/temporarily unavailable/);
+});
+
+test("each blocker the playground plans a fix for has its own copy; any other gets the generic line", () => {
+  const copies = ["sponsorship_claimable_balance_unrevocable", "sponsorship_unaffordable"].map(
+    blockerCopy
+  );
+  expect(new Set(copies).size).toBe(2);
+  for (const copy of copies) expect(copy).not.toBe(GENERIC_BLOCKER_COPY);
+  expect(blockerCopy("subentries_unenumerated")).toBe(GENERIC_BLOCKER_COPY);
+  expect(blockerCopy("toString")).toBe(GENERIC_BLOCKER_COPY);
 });

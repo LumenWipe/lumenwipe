@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import type { IntentOperation } from "@lumenwipe/sdk";
-import { errorCopy } from "@/lib/error-copy";
+import { blockerCopy, errorCopy } from "@/lib/error-copy";
 import { getMessPlanForMode } from "@/lib/mess-plan";
 import {
   SCENARIOS,
@@ -116,10 +116,15 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
 }
 
 function Harness() {
-  const { start, demolish, progressStatus } = usePlaygroundExecution();
+  const { start, demolish, resolve, progressStatus } = usePlaygroundExecution();
   return (
     <>
-      <PlaygroundControls start={start} demolish={demolish} progressStatus={progressStatus} />
+      <PlaygroundControls
+        start={start}
+        demolish={demolish}
+        resolve={resolve}
+        progressStatus={progressStatus}
+      />
       <TxLogPanel />
     </>
   );
@@ -277,6 +282,74 @@ describe("the demolish runs round by round", () => {
     rtl.fireEvent.click(rtl.screen.getByRole("button", { name: /Resume the close/ }));
     await rtl.screen.findByText(errorCopy("demolish_failed"), undefined, { timeout: 5000 });
     expect(rtl.screen.queryByRole("list", { name: "Unanswered decisions" })).toBeNull();
+  });
+
+  test("a blocker the session can clear offers Resolve it, which fixes it and resumes the close", async () => {
+    let rounds = 0;
+    routes.handlers.set(ROUND, async () => {
+      rounds++;
+      return rounds === 1
+        ? {
+            status: 422,
+            body: {
+              error: "demolish_blocked",
+              blockers: ["sponsorship_claimable_balance_unrevocable", "subentries_unenumerated"],
+              resolvable: ["sponsorship_claimable_balance_unrevocable"],
+            },
+          }
+        : { status: 200, body: { done: true, confirmed: [MERGE], remainingSteps: 0 } };
+    });
+    const RESOLVE = `/api/session/${SESSION_ID}/resolve`;
+    routes.handlers.set(RESOLVE, async () => ({
+      status: 200,
+      body: {
+        ok: true,
+        blocker: "sponsorship_claimable_balance_unrevocable",
+        txHash: "e".repeat(64),
+      },
+    }));
+    await dirtyAccount();
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: /Demolish it here/ }));
+
+    const list = await rtl.screen.findByRole("list", { name: "Blockers" }, { timeout: 5000 });
+    const items = rtl.within(list).getAllByRole("listitem");
+    expect(items.map((li) => li.textContent)).toEqual([
+      `${blockerCopy("sponsorship_claimable_balance_unrevocable")}Resolve it`,
+      blockerCopy("subentries_unenumerated"),
+    ]);
+    // Only the blocker the session planned a fix for gets the button.
+    expect(rtl.within(items[0]!).getByRole("button", { name: "Resolve it" })).toBeTruthy();
+    expect(rtl.within(items[1]!).queryByRole("button", { name: "Resolve it" })).toBeNull();
+
+    rtl.fireEvent.click(rtl.within(items[0]!).getByRole("button", { name: "Resolve it" }));
+    await rtl.screen.findByText(/demo complete/, undefined, { timeout: 5000 });
+    expect(routes.count(`POST ${RESOLVE}`)).toBe(1);
+    expect(routes.bodies).toContain(
+      JSON.stringify({ blocker: "sponsorship_claimable_balance_unrevocable" })
+    );
+    expect(routes.count(`POST ${ROUND}`)).toBe(2);
+  });
+
+  test("a failed fix shows its own error and keeps the close resumable", async () => {
+    routes.handlers.set(ROUND, async () => ({
+      status: 422,
+      body: {
+        error: "demolish_blocked",
+        blockers: ["sponsorship_unaffordable"],
+        resolvable: ["sponsorship_unaffordable"],
+      },
+    }));
+    routes.handlers.set(`/api/session/${SESSION_ID}/resolve`, async () => ({
+      status: 502,
+      body: { error: "resolve_failed" },
+    }));
+    await dirtyAccount();
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: /Demolish it here/ }));
+    rtl.fireEvent.click(
+      await rtl.screen.findByRole("button", { name: "Resolve it" }, { timeout: 5000 })
+    );
+    await rtl.screen.findByText(errorCopy("resolve_failed"), undefined, { timeout: 5000 });
+    expect(rtl.screen.getByRole("button", { name: /Resume the close/ })).toBeTruthy();
   });
 
   test("an error before the close started keeps the single Start over, with no warning", async () => {
@@ -464,7 +537,7 @@ describe("the scenario picker", () => {
     test("every toggle has an accessible name and a pressed state", () => {
       rtl.render(<ScenarioPicker />);
       const toggles = [...document.querySelectorAll("fieldset button[aria-pressed]")];
-      expect(toggles.length).toBe(7);
+      expect(toggles.length).toBe(9);
       for (const toggle of toggles) expect(toggle.textContent?.length).toBeGreaterThan(0);
     });
   });

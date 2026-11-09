@@ -64,16 +64,18 @@ function CopyButton({ text }: { text: string }) {
 export default function PlaygroundControls({
   start,
   demolish,
+  resolve,
   progressStatus,
 }: {
   start: () => void;
   demolish: () => void;
+  resolve: (blocker: string) => void;
   progressStatus: string | null;
 }) {
   const phase = usePlaygroundStore((s) => s.phase);
   const expiresAt = usePlaygroundStore((s) => s.expiresAt);
   const lastError = usePlaygroundStore((s) => s.lastError);
-  const blockedDecisions = usePlaygroundStore((s) => s.blockedDecisions);
+  const blocker = usePlaygroundStore((s) => s.blocker);
   const accountState = usePlaygroundStore((s) => s.accountState);
   const recoveredXlm = usePlaygroundStore((s) => s.recoveredXlm);
   const sessionId = usePlaygroundStore((s) => s.sessionId);
@@ -312,8 +314,12 @@ export default function PlaygroundControls({
 
       {phase === "ERROR" && (
         <>
-          {blockedDecisions ? (
-            <BlockerCard message={lastError ?? GENERIC_ERROR_COPY} decisionIds={blockedDecisions}>
+          {blocker ? (
+            <BlockerCard
+              message={lastError ?? GENERIC_ERROR_COPY}
+              stop={blocker}
+              onResolve={resolve}
+            >
               {replayLine}
             </BlockerCard>
           ) : (

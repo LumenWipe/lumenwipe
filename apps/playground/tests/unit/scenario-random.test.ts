@@ -198,7 +198,7 @@ test("v1 draws from the six scenarios it shipped with, so a later scenario never
     "forgotten-signer",
   ]);
   const later = SCENARIOS.map((s) => s.id).filter((id) => !V1_SCENARIO_IDS.includes(id));
-  expect(later).toEqual(["dispositions"]);
+  expect(later).toEqual(["dispositions", "claimable-balances", "sponsored-reserves"]);
   for (let i = 0; i < 20_000; i++) {
     for (const { id } of generate(seedAt(i)).scenarios) expect(later).not.toContain(id);
   }

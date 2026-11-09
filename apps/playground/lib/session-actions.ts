@@ -2,15 +2,24 @@ import "server-only";
 import { CloseOutcomeUnknownError, LumenWipeApiError, type AccountState } from "@lumenwipe/sdk";
 import { PlaygroundConfigError } from "./crypto";
 import {
+  DemolishBlockedError,
   DemolishDecisionUnanswerableError,
   type DemolishRoundHooks,
   type DemolishRoundResult,
 } from "./demolish";
-import { resolvePlan, type MessStepDef, type MessStepId } from "./scenarios";
+import {
+  resolvePlan,
+  type HelperRole,
+  type MessStepDef,
+  type MessStepId,
+  type PlannedResolution,
+  type ResolutionKind,
+} from "./scenarios";
 import {
   PlaygroundStoreUnavailableError,
   type DemolishLogEntry,
   type PlaygroundSession,
+  type RecordedClaimableBalance,
   type SessionLock,
   type SessionPatch,
   type SessionStore,
@@ -40,7 +49,8 @@ export interface MessStepDeps {
   executeStep: (
     step: MessStepDef,
     session: PlaygroundSession,
-    recordSigner: (publicKey: string) => Promise<void>
+    recordSigner: (publicKey: string) => Promise<void>,
+    recordClaimableBalances: (balances: RecordedClaimableBalance[]) => Promise<void>
   ) => Promise<string>;
 }
 
@@ -113,7 +123,14 @@ export async function runMessStep(
           recordedSigners: [...current.recordedSigners, publicKey],
         }));
       };
-      const txHash = await deps.executeStep(step, session, recordSigner);
+      // Recorded before each attempt is sent, replacing the last attempt's: a balance id is fixed by
+      // the signed transaction, and only the one that lands creates balances.
+      const recordClaimableBalances = async (
+        balances: RecordedClaimableBalance[]
+      ): Promise<void> => {
+        await store.updateSession(lock, () => ({ claimableBalances: balances }));
+      };
+      const txHash = await deps.executeStep(step, session, recordSigner, recordClaimableBalances);
       await store.updateSession(lock, (current) => ({
         completedMessSteps: [...current.completedMessSteps, stepId],
       }));
@@ -225,6 +242,22 @@ export async function runDemolishRound(
     });
   } catch (err) {
     if (isConfigError(err)) return NOT_CONFIGURED;
+    if (err instanceof DemolishBlockedError) {
+      // Codes only: the API's messages are not shown. `resolvable` names the blockers the
+      // session's own plan has a resolution for, read from the stored selection.
+      const blockers = [...new Set(err.blockers)]
+        .slice(0, MAX_REPORTED_DECISIONS)
+        .map((code) => code.slice(0, MAX_DECISION_ID_LENGTH));
+      const planned = await plannedResolutions(store, id);
+      return {
+        status: 422,
+        body: {
+          error: "demolish_blocked",
+          blockers,
+          resolvable: blockers.filter((code) => planned.includes(code)),
+        },
+      };
+    }
     if (err instanceof DemolishDecisionUnanswerableError) {
       // Nothing was built or signed. The ids come from the API's plan, so they are bounded before
       // they are returned; the page shows them as text.
@@ -242,6 +275,72 @@ export async function runDemolishRound(
     const error =
       err instanceof CloseOutcomeUnknownError ? "demolish_outcome_unknown" : "demolish_failed";
     return { status: 502, body: { error } };
+  }
+}
+
+/** The blocker codes the session's stored selection plans a resolution for. */
+async function plannedResolutions(store: SessionStore, id: string): Promise<string[]> {
+  const session = await store.loadSession(id).catch(() => null);
+  if (!session) return [];
+  return resolvePlan(session.selection).expectation.resolutions.map((r) => r.blocker);
+}
+
+export interface ResolveDeps {
+  /** Sends the resolution's transaction with the helper's key; returns its hash. */
+  resolve: (session: PlaygroundSession, resolution: PlannedResolution) => Promise<string>;
+}
+
+/** The mess step that creates what each resolution acts on. */
+const RESOLUTION_STEP: Record<ResolutionKind, MessStepId> = {
+  claim_sponsored_balance: "CLAIMABLE_BALANCES",
+  release_sponsored_entries: "SPONSORED_ENTRIES",
+};
+
+const RESOLUTION_HELPER: Record<ResolutionKind, HelperRole> = {
+  claim_sponsored_balance: "claimant",
+  release_sponsored_entries: "beneficiary",
+};
+
+/** Whether the session recorded what the resolution needs: its step ran and its helper exists. */
+function resolutionRecorded(session: PlaygroundSession, kind: ResolutionKind): boolean {
+  if (!session.completedMessSteps.includes(RESOLUTION_STEP[kind])) return false;
+  if (!session.helperAccounts.some((h) => h.role === RESOLUTION_HELPER[kind])) return false;
+  return (
+    kind !== "claim_sponsored_balance" ||
+    session.claimableBalances.some((b) => b.intent === "demo_sponsored")
+  );
+}
+
+/**
+ * Resolves a blocker the session's plan expects the close to report, with the helper's own key,
+ * under the session lock. Only a resolution the stored selection planned, only once the step it
+ * acts on has run, and never while a close transaction is in flight.
+ */
+export async function runResolve(
+  store: SessionStore,
+  id: string,
+  blocker: string,
+  deps: ResolveDeps
+): Promise<ActionResult> {
+  try {
+    return await withSessionLock(store, id, async (session) => {
+      const resolution = resolvePlan(session.selection).expectation.resolutions.find(
+        (r) => r.blocker === blocker
+      );
+      if (!resolution) return { status: 400, body: { error: "resolution_unavailable" } };
+      if (session.demolishDone || session.demolishPending !== null) {
+        return { status: 409, body: { error: "demolish_in_progress" } };
+      }
+      if (!resolutionRecorded(session, resolution.kind)) {
+        return { status: 409, body: { error: "resolution_not_recorded" } };
+      }
+      const txHash = await deps.resolve(session, resolution);
+      return { status: 200, body: { ok: true, blocker, txHash } };
+    });
+  } catch (err) {
+    if (isConfigError(err)) return NOT_CONFIGURED;
+    console.error("[playground] resolution failed", { sessionId: id }, err);
+    return { status: 502, body: { error: "resolve_failed" } };
   }
 }
 

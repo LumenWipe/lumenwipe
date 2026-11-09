@@ -169,6 +169,20 @@ describe("schema version", () => {
     expect(await (await stored({ ...current(), schemaVersion: 4 })).loadSession(SID)).toBeNull();
   });
 
+  test("a version 5 session, saved before helpers and claimable balances were recorded, reads as expired", async () => {
+    const { helperAccounts: _h, claimableBalances: _c, ...v5 } = { ...current(), schemaVersion: 5 };
+    expect(await (await stored(v5)).loadSession(SID)).toBeNull();
+  });
+
+  test("a session with helpers and recorded balances loads with them", async () => {
+    const withRecords: PlaygroundSession = {
+      ...current(),
+      helperAccounts: [{ role: "claimant", publicKey: "G", encSecret: "e" }],
+      claimableBalances: [{ id: "00", asset: "native", intent: "demo_sponsored" }],
+    };
+    expect(await (await stored(withRecords)).loadSession(SID)).toEqual(withRecords);
+  });
+
   test("a session with a transfer recipient loads with it", async () => {
     const withRecipient = { ...current(), transferRecipient: { publicKey: "G", encSecret: "e" } };
     expect(await (await stored(withRecipient)).loadSession(SID)).toEqual(withRecipient);
@@ -210,6 +224,12 @@ describe("schema version", () => {
       { ...current(), demolishDone: "no" },
       { ...current(), demolishPending: undefined },
       { ...current(), transferRecipient: undefined },
+      { ...current(), helperAccounts: undefined },
+      { ...current(), helperAccounts: [{ role: "issuer", publicKey: "G", encSecret: "e" }] },
+      { ...current(), helperAccounts: [{ role: 1, publicKey: "G", encSecret: "e" }] },
+      { ...current(), claimableBalances: undefined },
+      { ...current(), claimableBalances: [{ id: "00", asset: "native", intent: "steal" }] },
+      { ...current(), claimableBalances: [{ id: 1, asset: "native", intent: "claim" }] },
       { ...current(), transferRecipient: { publicKey: "G" } },
       { ...current(), transferRecipient: { publicKey: 1, encSecret: "e" } },
       { ...current(), demolishPending: { txId: "t", hash: "h", summary: "s", operations: [] } },

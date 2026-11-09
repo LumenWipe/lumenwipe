@@ -1,6 +1,16 @@
 export const LWDEMO_CODE = "LWDEMO";
 
-export type AssetCode = "LWDEMO" | "AIRDROP1" | "RUGPULL" | "USDC" | "EURC" | "LWCOIN" | "LWGEM";
+export type AssetCode =
+  | "LWDEMO"
+  | "AIRDROP1"
+  | "RUGPULL"
+  | "USDC"
+  | "EURC"
+  | "LWCOIN"
+  | "LWGEM"
+  | "BONUS"
+  | "GIFT"
+  | "PERK";
 export type OfferAsset = AssetCode | "native";
 
 /** Airdropped by their own throwaway issuer, which pays from inside the demo's transaction. */
@@ -58,6 +68,36 @@ export function conversionFloorStroops(amount: string): bigint {
     (BigInt(STANDING_LIQUIDITY_PRICE) * BigInt(100))
   );
 }
+
+/** Claimable balances a throwaway issuer leaves for the demo: BONUS on a trustline the demo opens,
+ *  GIFT on one it does not, so the close adds the trustline before it claims. */
+export const CLAIM_BONUS_AMOUNT = "50";
+export const CLAIM_GIFT_AMOUNT = "30";
+/** A BONUS balance the demo can claim only after this long, well past the session's hour. */
+export const TIME_GATED_AMOUNT = "5";
+export const TIME_GATE_SECONDS = "7200";
+/** The balance the demo itself creates, and so sponsors, for the claimant helper. */
+export const DEMO_SPONSORED_CLAIM_XLM = "1";
+/** The claimant helper: two base reserves and the fee of its claim. */
+export const CLAIMANT_FUNDING_XLM = "1.5";
+
+/** The sponsor helper pays the reserves of three demo entries on top of its own two. */
+export const SPONSOR_FUNDING_XLM = "3";
+/** A beneficiary that can take over the two reserves the demo sponsors for it. */
+export const BENEFICIARY_FUNDING_XLM = "3";
+/** A beneficiary left at its minimum balance, plus its own fees: it cannot take the reserves over. */
+export const UNREVOCABLE_BENEFICIARY_FUNDING_XLM = "1.01";
+/** The demo's data entry whose reserve the sponsor helper pays. */
+export const SPONSORED_DATA_ENTRY = { key: "sponsored_note", value: "reserve paid elsewhere" };
+/** The beneficiary's data entry whose reserve the demo pays. */
+export const BENEFICIARY_DATA_ENTRY = { key: "sponsored_by_demo", value: "reserve paid by demo" };
+/** The demo's offer whose reserve the sponsor helper pays. */
+export const SPONSORED_OFFER = {
+  selling: "native",
+  buying: "PERK",
+  amount: "1",
+  price: "1",
+} as const;
 
 /** XLM the demo gives the session's transfer recipient: its two base reserves, one trustline per
  *  persistent asset and the fees of its own cleanup. */

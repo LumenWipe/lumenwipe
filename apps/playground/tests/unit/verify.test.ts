@@ -25,6 +25,7 @@ import {
 } from "@/lib/verify";
 import recipeFixture from "../fixtures/api-recipe-close.json";
 import dispositionsFixture from "../fixtures/api-recipe-dispositions.json";
+import claimsFixture from "../fixtures/api-recipe-claims.json";
 
 // The playground verifies with `@lumenwipe/verify`, the web app's own trust anchor, held to the
 // session record. These tests pin what each rule means for a playground close; the rules
@@ -46,6 +47,18 @@ const forgotten = Keypair.random().publicKey();
 const LWDEMO = new Asset("LWDEMO", lwdemoIssuer);
 const LWCOIN = new Asset("LWCOIN", lwdemoIssuer);
 const LWGEM = new Asset("LWGEM", lwdemoIssuer);
+const bonusIssuer = Keypair.random().publicKey();
+const giftIssuer = Keypair.random().publicKey();
+const perkIssuer = Keypair.random().publicKey();
+const beneficiary = Keypair.random().publicKey();
+const BONUS = new Asset("BONUS", bonusIssuer);
+const GIFT = new Asset("GIFT", giftIssuer);
+const PERK = new Asset("PERK", perkIssuer);
+const balanceId = (fill: string): string => `00000000${fill.repeat(64)}`;
+const BONUS_ID = balanceId("b");
+const GIFT_ID = balanceId("c");
+const LATE_ID = balanceId("d");
+
 const RUGPULL = new Asset("RUGPULL", rugIssuer);
 
 const SELECTION: ScenarioSelection = {
@@ -74,6 +87,42 @@ function expectation(
       recordedSigners: [forgotten],
       selection,
       transferRecipient: null,
+      helperAccounts: [],
+      claimableBalances: [],
+    },
+    sink,
+    lwdemoIssuer
+  );
+}
+
+/** Every claimable-balance kind and the demo sponsoring a beneficiary, beside the default selection. */
+const CLAIMS_SELECTION: ScenarioSelection = {
+  scenarios: [
+    ...SELECTION.scenarios,
+    { id: "claimable-balances", params: { add_trustline: 1, time_gated: 1, demo_sponsored: 0 } },
+    { id: "sponsored-reserves", params: { variant: 1 } },
+  ],
+};
+
+function claimsExpectation(selection = CLAIMS_SELECTION): PlaygroundCloseExpectation {
+  return expectationFromSession(
+    {
+      demoPublic: demo,
+      ephemeralIssuers: [
+        ...ISSUERS,
+        { assetCode: "BONUS", publicKey: bonusIssuer, encSecret: "enc" },
+        { assetCode: "GIFT", publicKey: giftIssuer, encSecret: "enc" },
+        { assetCode: "PERK", publicKey: perkIssuer, encSecret: "enc" },
+      ],
+      recordedSigners: [forgotten],
+      selection,
+      transferRecipient: null,
+      helperAccounts: [{ role: "beneficiary", publicKey: beneficiary, encSecret: "enc" }],
+      claimableBalances: [
+        { id: BONUS_ID, asset: `BONUS:${bonusIssuer}`, intent: "claim" },
+        { id: GIFT_ID, asset: `GIFT:${giftIssuer}`, intent: "add_trustline_then_claim" },
+        { id: LATE_ID, asset: `BONUS:${bonusIssuer}`, intent: "forfeit" },
+      ],
     },
     sink,
     lwdemoIssuer
@@ -180,6 +229,8 @@ function recipeExpectation(recipe: Recipe, recordedSigners: string[]): Playgroun
       recordedSigners,
       selection,
       transferRecipient: null,
+      helperAccounts: [],
+      claimableBalances: [],
     },
     session.sinkPublic,
     session.lwdemoIssuer
@@ -281,6 +332,8 @@ describe("expectationFromSession", () => {
         recordedSigners,
         selection: selectionForMode("light"),
         transferRecipient: null,
+        helperAccounts: [],
+        claimableBalances: [],
       },
       sink,
       lwdemoIssuer
@@ -496,18 +549,28 @@ describe("what a playground close never contains", () => {
     expect(outcome(envelope([], { source: sink }))).toBe("transaction_source_mismatch");
   });
 
-  test("a sponsorship revocation, as the real builder emits it, is accepted", () => {
+  test("a sponsorship revocation the session did not record is refused", () => {
     const op = Operation.revokeDataSponsorship({ account: demo, name: "promo_code" });
-    expect(outcome(envelope([op]))).toBe("accepted");
+    expect(outcome(envelope([op]))).toBe("revoke_not_recorded");
   });
 });
 
 describe("the playground's close operation types", () => {
-  test("one close holding every listed type is accepted, and lists exactly those types", () => {
-    const converting: ScenarioSelection = {
-      scenarios: [...SELECTION.scenarios, { id: "dispositions", params: { lwcoin: 1, lwgem: 0 } }],
+  test("the claim transaction and the merge transaction between them hold every listed type", () => {
+    const everything: ScenarioSelection = {
+      scenarios: [
+        ...SELECTION.scenarios,
+        { id: "dispositions", params: { lwcoin: 1, lwgem: 0 } },
+        {
+          id: "claimable-balances",
+          params: { add_trustline: 0, time_gated: 0, demo_sponsored: 0 },
+        },
+        { id: "sponsored-reserves", params: { variant: 1 } },
+      ],
     };
-    const ops = [
+    const expected = claimsExpectation(everything);
+    const claim = envelope([Operation.claimClaimableBalance({ balanceId: BONUS_ID })], {}, false);
+    const merge = envelope([
       Operation.pathPaymentStrictSend({
         sendAsset: LWCOIN,
         sendAmount: "20",
@@ -516,11 +579,8 @@ describe("the playground's close operation types", () => {
         destMin: "9.95",
         path: [],
       }),
-      Operation.revokeAccountSponsorship({ account: demo }),
-      Operation.revokeTrustlineSponsorship({ account: demo, asset: LWDEMO }),
-      Operation.revokeOfferSponsorship({ seller: demo, offerId: "1" }),
-      Operation.revokeDataSponsorship({ account: demo, name: "promo_code" }),
-      Operation.revokeSignerSponsorship({ account: demo, signer: { ed25519PublicKey: forgotten } }),
+      Operation.revokeTrustlineSponsorship({ account: beneficiary, asset: PERK }),
+      Operation.revokeDataSponsorship({ account: beneficiary, name: "sponsored_by_demo" }),
       Operation.manageData({ name: "promo_code", value: null }),
       Operation.manageSellOffer({
         selling: Asset.native(),
@@ -532,19 +592,25 @@ describe("the playground's close operation types", () => {
       returnToIssuer(LWDEMO),
       Operation.changeTrust({ asset: LWDEMO, limit: "0" }),
       Operation.setOptions({ signer: { ed25519PublicKey: forgotten, weight: 0 } }),
-    ];
-    const xdrBase64 = envelope(ops);
-    expect(outcome(xdrBase64, expectation(converting))).toBe("accepted");
-    const parsed = TransactionBuilder.fromXDR(xdrBase64, PASSPHRASE);
-    if (!(parsed instanceof Transaction)) throw new Error("expected a transaction");
-    expect(new Set(parsed.operations.map((op) => op.type))).toEqual(
-      new Set(PLAYGROUND_CLOSE_OPERATION_TYPES)
-    );
+    ]);
+    const types = new Set<string>();
+    for (const xdrBase64 of [claim, merge]) {
+      expect(outcome(xdrBase64, expected)).toBe("accepted");
+      const parsed = TransactionBuilder.fromXDR(xdrBase64, PASSPHRASE);
+      if (!(parsed instanceof Transaction)) throw new Error("expected a transaction");
+      for (const op of parsed.operations) types.add(op.type);
+    }
+    expect(types).toEqual(new Set(PLAYGROUND_CLOSE_OPERATION_TYPES));
   });
 
   test("a type the shared anchor allows but no scenario creates is refused", () => {
-    const claim = Operation.claimClaimableBalance({ balanceId: `00000000${"a".repeat(64)}` });
-    expect(outcome(envelope([claim]))).toBe("operation_not_allowed");
+    for (const op of [
+      Operation.revokeAccountSponsorship({ account: demo }),
+      Operation.revokeOfferSponsorship({ seller: demo, offerId: "1" }),
+      Operation.revokeSignerSponsorship({ account: demo, signer: { ed25519PublicKey: forgotten } }),
+    ]) {
+      expect(outcome(envelope([op]))).toBe("operation_not_allowed");
+    }
   });
 });
 
@@ -562,6 +628,8 @@ describe("dispositions the session chose", () => {
         recordedSigners: [forgotten],
         selection: CHOSEN,
         transferRecipient: { publicKey: recipient, encSecret: "enc" },
+        helperAccounts: [],
+        claimableBalances: [],
       },
       sink,
       lwdemoIssuer
@@ -598,6 +666,8 @@ describe("dispositions the session chose", () => {
           recordedSigners: [forgotten],
           selection: CHOSEN,
           transferRecipient: null,
+          helperAccounts: [],
+          claimableBalances: [],
         },
         sink,
         lwdemoIssuer
@@ -681,6 +751,8 @@ describe("dispositions the session chose", () => {
             scenarios: [{ id: "dispositions", params: { lwcoin: choice, lwgem: choice } }],
           },
           transferRecipient: { publicKey: recipient, encSecret: "enc" },
+          helperAccounts: [],
+          claimableBalances: [],
         },
         sink,
         lwdemoIssuer
@@ -738,6 +810,8 @@ describe("the API's real transactions for the dispositions recipes", () => {
         recordedSigners: [],
         selection,
         transferRecipient: { publicKey: recipient, encSecret: "enc" },
+        helperAccounts: [],
+        claimableBalances: [],
       },
       recipe.session.sinkPublic,
       recipe.session.persistentIssuer
@@ -779,5 +853,270 @@ describe("the API's real transactions for the dispositions recipes", () => {
     expect(outcome(recipe.transactions[0]!, dispositionsExpectation(burning))).toBe(
       "conversion_asset_not_chosen"
     );
+  });
+});
+
+describe("claimable balances the session recorded", () => {
+  const claimOf = (id: string, source?: string) =>
+    Operation.claimClaimableBalance({ balanceId: id, ...(source && { source }) });
+  const addTrust = (asset: Asset) => Operation.changeTrust({ asset });
+  /** A transaction with no merge: the claim transaction. */
+  const claimTx = (ops: xdr.Operation[]) => envelope(ops, {}, false);
+
+  test("the expectation takes the claims, the forfeit and the trustline from the session record", () => {
+    const expected = claimsExpectation();
+    expect(expected.claims).toEqual([
+      { id: BONUS_ID, asset: `BONUS:${bonusIssuer}`, addTrustline: false },
+      { id: GIFT_ID, asset: `GIFT:${giftIssuer}`, addTrustline: true },
+    ]);
+    expect(expected.forfeits).toEqual([LATE_ID]);
+    // GIFT arrives through the claim, so the close may return it and remove its trustline.
+    expect(expected.assets.map((a) => a.code)).toContain("GIFT");
+  });
+
+  test("the API's claim transaction is accepted: trustline added, then both claims", () => {
+    expect(
+      outcome(claimTx([addTrust(GIFT), claimOf(BONUS_ID), claimOf(GIFT_ID)]), claimsExpectation())
+    ).toBe("accepted");
+  });
+
+  test("a claim of a balance the session did not record is refused", () => {
+    expect(outcome(claimTx([claimOf(balanceId("e"))]), claimsExpectation())).toBe(
+      "claim_not_recorded"
+    );
+  });
+
+  test("a forfeited balance is never claimed", () => {
+    expect(outcome(claimTx([claimOf(LATE_ID)]), claimsExpectation())).toBe("claim_not_recorded");
+  });
+
+  test("a second claim of one balance is refused", () => {
+    expect(outcome(claimTx([claimOf(BONUS_ID), claimOf(BONUS_ID)]), claimsExpectation())).toBe(
+      "claim_duplicate"
+    );
+  });
+
+  test("a claim sent by another account is refused", () => {
+    expect(outcome(claimTx([claimOf(BONUS_ID, sink)]), claimsExpectation())).toBe(
+      "operation_source_mismatch"
+    );
+  });
+
+  test("a trustline add not followed by its claim is refused, even when it is claimed before", () => {
+    expect(outcome(claimTx([addTrust(GIFT), claimOf(BONUS_ID)]), claimsExpectation())).toBe(
+      "claim_trustline_not_followed"
+    );
+    expect(outcome(claimTx([claimOf(GIFT_ID), addTrust(GIFT)]), claimsExpectation())).toBe(
+      "claim_trustline_not_followed"
+    );
+  });
+
+  test("a trustline for an asset no recorded balance needs is refused", () => {
+    expect(outcome(claimTx([addTrust(BONUS), claimOf(BONUS_ID)]), claimsExpectation())).toBe(
+      "trustline_not_removal"
+    );
+    const stranger = new Asset("GIFT", Keypair.random().publicKey());
+    expect(outcome(claimTx([addTrust(stranger), claimOf(GIFT_ID)]), claimsExpectation())).toBe(
+      "trustline_not_removal"
+    );
+  });
+
+  test("a second trustline add for one asset is refused", () => {
+    expect(
+      outcome(claimTx([addTrust(GIFT), addTrust(GIFT), claimOf(GIFT_ID)]), claimsExpectation())
+    ).toBe("claim_trustline_duplicate");
+  });
+
+  test("the claim transaction holds nothing but claims and their trustlines", () => {
+    const removal = Operation.manageData({ name: "promo_code", value: null });
+    expect(outcome(claimTx([claimOf(BONUS_ID), removal]), claimsExpectation())).toBe(
+      "merge_not_final"
+    );
+    expect(outcome(claimTx([claimOf(BONUS_ID), returnToIssuer(BONUS)]), claimsExpectation())).toBe(
+      "merge_not_final"
+    );
+  });
+
+  test("a transaction without a merge is refused for a session that recorded no claims", () => {
+    expect(outcome(claimTx([claimOf(BONUS_ID)]))).toBe("merge_not_final");
+    const noClaims = expectation(
+      {
+        scenarios: [{ id: "claimable-balances", params: {} }],
+      },
+      [
+        { assetCode: "BONUS", publicKey: bonusIssuer, encSecret: "enc" },
+        { assetCode: "GIFT", publicKey: giftIssuer, encSecret: "enc" },
+      ]
+    );
+    expect(noClaims.claims).toEqual([]);
+    expect(outcome(claimTx([claimOf(BONUS_ID)]), noClaims)).toBe("merge_not_final");
+  });
+
+  test("a claim or a trustline add in the merge transaction is refused", () => {
+    expect(outcome(envelope([claimOf(BONUS_ID)]), claimsExpectation())).toBe(
+      "claim_outside_claim_transaction"
+    );
+    expect(outcome(envelope([addTrust(GIFT)]), claimsExpectation())).toBe(
+      "trustline_add_outside_claim_transaction"
+    );
+  });
+
+  test("after the claims, the merge transaction returns both assets and removes both trustlines", () => {
+    const ops = [
+      returnToIssuer(BONUS),
+      returnToIssuer(GIFT),
+      Operation.changeTrust({ asset: BONUS, limit: "0" }),
+      Operation.changeTrust({ asset: GIFT, limit: "0" }),
+    ];
+    expect(outcome(envelope(ops), claimsExpectation())).toBe("accepted");
+  });
+});
+
+describe("sponsorships the session recorded", () => {
+  const revokeTrust = (account: string, asset: Asset, source?: string) =>
+    Operation.revokeTrustlineSponsorship({ account, asset, ...(source && { source }) });
+  const revokeData = (account: string, name: string, source?: string) =>
+    Operation.revokeDataSponsorship({ account, name, ...(source && { source }) });
+
+  test("revoking both recorded entries, once each, is accepted", () => {
+    const ops = [revokeTrust(beneficiary, PERK), revokeData(beneficiary, "sponsored_by_demo")];
+    expect(outcome(envelope(ops), claimsExpectation())).toBe("accepted");
+    // One revoke per recorded entry fits the operation ceiling.
+    expect(maxOperations(claimsExpectation())).toBe(maxOperations(expectation()) + 2 * 2 + 2);
+  });
+
+  test("a revoke of an entry the session did not record is refused", () => {
+    for (const op of [
+      revokeTrust(Keypair.random().publicKey(), PERK),
+      revokeTrust(beneficiary, BONUS),
+      revokeData(beneficiary, "promo_code"),
+      revokeData(demo, "sponsored_by_demo"),
+    ]) {
+      expect(outcome(envelope([op]), claimsExpectation())).toBe("revoke_not_recorded");
+    }
+  });
+
+  test("a revoke sourced from another account is refused", () => {
+    expect(outcome(envelope([revokeTrust(beneficiary, PERK, sink)]), claimsExpectation())).toBe(
+      "operation_source_mismatch"
+    );
+  });
+
+  test("a second revoke of one entry is refused", () => {
+    const op = revokeData(beneficiary, "sponsored_by_demo");
+    expect(outcome(envelope([op, op]), claimsExpectation())).toBe("revoke_duplicate");
+  });
+
+  test("a claimable balance's sponsorship is never revoked", () => {
+    const op = Operation.revokeClaimableBalanceSponsorship({ balanceId: BONUS_ID });
+    expect(outcome(envelope([op]), claimsExpectation())).toBe("revoke_claimable_balance_refused");
+    expect(outcome(envelope([op], {}, false), claimsExpectation())).toBe(
+      "revoke_claimable_balance_refused"
+    );
+  });
+
+  test("entries the demo sponsors without a beneficiary on record cannot be expected", () => {
+    expect(() =>
+      expectationFromSession(
+        {
+          demoPublic: demo,
+          ephemeralIssuers: [{ assetCode: "PERK", publicKey: perkIssuer, encSecret: "enc" }],
+          recordedSigners: [],
+          selection: { scenarios: [{ id: "sponsored-reserves", params: { variant: 2 } }] },
+          transferRecipient: null,
+          helperAccounts: [],
+          claimableBalances: [],
+        },
+        sink,
+        lwdemoIssuer
+      )
+    ).toThrow("session_beneficiary_missing");
+  });
+});
+
+describe("the API's real transactions for the claims and sponsoring recipes", () => {
+  // Built by apps/api's buildCloseTransactions (apps/api/tests/unit/playground-claims-recipe.test.ts)
+  // with the answers the playground sends.
+  type ClaimsRecipe = (typeof claimsFixture.recipes)[number];
+  const HELPER_ROLES = ["claimant", "sponsor", "beneficiary"] as const;
+  const INTENTS = ["claim", "add_trustline_then_claim", "forfeit", "demo_sponsored"] as const;
+
+  function claimsRecipeExpectation(
+    recipe: ClaimsRecipe,
+    over: {
+      claimableBalances?: ClaimsRecipe["session"]["claimableBalances"];
+      beneficiary?: string;
+    } = {}
+  ): PlaygroundCloseExpectation {
+    const selection = parseSelection(recipe.selection);
+    if (!selection) throw new Error(`recipe ${recipe.name} has no readable selection`);
+    const { session } = recipe;
+    return expectationFromSession(
+      {
+        demoPublic: session.demoPublic,
+        ephemeralIssuers: session.ephemeralIssuers.map((e) => ({ ...e, encSecret: "enc" })),
+        recordedSigners: [],
+        selection,
+        transferRecipient: null,
+        helperAccounts: session.helperAccounts.map((h) => {
+          const role = HELPER_ROLES.find((r) => r === h.role);
+          if (!role) throw new Error(`unknown helper role ${h.role}`);
+          return { role, publicKey: over.beneficiary ?? h.publicKey, encSecret: "enc" };
+        }),
+        claimableBalances: (over.claimableBalances ?? session.claimableBalances).map((b) => {
+          const intent = INTENTS.find((i) => i === b.intent);
+          if (!intent) throw new Error(`unknown intent ${b.intent}`);
+          return { ...b, intent };
+        }),
+      },
+      session.sinkPublic,
+      lwdemoIssuer
+    );
+  }
+  const recipe = (name: string): ClaimsRecipe => {
+    const found = claimsFixture.recipes.find((r) => r.name === name);
+    if (!found) throw new Error(`no recipe ${name}`);
+    return found;
+  };
+
+  test("every transaction verifies against its session, the claim transaction first", () => {
+    setSystemTime(new Date(claimsFixture.builtAtSeconds * 1000));
+    expect(claimsFixture.recipes.map((r) => [r.name, r.transactions.length])).toEqual([
+      ["claimable", 2],
+      ["sponsoring", 1],
+    ]);
+    for (const r of claimsFixture.recipes) {
+      for (const tx of r.transactions) {
+        expect({ recipe: r.name, outcome: outcome(tx, claimsRecipeExpectation(r)) }).toEqual({
+          recipe: r.name,
+          outcome: "accepted",
+        });
+      }
+    }
+  });
+
+  test("the claim transaction is refused when the session did not record a balance it claims", () => {
+    setSystemTime(new Date(claimsFixture.builtAtSeconds * 1000));
+    const claimable = recipe("claimable");
+    const withoutGift = claimable.session.claimableBalances.filter(
+      (b) => b.intent !== "add_trustline_then_claim"
+    );
+    expect(
+      outcome(
+        claimable.transactions[0]!,
+        claimsRecipeExpectation(claimable, { claimableBalances: withoutGift })
+      )
+    ).toBe("trustline_not_removal");
+  });
+
+  test("the sponsoring close is refused for a session with another beneficiary", () => {
+    setSystemTime(new Date(claimsFixture.builtAtSeconds * 1000));
+    const sponsoring = recipe("sponsoring");
+    expect(
+      outcome(
+        sponsoring.transactions[0]!,
+        claimsRecipeExpectation(sponsoring, { beneficiary: Keypair.random().publicKey() })
+      )
+    ).toBe("revoke_not_recorded");
   });
 });

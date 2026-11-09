@@ -3,7 +3,13 @@ import { v4 as uuidv4 } from "uuid";
 import type { IntentOperation } from "@lumenwipe/sdk";
 import { isRedisConfigured } from "./upstash-redis";
 import { DEV_STORE_FILE, devFileKv, upstashKv, type SessionKv } from "./kv";
-import { parseSelection, validateSelection, type ScenarioSelection } from "./scenarios";
+import {
+  parseSelection,
+  validateSelection,
+  type ClaimIntent,
+  type HelperRole,
+  type ScenarioSelection,
+} from "./scenarios";
 
 // Server-only custodial session storage for the testnet playground.
 // Secrets are stored AES-256-GCM-encrypted (see ./crypto). Sessions expire
@@ -12,7 +18,7 @@ import { parseSelection, validateSelection, type ScenarioSelection } from "./sce
 export const SESSION_TTL_SECONDS = 3600;
 
 /** Bumped whenever the stored shape changes; a session of any other version reads as expired. */
-export const SESSION_SCHEMA_VERSION = 5;
+export const SESSION_SCHEMA_VERSION = 6;
 
 /** Longer than any route's maxDuration, so a request the platform kills frees its session soon after. */
 export const SESSION_LOCK_TTL_MS = 150_000;
@@ -60,6 +66,21 @@ export interface SessionAccount {
   encSecret: string;
 }
 
+/** A playground-owned account beside the demo, used only for the role a step created it for. */
+export interface HelperAccount extends SessionAccount {
+  role: HelperRole;
+}
+
+/**
+ * A claimable balance the mess created, with the id the playground computed from the transaction
+ * it signed (never read back from Horizon or the API). `asset` is `CODE:ISSUER` or `native`.
+ */
+export interface RecordedClaimableBalance {
+  id: string;
+  asset: string;
+  intent: ClaimIntent;
+}
+
 export interface PlaygroundSession {
   schemaVersion: typeof SESSION_SCHEMA_VERSION;
   id: string;
@@ -83,6 +104,10 @@ export interface PlaygroundSession {
   /** The account a "transfer" disposition sends to, created by the OPEN_RECIPIENT step; null when
    *  the selection transfers nothing. The close may transfer to this account and no other. */
   transferRecipient: SessionAccount | null;
+  /** The claimant, sponsor or beneficiary a step created. */
+  helperAccounts: HelperAccount[];
+  /** Recorded before the transaction that creates them is sent, one entry per attempt. */
+  claimableBalances: RecordedClaimableBalance[];
 }
 
 type FixedFields = "schemaVersion" | "id" | "createdAt";
@@ -114,6 +139,33 @@ function isEphemeralIssuer(value: unknown): value is EphemeralIssuer {
 function isSessionAccount(value: unknown): value is SessionAccount {
   return (
     isRecord(value) && typeof value.publicKey === "string" && typeof value.encSecret === "string"
+  );
+}
+
+const HELPER_ROLES: readonly string[] = ["claimant", "sponsor", "beneficiary"];
+const CLAIM_INTENTS: readonly string[] = [
+  "claim",
+  "add_trustline_then_claim",
+  "forfeit",
+  "demo_sponsored",
+];
+
+function isHelperAccount(value: unknown): value is HelperAccount {
+  return (
+    isSessionAccount(value) &&
+    isRecord(value) &&
+    typeof value.role === "string" &&
+    HELPER_ROLES.includes(value.role)
+  );
+}
+
+function isRecordedClaimableBalance(value: unknown): value is RecordedClaimableBalance {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.asset === "string" &&
+    typeof value.intent === "string" &&
+    CLAIM_INTENTS.includes(value.intent)
   );
 }
 
@@ -154,7 +206,11 @@ export function isPlaygroundSession(value: unknown): value is PlaygroundSession 
     typeof value.demolishDone === "boolean" &&
     typeof value.createdAt === "number" &&
     isValidSelection(value.selection) &&
-    (value.transferRecipient === null || isSessionAccount(value.transferRecipient))
+    (value.transferRecipient === null || isSessionAccount(value.transferRecipient)) &&
+    Array.isArray(value.helperAccounts) &&
+    value.helperAccounts.every(isHelperAccount) &&
+    Array.isArray(value.claimableBalances) &&
+    value.claimableBalances.every(isRecordedClaimableBalance)
   );
 }
 
