@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Response } from "@playwright/test";
+import { appAlerts } from "./alerts";
 
 // A random wallet replayed from its code runs the same wallet twice, end to end on testnet: the
 // same code and the same plan before each run, and the plan the browser previews is the one the
@@ -31,7 +32,7 @@ async function runOnce(page: Page): Promise<{ body: unknown; planLabels: string[
   const summary = page.getByText("demo complete. The account was merged away");
   await expect(summary).toBeVisible({ timeout: 3 * 60_000 });
   await expect(page.getByText(`Replay code ${CODE}`)).toBeVisible();
-  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(appAlerts(page)).toHaveCount(0);
   return { body: response.request().postDataJSON(), planLabels: plan.map((s) => s.label) };
 }
 

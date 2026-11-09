@@ -6,6 +6,8 @@ import { getMessPlanForMode } from "@/lib/mess-plan";
 import {
   SCENARIOS,
   STANDARD_SELECTION,
+  decodeSelection,
+  encodeSelection,
   generateRandomSelection,
   parseReplayCode,
   resolvePlan,
@@ -16,6 +18,7 @@ import PlaygroundControls from "@/components/scene/PlaygroundControls";
 import TxLogPanel from "@/components/scene/TxLogPanel";
 import ScenarioPicker from "@/components/scene/ScenarioPicker";
 import OrbitalNode from "@/components/scene/OrbitalNode";
+import PlaygroundClient from "@/app/PlaygroundClient";
 
 // The playground as the visitor sees it. The scenario picker: presets, toggles, the live totals
 // and the step list, and how the scene draws what it is given. The demolish: the hook, the control
@@ -26,7 +29,8 @@ import OrbitalNode from "@/components/scene/OrbitalNode";
 // The DOM is registered for this file only, and removed after it, so the rest of the suite keeps
 // Bun's own globals. @testing-library/react reads `document` when it loads, hence the dynamic
 // import after registering.
-GlobalRegistrator.register();
+// A real origin, so a test can put a shared link in the address bar with history.replaceState.
+GlobalRegistrator.register({ url: "http://localhost:3002/" });
 const rtl = await import("@testing-library/react");
 afterAll(async () => {
   await GlobalRegistrator.unregister();
@@ -618,5 +622,54 @@ describe("the replay code reaches the run, the summary and every error", () => {
       selection: resolvePlan(STANDARD_SELECTION).selection,
     });
     expect(rtl.screen.queryByText(/Replay code/)).toBeNull();
+  });
+});
+
+describe("a shared link is applied before the run can start", () => {
+  const createButton = () =>
+    rtl.screen.getByRole("button", { name: /Create & trash a demo account/ }) as HTMLButtonElement;
+
+  afterEach(() => {
+    window.history.replaceState(null, "", "/");
+  });
+
+  test("a shared selection: Create waits for it, then runs exactly that selection", async () => {
+    const shared = encodeSelection({
+      scenarios: [{ id: "dispositions", params: { lwcoin: 1, lwgem: 2 } }],
+    });
+    window.history.replaceState(null, "", `/?selection=${shared}`);
+    const scenarios = deferred<{ status: number; body: unknown }>();
+    routes.handlers.set("/api/scenarios", () => scenarios.promise);
+
+    rtl.render(<PlaygroundClient />);
+    // A visitor clicking before the link is applied must not start the default wallet.
+    expect(createButton().disabled).toBe(true);
+
+    await rtl.act(async () => scenarios.resolve({ status: 200, body: { unavailable: [] } }));
+    await rtl.waitFor(() => expect(createButton().disabled).toBe(false));
+    expect(
+      rtl.screen.getByRole("button", { name: /Convert, transfer or burn/, pressed: true })
+    ).toBeDefined();
+    rtl.fireEvent.click(createButton());
+    await rtl.waitFor(() => expect(routes.bodies.length).toBe(1));
+    expect(JSON.parse(routes.bodies[0]!)).toEqual({ selection: decodeSelection(shared) });
+  });
+
+  test("a shared seed: Create waits even when the availability check fails", async () => {
+    const CODE = "LW1-0G847JZV";
+    window.history.replaceState(null, "", `/?seed=${CODE}`);
+    const scenarios = deferred<{ status: number; body: unknown }>();
+    routes.handlers.set("/api/scenarios", () => scenarios.promise);
+
+    rtl.render(<PlaygroundClient />);
+    expect(createButton().disabled).toBe(true);
+
+    await rtl.act(async () =>
+      scenarios.resolve({ status: 503, body: { error: "not_configured" } })
+    );
+    await rtl.waitFor(() => expect(createButton().disabled).toBe(false));
+    rtl.fireEvent.click(createButton());
+    await rtl.waitFor(() => expect(routes.bodies.length).toBe(1));
+    expect(JSON.parse(routes.bodies[0]!)).toEqual({ seed: CODE });
   });
 });

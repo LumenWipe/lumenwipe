@@ -1,5 +1,6 @@
 import { expect, test, type Response } from "@playwright/test";
 import { encodeSelection, type ScenarioSelection } from "../../lib/scenarios";
+import { appAlerts } from "./alerts";
 import { HORIZON } from "./testnet";
 
 // The dispositions scenario end to end on testnet: each of its two tokens is burned (returned to
@@ -59,6 +60,10 @@ for (const choices of [
       ],
     };
     await page.goto(`/?selection=${encodeSelection(selection)}`);
+    // The link is applied before the run can start; the default wallet has no dispositions.
+    await expect(
+      page.getByRole("button", { name: "Convert, transfer or burn", pressed: true })
+    ).toBeVisible();
 
     const created = page.waitForResponse(isCreateSession, { timeout: 90_000 });
     await page.getByRole("button", { name: "Create & trash a demo account" }).click();
@@ -71,7 +76,7 @@ for (const choices of [
     await expect(page.getByText("demo complete. The account was merged away")).toBeVisible({
       timeout: 3 * 60_000,
     });
-    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(appAlerts(page)).toHaveCount(0);
 
     await expect
       .poll(async () => (await fetch(`${HORIZON}/accounts/${session.demoPublic}`)).status, {
