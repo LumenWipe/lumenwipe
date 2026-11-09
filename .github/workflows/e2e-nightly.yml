@@ -82,9 +82,11 @@ jobs:
   playground:
     name: playground against testnet
     runs-on: ubuntu-latest
-    # One recipe (about 3 to 6 minutes of testnet confirmations) plus one retry, with room for
-    # the dev server's first compile.
-    timeout-minutes: 25
+    # Twelve tests whose own budgets sum to roughly 89 minutes (seven testnet recipes at 10 to 12,
+    # the replayed seed at 15), and `retries: 1` lets a failing one take twice its own. Playwright's
+    # globalTimeout (80 minutes in CI) ends the run first, so a slow night is a failure with a
+    # report, not a kill here that the report job below reads as cancelled and never files.
+    timeout-minutes: 90
     permissions:
       contents: read
     steps:

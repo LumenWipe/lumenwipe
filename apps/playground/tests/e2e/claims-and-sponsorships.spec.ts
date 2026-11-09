@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Response } from "@playwright/test";
 import { encodeSelection, type ScenarioSelection } from "../../lib/scenarios";
+import { appAlerts } from "./alerts";
 import { HORIZON } from "./testnet";
 
 // The claimable-balance and sponsored-reserve scenarios end to end on testnet, including the
@@ -34,13 +35,16 @@ async function operationsOf(account: string): Promise<HorizonOperation[]> {
   return body._embedded.records;
 }
 
-/** Runs a selection to the merge, resolving the blocker on the way when one is expected. */
+/** Runs a selection to the merge, resolving the blocker on the way when one is expected.
+ *  `scenario` is the picker label the shared link must turn on before the run starts. */
 async function closeWith(
   page: Page,
   selection: ScenarioSelection,
+  scenario: string,
   blocker: RegExp | null
 ): Promise<{ session: CreatedSession; ops: HorizonOperation[] }> {
   await page.goto(`/?selection=${encodeSelection(selection)}`);
+  await expect(page.getByRole("button", { name: scenario, pressed: true })).toBeVisible();
   const created = page.waitForResponse(isCreateSession, { timeout: 90_000 });
   await page.getByRole("button", { name: "Create & trash a demo account" }).click();
   const response = await created;
@@ -57,7 +61,7 @@ async function closeWith(
   await expect(page.getByText("demo complete. The account was merged away")).toBeVisible({
     timeout: 4 * 60_000,
   });
-  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(appAlerts(page)).toHaveCount(0);
   await expect
     .poll(async () => (await fetch(`${HORIZON}/accounts/${session.demoPublic}`)).status, {
       timeout: 60_000,
@@ -91,6 +95,7 @@ test("claimable balances: claim, add a trustline then claim, forfeit, and resolv
         },
       ],
     },
+    "Claimable balances",
     /claimable balance for another account/
   );
   // The two balances the demo can claim now; the time-gated one is forfeited.
@@ -107,6 +112,7 @@ for (const [variant, label, blocker, revokes] of [
     const { ops } = await closeWith(
       page,
       { scenarios: [{ id: "sponsored-reserves", params: { variant } }] },
+      "Sponsored reserves",
       blocker
     );
     expect(count(ops, "revoke_sponsorship")).toBe(revokes);

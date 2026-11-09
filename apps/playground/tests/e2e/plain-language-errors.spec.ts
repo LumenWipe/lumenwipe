@@ -2,6 +2,7 @@ import { expect, test, type Page, type Route } from "@playwright/test";
 import { Keypair } from "@stellar/stellar-sdk";
 import { errorCopy } from "../../lib/error-copy";
 import { getMessPlanForMode } from "../../lib/mess-plan";
+import { appAlerts } from "./alerts";
 
 // Every failure here is injected at the playground's own route boundary, so nothing is funded or
 // submitted. What is asserted is the copy the visitor reads: it must be the plain-language map in
@@ -55,7 +56,7 @@ function fakeSession(): Record<string, unknown> {
 async function startAndExpectAlert(page: Page, code: string): Promise<void> {
   await page.goto("/");
   await page.getByRole("button", { name: "Create & trash a demo account" }).click();
-  const alert = page.getByRole("alert");
+  const alert = appAlerts(page);
   await expect(alert).toHaveText(errorCopy(code), { timeout: 30_000 });
   const text = await alert.innerText();
   expect(text).not.toMatch(RAW_LEAK);
@@ -103,7 +104,7 @@ test("a close that stops part way offers a resume and warns before abandoning th
   await page.getByRole("button", { name: "Create & trash a demo account" }).click();
   await page.getByRole("button", { name: "Demolish it here" }).click({ timeout: 30_000 });
 
-  const alert = page.getByRole("alert");
+  const alert = appAlerts(page);
   await expect(alert).toHaveText(errorCopy("demolish_outcome_unknown"), { timeout: 30_000 });
   expect(await alert.innerText()).not.toMatch(RAW_LEAK);
   await expect(page.getByRole("button", { name: "Resume the close" })).toBeVisible();

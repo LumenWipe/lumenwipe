@@ -1,4 +1,5 @@
 import { expect, test, type Response } from "@playwright/test";
+import { appAlerts } from "./alerts";
 import { HORIZON } from "./testnet";
 
 // The standard recipe end to end on testnet: create, mess, demolish through the real API, and the
@@ -54,7 +55,7 @@ test("the standard recipe closes the demo account into the market maker", async 
   const demolish = page.getByRole("button", { name: "Demolish it here" });
   await expect(demolish).toBeVisible({ timeout: 6 * 60_000 });
   await expect(page.getByText("The account is now a mess")).toBeVisible();
-  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(appAlerts(page)).toHaveCount(0);
 
   // The close runs one round per request; each confirmed transaction appears in the activity log,
   // linked to the explorer, as its round returns.
@@ -68,7 +69,7 @@ test("the standard recipe closes the demo account into the market maker", async 
   await expect(page.getByText("demo complete. The account was merged away")).toBeVisible({
     timeout: 3 * 60_000,
   });
-  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(appAlerts(page)).toHaveCount(0);
 
   // The account no longer exists, so no trustline, offer, data entry or signer is left on it.
   await expect

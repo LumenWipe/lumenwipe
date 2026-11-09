@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useLayoutEffect } from "react";
 import { usePlaygroundStore } from "@/store/playground";
 import { decodeSelection, parseUnavailable } from "@/lib/scenarios";
 import { replaySeed } from "@/components/scene/ScenarioPicker";
@@ -16,9 +16,13 @@ export default function PlaygroundClient() {
 
   // Until this answers, every scenario shows as available; the create route checks again anyway.
   // A shared link then restores its wallet: `?seed=` replays a code, `?selection=` an exact
-  // selection (validated again when the run starts).
-  useEffect(() => {
+  // selection (validated again when the run starts). Create stays disabled until the link is
+  // applied, set before the first paint so no click can start the default selection meanwhile.
+  useLayoutEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    if (params.has("seed") || params.has("selection")) {
+      usePlaygroundStore.getState().setLinkPending(true);
+    }
     playgroundRequest<unknown>(fetch, "/scenarios")
       .then((body) => usePlaygroundStore.getState().setUnavailable(parseUnavailable(body)))
       .catch(() => {})
@@ -27,6 +31,7 @@ export default function PlaygroundClient() {
         const shared = decodeSelection(params.get("selection") ?? "");
         if (seed) replaySeed(seed);
         else if (shared) usePlaygroundStore.getState().setSelection(shared, null);
+        usePlaygroundStore.getState().setLinkPending(false);
       });
   }, []);
 
