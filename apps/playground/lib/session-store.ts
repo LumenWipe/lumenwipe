@@ -132,6 +132,13 @@ export interface SessionStore {
   deleteSession(lock: SessionLock): Promise<void>;
 }
 
+const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+/** A session id is the uuid v4 `createSession` generates; anything else from a URL is rejected. */
+export function isSessionId(value: string): boolean {
+  return SESSION_ID.test(value);
+}
+
 const sessionKey = (id: string): string => `playground:session:${id}`;
 const lockKey = (id: string): string => `playground:session-lock:${id}`;
 
@@ -196,8 +203,8 @@ function resolveDefaultKv(): SessionKv {
   if (!warnedDevFallback) {
     warnedDevFallback = true;
     console.warn(
-      `[playground] Upstash Redis not configured - using a file-backed dev session store at ${DEV_STORE_FILE} ` +
-        "(dev/test only). Sessions are lost when that file is removed."
+      "[playground] Upstash Redis not configured - using a file-backed dev session store (dev/test only); sessions are lost when the file is removed",
+      { file: DEV_STORE_FILE }
     );
   }
   return devFileKv();

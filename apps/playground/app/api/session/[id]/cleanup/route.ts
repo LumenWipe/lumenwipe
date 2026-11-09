@@ -28,7 +28,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
           await buildSignSubmit(kp, [Operation.accountMerge({ destination: mm.publicKey() })]);
           recycled.push(eph.publicKey);
         } catch (err) {
-          console.error(`[playground] cleanup merge failed for ${eph.publicKey}:`, err);
+          console.error("[playground] cleanup merge failed", { issuer: eph.publicKey }, err);
         }
       }
       return recycled;

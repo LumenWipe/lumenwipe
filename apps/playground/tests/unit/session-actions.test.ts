@@ -5,6 +5,8 @@ import { readSessionState, runCleanup, runDemolishStep, runMessStep } from "@/li
 import type { SessionStore } from "@/lib/session-store";
 import { gate, memoryStore, newSessionData, tick } from "./session-fixtures";
 
+const UNKNOWN_ID = "6f1c2a4e-3b5d-4c7e-9a8b-1d2e3f4a5b6c";
+
 const outcome = (r: { body: Record<string, unknown> }): string =>
   typeof r.body.error === "string" ? r.body.error : "ok";
 
@@ -166,11 +168,11 @@ test("the lock is released after a failed step, so a retry can run", async () =>
 
 test("an unknown session is a 404 and takes no lock", async () => {
   const store = memoryStore();
-  const result = await runMessStep(store, "missing", "SETUP", {
+  const result = await runMessStep(store, UNKNOWN_ID, "SETUP", {
     executeStep: async () => "hash",
   });
   expect(result.status).toBe(404);
-  expect(await store.acquireLock("missing")).not.toBeNull();
+  expect(await store.acquireLock(UNKNOWN_ID)).not.toBeNull();
 });
 
 test("cleanup is refused while a step holds the session", async () => {
@@ -277,4 +279,50 @@ test("a store failure during cleanup is a cleanup_failed code, not a bare 500", 
   };
   const result = await runCleanup(failingStore, session.id, { recycle: async () => [] });
   expect(result).toEqual({ status: 502, body: { error: "cleanup_failed" } });
+});
+
+test("an id that is not a session uuid is a 404 and never reaches the store or the log", async () => {
+  const store = memoryStore();
+  let storeCalls = 0;
+  const counted =
+    <A extends unknown[], R>(fn: (...args: A) => Promise<R>) =>
+    async (...args: A): Promise<R> => {
+      storeCalls++;
+      return fn(...args);
+    };
+  const watchedStore: SessionStore = {
+    createSession: counted(store.createSession),
+    loadSession: counted(store.loadSession),
+    acquireLock: counted(store.acquireLock),
+    releaseLock: counted(store.releaseLock),
+    updateSession: counted(store.updateSession),
+    deleteSession: counted(store.deleteSession),
+  };
+  const logged: unknown[] = [];
+  const originalError = console.error;
+  console.error = (...args: unknown[]) => void logged.push(args);
+  const notFound = { status: 404, body: { error: "session_not_found" } };
+  try {
+    for (const id of ["%s%s%s", "abc\n[playground] forged line", "../../etc/passwd", ""]) {
+      expect(
+        await runMessStep(watchedStore, id, "SETUP", {
+          executeStep: async () => {
+            throw new Error("must not run");
+          },
+        })
+      ).toEqual(notFound);
+      expect(
+        await runDemolishStep(watchedStore, id, {
+          demolish: async () => {
+            throw new Error("must not run");
+          },
+        })
+      ).toEqual(notFound);
+      expect(await runCleanup(watchedStore, id, { recycle: async () => [] })).toEqual(notFound);
+    }
+  } finally {
+    console.error = originalError;
+  }
+  expect(storeCalls).toBe(0);
+  expect(logged).toEqual([]);
 });

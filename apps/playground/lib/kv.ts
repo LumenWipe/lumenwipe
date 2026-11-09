@@ -1,7 +1,6 @@
 import "server-only";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { redis } from "./upstash-redis";
 
 /** The key-value operations the session store needs, small enough to back with Redis or a record. */
@@ -151,7 +150,15 @@ export function memoryKv(now: () => number = Date.now): SessionKv {
   );
 }
 
-export const DEV_STORE_FILE = join(tmpdir(), "lumenwipe-playground-dev-sessions.json");
+// Inside the app's git-ignored node_modules cache, not the shared temp dir, where another local
+// user could predict the path and pre-create or read the file.
+export const DEV_STORE_FILE = join(
+  process.cwd(),
+  "node_modules",
+  ".cache",
+  "lumenwipe-playground",
+  "dev-sessions.json"
+);
 
 // A file, not an in-process Map: Next.js dev compiles each API route as its own module graph, so a
 // module-level Map is not shared between the route that creates a session and the one that uses it.
@@ -167,7 +174,8 @@ export function devFileKv(): SessionKv {
       }
     },
     write(records) {
-      writeFileSync(DEV_STORE_FILE, JSON.stringify(records), "utf8");
+      mkdirSync(dirname(DEV_STORE_FILE), { recursive: true, mode: 0o700 });
+      writeFileSync(DEV_STORE_FILE, JSON.stringify(records), { encoding: "utf8", mode: 0o600 });
     },
   });
 }

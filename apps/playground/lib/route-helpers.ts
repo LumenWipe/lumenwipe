@@ -2,6 +2,7 @@ import "server-only";
 import { NextResponse } from "next/server";
 import {
   PlaygroundStoreUnavailableError,
+  isSessionId,
   sessionStore,
   type PlaygroundSession,
 } from "./session-store";
@@ -25,6 +26,7 @@ export function notConfiguredResponse(): NextResponse {
 export async function loadSessionOrErrorResponse(
   id: string
 ): Promise<PlaygroundSession | NextResponse> {
+  if (!isSessionId(id)) return NextResponse.json({ error: "session_not_found" }, { status: 404 });
   let session: PlaygroundSession | null;
   try {
     session = await sessionStore.loadSession(id);

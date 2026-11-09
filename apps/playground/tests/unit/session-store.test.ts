@@ -3,6 +3,7 @@ import { memoryKv } from "@/lib/kv";
 import { runMessStep } from "@/lib/session-actions";
 import {
   createSessionStore,
+  isSessionId,
   SESSION_LOCK_TTL_MS,
   SESSION_SCHEMA_VERSION,
   SessionLockLostError,
@@ -11,6 +12,8 @@ import {
   type SessionStore,
 } from "@/lib/session-store";
 import { fakeClock, memoryStore, newSessionData } from "./session-fixtures";
+
+const SID = "0b9d6a52-7c41-4e8f-a3b2-5c6d7e8f9a01";
 
 beforeEach(() => {
   delete process.env.UPSTASH_REDIS_REST_URL;
@@ -36,7 +39,7 @@ test("the dev file fallback store keeps the lock and the lock-held update workin
 });
 
 test("loading an unknown id returns null", async () => {
-  expect(await memoryStore().loadSession("nonexistent")).toBeNull();
+  expect(await memoryStore().loadSession("6f1c2a4e-3b5d-4c7e-9a8b-1d2e3f4a5b6c")).toBeNull();
 });
 
 test("updateSession merges the patch and keeps every other field", async () => {
@@ -113,13 +116,13 @@ test("deleteSession removes the session", async () => {
 describe("schema version", () => {
   const stored = async (value: unknown): Promise<SessionStore> => {
     const kv = memoryKv();
-    await kv.set("playground:session:s1", value, 60);
+    await kv.set(`playground:session:${SID}`, value, 60);
     return createSessionStore(() => kv);
   };
   const current = (): PlaygroundSession => ({
     ...newSessionData(),
     schemaVersion: SESSION_SCHEMA_VERSION,
-    id: "s1",
+    id: SID,
     createdAt: 1,
   });
 
@@ -131,16 +134,16 @@ describe("schema version", () => {
   });
 
   test("a session with the current version and a valid shape loads", async () => {
-    expect(await (await stored(current())).loadSession("s1")).toEqual(current());
+    expect(await (await stored(current())).loadSession(SID)).toEqual(current());
   });
 
   test("a session with no schema version reads as expired", async () => {
     const { schemaVersion: _omitted, ...legacy } = current();
-    expect(await (await stored(legacy)).loadSession("s1")).toBeNull();
+    expect(await (await stored(legacy)).loadSession(SID)).toBeNull();
   });
 
   test("a session with an older schema version reads as expired", async () => {
-    expect(await (await stored({ ...current(), schemaVersion: 0 })).loadSession("s1")).toBeNull();
+    expect(await (await stored({ ...current(), schemaVersion: 0 })).loadSession(SID)).toBeNull();
   });
 
   test("a malformed session reads as expired", async () => {
@@ -152,13 +155,28 @@ describe("schema version", () => {
       "not-a-session",
       [current()],
     ]) {
-      expect(await (await stored(bad)).loadSession("s1")).toBeNull();
+      expect(await (await stored(bad)).loadSession(SID)).toBeNull();
     }
   });
 
   test("the route answers a stale session with the expired-session response", async () => {
     const store = await stored({ ...current(), schemaVersion: 0 });
-    const result = await runMessStep(store, "s1", "SETUP", { executeStep: async () => "hash" });
+    const result = await runMessStep(store, SID, "SETUP", { executeStep: async () => "hash" });
     expect(result).toEqual({ status: 404, body: { error: "session_not_found" } });
   });
+});
+
+test("isSessionId accepts only a lowercase uuid v4", () => {
+  expect(isSessionId(SID)).toBe(true);
+  for (const bad of [
+    "",
+    "s1",
+    SID.toUpperCase(),
+    `${SID}\n`,
+    "0b9d6a52-7c41-1e8f-a3b2-5c6d7e8f9a01",
+    "0b9d6a52-7c41-4e8f-c3b2-5c6d7e8f9a01",
+    "%s%s%s",
+  ]) {
+    expect(isSessionId(bad)).toBe(false);
+  }
 });

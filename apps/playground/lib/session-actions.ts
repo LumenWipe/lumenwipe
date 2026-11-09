@@ -8,6 +8,7 @@ import {
   type PlaygroundSession,
   type SessionLock,
   type SessionStore,
+  isSessionId,
 } from "./session-store";
 
 export interface ActionResult {
@@ -55,6 +56,7 @@ async function withSessionLock(
   id: string,
   action: (session: PlaygroundSession, lock: SessionLock) => Promise<ActionResult>
 ): Promise<ActionResult> {
+  if (!isSessionId(id)) return SESSION_NOT_FOUND;
   if (!(await store.loadSession(id))) return SESSION_NOT_FOUND;
   const lock = await store.acquireLock(id);
   if (!lock) return STEP_IN_PROGRESS;
@@ -64,7 +66,7 @@ async function withSessionLock(
     return await action(session, lock);
   } finally {
     await store.releaseLock(lock).catch((err: unknown) => {
-      console.error(`[playground] session lock release failed for session ${id}:`, err);
+      console.error("[playground] session lock release failed", { sessionId: id }, err);
     });
   }
 }
@@ -88,7 +90,7 @@ export async function runMessStep(
     });
   } catch (err) {
     if (isConfigError(err)) return NOT_CONFIGURED;
-    console.error(`[playground] mess step ${stepId} failed for session ${id}:`, err);
+    console.error("[playground] mess step failed", { stepId, sessionId: id }, err);
     return { status: 502, body: { error: "tx_failed" } };
   }
 }
@@ -116,7 +118,7 @@ export async function runDemolishStep(
           .then(
             () => undefined,
             (err: unknown) => {
-              console.error(`[playground] demolish log update failed for session ${id}:`, err);
+              console.error("[playground] demolish log update failed", { sessionId: id }, err);
             }
           );
       };
@@ -131,7 +133,7 @@ export async function runDemolishStep(
     });
   } catch (err) {
     if (isConfigError(err)) return NOT_CONFIGURED;
-    console.error(`[playground] demolish failed for session ${id}:`, err);
+    console.error("[playground] demolish failed", { sessionId: id }, err);
     return { status: 502, body: { error: "demolish_failed" } };
   }
 }
@@ -150,7 +152,7 @@ export async function runCleanup(
     });
   } catch (err) {
     if (isConfigError(err)) return NOT_CONFIGURED;
-    console.error(`[playground] cleanup failed for session ${id}:`, err);
+    console.error("[playground] cleanup failed", { sessionId: id }, err);
     return { status: 502, body: { error: "cleanup_failed" } };
   }
 }
@@ -177,7 +179,7 @@ export async function readSessionState(
       // The demo account no longer exists once the merge lands - that's success, not an error.
       return { status: 200, body: { ...progress, accountState: null } };
     }
-    console.error(`[playground] account state read failed for session ${session.id}:`, err);
+    console.error("[playground] account state read failed", { sessionId: session.id }, err);
     return { status: 502, body: { error: "state_read_failed" } };
   }
 }
