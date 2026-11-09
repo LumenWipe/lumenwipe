@@ -8,7 +8,6 @@ import { redis } from "./upstash-redis";
 export interface SessionKv {
   get(key: string): Promise<unknown>;
   set(key: string, value: unknown, ttlSeconds: number): Promise<void>;
-  del(key: string): Promise<void>;
   /** Sets `lockKey` to `token` only when no live lock exists. */
   acquire(lockKey: string, token: string, ttlMs: number): Promise<boolean>;
   /** Writes `key` only while `lockKey` still holds `token`, checked atomically with the write. */
@@ -19,11 +18,19 @@ export interface SessionKv {
     value: unknown,
     ttlSeconds: number
   ): Promise<boolean>;
+  /** Deletes `key` only while `lockKey` still holds `token`, checked atomically with the delete. */
+  delIfLockHeld(lockKey: string, token: string, key: string): Promise<boolean>;
   releaseIfHeld(lockKey: string, token: string): Promise<void>;
 }
 
 const SET_IF_LOCK_HELD = `if redis.call("GET", KEYS[1]) == ARGV[1] then
   redis.call("SET", KEYS[2], ARGV[2], "EX", ARGV[3])
+  return 1
+end
+return 0`;
+
+const DEL_IF_LOCK_HELD = `if redis.call("GET", KEYS[1]) == ARGV[1] then
+  redis.call("DEL", KEYS[2])
   return 1
 end
 return 0`;
@@ -39,9 +46,6 @@ export function upstashKv(): SessionKv {
     async set(key, value, ttlSeconds) {
       await redis().set(key, value, { ex: ttlSeconds });
     },
-    async del(key) {
-      await redis().del(key);
-    },
     async acquire(lockKey, token, ttlMs) {
       return (await redis().set(lockKey, token, { nx: true, px: ttlMs })) !== null;
     },
@@ -52,6 +56,14 @@ export function upstashKv(): SessionKv {
         [token, JSON.stringify(value), String(ttlSeconds)]
       );
       return written === 1;
+    },
+    async delIfLockHeld(lockKey, token, key) {
+      const deleted = await redis().eval<string[], number>(
+        DEL_IF_LOCK_HELD,
+        [lockKey, key],
+        [token]
+      );
+      return deleted === 1;
     },
     async releaseIfHeld(lockKey, token) {
       await redis().eval<string[], number>(RELEASE_IF_HELD, [lockKey], [token]);
@@ -96,11 +108,6 @@ export function createRecordKv(io: RecordIo, now: () => number = Date.now): Sess
       put(records, key, value, ttlSeconds * 1000);
       io.write(records);
     },
-    async del(key) {
-      const records = io.read();
-      delete records[key];
-      io.write(records);
-    },
     async acquire(lockKey, token, ttlMs) {
       const records = io.read();
       if (live(records, lockKey)) return false;
@@ -112,6 +119,13 @@ export function createRecordKv(io: RecordIo, now: () => number = Date.now): Sess
       const records = io.read();
       if (live(records, lockKey)?.value !== token) return false;
       put(records, key, value, ttlSeconds * 1000);
+      io.write(records);
+      return true;
+    },
+    async delIfLockHeld(lockKey, token, key) {
+      const records = io.read();
+      if (live(records, lockKey)?.value !== token) return false;
+      delete records[key];
       io.write(records);
       return true;
     },

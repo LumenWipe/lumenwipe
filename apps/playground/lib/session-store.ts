@@ -128,6 +128,7 @@ export interface SessionStore {
     lock: SessionLock,
     patch: (session: PlaygroundSession) => SessionPatch
   ): Promise<PlaygroundSession>;
+  /** Deletes the session, refused with SessionLockLostError unless `lock` is still held. */
   deleteSession(lock: SessionLock): Promise<void>;
 }
 
@@ -175,7 +176,12 @@ export function createSessionStore(resolveKv: () => SessionKv): SessionStore {
       return next;
     },
     async deleteSession(lock) {
-      await resolveKv().del(sessionKey(lock.sessionId));
+      const deleted = await resolveKv().delIfLockHeld(
+        lockKey(lock.sessionId),
+        lock.token,
+        sessionKey(lock.sessionId)
+      );
+      if (!deleted) throw new SessionLockLostError(lock.sessionId);
     },
   };
 }

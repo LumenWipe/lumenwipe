@@ -80,6 +80,19 @@ test("an expired lock frees the session and its stale holder can no longer write
   expect(await store.acquireLock(session.id)).toBeNull();
 });
 
+test("a stale lock holder cannot delete a session another request now holds", async () => {
+  const clock = fakeClock();
+  const store = memoryStore(clock);
+  const session = await store.createSession(newSessionData());
+  const stale = (await store.acquireLock(session.id))!;
+
+  clock.advance(SESSION_LOCK_TTL_MS + 1_000);
+  expect(await store.acquireLock(session.id)).not.toBeNull();
+
+  await expect(store.deleteSession(stale)).rejects.toBeInstanceOf(SessionLockLostError);
+  expect(await store.loadSession(session.id)).not.toBeNull();
+});
+
 test("a lock still inside its expiry is not freed", async () => {
   const clock = fakeClock();
   const store = memoryStore(clock);
