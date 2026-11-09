@@ -121,6 +121,14 @@ unset, an address that differs from the table, a set variable whose row says not
 and the run stays red until both agree. The same comparison between the table and `stellar.toml` runs in the
 unit suite on every pull request.
 
+A rotation also keeps the address it drained watched for 24 hours: each variable has an optional `_RETIRED`
+counterpart (`MEDIATOR_ADDRESS_TESTNET_RETIRED` and so on) that holds the old address. A retired address is
+read by the source-account and forward checks only. It is in neither the table nor `stellar.toml`, and it has
+no balance floor, because the account no longer exists. A value that is not an account id, or that equals the
+current address, fails the config step. Any transaction the old key sources after the drain is a finding,
+reported as for the current account, so the drain itself is sourced from another account (see the
+[relay account rotation](/runbooks/rotate-relay-account)). The runbook deletes the variable once the 24 hours are over.
+
 The source-account and forward checks read the transactions of the last `MONITOR_HISTORY_HOURS` hours (an
 optional repository variable from 2 to 720; 168, one week, when unset), paging through Horizon 200 at a time.
 A transaction older than the window is no longer read, so a finding stops being reported once the transaction
@@ -208,15 +216,15 @@ analyze and of each build round can be read from the logs.
 
 ## 5. What happens when an alert fires?
 
-| Monitor ID              | Severity | Response                                                                                                                                    | Owner       | Status                                | Last reviewed |
-| ----------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | ------------------------------------- | ------------- |
-| `S4a.Elevation.1.M.1`   | High     | Notify the maintainers; verify the mediator's funding policy; investigate the forward that preceded the drop.                               | Maintainers | Active (hourly)                       | 2026-10-07    |
-| `S4a.Spoofing.1.M.1`    | Critical | Notify the maintainers; rotate the mediator key; the mediator rotates without a client change, by design.                                   | Maintainers | Planned                               | 2026-09-17    |
-| `S4a.Information.1.M.1` | Critical | Rotate the mediator key immediately; audit every transaction it signed.                                                                     | Maintainers | Active (hourly)                       | 2026-10-07    |
-| `S4b.Elevation.1.M.1`   | High     | Notify the maintainers; disable the sponsored-fee endpoint; audit the inner transactions sponsored.                                         | Maintainers | Planned                               | 2026-09-17    |
-| `S4b.Denial.1.M.1`      | Medium   | Top up the sponsor; review the per-key rate limit against the observed rate.                                                                | Maintainers | Balance active (hourly); rate planned | 2026-10-07    |
-| `S4b.Information.1.M.1` | Critical | Rotate the sponsor key immediately; audit every transaction it paid for.                                                                    | Maintainers | Active (hourly)                       | 2026-10-07    |
-| `S7.Tampering.1.M.1`    | High     | Re-verify the contract against the protocol's own release, update the registry entry, and re-run the integration suite before exits resume. | Maintainers | Active (daily)                        | 2026-09-18    |
+| Monitor ID              | Severity | Response                                                                                                                                                                                                                                           | Owner       | Status                                | Last reviewed |
+| ----------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | ------------------------------------- | ------------- |
+| `S4a.Elevation.1.M.1`   | High     | Notify the maintainers; verify the mediator's funding policy; investigate the forward that preceded the drop. [Incident response](/runbooks/incident-response); if the key is suspect, [rotate the relay account](/runbooks/rotate-relay-account). | Maintainers | Active (hourly)                       | 2026-10-07    |
+| `S4a.Spoofing.1.M.1`    | Critical | Notify the maintainers; [rotate the relay account](/runbooks/rotate-relay-account); the mediator rotates without a client change, by design.                                                                                                       | Maintainers | Planned                               | 2026-09-17    |
+| `S4a.Information.1.M.1` | Critical | [Rotate the relay account](/runbooks/rotate-relay-account) immediately; audit every transaction it signed.                                                                                                                                         | Maintainers | Active (hourly)                       | 2026-10-07    |
+| `S4b.Elevation.1.M.1`   | High     | Notify the maintainers; disable the sponsored-fee endpoint ([incident response](/runbooks/incident-response#first-fifteen-minutes)); audit the inner transactions sponsored.                                                                       | Maintainers | Planned                               | 2026-09-17    |
+| `S4b.Denial.1.M.1`      | Medium   | Top up the sponsor ([drained fee sponsor](/runbooks/drained-sponsor)); review the per-key rate limit against the observed rate.                                                                                                                    | Maintainers | Balance active (hourly); rate planned | 2026-10-07    |
+| `S4b.Information.1.M.1` | Critical | [Rotate the fee sponsor](/runbooks/rotate-fee-sponsor) immediately; audit every transaction it paid for.                                                                                                                                           | Maintainers | Active (hourly)                       | 2026-10-07    |
+| `S7.Tampering.1.M.1`    | High     | Re-verify the contract against the protocol's own release, update the registry entry ([registry expiry](/runbooks/registry-expiry), step 2), and re-run the integration suite before exits resume.                                                 | Maintainers | Active (daily)                        | 2026-09-18    |
 
 **Status is honest, not aspirational.** Five monitors are Active: the registry hash comparison daily, and
 the two service-key checks, the mediator's balance-and-forward check and the sponsor's balance floor hourly.

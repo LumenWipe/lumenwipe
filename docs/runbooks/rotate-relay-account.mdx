@@ -1,0 +1,134 @@
+---
+title: "Rotate the relay account"
+description: "Replace the relay account (mediator) and its key without a client change: fund the new account to its minimum balance, switch the API, drain the old account and keep watching it for 24 hours."
+icon: "rotate"
+---
+
+<Note>
+  Not yet rehearsed end to end on the deployed service. The testnet rehearsal will record the time
+  of each step and correct this page. The key handling and the drain in steps 2 and 9 were run on
+  testnet with Stellar CLI 30.0.1, and
+  `apps/api/tests/integration/relay-rotation.integration.test.ts` runs the same sequence against a
+  local API on every pull request.
+</Note>
+
+The relay account (the code calls it the mediator) co-signs the forward of an [exchange close](/guides/exchanges-and-the-mediator). Clients never store its address: the API puts it into every exchange close it builds, so a rotation changes only the API's configuration, a repository variable and one row of the [monitoring plan](/monitoring-plan#1-what-are-we-monitoring).
+
+## When
+
+- **Compromise**: the key may be exposed, or `S4a.Information.1.M.1`, `S4a.Spoofing.1.M.1` or the forward check fired. Do step 1, then the rest without pausing.
+- **Planned**: a scheduled rotation, a maintainer leaving. Skip step 1.
+
+## Blast radius
+
+- Only exchange closes. Closes into a wallet the user controls never touch the relay account.
+- A close built against the old account but not yet co-signed is refused once the new revision serves, with `400 transaction_structure_not_allowed`, because its forward names the old account. Nothing has been submitted, so the client builds it again and gets the new account.
+- A close co-signed before the switch still lands while the old account exists, which is why step 8 waits before the drain. One submitted after the drain fails as a whole (`op_no_account` on the merge, `op_no_source_account` on the forward): no XLM moves, the account pays one fee and stays open, and building again succeeds.
+- At most the old account's minimum balance, 1 XLM, is ever at risk, because it holds nothing else.
+
+## Steps
+
+`<net>` is `testnet` or `mainnet` and `<NET>` the same in capitals. Run every step in one shell, started like this, so a failed command in a pipe stops the step and the keys live only in a throwaway CLI configuration:
+
+```bash
+set -o pipefail
+export XDG_CONFIG_HOME="$(mktemp -d)"
+stellar keys add operator --secret-key
+```
+
+`operator` is the operator account that funds the new relay account and receives the old one's balance; paste its secret at the prompt. It must not be either relay account.
+
+1. **Compromise only: pause exchange closes.**
+
+   ```bash
+   gcloud run services update lumenwipe-api --region us-central1 --update-env-vars=MEDIATOR_FORWARD_ENABLED=false
+   ```
+
+   Expected: `Done.`, and `POST $API/v1/<net>/mediator/sign` answers `503 exchange_forward_paused`.
+
+2. **Generate the new key**, without showing it:
+
+   ```bash
+   stellar keys generate new-relay
+   stellar keys address new-relay
+   ```
+
+   Expected: a `G...` address. This is `<new>` below; `<old>` is the address in the `MEDIATOR_ADDRESS_<NET>` repository variable.
+
+3. **Create the account at its minimum balance only**, 1 XLM (two base reserves), from the operator account. Never fund it through friendbot or with more: a relay account holds no spendable XLM ([threat model, surface 4a](/threat-model)).
+
+   ```bash
+   stellar tx new create-account --source-account operator --destination <new> --starting-balance 10000000 --network <net>
+   curl -s https://horizon-testnet.stellar.org/accounts/<new> | jq -r '.balances[] | select(.asset_type=="native") | .balance'
+   ```
+
+   Expected: `1.0000000` (use `https://horizon.stellar.org` on mainnet).
+
+4. **Check the bindings, then add the secret as a new version.** An entry with `valueFrom.secretKeyRef` comes from Secret Manager. If the relay secret is bound to `latest`, a new version would reach a fresh instance of the current revision before the public key changes, and that instance would answer `503 mediator_key_misconfiguration`: pin the current version number first.
+
+   ```bash
+   gcloud run services describe lumenwipe-api --region us-central1 --format='yaml(spec.template.spec.containers[0].env)'
+   stellar keys secret new-relay | tr -d '\n' | gcloud secrets versions add <relay-secret> --data-file=-
+   ```
+
+   Expected: the binding names a version number, and `Created version [<n>] of the secret [<relay-secret>].` The `tr` matters: a trailing newline makes the key unreadable. With `pipefail` set, a failed `keys secret` stops here instead of storing an empty version.
+
+5. **Switch the API in one revision.** The secret and the public key must change together; a revision where they disagree answers `503 mediator_key_misconfiguration`.
+
+   ```bash
+   gcloud run services update lumenwipe-api --region us-central1 \
+     --update-secrets=MEDIATOR_SECRET_<NET>=<relay-secret>:<n> \
+     --update-env-vars=MEDIATOR_PUBLIC_<NET>=<new>
+   ```
+
+   If `MEDIATOR_PUBLIC_<NET>` is bound to a secret as well, add its version as in step 4 and bind it in the same `--update-secrets` instead. Expected: `Done.` and the new revision serving 100 percent; a `describe` now shows version `<n>` and `<new>`. Note the time: step 8 counts from it.
+
+6. **Confirm the new account co-signs.** On testnet, run the full exchange flow through the deployed web app:
+
+   ```bash
+   APP_URL=https://lumenwipe.com MEDIATOR_PUBLIC_TESTNET=<new> bun run --filter @lumenwipe/api test:mediator
+   ```
+
+   Expected: it ends with `E2E PASS`, and its forward shows on Horizon as a payment from `<new>`. On mainnet there is no scripted check, because it would close a real account: confirm instead with the first real exchange close, whose forward must be a payment from `<new>`. In a compromise, turn `MEDIATOR_FORWARD_ENABLED` back to `true` once this passes.
+
+7. **Point the monitors at the new account and keep the old one watched**, before the drain, so the new account is watched from now on and no check reads a drained current address. Edit the repository variables and, in the same hour, merge a pull request that changes the `Mediator account (<net>)` row of the [inventory table](/monitoring-plan#1-what-are-we-monitoring) to `<new>` (on mainnet, also `ACCOUNTS` in `apps/web/public/.well-known/stellar.toml`). The config step fails until the variable and the table agree.
+
+   ```bash
+   gh variable set MEDIATOR_ADDRESS_<NET> --body <new>
+   gh variable set MEDIATOR_ADDRESS_<NET>_RETIRED --body <old>
+   gh workflow run onchain-monitors.yml && gh run watch "$(gh run list --workflow onchain-monitors.yml --limit 1 --json databaseId -q '.[0].databaseId')"
+   ```
+
+   Expected: every job succeeds, and the config step lists both `mediator (<net>): <new>` and `mediator (retired) (<net>): <old>`. Check for the retired line: a misspelled variable name is never passed to the workflow and would leave the old address unwatched without an error.
+
+8. **Wait 6 minutes** from the switch in step 5. A signed close is valid for at most 330 seconds (`MAX_SIGNED_VALIDITY_SECONDS`), so after this no close co-signed by the old key can still land.
+
+9. **Drain the old account.** The operator is the transaction source and the old key signs only the merge, so the old address never sources a transaction and its keys check stays quiet. The old key is piped from its previous secret version into the throwaway configuration, never shown:
+
+   ```bash
+   gcloud secrets versions access <previous n> --secret=<relay-secret> | stellar keys add old-relay --secret-key
+   stellar tx new bump-sequence --source-account operator --bump-to 0 --inclusion-fee 200 --network <net> --build-only \
+     | stellar tx op add account-merge --source-account operator --op-source old-relay --account <operator address> --network <net> \
+     | stellar tx sign --sign-with-key operator --network <net> \
+     | stellar tx sign --sign-with-key old-relay --network <net> \
+     | stellar tx send --network <net>
+   curl -s -o /dev/null -w '%{http_code}\n' https://horizon-testnet.stellar.org/accounts/<old>
+   ```
+
+   Expected: `stellar tx send` exits with status 0 and prints the transaction result, and Horizon answers `404` for `<old>`. The `bump-sequence` to 0 is a no-op that lets the operator be the source; the fee covers its two operations. In a compromise, whoever holds the old key can make the merge fail first (`op_has_sub_entries`, by adding a trustline or a signer): the most that costs is the old account's 1 XLM, and the retired monitor reports the transaction that did it.
+
+10. **After 24 hours, stop watching the old account** and clean up:
+
+    ```bash
+    gh variable delete MEDIATOR_ADDRESS_<NET>_RETIRED
+    gcloud secrets versions disable <previous n> --secret=<relay-secret>
+    rm -rf "$XDG_CONFIG_HOME"
+    ```
+
+    Expected: the next monitor run lists only `<new>`. The new key now lives only in Secret Manager; keep a copy where the team keeps keys before removing the throwaway configuration, if the team's policy asks for one.
+
+## Confirm the fix
+
+- `test:mediator` passes against the new account (step 6) and Horizon shows `<old>` as `404` (step 9).
+- The on-chain monitors run green with the new address, and with the retired one for 24 hours (step 7).
+- To roll back before step 9, bind the previous secret version and the old public key in one `gcloud run services update`, as in step 5. After step 9 the old account is gone; rotate forward instead.

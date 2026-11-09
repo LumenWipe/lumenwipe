@@ -1,0 +1,76 @@
+---
+title: "Bad deploy"
+description: "Roll the API back to a known-good revision when a deploy that reached traffic misbehaves, and get back to following the latest revision."
+icon: "clock-rotate-left"
+---
+
+<Note>
+  Not yet rehearsed by a second maintainer against testnet. The walkthrough will correct this page.
+</Note>
+
+Every merge to `main` that touches the API deploys it. The deploy workflow already stops most bad revisions: it deploys the candidate with no traffic, smoke tests it on its own URL, and only then promotes it, routing back by name if anything fails. How that works, and every outcome of a run, is in [RELEASING.md, How a deploy moves traffic](https://github.com/LumenWipe/lumenwipe/blob/main/RELEASING.md#how-a-deploy-moves-traffic). This page is for what the smoke test cannot see: a revision that passed it and still misbehaves.
+
+## Blast radius
+
+The API serves mainnet and testnet from one service, so a bad revision affects both networks and every client: the web app, the SDK and integrators. A close in progress is never left half done by a rollback: the API keeps no progress between rounds, and the client resumes from the account's state on the ledger.
+
+## Steps
+
+1. **Is a deploy run still in progress?** Let it finish: it ends following the latest revision, or restored to the one it recorded.
+
+   ```bash
+   gh run list --workflow deploy-api.yml --limit 3
+   ```
+
+   Expected: no run `in_progress`. If the last run failed, read its job summary first: it names both revisions and the check that failed, and may already have restored traffic.
+
+2. **Find the revision serving now and the last good one**:
+
+   ```bash
+   gcloud run services describe lumenwipe-api --region us-central1 --format='value(status.traffic)'
+   gcloud run revisions list --service lumenwipe-api --region us-central1 --limit 5
+   ```
+
+   The newest revisions are listed first. Their names carry the commit (`lumenwipe-api-<sha7>-<run id>-<attempt>`), so the last good one is the revision before the commit that introduced the problem. A `-restore` revision runs the image of the revision it restored.
+
+3. **Roll back** to that revision by name, never "the previous one" by position:
+
+   ```bash
+   gcloud run services update-traffic lumenwipe-api --region us-central1 --to-revisions=<good revision>=100
+   ```
+
+   Expected: `Done.` and `<good revision>` at 100 percent. Traffic is now pinned: a configuration change, a kill switch included, does not reach users until traffic follows the latest revision again. If you need a switch while pinned, follow [While traffic is pinned](https://github.com/LumenWipe/lumenwipe/blob/main/RELEASING.md#how-a-deploy-moves-traffic).
+
+4. **Confirm the rollback**:
+
+   ```bash
+   curl -s "$API/" | jq -r .gitSha
+   curl -s -o /dev/null -w '%{http_code}\n' "$API/health/deep"
+   ```
+
+   Expected: the commit of `<good revision>`, and `200`. Then repeat what was broken (a testnet close, the failing request) and check it works.
+
+5. **Fix forward.** Revert or fix the change in a pull request. Its deploy promotes a new revision with `--to-latest`, which removes the pin. Until it merges, do not merge other API changes: each would deploy and remove the pin too.
+
+6. If users noticed, post the resolved update from [Incident response](/runbooks/incident-response#public-update-template).
+
+## Confirm the fix
+
+After the fix deploys:
+
+```bash
+gcloud run services describe lumenwipe-api --region us-central1 --format='value(status.traffic)'
+curl -s "$API/" | jq -r .gitSha
+```
+
+Expected: a single entry with `latestRevision: true` at 100 percent, and the fix's commit.
+
+## Drill
+
+A manual run of the deploy workflow with `drill: fail-smoke` forces the smoke test to fail and shows the automatic path end to end: the candidate never takes traffic, and the run ends restored.
+
+```bash
+gh workflow run deploy-api.yml -f drill=fail-smoke
+```
+
+Expected: the run fails, as designed, and its summary reports the restore; `status.traffic` afterwards shows the latest revision, a `-restore` one, at 100 percent.

@@ -1,0 +1,85 @@
+---
+title: "Rotate the fee sponsor"
+description: "Replace the fee-bump sponsor account and its key: fund the new account to its float, switch the API, drain the old account and keep watching it for 24 hours."
+icon: "rotate"
+---
+
+<Note>
+  Not yet rehearsed end to end on the deployed service. The testnet rehearsal will record the time
+  of each step and correct this page.
+</Note>
+
+The fee sponsor pays the network fee, through a CAP-15 fee bump, for an account sitting at its minimum balance. It holds a small operational float and spends it only on fees. Only the API knows it: there is no public-key setting and no client change, so a rotation changes one secret, a repository variable and one row of the [monitoring plan](/monitoring-plan#1-what-are-we-monitoring).
+
+The steps follow the [relay account rotation](/runbooks/rotate-relay-account), with the differences below. `<net>` and `<NET>` mean the same as there, and every step runs in a shell started as that page's steps describe (`set -o pipefail`, a throwaway `XDG_CONFIG_HOME`, the `operator` identity).
+
+## When
+
+- **Compromise**: the key may be exposed, or `S4b.Information.1.M.1` or `S4b.Elevation.1.M.1` fired. Pause sponsorship first.
+- **Planned**: skip the pause.
+
+## Blast radius
+
+- Only sponsored fees. Every close that pays its own fees is unaffected, and while sponsorship is paused a plan that needed it reports the blocker before anything is built.
+- A fee bump signed by the old sponsor is valid only as long as its inner transaction, at most 330 seconds. Submitted after the drain, the network rejects it because its fee account no longer exists: nothing is applied or charged, and the client asks for a new sponsorship.
+- At most the old account's float is at risk; draining it ends that.
+
+## Steps
+
+1. **Compromise only: pause sponsorship.**
+
+   ```bash
+   gcloud run services update lumenwipe-api --region us-central1 --update-env-vars=FEE_SPONSORSHIP_ENABLED=false
+   ```
+
+   Expected: `Done.`, and `POST $API/v1/<net>/fee-bump/sponsor` answers `503 fee_sponsorship_paused`.
+
+2. **Generate the new key**: `stellar keys generate new-sponsor`, then `stellar keys address new-sponsor`. Expected: a `G...` address, `<new>`.
+
+3. **Create the account with the float**, not more. The balance monitor's floor is 50 XLM, so fund above it:
+
+   ```bash
+   stellar tx new create-account --source-account operator --destination <new> --starting-balance <float in stroops> --network <net>
+   curl -s https://horizon-testnet.stellar.org/accounts/<new> | jq -r '.balances[] | select(.asset_type=="native") | .balance'
+   ```
+
+   Expected: the float, in XLM.
+
+4. **Check the binding, then add the secret as a new version.** If the sponsor secret is bound to `latest`, pin its current version number first, as in the relay runbook:
+
+   ```bash
+   stellar keys secret new-sponsor | tr -d '\n' | gcloud secrets versions add <sponsor-secret> --data-file=-
+   ```
+
+   Expected: `Created version [<n>] of the secret [<sponsor-secret>].`
+
+5. **Switch the API**:
+
+   ```bash
+   gcloud run services update lumenwipe-api --region us-central1 --update-secrets=FEE_ACCOUNT_SECRET_<NET>=<sponsor-secret>:<n>
+   gcloud run services describe lumenwipe-api --region us-central1 --format='yaml(spec.template.spec.containers[0].env)'
+   ```
+
+   Expected: `Done.`, the new revision serving 100 percent, and the binding showing version `<n>`. In a compromise, turn `FEE_SPONSORSHIP_ENABLED` back to `true`.
+
+6. **Confirm the new account pays.** Close a testnet account at its minimum balance with sponsored fees, then read the sponsor's latest transaction:
+
+   ```bash
+   curl -s "https://horizon-testnet.stellar.org/accounts/<new>/transactions?order=desc&limit=1" | jq -r '._embedded.records[0] | .fee_account, .source_account'
+   ```
+
+   Expected: `<new>` as `fee_account`, and the closed account, never `<new>`, as `source_account`.
+
+7. **Monitors**, before the drain: set `FEE_ACCOUNT_ADDRESS_<NET>` to `<new>` and `FEE_ACCOUNT_ADDRESS_<NET>_RETIRED` to `<old>`, merge the change to the `Fee-bump sponsor (<net>)` row of the inventory table in the same hour, and run the workflow. Expected: the config step lists `sponsor (<net>): <new>` and `sponsor (retired) (<net>): <old>`, every job succeeds, and the balances step reports only `<new>`.
+
+8. **Wait 6 minutes** after the new revision took traffic, so no fee bump signed by the old key can still land.
+
+9. **Drain the old account** with the operator as the transaction source, exactly as in [the relay runbook, step 9](/runbooks/rotate-relay-account#steps), using an `old-sponsor` identity piped from the previous secret version. Expected: Horizon answers `404` for `<old>` and the float is back with the operator.
+
+10. **After 24 hours**: `gh variable delete FEE_ACCOUNT_ADDRESS_<NET>_RETIRED`, disable the previous secret version, and `rm -rf "$XDG_CONFIG_HOME"`.
+
+## Confirm the fix
+
+- A sponsored transaction shows `<new>` as its `fee_account` (step 6).
+- Horizon shows `<old>` as `404`, and the monitors run green with both addresses for 24 hours.
+- To roll back before the drain, bind the previous secret version again. After the drain, rotate forward.

@@ -1,0 +1,51 @@
+---
+title: "Drained fee sponsor"
+description: "What to do when the fee sponsor's balance falls below its floor or sponsored closes start failing."
+icon: "gas-pump"
+---
+
+The fee sponsor pays network fees for accounts at their minimum balance, and holds a small float for it. The hourly balance check (`S4b.Denial.1.M.1`, [monitoring plan](/monitoring-plan#5-what-happens-when-an-alert-fires)) opens an alert when that float drops below its floor, 50 XLM.
+
+## Blast radius
+
+- Only sponsored fees. A close whose account can pay its own fees is unaffected.
+- With the float gone, a sponsored fee bump is rejected at submission and the close cannot continue until the sponsor is topped up or the user adds XLM. Nothing is applied, so nothing is lost.
+- A drop the API's own fee bumps do not explain is not a drained sponsor but a possible compromise: if the sponsor sourced a transaction (`S4b.Information.1.M.1`) or paid fees outside a sponsored close, follow [Rotate the fee sponsor](/runbooks/rotate-fee-sponsor) instead.
+
+## Steps
+
+1. **Check that the spending is legitimate.** List what the sponsor paid for recently:
+
+   ```bash
+   curl -s "https://horizon-testnet.stellar.org/accounts/<sponsor>/transactions?order=desc&limit=50" \
+     | jq -r '._embedded.records[] | [.created_at, .source_account, .fee_account, .fee_charged] | @tsv'
+   ```
+
+   Expected for normal use: every row has `<sponsor>` as `fee_account` and another account as `source_account`, with fees of a few hundred stroops. Many rows from one source or one API key point at abuse of the budget; any row with `<sponsor>` as `source_account` is the compromise case above.
+
+2. **If the rate is abuse, pause sponsorship** while you look into it:
+
+   ```bash
+   gcloud run services update lumenwipe-api --region us-central1 --update-env-vars=FEE_SPONSORSHIP_ENABLED=false
+   ```
+
+   Expected: `Done.`; a plan that needs sponsorship now reports the blocker, and `POST $API/v1/<net>/fee-bump/sponsor` answers `503 fee_sponsorship_paused`. The per-source, per-key and daily budget (`SponsorshipBudget`) already bounds the spend per day; review its limits against what you saw.
+
+3. **Top up the float** from the operator account, to the float the team sets, not more:
+
+   ```bash
+   stellar tx new payment --source-account <operator> --destination <sponsor> --asset native --amount <stroops> --network <net>
+   ```
+
+   On testnet, friendbot can fund it instead: `curl "https://friendbot.stellar.org?addr=<sponsor>"`. Expected: the transaction succeeds and Horizon shows the new balance.
+
+4. **Turn sponsorship back on** if you paused it, with `FEE_SPONSORSHIP_ENABLED=true`, and read the value back.
+
+## Confirm the fix
+
+```bash
+curl -s "https://horizon-testnet.stellar.org/accounts/<sponsor>" | jq -r '.balances[] | select(.asset_type=="native") | .balance'
+gh workflow run onchain-monitors.yml
+```
+
+Expected: a balance above the floor, and the next monitor run green. A sponsored testnet close then lands with `<sponsor>` as its `fee_account`.

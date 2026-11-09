@@ -1,0 +1,34 @@
+---
+title: "Runbooks"
+description: "Step-by-step procedures for incidents, key rotation and the failures the API is built to survive."
+icon: "book"
+---
+
+These pages are the procedures a maintainer follows when something goes wrong, or when a key has to change. Each one lists the steps in order, the blast radius, and how to confirm the fix, with the command to run and the result to expect.
+
+| Runbook                                                    | Use it when                                                                              |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| [Incident response](/runbooks/incident-response)           | Anything is wrong and you need to decide how bad it is, who acts, and what to say        |
+| [Rotate the relay account](/runbooks/rotate-relay-account) | The relay account (mediator) key may be exposed, or a planned rotation is due            |
+| [Rotate the fee sponsor](/runbooks/rotate-fee-sponsor)     | The fee sponsor key may be exposed, or a planned rotation is due                         |
+| [Rotate operator secrets](/runbooks/rotate-secrets)        | The admin token, the integrator secret, a static API key or a provider key has to change |
+| [Provider outage](/runbooks/provider-outage)               | An RPC or Horizon-compatible provider is failing or rate limiting                        |
+| [Firestore outage](/runbooks/firestore-outage)             | Self-serve keys, usage or the merge counter fail                                         |
+| [Bad deploy](/runbooks/bad-deploy)                         | A revision that reached traffic misbehaves                                               |
+| [Drained fee sponsor](/runbooks/drained-sponsor)           | The sponsor balance alert fired, or sponsored closes fail                                |
+| [Registry expiry](/runbooks/registry-expiry)               | The exchange or contract registry is near or past its `validUntil` date                  |
+| [Close stuck mid-flow](/runbooks/stuck-close)              | A user or integrator reports a close that stopped partway                                |
+
+## Conventions
+
+- Commands run from the repository root with the Google Cloud CLI signed in to the project that hosts the API. `lumenwipe-api` in `us-central1` is the Cloud Run service; the deploy and the kill switches in [RELEASING.md](https://github.com/LumenWipe/lumenwipe/blob/main/RELEASING.md#appsapi) use the same names.
+- Values in angle brackets are placeholders. Secret names, account identifiers and where secrets are kept are not written here; they live in the team's internal tooling.
+- `$API` is the API's base URL and `$KEY` an API key allowed on the network you test.
+- After every configuration change, read the value back. A failed update leaves the previous revision serving with the previous value.
+- While traffic is pinned to one revision, a configuration update does not reach users. Check this first, as [RELEASING.md describes](https://github.com/LumenWipe/lumenwipe/blob/main/RELEASING.md#how-a-deploy-moves-traffic):
+
+```bash
+gcloud run services describe lumenwipe-api --region us-central1 --format='value(status.traffic)'
+```
+
+Expected: a single entry with `latestRevision: true` and `percent: 100`.

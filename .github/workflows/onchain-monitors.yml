@@ -28,6 +28,12 @@ env:
   FEE_ACCOUNT_ADDRESS_TESTNET: ${{ vars.FEE_ACCOUNT_ADDRESS_TESTNET }}
   MEDIATOR_ADDRESS_MAINNET: ${{ vars.MEDIATOR_ADDRESS_MAINNET }}
   FEE_ACCOUNT_ADDRESS_MAINNET: ${{ vars.FEE_ACCOUNT_ADDRESS_MAINNET }}
+  # The address a rotation drained, kept for 24 hours by the rotation runbooks: read by the keys
+  # and forward checks only, never compared with the plan. Unset when no rotation is in progress.
+  MEDIATOR_ADDRESS_TESTNET_RETIRED: ${{ vars.MEDIATOR_ADDRESS_TESTNET_RETIRED }}
+  FEE_ACCOUNT_ADDRESS_TESTNET_RETIRED: ${{ vars.FEE_ACCOUNT_ADDRESS_TESTNET_RETIRED }}
+  MEDIATOR_ADDRESS_MAINNET_RETIRED: ${{ vars.MEDIATOR_ADDRESS_MAINNET_RETIRED }}
+  FEE_ACCOUNT_ADDRESS_MAINNET_RETIRED: ${{ vars.FEE_ACCOUNT_ADDRESS_MAINNET_RETIRED }}
   # How many hours of history the keys and forward checks read; unset means 168.
   MONITOR_HISTORY_HOURS: ${{ vars.MONITOR_HISTORY_HOURS }}
 

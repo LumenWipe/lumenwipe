@@ -51,6 +51,22 @@
         ]
       },
       {
+        "group": "Runbooks",
+        "pages": [
+          "runbooks/overview",
+          "runbooks/incident-response",
+          "runbooks/rotate-relay-account",
+          "runbooks/rotate-fee-sponsor",
+          "runbooks/rotate-secrets",
+          "runbooks/provider-outage",
+          "runbooks/firestore-outage",
+          "runbooks/bad-deploy",
+          "runbooks/drained-sponsor",
+          "runbooks/registry-expiry",
+          "runbooks/stuck-close"
+        ]
+      },
+      {
         "group": "Use cases",
         "pages": [
           "use-cases/overview",

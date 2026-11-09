@@ -18,6 +18,8 @@ export interface ServiceAccount {
   address: string;
   /** Alert when the native balance drops below this many XLM. */
   floorXlm: string;
+  /** A rotated-out address, still watched for use of its key after it was drained. */
+  retired?: true;
 }
 
 export interface HorizonAccount {
@@ -70,6 +72,11 @@ export const PLAN_PATH = "docs/monitoring-plan.md";
 export function addressVariable(role: ServiceRole, network: ServiceNetwork): string {
   const prefix = role === "mediator" ? "MEDIATOR" : "FEE_ACCOUNT";
   return `${prefix}_ADDRESS_${network.toUpperCase()}`;
+}
+
+/** The optional variable that keeps a rotated-out address watched after a key rotation. */
+export function retiredVariable(role: ServiceRole, network: ServiceNetwork): string {
+  return `${addressVariable(role, network)}_RETIRED`;
 }
 
 /** Each service account's address as the plan lists it, or null where it says not yet deployed. */
@@ -152,6 +159,27 @@ export function loadServiceAccounts(
     const mediator = mainnet.find((a) => a.role === "mediator");
     if (mediator && !listed.includes(mediator.address)) {
       problems.push(`stellar.toml ACCOUNTS does not list the mainnet mediator ${mediator.address}`);
+    }
+  }
+
+  // A retired account is merged out, so it is in neither the plan nor stellar.toml and has no
+  // balance to floor; what is left to watch is its key sourcing a transaction or a forward.
+  for (const network of NETWORKS) {
+    for (const role of ROLES) {
+      const name = retiredVariable(role, network);
+      const value = env[name] ?? "";
+      if (value === "") continue;
+      if (!StrKey.isValidEd25519PublicKey(value)) {
+        problems.push(`${name} is not a Stellar account id`);
+        continue;
+      }
+      if (value === env[addressVariable(role, network)]) {
+        problems.push(
+          `${name} is the current ${role} (${network}) account. It holds the address rotated out.`
+        );
+        continue;
+      }
+      accounts.push({ role, network, address: value, floorXlm: FLOOR_XLM[role], retired: true });
     }
   }
 
@@ -287,6 +315,24 @@ export function forwardFinding(
   };
 }
 
+export type ServiceCheck = "keys" | "balances" | "forward";
+
+/** The accounts one check reads: a retired account has no balance left to floor. */
+export function accountsFor(accounts: ServiceAccount[], check: ServiceCheck): ServiceAccount[] {
+  switch (check) {
+    case "keys":
+      return accounts;
+    case "balances":
+      return accounts.filter((a) => !a.retired);
+    case "forward":
+      return accounts.filter((a) => a.role === "mediator");
+  }
+}
+
+export function roleLabel(a: ServiceAccount): string {
+  return a.retired ? `${a.role} (retired)` : a.role;
+}
+
 export function formatFinding(f: Finding): string {
-  return `${f.account.role} (${f.account.network}, ${f.account.address}): ${f.message}`;
+  return `${roleLabel(f.account)} (${f.account.network}, ${f.account.address}): ${f.message}`;
 }
