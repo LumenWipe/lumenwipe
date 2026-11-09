@@ -178,8 +178,15 @@ export async function ensureMmOffer(mm: Keypair, issuerPublic: string): Promise<
   ]);
 }
 
-export async function executeMessStep(stepId: MessStepId, ctx: MessContext): Promise<string> {
+/** `deps` reaches every submission, so a test can capture the signed transactions instead of sending them. */
+export async function executeMessStep(
+  stepId: MessStepId,
+  ctx: MessContext,
+  deps: BuildSignSubmitDeps = {}
+): Promise<string> {
   const demoPublic = ctx.demo.publicKey();
+  const submit = (source: Keypair, ops: xdr.Operation[], extraSigners: Keypair[] = []) =>
+    buildSignSubmit(source, ops, extraSigners, deps);
 
   switch (stepId) {
     case "SETUP": {
@@ -200,33 +207,23 @@ export async function executeMessStep(stepId: MessStepId, ctx: MessContext): Pro
           amount: returnAmount,
         }),
       ];
-      return buildSignSubmit(ctx.demo, ops);
+      return submit(ctx.demo, ops);
     }
 
     case "TRUST_AIRDROP1":
-      return buildSignSubmit(ctx.demo, [
-        Operation.changeTrust({ asset: resolveAsset("AIRDROP1", ctx) }),
-      ]);
+      return submit(ctx.demo, [Operation.changeTrust({ asset: resolveAsset("AIRDROP1", ctx) })]);
 
     case "TRUST_RUGPULL":
-      return buildSignSubmit(ctx.demo, [
-        Operation.changeTrust({ asset: resolveAsset("RUGPULL", ctx) }),
-      ]);
+      return submit(ctx.demo, [Operation.changeTrust({ asset: resolveAsset("RUGPULL", ctx) })]);
 
     case "TRUST_LWDEMO":
-      return buildSignSubmit(ctx.demo, [
-        Operation.changeTrust({ asset: resolveAsset(LWDEMO_CODE, ctx) }),
-      ]);
+      return submit(ctx.demo, [Operation.changeTrust({ asset: resolveAsset(LWDEMO_CODE, ctx) })]);
 
     case "TRUST_USDC":
-      return buildSignSubmit(ctx.demo, [
-        Operation.changeTrust({ asset: resolveAsset("USDC", ctx) }),
-      ]);
+      return submit(ctx.demo, [Operation.changeTrust({ asset: resolveAsset("USDC", ctx) })]);
 
     case "TRUST_EURC":
-      return buildSignSubmit(ctx.demo, [
-        Operation.changeTrust({ asset: resolveAsset("EURC", ctx) }),
-      ]);
+      return submit(ctx.demo, [Operation.changeTrust({ asset: resolveAsset("EURC", ctx) })]);
 
     case "FUND_RARE": {
       const assetsToFund = ctx.fundRareAssets;
@@ -241,11 +238,11 @@ export async function executeMessStep(stepId: MessStepId, ctx: MessContext): Pro
         });
       });
       const signers = assetsToFund.map((code) => ctx.ephemeralIssuers.get(code)!);
-      return buildSignSubmit(ctx.demo, ops, signers);
+      return submit(ctx.demo, ops, signers);
     }
 
     case "FUND_LWDEMO":
-      return buildSignSubmit(ctx.persistentIssuer, [
+      return submit(ctx.persistentIssuer, [
         Operation.payment({
           destination: demoPublic,
           asset: resolveAsset(LWDEMO_CODE, ctx),
@@ -257,7 +254,7 @@ export async function executeMessStep(stepId: MessStepId, ctx: MessContext): Pro
       const usdcIssuer = ctx.ephemeralIssuers.get("USDC")!;
       const usdcAsset = resolveAsset("USDC", ctx);
       const usdcCost = (parseFloat(USDC_DEMO_AMOUNT) * parseFloat(DEMO_SWAP_PRICE)).toFixed(7);
-      return buildSignSubmit(
+      return submit(
         ctx.demo,
         [
           Operation.manageSellOffer({
@@ -284,7 +281,7 @@ export async function executeMessStep(stepId: MessStepId, ctx: MessContext): Pro
       const eurcIssuer = ctx.ephemeralIssuers.get("EURC")!;
       const eurcAsset = resolveAsset("EURC", ctx);
       const eurcCost = (parseFloat(EURC_DEMO_AMOUNT) * parseFloat(DEMO_SWAP_PRICE)).toFixed(7);
-      return buildSignSubmit(
+      return submit(
         ctx.demo,
         [
           Operation.manageSellOffer({
@@ -309,7 +306,7 @@ export async function executeMessStep(stepId: MessStepId, ctx: MessContext): Pro
 
     case "DATA_ENTRIES": {
       const count = Math.min(ctx.dataEntryCount, JUNK_DATA_ENTRIES.length);
-      return buildSignSubmit(
+      return submit(
         ctx.demo,
         JUNK_DATA_ENTRIES.slice(0, count).map(({ key, value }) =>
           Operation.manageData({ name: key, value })
@@ -319,7 +316,7 @@ export async function executeMessStep(stepId: MessStepId, ctx: MessContext): Pro
 
     case "OFFERS": {
       const count = Math.min(ctx.offerCount, JUNK_OFFERS.length);
-      return buildSignSubmit(
+      return submit(
         ctx.demo,
         JUNK_OFFERS.slice(0, count).map((o) =>
           Operation.manageSellOffer({
@@ -333,7 +330,7 @@ export async function executeMessStep(stepId: MessStepId, ctx: MessContext): Pro
     }
 
     case "ADD_SIGNER":
-      return addForgottenSigner(ctx);
+      return addForgottenSigner(ctx, deps);
   }
 }
 

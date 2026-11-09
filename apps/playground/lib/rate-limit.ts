@@ -36,37 +36,60 @@ function clientIp(req: NextRequest): string {
   return "unknown";
 }
 
-/**
- * Increments this IP's daily counter for `namespace` and reports whether it is still within
- * `limitPerDay`. Fails open on any Redis trouble - a limiter outage must not take the playground
- * down - and is a no-op when Redis is unconfigured, matching the session store's dev fallback
- * (production has no such fallback: it refuses to run without Redis).
- */
-async function withinLimit(namespace: string, ip: string, limitPerDay: number): Promise<boolean> {
-  if (!isRedisConfigured()) return true;
-  try {
-    const key = `playground:${namespace}:ratelimit:${hashIp(ip)}:${new Date().toISOString().slice(0, 10)}`;
-    const pipeline = redis().pipeline();
-    pipeline.incr(key);
-    pipeline.expire(key, 86_400);
-    const [rawCount] = await pipeline.exec();
-    const count = typeof rawCount === "number" ? rawCount : limitPerDay + 1;
-    return count <= limitPerDay;
-  } catch (err) {
-    console.error(`[playground] rate-limit check (${namespace}) failed, allowing request:`, err);
-    return true;
-  }
+/** Increments `key`, sets it to expire after `ttlSeconds`, and resolves to the new count. */
+export type DailyCounter = (key: string, ttlSeconds: number) => Promise<unknown>;
+
+export interface RateLimiterDeps {
+  /** The counter to use, or null when no store is configured (the limiter then allows everything). */
+  counter: () => DailyCounter | null;
+  /** The UTC day the counters are bucketed by, as YYYY-MM-DD. */
+  today: () => string;
 }
 
-/**
- * Returns a 429 response when this request is over the limit, or null to let it proceed.
- * The error shape matches the app's other machine-readable route errors.
- */
-export async function rateLimit(
+export type RateLimit = (
   req: NextRequest,
   namespace: string,
   limitPerDay: number
-): Promise<NextResponse | null> {
-  if (await withinLimit(namespace, clientIp(req), limitPerDay)) return null;
-  return NextResponse.json({ error: "rate_limited" }, { status: 429 });
+) => Promise<NextResponse | null>;
+
+/**
+ * Builds the limiter over an injected counter. It fails open on any counter trouble - a limiter
+ * outage must not take the playground down - and is a no-op when no counter is configured,
+ * matching the session store's dev fallback (production has no such fallback: it refuses to run
+ * without Redis).
+ */
+export function createRateLimiter(deps: RateLimiterDeps): RateLimit {
+  async function withinLimit(namespace: string, ip: string, limitPerDay: number): Promise<boolean> {
+    const counter = deps.counter();
+    if (!counter) return true;
+    try {
+      const key = `playground:${namespace}:ratelimit:${hashIp(ip)}:${deps.today()}`;
+      const rawCount = await counter(key, 86_400);
+      const count = typeof rawCount === "number" ? rawCount : limitPerDay + 1;
+      return count <= limitPerDay;
+    } catch (err) {
+      console.error(`[playground] rate-limit check (${namespace}) failed, allowing request:`, err);
+      return true;
+    }
+  }
+
+  // Returns a 429 response when this request is over the limit, or null to let it proceed. The
+  // error shape matches the app's other machine-readable route errors.
+  return async (req, namespace, limitPerDay) => {
+    if (await withinLimit(namespace, clientIp(req), limitPerDay)) return null;
+    return NextResponse.json({ error: "rate_limited" }, { status: 429 });
+  };
 }
+
+const upstashCounter: DailyCounter = async (key, ttlSeconds) => {
+  const pipeline = redis().pipeline();
+  pipeline.incr(key);
+  pipeline.expire(key, ttlSeconds);
+  const [rawCount] = await pipeline.exec();
+  return rawCount;
+};
+
+export const rateLimit: RateLimit = createRateLimiter({
+  counter: () => (isRedisConfigured() ? upstashCounter : null),
+  today: () => new Date().toISOString().slice(0, 10),
+});

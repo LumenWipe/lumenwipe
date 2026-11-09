@@ -3,8 +3,8 @@ import { NextResponse } from "next/server";
 import {
   PlaygroundStoreUnavailableError,
   isSessionId,
-  sessionStore,
   type PlaygroundSession,
+  type SessionStore,
 } from "./session-store";
 import { NOT_CONFIGURED, type ActionResult } from "./session-actions";
 
@@ -24,12 +24,13 @@ export function notConfiguredResponse(): NextResponse {
  * no route can forget it. Callers narrow with `instanceof NextResponse` and early-return.
  */
 export async function loadSessionOrErrorResponse(
+  store: SessionStore,
   id: string
 ): Promise<PlaygroundSession | NextResponse> {
   if (!isSessionId(id)) return NextResponse.json({ error: "session_not_found" }, { status: 404 });
   let session: PlaygroundSession | null;
   try {
-    session = await sessionStore.loadSession(id);
+    session = await store.loadSession(id);
   } catch (err) {
     if (err instanceof PlaygroundStoreUnavailableError) return notConfiguredResponse();
     throw err;

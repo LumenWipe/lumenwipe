@@ -233,6 +233,7 @@ export function getMessPlanForMode(
   mode: PlaygroundMode,
   custom?: PlaygroundCustomConfig
 ): MessStepDef[] {
+  const counts = getMessCounts(mode, custom);
   if (mode === "light") {
     return [st("SETUP"), st("TRUST_LWDEMO"), st("FUND_LWDEMO")];
   }
@@ -245,8 +246,8 @@ export function getMessPlanForMode(
       st("TRUST_LWDEMO"),
       st("FUND_RARE"),
       st("FUND_LWDEMO"),
-      buildDataEntriesStep(3),
-      buildOffersStep(3),
+      buildDataEntriesStep(counts.dataEntryCount),
+      buildOffersStep(counts.offerCount),
       st("ADD_SIGNER"),
     ];
   }
@@ -263,8 +264,8 @@ export function getMessPlanForMode(
       st("FUND_LWDEMO"),
       st("FUND_USDC"),
       st("FUND_EURC"),
-      buildDataEntriesStep(3),
-      buildOffersStep(5),
+      buildDataEntriesStep(counts.dataEntryCount),
+      buildOffersStep(counts.offerCount),
       st("ADD_SIGNER"),
     ];
   }
@@ -286,11 +287,28 @@ export function getMessPlanForMode(
   if (c.trustlineCount >= 4) steps.push(st("FUND_USDC"));
   if (c.trustlineCount >= 5) steps.push(st("FUND_EURC"));
 
-  if (c.dataEntryCount > 0) steps.push(buildDataEntriesStep(c.dataEntryCount));
-  if (c.offerCount > 0) steps.push(buildOffersStep(c.offerCount));
+  if (counts.dataEntryCount > 0) steps.push(buildDataEntriesStep(counts.dataEntryCount));
+  if (counts.offerCount > 0) steps.push(buildOffersStep(counts.offerCount));
   if (c.addSigner) steps.push(st("ADD_SIGNER"));
 
   return steps;
+}
+
+export interface MessCounts {
+  offerCount: number;
+  dataEntryCount: number;
+}
+
+/**
+ * How many junk offers and data entries a mode posts. The plan's OFFERS and DATA_ENTRIES steps and
+ * the counts stored in the session (which the executor posts) both come from here.
+ */
+export function getMessCounts(mode: PlaygroundMode, custom?: PlaygroundCustomConfig): MessCounts {
+  if (mode === "light") return { offerCount: 0, dataEntryCount: 0 };
+  if (mode === "standard") return { offerCount: 3, dataEntryCount: 3 };
+  if (mode === "full") return { offerCount: 5, dataEntryCount: 3 };
+  const c = custom ?? DEFAULT_CUSTOM_CONFIG;
+  return { offerCount: c.offerCount, dataEntryCount: c.dataEntryCount };
 }
 
 export function isMessStepId(value: string): value is MessStepId {
@@ -339,14 +357,8 @@ export function estimateCustomDuration(config: PlaygroundCustomConfig): number {
   const MESS_S = 5;
   const DEMOLISH_S = 8;
 
-  let messSteps = 1 + config.trustlineCount; // SETUP + TRUST_* each
-  if (config.trustlineCount >= 2) messSteps += 1; // FUND_RARE
-  messSteps += 1; // FUND_LWDEMO
-  if (config.trustlineCount >= 4) messSteps += 1; // FUND_USDC
-  if (config.trustlineCount >= 5) messSteps += 1; // FUND_EURC
-  if (config.dataEntryCount > 0) messSteps += 1;
-  if (config.offerCount > 0) messSteps += 1;
-  if (config.addSigner) messSteps += 1;
+  // One transaction per plan step, counted from the plan itself so the estimate cannot drift from it.
+  const messSteps = getMessPlanForMode("custom", config).length;
 
   let demolishSteps = 1; // MERGE
   if (config.addSigner) demolishSteps += 1;
