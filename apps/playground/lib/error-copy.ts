@@ -5,7 +5,14 @@ const NOT_CONFIGURED_COPY = "This demo is temporarily unavailable. Please try ag
 const ERROR_COPY = new Map<string, string>(
   Object.entries({
     session_not_found: "This demo session expired. Start a new one.",
-    friendbot_failed: "Could not fund the demo account. Please try again.",
+    provision_failed: "Could not create the demo account on the test network. Please try again.",
+    playground_refilling:
+      "This demo is temporarily unavailable while its test funds are topped up. Please try again later.",
+    faucet_rate_limited:
+      "This demo is temporarily unavailable: the test network's faucet is limiting requests, so its test funds cannot be topped up yet. Please try again in a few hours.",
+    faucet_unavailable:
+      "This demo is temporarily unavailable: the test network's faucet is down, so its test funds cannot be topped up. Please try again once it is back.",
+    playground_busy: "Other demos are starting right now. Please try again in a moment.",
     rate_limited: "Too many attempts. Please wait a moment and try again.",
     tx_failed: "A setup transaction did not go through on the test network. Please try again.",
     demolish_failed: "The close did not finish. Resume to carry on from where it stopped.",

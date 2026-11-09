@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { describe, expect, test } from "bun:test";
 import { NextRequest, NextResponse } from "next/server";
 import { Keypair, Operation, type xdr } from "@stellar/stellar-sdk";
@@ -12,12 +13,15 @@ import {
 } from "@/lib/mess-plan";
 import {
   MAX_SCENARIOS,
+  demoFundingXlm,
   formatReplayCode,
   generateRandomSelection,
   resolvePlan,
   type MessStepDef,
   type ScenarioSelection,
 } from "@/lib/scenarios";
+import { errorCopy } from "@/lib/error-copy";
+import { TxSubmitError } from "@/lib/horizon-submit";
 import type { MessContext } from "@/lib/mess-builders";
 import { DemolishDecisionUnanswerableError, type RunDemolishOptions } from "@/lib/demolish";
 import type { RateLimit } from "@/lib/rate-limit";
@@ -31,11 +35,12 @@ import {
   handleScenarios,
   handleState,
   parseCreateBody,
+  type CleanupRouteDeps,
   type CreateSessionDeps,
 } from "@/lib/route-handlers";
 import {
   PlaygroundStoreUnavailableError,
-  SESSION_TTL_SECONDS,
+  SESSION_RECORD_TTL_SECONDS,
   isSessionId,
   type NewSessionData,
   type SessionStore,
@@ -116,14 +121,23 @@ function countingStore(store: SessionStore): { store: SessionStore; calls: () =>
       releaseLock: wrap(store.releaseLock),
       updateSession: wrap(store.updateSession),
       deleteSession: wrap(store.deleteSession),
+      indexedSessionIds: wrap(store.indexedSessionIds),
+      unindexSession: wrap(store.unindexSession),
+      acquireLease: wrap(store.acquireLease),
+      releaseLease: wrap(store.releaseLease),
+      lastFaucetFailure: wrap(store.lastFaucetFailure),
+      recordFaucetFailure: wrap(store.recordFaucetFailure),
     },
     calls: () => calls,
   };
 }
 
-const expired = (clock: FakeClock): void => clock.advance(SESSION_TTL_SECONDS * 1000 + 1);
+const expired = (clock: FakeClock): void => clock.advance(SESSION_RECORD_TTL_SECONDS * 1000 + 1);
 
 const NOT_CONFIGURED = { status: 503, body: { error: "not_configured" } };
+// Generated per run: a cron secret the route accepts (32 hex characters).
+const CRON_SECRET = randomBytes(16).toString("hex");
+const MM_FUNDED = { balance: "10000.0000000", sellingLiabilities: "3000.0000000" };
 const NOT_FOUND = { status: 404, body: { error: "session_not_found" } };
 
 async function outcome(res: NextResponse): Promise<{ status: number; body: unknown }> {
@@ -139,6 +153,7 @@ describe("create session", () => {
   function createDeps(overrides: Partial<CreateSessionDeps> = {}) {
     const encrypted: string[] = [];
     const funded: string[] = [];
+    const startingBalances: string[] = [];
     const store = memoryStore();
     const deps: CreateSessionDeps = {
       unavailable: () => new Map(),
@@ -146,18 +161,21 @@ describe("create session", () => {
       rateLimit: allow,
       issuer: () => issuer,
       mm: () => mm,
-      fundAccount: async (publicKey) => {
-        funded.push(publicKey);
-        return true;
+      cronSecret: () => CRON_SECRET,
+      marketMakerBalance: async () => MM_FUNDED,
+      provisionDemo: async (source, demoPublic, startingBalance) => {
+        if (source.publicKey() !== mm.publicKey()) throw new Error("not the market maker");
+        funded.push(demoPublic);
+        startingBalances.push(startingBalance);
       },
-      ensureStandingLiquidity: async () => {},
+      accountLock: { pollMs: 1 },
       encrypt: (plaintext) => {
         encrypted.push(plaintext);
         return encrypt(plaintext);
       },
       ...overrides,
     };
-    return { deps, store, encrypted, funded };
+    return { deps, store, encrypted, funded, startingBalances };
   }
 
   const create = (deps: CreateSessionDeps, body?: unknown) =>
@@ -274,29 +292,165 @@ describe("create session", () => {
     expect(counted.calls()).toBe(0);
   });
 
-  test("a missing issuer or market maker key is not_configured, before Friendbot", async () => {
-    for (const missing of [{ issuer: () => null }, { mm: () => null }]) {
+  test("a missing issuer, market maker key or cron secret is not_configured, before any funding", async () => {
+    for (const missing of [
+      { issuer: () => null },
+      { mm: () => null },
+      { cronSecret: () => undefined },
+      { cronSecret: () => "short" },
+    ]) {
       const { deps, funded } = createDeps(missing);
       expect(await outcome(await create(deps, { mode: "light" }))).toEqual(NOT_CONFIGURED);
       expect(funded).toEqual([]);
     }
   });
 
-  test("a Friendbot failure is friendbot_failed and stores nothing", async () => {
-    const { deps, store } = createDeps({ fundAccount: async () => false });
-    const counted = countingStore(store);
-    const res = await create({ ...deps, store: counted.store }, { mode: "light" });
-    expect(await outcome(res)).toEqual({ status: 502, body: { error: "friendbot_failed" } });
-    expect(counted.calls()).toBe(0);
+  test("the demo is funded by the market maker with the plan's setup funding", async () => {
+    const { deps, startingBalances } = createDeps();
+    const res = await create(deps, { mode: "light" });
+    const body = await jsonBody(res);
+    const setup = (body.messPlan as MessStepDef[])[0]!.action;
+    if (setup.kind !== "setup") throw new Error("expected the setup step first");
+    expect(startingBalances).toEqual([setup.fundingXlm]);
+    expect(setup.fundingXlm).toBe(demoFundingXlm(resolvePlan(selectionForMode("light")).cost));
   });
 
-  test("a failed market maker offer refresh does not fail the session", async () => {
-    const { deps } = createDeps({
-      ensureStandingLiquidity: async () => {
+  test("creating a session calls no faucet and refreshes no offers: one balance read, one funding", async () => {
+    const fetched: string[] = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = Object.assign(
+      async (input: RequestInfo | URL): Promise<Response> => {
+        fetched.push(String(input));
+        throw new Error("no network in this test");
+      },
+      { preconnect: () => {} }
+    ) as typeof fetch;
+    const reads: string[] = [];
+    try {
+      const { deps, funded } = createDeps({
+        marketMakerBalance: async (publicKey) => {
+          reads.push(publicKey);
+          return MM_FUNDED;
+        },
+      });
+      const res = await create(deps, { mode: "standard" });
+      expect(res.status).toBe(200);
+      expect(funded).toEqual([(await jsonBody(res)).demoPublic as string]);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+    expect(fetched).toEqual([]);
+    expect(reads).toEqual([mm.publicKey()]);
+  });
+
+  test("below the floor a session is refused as temporarily unavailable, before anything is stored", async () => {
+    // 10,000 XLM, but its offers have committed all but 520 and it keeps 50 for itself.
+    const low = { balance: "10000.0000000", sellingLiabilities: "9480.0000000" };
+    const { deps, store, funded } = createDeps({ marketMakerBalance: async () => low });
+    const counted = countingStore(store);
+    const res = await create({ ...deps, store: counted.store }, { mode: "light" });
+    expect(await outcome(res)).toEqual({ status: 503, body: { error: "playground_refilling" } });
+    expect(errorCopy("playground_refilling")).toContain("temporarily unavailable");
+    expect(funded).toEqual([]);
+    expect(await store.indexedSessionIds()).toEqual([]);
+
+    const atFloor = { balance: "10000.0000000", sellingLiabilities: "9450.0000000" };
+    const ok = createDeps({ marketMakerBalance: async () => atFloor });
+    expect((await create(ok.deps, { mode: "light" })).status).toBe(200);
+  });
+
+  test("below the floor, the reaper's last faucet failure picks the copy", async () => {
+    const low = { balance: "100.0000000", sellingLiabilities: "0" };
+    for (const [failure, error] of [
+      ["rate_limited", "faucet_rate_limited"],
+      ["unavailable", "faucet_unavailable"],
+    ] as const) {
+      const { deps, store } = createDeps({ marketMakerBalance: async () => low });
+      await store.recordFaucetFailure(failure);
+      expect(await outcome(await create(deps, { mode: "light" }))).toEqual({
+        status: 503,
+        body: { error },
+      });
+    }
+  });
+
+  test("an unreadable market maker balance is provision_failed and stores nothing", async () => {
+    const { deps, store } = createDeps({
+      marketMakerBalance: async () => {
         throw new Error("horizon unavailable");
       },
     });
-    expect((await create(deps, { mode: "light" })).status).toBe(200);
+    expect(await outcome(await create(deps, { mode: "light" }))).toEqual({
+      status: 502,
+      body: { error: "provision_failed" },
+    });
+    expect(await store.indexedSessionIds()).toEqual([]);
+  });
+
+  test("the record and its index entry exist before the funding is submitted", async () => {
+    let seen: string[] = [];
+    const { deps, store } = createDeps();
+    deps.provisionDemo = async () => {
+      seen = await store.indexedSessionIds();
+      expect(await store.loadSession(seen[0]!)).not.toBeNull();
+    };
+    const body = await jsonBody(await create(deps, { mode: "light" }));
+    expect(seen).toEqual([body.sessionId as string]);
+  });
+
+  test("a funding the network rejected leaves no record and no index entry", async () => {
+    const { deps, store } = createDeps({
+      provisionDemo: async () => {
+        throw new TxSubmitError(
+          "Transaction rejected: tx_insufficient_balance",
+          "tx_insufficient_balance"
+        );
+      },
+    });
+    const res = await create(deps, { mode: "light" });
+    expect(await outcome(res)).toEqual({ status: 502, body: { error: "provision_failed" } });
+    expect(await store.indexedSessionIds()).toEqual([]);
+  });
+
+  test("a funding whose outcome is unknown keeps the record for the reaper", async () => {
+    const { deps, store } = createDeps({
+      provisionDemo: async () => {
+        throw new TxSubmitError("The network is taking longer than usual to confirm.", null);
+      },
+    });
+    const res = await create(deps, { mode: "light" });
+    expect(await outcome(res)).toEqual({ status: 502, body: { error: "provision_failed" } });
+    const [id] = await store.indexedSessionIds();
+    expect(await store.loadSession(id!)).not.toBeNull();
+  });
+
+  test("concurrent starts submit from the market maker one at a time", async () => {
+    const { deps, store } = createDeps();
+    let inFlight = 0;
+    let most = 0;
+    deps.provisionDemo = async () => {
+      inFlight++;
+      most = Math.max(most, inFlight);
+      await new Promise((r) => setTimeout(r, 5));
+      inFlight--;
+    };
+    const results = await Promise.all(
+      Array.from({ length: 4 }, () => create(deps, { mode: "light" }))
+    );
+    expect(results.map((r) => r.status)).toEqual([200, 200, 200, 200]);
+    expect(most).toBe(1);
+    expect(await store.indexedSessionIds()).toHaveLength(4);
+  });
+
+  test("a start that cannot get the market maker in time is playground_busy and stores nothing", async () => {
+    const { deps, store } = createDeps({ accountLock: { waitMs: 0, pollMs: 1 } });
+    const held = await store.acquireLease(`account:${mm.publicKey()}`, 60_000);
+    expect(held).not.toBeNull();
+    expect(await outcome(await create(deps, { mode: "light" }))).toEqual({
+      status: 503,
+      body: { error: "playground_busy" },
+    });
+    expect(await store.indexedSessionIds()).toEqual([]);
   });
 
   test("a missing encryption key or session store is not_configured", async () => {
@@ -373,7 +527,7 @@ describe("create session", () => {
     expect(accounts.ephemeral.map((e) => e.code)).toEqual(["USDC"]);
   });
 
-  test("a selection the validator refuses is invalid_selection, before Friendbot or the store", async () => {
+  test("a selection the validator refuses is invalid_selection, before any funding or the store", async () => {
     const tooMany = {
       scenarios: Array.from({ length: MAX_SCENARIOS + 1 }, () => ({
         id: "data-entries",
@@ -408,7 +562,7 @@ describe("create session", () => {
 });
 
 describe("scenario availability", () => {
-  test("a scenario switched off here is refused at create, with its reason, before Friendbot", async () => {
+  test("a scenario switched off here is refused at create, with its reason, before any funding", async () => {
     const issuer = Keypair.random();
     const funded: string[] = [];
     const store = memoryStore();
@@ -420,11 +574,11 @@ describe("scenario availability", () => {
         rateLimit: allow,
         issuer: () => issuer,
         mm: () => issuer,
-        fundAccount: async (key) => {
+        cronSecret: () => CRON_SECRET,
+        marketMakerBalance: async () => MM_FUNDED,
+        provisionDemo: async (_mm, key) => {
           funded.push(key);
-          return true;
         },
-        ensureStandingLiquidity: async () => {},
         encrypt,
         unavailable: () =>
           new Map([["forgotten-signer", "Switched off on this deployment for now."]]),
@@ -1091,64 +1245,144 @@ describe("cleanup", () => {
   const mm = Keypair.random();
   const issuer = Keypair.random();
 
-  test("every ephemeral issuer is merged into the market maker and the session deleted", async () => {
-    const store = memoryStore();
-    const seeded = await seed(store);
+  function cleanupDeps(store: SessionStore, overrides: Partial<CleanupRouteDeps> = {}) {
     const merges: [string, string][] = [];
-    const res = await handleCleanup(seeded.id, {
+    const deps: CleanupRouteDeps = {
       store,
       mm: () => mm,
       issuer: () => issuer,
       decrypt,
+      exists: async () => true,
       merge: async (source, destination) => {
         merges.push([source.publicKey(), destination]);
       },
       submit: async () => {
         throw new Error("no recipient in this session");
       },
-    });
+      ...overrides,
+    };
+    return { deps, merges };
+  }
+
+  test("after the close every ephemeral issuer is merged into the market maker and the session deleted", async () => {
+    const store = memoryStore();
+    const seeded = await seed(store, { demolishDone: true });
+    const { deps, merges } = cleanupDeps(store);
+    const res = await handleCleanup(seeded.id, deps);
     const issuers = [...seeded.issuers.values()].map((kp) => kp.publicKey());
     expect(await outcome(res)).toEqual({ status: 200, body: { ok: true, recycled: issuers } });
     expect(merges).toEqual(issuers.map((pub) => [pub, mm.publicKey()]));
     expect(await store.loadSession(seeded.id)).toBeNull();
+    expect(await store.indexedSessionIds()).toEqual([]);
   });
 
-  test("a failed merge is skipped and the others still run", async () => {
+  test("before the close the demo is merged first, then everything else", async () => {
     const store = memoryStore();
     const seeded = await seed(store);
-    const rugpull = seeded.issuers.get("RUGPULL")!.publicKey();
-    const res = await handleCleanup(seeded.id, {
-      store,
-      mm: () => mm,
-      issuer: () => issuer,
-      decrypt,
-      merge: async (source) => {
-        if (source.publicKey() !== rugpull) throw new Error("op_has_sub_entries");
-      },
-      submit: async () => {},
+    const { deps, merges } = cleanupDeps(store);
+    const res = await handleCleanup(seeded.id, deps);
+    const issuers = [...seeded.issuers.values()].map((kp) => kp.publicKey());
+    expect(await outcome(res)).toEqual({
+      status: 200,
+      body: { ok: true, recycled: [seeded.demo.publicKey(), ...issuers] },
     });
-    expect(await outcome(res)).toEqual({ status: 200, body: { ok: true, recycled: [rugpull] } });
-  });
-
-  test("with no market maker key nothing is merged and the session is still deleted", async () => {
-    const store = memoryStore();
-    const seeded = await seed(store);
-    let merges = 0;
-    const res = await handleCleanup(seeded.id, {
-      store,
-      mm: () => null,
-      issuer: () => issuer,
-      decrypt,
-      merge: async () => {
-        merges++;
-      },
-      submit: async () => {
-        merges++;
-      },
-    });
-    expect(await outcome(res)).toEqual({ status: 200, body: { ok: true, recycled: [] } });
-    expect(merges).toBe(0);
+    expect(merges.map(([source]) => source)).toEqual([seeded.demo.publicKey(), ...issuers]);
     expect(await store.loadSession(seeded.id)).toBeNull();
+  });
+
+  test("a demo that cannot merge yet keeps every account and the record, issuers included", async () => {
+    const store = memoryStore();
+    const seeded = await seed(store);
+    const { deps, merges } = cleanupDeps(store, {
+      merge: async (source) => {
+        merges.push([source.publicKey(), ""]);
+        throw new TxSubmitError("Transaction rejected: op_has_sub_entries", "tx_failed");
+      },
+    });
+    const res = await handleCleanup(seeded.id, deps);
+    expect(await outcome(res)).toEqual({ status: 502, body: { error: "cleanup_failed" } });
+    expect(merges.map(([source]) => source)).toEqual([seeded.demo.publicKey()]);
+    expect((await store.loadSession(seeded.id))?.ephemeralIssuers).toHaveLength(2);
+    expect(await store.indexedSessionIds()).toEqual([seeded.id]);
+  });
+
+  test("a close transaction in flight is left to the close: nothing is merged", async () => {
+    const store = memoryStore();
+    const seeded = await seed(store, {
+      demolishPending: {
+        txId: "t1",
+        hash: "a".repeat(64),
+        summary: "close",
+        operations: [],
+        validUntil: null,
+        closesAccount: true,
+      },
+    });
+    const { deps, merges } = cleanupDeps(store);
+    const res = await handleCleanup(seeded.id, deps);
+    expect(await outcome(res)).toEqual({ status: 502, body: { error: "cleanup_failed" } });
+    expect(merges).toEqual([]);
+    expect(await store.loadSession(seeded.id)).not.toBeNull();
+  });
+
+  test("an account already gone counts as recycled without a transaction", async () => {
+    const store = memoryStore();
+    const seeded = await seed(store);
+    const { deps, merges } = cleanupDeps(store, { exists: async () => false });
+    const res = await handleCleanup(seeded.id, deps);
+    expect(res.status).toBe(200);
+    expect(merges).toEqual([]);
+    expect(await store.loadSession(seeded.id)).toBeNull();
+  });
+
+  test("a failed merge keeps the record without what was recycled, and the next cleanup finishes", async () => {
+    const store = memoryStore();
+    const seeded = await seed(store, { demolishDone: true });
+    const rugpull = seeded.issuers.get("RUGPULL")!.publicKey();
+    const airdrop = seeded.issuers.get("AIRDROP1")!.publicKey();
+    const first = cleanupDeps(store, {
+      merge: async (source) => {
+        if (source.publicKey() !== rugpull) throw new Error("tx_bad_seq");
+      },
+    });
+    expect(await outcome(await handleCleanup(seeded.id, first.deps))).toEqual({
+      status: 502,
+      body: { error: "cleanup_failed" },
+    });
+    const kept = await store.loadSession(seeded.id);
+    expect(kept?.ephemeralIssuers.map((e) => e.publicKey)).toEqual([airdrop]);
+
+    const second = cleanupDeps(store);
+    expect(await outcome(await handleCleanup(seeded.id, second.deps))).toEqual({
+      status: 200,
+      body: { ok: true, recycled: [airdrop] },
+    });
+    expect(second.merges.map(([source]) => source)).toEqual([airdrop]);
+    expect(await store.loadSession(seeded.id)).toBeNull();
+  });
+
+  test("an unreadable account is not taken for gone: the record is kept", async () => {
+    const store = memoryStore();
+    const seeded = await seed(store, { demolishDone: true });
+    const { deps, merges } = cleanupDeps(store, {
+      exists: async () => {
+        throw new Error("Horizon account fetch failed (503)");
+      },
+    });
+    expect((await handleCleanup(seeded.id, deps)).status).toBe(502);
+    expect(merges).toEqual([]);
+    expect((await store.loadSession(seeded.id))?.ephemeralIssuers).toHaveLength(2);
+  });
+
+  test("with no market maker or issuer key nothing is merged and the record is kept", async () => {
+    for (const missing of [{ mm: () => null }, { issuer: () => null }]) {
+      const store = memoryStore();
+      const seeded = await seed(store, { demolishDone: true });
+      const { deps, merges } = cleanupDeps(store, missing);
+      expect(await outcome(await handleCleanup(seeded.id, deps))).toEqual(NOT_CONFIGURED);
+      expect(merges).toEqual([]);
+      expect(await store.loadSession(seeded.id)).not.toBeNull();
+    }
   });
 
   describe("helpers and forfeited balances", () => {
@@ -1157,6 +1391,7 @@ describe("cleanup", () => {
       const perk = Keypair.random();
       const [claimant, beneficiary] = [Keypair.random(), Keypair.random()];
       const seeded = await seed(store, {
+        demolishDone: true,
         selection: {
           scenarios: [
             { id: "claimable-balances", params: { demo_sponsored: 1 } },
@@ -1179,20 +1414,13 @@ describe("cleanup", () => {
           },
         ],
       });
-      const merges: string[] = [];
       const submitted: [string, string[]][] = [];
-      const res = await handleCleanup(seeded.id, {
-        store,
-        mm: () => mm,
-        issuer: () => issuer,
-        decrypt,
-        merge: async (source) => {
-          merges.push(source.publicKey());
-        },
+      const { deps, merges } = cleanupDeps(store, {
         submit: async (source, ops) => {
           submitted.push([source.publicKey(), ops.map((op) => Operation.fromXDRObject(op).type)]);
         },
       });
+      const res = await handleCleanup(seeded.id, deps);
       expect(await outcome(res)).toEqual({
         status: 200,
         body: {
@@ -1203,7 +1431,7 @@ describe("cleanup", () => {
       expect(submitted).toEqual([
         [beneficiary.publicKey(), ["changeTrust", "manageData", "accountMerge"]],
       ]);
-      expect(merges).toEqual([claimant.publicKey(), perk.publicKey()]);
+      expect(merges.map(([source]) => source)).toEqual([claimant.publicKey(), perk.publicKey()]);
     });
 
     test("a beneficiary whose entries are already gone merges plainly", async () => {
@@ -1211,6 +1439,7 @@ describe("cleanup", () => {
       const perk = Keypair.random();
       const beneficiary = Keypair.random();
       const seeded = await seed(store, {
+        demolishDone: true,
         selection: { scenarios: [{ id: "sponsored-reserves", params: { variant: 2 } }] },
         ephemeralIssuers: [
           { assetCode: "PERK", publicKey: perk.publicKey(), encSecret: encrypt(perk.secret()) },
@@ -1223,20 +1452,13 @@ describe("cleanup", () => {
           },
         ],
       });
-      const merges: string[] = [];
-      await handleCleanup(seeded.id, {
-        store,
-        mm: () => mm,
-        issuer: () => issuer,
-        decrypt,
-        merge: async (source) => {
-          merges.push(source.publicKey());
-        },
+      const { deps, merges } = cleanupDeps(store, {
         submit: async () => {
           throw new Error("op_no_trust");
         },
       });
-      expect(merges).toEqual([beneficiary.publicKey(), perk.publicKey()]);
+      await handleCleanup(seeded.id, deps);
+      expect(merges.map(([source]) => source)).toEqual([beneficiary.publicKey(), perk.publicKey()]);
     });
 
     test("an issuer claims back the balance the demo forfeited before it merges", async () => {
@@ -1244,6 +1466,7 @@ describe("cleanup", () => {
       const bonus = Keypair.random();
       const LATE = `00000000${"6".repeat(64)}`;
       const seeded = await seed(store, {
+        demolishDone: true,
         selection: { scenarios: [{ id: "claimable-balances", params: { time_gated: 1 } }] },
         ephemeralIssuers: [
           { assetCode: "BONUS", publicKey: bonus.publicKey(), encSecret: encrypt(bonus.secret()) },
@@ -1254,11 +1477,7 @@ describe("cleanup", () => {
         ],
       });
       const order: string[] = [];
-      await handleCleanup(seeded.id, {
-        store,
-        mm: () => mm,
-        issuer: () => issuer,
-        decrypt,
+      const { deps } = cleanupDeps(store, {
         merge: async (source) => {
           order.push(`merge ${source.publicKey()}`);
         },
@@ -1270,6 +1489,7 @@ describe("cleanup", () => {
           }
         },
       });
+      await handleCleanup(seeded.id, deps);
       expect(order).toEqual([`claim ${bonus.publicKey()} ${LATE}`, `merge ${bonus.publicKey()}`]);
     });
   });
@@ -1292,17 +1512,13 @@ describe("cleanup", () => {
         },
       });
       const submitted: [string, xdr.Operation[]][] = [];
-      const res = await handleCleanup(seeded.id, {
-        store,
-        mm: () => mm,
-        issuer: () => issuer,
-        decrypt,
-        merge: async () => {},
+      const { deps } = cleanupDeps(store, {
         submit: async (source, ops) => {
           submitted.push([source.publicKey(), ops]);
           await submit?.(source);
         },
       });
+      const res = await handleCleanup(seeded.id, deps);
       return { res, submitted, store, id: seeded.id };
     }
 
@@ -1329,49 +1545,19 @@ describe("cleanup", () => {
       expect(types(submitted[0]![1])).toEqual(["changeTrust", "changeTrust", "accountMerge"]);
     });
 
-    test("a failed retirement is skipped and the session is still deleted", async () => {
+    test("a failed retirement keeps the recipient on the record for the next attempt", async () => {
       const { res, store, id } = await retire(true, async () => {
         throw new Error("op_underfunded");
       });
-      expect(await outcome(res)).toEqual({ status: 200, body: { ok: true, recycled: [] } });
-      expect(await store.loadSession(id)).toBeNull();
-    });
-
-    test("without the issuer key the recipient is left alone", async () => {
-      const store = memoryStore();
-      const seeded = await seed(store, {
-        selection: TRANSFERRING,
-        ephemeralIssuers: [],
-        transferRecipient: {
-          publicKey: recipient.publicKey(),
-          encSecret: encrypt(recipient.secret()),
-        },
-      });
-      let submits = 0;
-      const res = await handleCleanup(seeded.id, {
-        store,
-        mm: () => mm,
-        issuer: () => null,
-        decrypt,
-        merge: async () => {},
-        submit: async () => {
-          submits++;
-        },
-      });
-      expect(await outcome(res)).toEqual({ status: 200, body: { ok: true, recycled: [] } });
-      expect(submits).toBe(0);
+      expect(await outcome(res)).toEqual({ status: 502, body: { error: "cleanup_failed" } });
+      expect((await store.loadSession(id))?.transferRecipient?.publicKey).toBe(
+        recipient.publicKey()
+      );
     });
   });
 
   test("an unknown session is session_not_found", async () => {
-    const deps = {
-      store: memoryStore(),
-      mm: () => mm,
-      issuer: () => issuer,
-      decrypt,
-      merge: async () => {},
-      submit: async () => {},
-    };
+    const { deps } = cleanupDeps(memoryStore());
     expect(await outcome(await handleCleanup(UNKNOWN_ID, deps))).toEqual(NOT_FOUND);
     expect(await outcome(await handleCleanup(NOT_A_UUID, deps))).toEqual(NOT_FOUND);
   });

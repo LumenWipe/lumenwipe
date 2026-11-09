@@ -20,6 +20,10 @@ export interface SessionKv {
   /** Deletes `key` only while `lockKey` still holds `token`, checked atomically with the delete. */
   delIfLockHeld(lockKey: string, token: string, key: string): Promise<boolean>;
   releaseIfHeld(lockKey: string, token: string): Promise<void>;
+  /** Adds `member` to the set at `indexKey`, which never expires. */
+  indexAdd(indexKey: string, member: string): Promise<void>;
+  indexRemove(indexKey: string, member: string): Promise<void>;
+  indexMembers(indexKey: string): Promise<string[]>;
 }
 
 const SET_IF_LOCK_HELD = `if redis.call("GET", KEYS[1]) == ARGV[1] then
@@ -67,10 +71,20 @@ export function upstashKv(): SessionKv {
     async releaseIfHeld(lockKey, token) {
       await redis().eval<string[], number>(RELEASE_IF_HELD, [lockKey], [token]);
     },
+    async indexAdd(indexKey, member) {
+      await redis().sadd(indexKey, member);
+    },
+    async indexRemove(indexKey, member) {
+      await redis().srem(indexKey, member);
+    },
+    indexMembers: (indexKey) => redis().smembers(indexKey),
   };
 }
 
 type RecordEntry = { value: unknown; expiresAt: number };
+
+/** An index entry's expiry: finite, so it survives the dev file store's JSON round trip. */
+const NEVER = Number.MAX_SAFE_INTEGER;
 export type KvRecords = Record<string, RecordEntry>;
 
 export interface RecordIo {
@@ -134,7 +148,28 @@ export function createRecordKv(io: RecordIo, now: () => number = Date.now): Sess
       delete records[lockKey];
       io.write(records);
     },
+    async indexAdd(indexKey, member) {
+      const records = io.read();
+      const members = setMembers(live(records, indexKey));
+      if (!members.includes(member)) members.push(member);
+      records[indexKey] = { value: members, expiresAt: NEVER };
+      io.write(records);
+    },
+    async indexRemove(indexKey, member) {
+      const records = io.read();
+      const members = setMembers(live(records, indexKey));
+      records[indexKey] = { value: members.filter((m) => m !== member), expiresAt: NEVER };
+      io.write(records);
+    },
+    async indexMembers(indexKey) {
+      return setMembers(live(io.read(), indexKey));
+    },
   };
+}
+
+function setMembers(entry: RecordEntry | undefined): string[] {
+  const value = entry?.value;
+  return Array.isArray(value) ? value.filter((m): m is string => typeof m === "string") : [];
 }
 
 export function memoryKv(now: () => number = Date.now): SessionKv {

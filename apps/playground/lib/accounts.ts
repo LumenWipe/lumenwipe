@@ -2,9 +2,10 @@ import "server-only";
 import { Keypair } from "@stellar/stellar-sdk";
 
 // Server-only: persistent playground accounts. PLAYGROUND_MM_SECRET_TESTNET
-// serves two roles - DEX liquidity counterparty during the mess step, and the
-// fixed demolish merge destination - so the playground never asks a visitor
-// for a destination address. Env vars have no NEXT_PUBLIC_ prefix.
+// serves three roles - it funds each demo account, it is the DEX liquidity
+// counterparty during the mess step, and it is the fixed demolish merge
+// destination - so the playground never asks a visitor for a destination
+// address. Env vars have no NEXT_PUBLIC_ prefix.
 
 export function getPlaygroundIssuerKeypair(): Keypair | null {
   const secret = process.env.PLAYGROUND_ISSUER_SECRET_TESTNET;

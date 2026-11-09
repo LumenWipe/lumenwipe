@@ -3,7 +3,11 @@ import { blockerCopy, errorCopy, GENERIC_BLOCKER_COPY, GENERIC_ERROR_COPY } from
 
 const CODES = [
   "session_not_found",
-  "friendbot_failed",
+  "provision_failed",
+  "playground_refilling",
+  "faucet_rate_limited",
+  "faucet_unavailable",
+  "playground_busy",
   "rate_limited",
   "tx_failed",
   "demolish_failed",
@@ -32,6 +36,18 @@ test("every route error code maps to its own copy", () => {
   const copies = CODES.map((code) => errorCopy(code));
   expect(new Set(copies).size).toBe(CODES.length);
   for (const copy of copies) expect(copy).not.toBe(GENERIC_ERROR_COPY);
+});
+
+test("a faucet rate limit and a faucet outage read differently, both in plain language", () => {
+  const limited = errorCopy("faucet_rate_limited");
+  const down = errorCopy("faucet_unavailable");
+  expect(limited).not.toBe(down);
+  expect(limited).toContain("limiting requests");
+  expect(down).toContain("is down");
+  for (const copy of [limited, down]) {
+    expect(copy).toContain("temporarily unavailable");
+    expect(copy).not.toMatch(/\b(429|50\d|HTTP|Friendbot)\b/);
+  }
 });
 
 test("an unknown or missing code falls back to the generic plain-language line", () => {

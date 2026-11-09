@@ -509,7 +509,7 @@ test("cleanup is refused while a step holds the session", async () => {
   const cleanup = await runCleanup(store, session.id, {
     recycle: async () => {
       recycles++;
-      return [];
+      return { recycled: [], complete: true, patch: {} };
     },
   });
   release.open();
@@ -595,7 +595,9 @@ test("a store failure during cleanup is a cleanup_failed code, not a bare 500", 
       throw new Error("ECONNRESET upstash.example 7f3a");
     },
   };
-  const result = await runCleanup(failingStore, session.id, { recycle: async () => [] });
+  const result = await runCleanup(failingStore, session.id, {
+    recycle: async () => ({ recycled: [], complete: true, patch: {} }),
+  });
   expect(result).toEqual({ status: 502, body: { error: "cleanup_failed" } });
 });
 
@@ -615,6 +617,12 @@ test("an id that is not a session uuid is a 404 and never reaches the store or t
     releaseLock: counted(store.releaseLock),
     updateSession: counted(store.updateSession),
     deleteSession: counted(store.deleteSession),
+    indexedSessionIds: counted(store.indexedSessionIds),
+    unindexSession: counted(store.unindexSession),
+    acquireLease: counted(store.acquireLease),
+    releaseLease: counted(store.releaseLease),
+    lastFaucetFailure: counted(store.lastFaucetFailure),
+    recordFaucetFailure: counted(store.recordFaucetFailure),
   };
   const logged: unknown[] = [];
   const originalError = console.error;
@@ -636,7 +644,11 @@ test("an id that is not a session uuid is a 404 and never reaches the store or t
           },
         })
       ).toEqual(notFound);
-      expect(await runCleanup(watchedStore, id, { recycle: async () => [] })).toEqual(notFound);
+      expect(
+        await runCleanup(watchedStore, id, {
+          recycle: async () => ({ recycled: [], complete: true, patch: {} }),
+        })
+      ).toEqual(notFound);
     }
   } finally {
     console.error = originalError;

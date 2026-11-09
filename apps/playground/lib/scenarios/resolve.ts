@@ -8,9 +8,8 @@ import {
 } from "./caps";
 import {
   BASE_RESERVE_XLM,
-  DEMO_KEEP_XLM,
+  DEMO_HEADROOM_XLM,
   EPHEMERAL_ISSUER_FUNDING_XLM,
-  FRIENDBOT_XLM,
   type AssetCode,
 } from "./catalog";
 import { CLOSE_GROUP_SECONDS, MESS_STEP_SECONDS, ORDER, SCENARIOS } from "./definitions";
@@ -88,7 +87,12 @@ export function parseUnavailable(value: unknown): Map<ScenarioId, string> {
 
 const fail = (message: string): ValidationResult => ({ ok: false, message });
 
-function setupStep(ephemeralAssets: AssetCode[]): OrderedStep {
+/** What the market maker funds the demo with: the selection's cost plus fixed headroom. */
+export function demoFundingXlm(cost: ScenarioCost): string {
+  return (cost.xlm + DEMO_HEADROOM_XLM).toFixed(7);
+}
+
+function setupStep(ephemeralAssets: AssetCode[], fundingXlm: string): OrderedStep {
   return {
     order: ORDER.setup,
     step: {
@@ -100,8 +104,7 @@ function setupStep(ephemeralAssets: AssetCode[]): OrderedStep {
         kind: "setup",
         ephemeralAssets,
         issuerFundingXlm: EPHEMERAL_ISSUER_FUNDING_XLM,
-        friendbotXlm: FRIENDBOT_XLM,
-        keepXlm: DEMO_KEEP_XLM,
+        fundingXlm,
       },
     },
   };
@@ -235,7 +238,7 @@ export function validateSelection(
   const capped = capMessage(cost);
   if (capped) return fail(capped);
 
-  ordered.push(setupStep(ephemeralAssets));
+  ordered.push(setupStep(ephemeralAssets, demoFundingXlm(cost)));
   const steps = ordered.sort((a, b) => a.order - b.order).map((o) => o.step);
   if (new Set(steps.map((s) => s.id)).size !== steps.length) {
     return fail("This combination of scenarios is not supported.");

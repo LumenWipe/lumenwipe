@@ -1,6 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "ignoreCommand": "node ../../scripts/vercel-ignore.mjs playground",
+  "crons": [{ "path": "/api/cron/reap", "schedule": "0 4 * * *" }],
   "git": {
     "deploymentEnabled": {
       "main": true,

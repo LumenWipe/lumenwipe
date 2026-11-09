@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Asset, Keypair, Operation, xdr } from "@stellar/stellar-sdk";
-import { retireRecipientOps, standingLiquidityOps } from "@/lib/mess-builders";
+import { retireRecipientOps } from "@/lib/mess-builders";
+import { standingLiquidityOps } from "@/lib/standing-liquidity";
 import {
   DISPOSITION_ASSETS,
   JUNK_OFFERS,

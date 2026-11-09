@@ -14,6 +14,7 @@ import {
   type CloseOperationType,
 } from "./scenarios";
 import type { PlaygroundSession } from "./session-store";
+import { parseStroops } from "./stroops";
 
 // The check the playground's backend runs on every XDR the real API returns, before signing it.
 //
@@ -265,10 +266,9 @@ function sharedExpectation(expected: PlaygroundCloseExpectation): CloseExpectati
 
 /** A decimal amount as the SDK prints one (at most seven decimals), in stroops. */
 export function amountToStroops(amount: string): bigint {
-  const match = /^(\d+)(?:\.(\d{1,7}))?$/.exec(amount);
-  if (!match) throw new PlaygroundVerificationError("amount_unreadable");
-  const [, whole, fraction = ""] = match;
-  return BigInt(whole) * BigInt(10_000_000) + BigInt(fraction.padEnd(7, "0"));
+  const stroops = parseStroops(amount);
+  if (stroops === null) throw new PlaygroundVerificationError("amount_unreadable");
+  return stroops;
 }
 
 const assetKey = (asset: Asset): string => `${asset.getCode()}:${asset.getIssuer()}`;

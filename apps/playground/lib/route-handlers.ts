@@ -25,6 +25,16 @@ import {
   type ScenarioId,
   type ValidationResult,
 } from "./scenarios";
+import { isCronAuthorized, isCronSecretConfigured } from "./cron-auth";
+import { runReaper, type ReaperDeps } from "./reaper";
+import { TxSubmitError, type NativeBalance } from "./horizon-submit";
+import {
+  AccountBusyError,
+  MM_SESSION_FLOOR_XLM,
+  spendableXlm,
+  withAccountLock,
+  type AccountLockOptions,
+} from "./market-maker";
 import {
   resolutionTransaction,
   retireRecipientOps,
@@ -40,6 +50,10 @@ import {
   runDemolishRound,
   runMessStep,
   runResolve,
+  type CleanupDeps,
+  type DemolishRoundDeps,
+  type RecycleResult,
+  type ResolveDeps,
   type StateDeps,
 } from "./session-actions";
 import {
@@ -70,10 +84,14 @@ export interface ApiConfig {
 export interface CreateSessionDeps extends PlaygroundKeys {
   store: SessionStore;
   rateLimit: RateLimit;
-  /** Funds a new testnet account; false when Friendbot refused or could not be reached. */
-  fundAccount: (publicKey: string) => Promise<boolean>;
-  /** Gives every persistent asset its standing offer on the market maker (best effort). */
-  ensureStandingLiquidity: (mm: Keypair, issuerPublic: string) => Promise<void>;
+  /** The reaper's cron secret: without it nothing reclaims an abandoned session. */
+  cronSecret: () => string | undefined;
+  /** The market maker's XLM, read from the network. */
+  marketMakerBalance: (publicKey: string) => Promise<NativeBalance>;
+  /** Creates the demo account from the market maker with `startingBalance` XLM. */
+  provisionDemo: (mm: Keypair, demoPublic: string, startingBalance: string) => Promise<unknown>;
+  /** How long a start waits for the market maker's other submissions; tests shorten it. */
+  accountLock?: AccountLockOptions;
   encrypt: (secret: string) => string;
   /** Scenarios this deployment cannot run, with the reason shown to the visitor. */
   unavailable: () => ReadonlyMap<ScenarioId, string>;
@@ -102,6 +120,8 @@ export interface CleanupRouteDeps {
   mm: () => Keypair | null;
   issuer: () => Keypair | null;
   decrypt: (payload: string) => string;
+  /** Whether the account is on the network; false only when Horizon says it is not. */
+  exists: (publicKey: string) => Promise<boolean>;
   /** Merges `source` into `destination` on chain. */
   merge: (source: Keypair, destination: string) => Promise<unknown>;
   /** Signs and submits `ops` from `source`. */
@@ -203,18 +223,59 @@ export function handleScenarios(deps: ScenariosRouteDeps): NextResponse {
   return NextResponse.json({ unavailable }, { headers: { "cache-control": "no-store" } });
 }
 
+/** The plan's demo funding, from its setup step. */
+function setupFundingXlm(steps: readonly MessStepDef[]): string {
+  for (const step of steps) if (step.action.kind === "setup") return step.action.fundingXlm;
+  throw new Error("A plan with no setup step");
+}
+
+/** A rejection the network answered: the transaction never applied. */
+function isDefinitiveRejection(err: unknown): boolean {
+  return err instanceof TxSubmitError && err.resultCode !== null;
+}
+
+/** Deletes a session whose demo was never created; on failure the reaper finds the demo missing. */
+async function discardSession(store: SessionStore, session: PlaygroundSession): Promise<void> {
+  try {
+    const lock = await store.acquireLock(session.id);
+    if (!lock) throw new Error("session lock held");
+    try {
+      await store.deleteSession(lock);
+    } finally {
+      await store.releaseLock(lock);
+    }
+  } catch (err) {
+    console.error(
+      "[playground] unfunded session not deleted; the reaper will",
+      { sessionId: session.id, demo: session.demoPublic },
+      err instanceof Error ? err.name : "unknown"
+    );
+  }
+}
+
+async function refusedForFunds(store: SessionStore): Promise<NextResponse> {
+  const failure = await store.lastFaucetFailure().catch(() => null);
+  const error =
+    failure === "rate_limited"
+      ? "faucet_rate_limited"
+      : failure === "unavailable"
+        ? "faucet_unavailable"
+        : "playground_refilling";
+  return NextResponse.json({ error }, { status: 503 });
+}
+
 export async function handleCreateSession(
   req: NextRequest,
   deps: CreateSessionDeps
 ): Promise<NextResponse> {
-  // Each session Friendbot-funds a fresh testnet account, spawns ephemeral issuers, and writes
-  // a custodial session to KV. Anonymous and unbounded, that is an open faucet drain.
+  // Each session draws a funded testnet account from the market maker, spawns ephemeral issuers,
+  // and writes a custodial session to KV. Anonymous and unbounded, that drains the market maker.
   const limited = await deps.rateLimit(req, "session", SESSIONS_PER_DAY_PER_IP);
   if (limited) return limited;
 
   const issuer = deps.issuer();
   const mm = deps.mm();
-  if (!issuer || !mm) {
+  if (!issuer || !mm || !isCronSecretConfigured(deps.cronSecret())) {
     return notConfiguredResponse();
   }
 
@@ -234,6 +295,15 @@ export async function handleCreateSession(
   }
   const { plan } = parsed;
 
+  let mmBalance: NativeBalance;
+  try {
+    mmBalance = await deps.marketMakerBalance(mm.publicKey());
+  } catch (err) {
+    console.error("[playground] market maker balance read failed", err);
+    return NextResponse.json({ error: "provision_failed" }, { status: 502 });
+  }
+  if (spendableXlm(mmBalance) < MM_SESSION_FLOOR_XLM) return refusedForFunds(deps.store);
+
   // Keys are always fresh randomness, never derived from anything in the request.
   const demo = Keypair.random();
   const ephemeral = plan.ephemeralAssets.map((code) => ({
@@ -248,18 +318,11 @@ export async function handleCreateSession(
     return role ? [{ role, keypair: Keypair.random() }] : [];
   });
 
-  if (!(await deps.fundAccount(demo.publicKey()))) {
-    return NextResponse.json({ error: "friendbot_failed" }, { status: 502 });
-  }
-
+  // The record, with every key encrypted, is written before the demo account exists, so there is
+  // never a funded account whose key is held nowhere.
+  let session: PlaygroundSession;
   try {
-    await deps.ensureStandingLiquidity(mm, issuer.publicKey());
-  } catch (err) {
-    console.error("[playground] standing liquidity self-healing failed:", err);
-  }
-
-  try {
-    const session = await deps.store.createSession({
+    session = await deps.store.createSession({
       demoPublic: demo.publicKey(),
       encDemoSecret: deps.encrypt(demo.secret()),
       ephemeralIssuers: ephemeral.map((e) => ({
@@ -284,27 +347,48 @@ export async function handleCreateSession(
       })),
       claimableBalances: [],
     });
-
-    return NextResponse.json({
-      sessionId: session.id,
-      demoPublic: session.demoPublic,
-      expiresAt: sessionExpiresAt(),
-      messPlan: plan.steps,
-      accounts: {
-        issuer: issuer.publicKey(),
-        mm: mm.publicKey(),
-        lwdemoAsset: `${LWDEMO_CODE}:${issuer.publicKey()}`,
-        ephemeral: ephemeral.map((e) => ({ code: e.assetCode, publicKey: e.keypair.publicKey() })),
-        transferRecipient: recipient?.publicKey() ?? null,
-        helpers: helpers.map(({ role, keypair }) => ({ role, publicKey: keypair.publicKey() })),
-      },
-    });
   } catch (err) {
     if (err instanceof PlaygroundConfigError || err instanceof PlaygroundStoreUnavailableError) {
       return notConfiguredResponse();
     }
     throw err;
   }
+
+  try {
+    await withAccountLock(
+      deps.store,
+      mm.publicKey(),
+      () => deps.provisionDemo(mm, demo.publicKey(), setupFundingXlm(plan.steps)),
+      deps.accountLock
+    );
+  } catch (err) {
+    const busy = err instanceof AccountBusyError;
+    // An outcome the network did not answer may still land: the record stays for the reaper.
+    if (busy || isDefinitiveRejection(err)) await discardSession(deps.store, session);
+    console.error(
+      "[playground] demo account not created",
+      { sessionId: session.id, demo: session.demoPublic },
+      err instanceof Error ? err.name : "unknown"
+    );
+    return busy
+      ? NextResponse.json({ error: "playground_busy" }, { status: 503 })
+      : NextResponse.json({ error: "provision_failed" }, { status: 502 });
+  }
+
+  return NextResponse.json({
+    sessionId: session.id,
+    demoPublic: session.demoPublic,
+    expiresAt: sessionExpiresAt(),
+    messPlan: plan.steps,
+    accounts: {
+      issuer: issuer.publicKey(),
+      mm: mm.publicKey(),
+      lwdemoAsset: `${LWDEMO_CODE}:${issuer.publicKey()}`,
+      ephemeral: ephemeral.map((e) => ({ code: e.assetCode, publicKey: e.keypair.publicKey() })),
+      transferRecipient: recipient?.publicKey() ?? null,
+      helpers: helpers.map(({ role, keypair }) => ({ role, publicKey: keypair.publicKey() })),
+    },
+  });
 }
 
 export async function handleMess(
@@ -410,7 +494,12 @@ export async function handleResolve(
   if (typeof blocker !== "string" || blocker.length === 0 || blocker.length > MAX_BLOCKER_LENGTH) {
     return NextResponse.json({ error: "resolution_unavailable" }, { status: 400 });
   }
-  const result = await runResolve(deps.store, id, blocker, {
+  const result = await runResolve(deps.store, id, blocker, resolveActionDeps(deps));
+  return actionResponse(result);
+}
+
+export function resolveActionDeps(deps: Omit<ResolveRouteDeps, "store">): ResolveDeps {
+  return {
     resolve: (session, resolution) => {
       const { source, ops } = resolutionTransaction(
         resolution.kind,
@@ -418,8 +507,7 @@ export async function handleResolve(
       );
       return deps.submit(source, ops);
     },
-  });
-  return actionResponse(result);
+  };
 }
 
 /**
@@ -430,12 +518,20 @@ export async function handleDemolishRound(
   id: string,
   deps: DemolishRouteDeps
 ): Promise<NextResponse> {
+  const roundDeps = demolishRoundDeps(deps);
+  if (!roundDeps) return notConfiguredResponse();
+  return actionResponse(await runDemolishRound(deps.store, id, roundDeps));
+}
+
+/** The close's dependencies, or null when a key or the API setting is missing. */
+export function demolishRoundDeps(
+  deps: Omit<DemolishRouteDeps, "store">
+): DemolishRoundDeps | null {
   const mm = deps.mm();
   const issuer = deps.issuer();
   const { apiUrl, apiKey } = deps.api();
-  if (!mm || !issuer || !apiUrl || !apiKey) return notConfiguredResponse();
-
-  const result = await runDemolishRound(deps.store, id, {
+  if (!mm || !issuer || !apiUrl || !apiKey) return null;
+  return {
     // The expectation is derived from the session as this round's lock read it.
     round: (session, hooks) =>
       deps.runDemolish({
@@ -445,100 +541,135 @@ export async function handleDemolishRound(
         apiKey,
         hooks,
       }),
-  });
-  return actionResponse(result);
+  };
 }
 
 /**
- * Recycles the ephemeral issuer accounts (merges their ~3 XLM back into the market maker), retires
- * the transfer recipient, and deletes the session. Best-effort: failures are logged but never block
- * the caller - the XLM involved is testnet-only.
+ * Recycles every account the session holds a key for into the market maker, then deletes the
+ * session: the demo first when the close has not merged it, then the transfer recipient, the
+ * helpers and the ephemeral issuers. An issuer is never merged while the demo may still hold its
+ * asset, since the close returns that asset to it. An account already gone counts as recycled;
+ * anything else that fails keeps the record for the next attempt.
  */
 export async function handleCleanup(id: string, deps: CleanupRouteDeps): Promise<NextResponse> {
+  const cleanup = cleanupActionDeps(deps);
+  if (!cleanup) return notConfiguredResponse();
+  return actionResponse(await runCleanup(deps.store, id, cleanup));
+}
+
+export function cleanupActionDeps(deps: Omit<CleanupRouteDeps, "store">): CleanupDeps | null {
   const mm = deps.mm();
   const issuer = deps.issuer();
+  if (!mm || !issuer) return null;
+  return { recycle: (session) => recycleSessionAccounts(session, mm.publicKey(), issuer, deps) };
+}
 
-  const result = await runCleanup(deps.store, id, {
-    recycle: async (session) => {
-      const recycled: string[] = [];
-      if (!mm) return recycled;
-      const recipient = session.transferRecipient;
-      if (recipient && issuer) {
-        try {
-          const { steps, expectation } = resolvePlan(session.selection);
-          const opened = steps.flatMap((s) =>
-            s.action.kind === "open_recipient" ? s.action.assets : []
-          );
-          // Only a finished close has paid the recipient what the session recorded.
-          const received = session.demolishDone
-            ? expectation.dispositions.filter((d) => d.choice === "transfer")
-            : [];
-          await deps.submit(
-            Keypair.fromSecret(deps.decrypt(recipient.encSecret)),
-            retireRecipientOps(issuer.publicKey(), mm.publicKey(), opened, received)
-          );
-          recycled.push(recipient.publicKey);
-        } catch (err) {
-          console.error(
-            "[playground] cleanup recipient failed",
-            { recipient: recipient.publicKey },
-            err
-          );
-        }
+async function recycleSessionAccounts(
+  session: PlaygroundSession,
+  mmPublic: string,
+  issuer: Keypair,
+  deps: Omit<CleanupRouteDeps, "store">
+): Promise<RecycleResult> {
+  const recycled: string[] = [];
+  /** Runs `retire` unless the account is already gone; false when it failed. */
+  const settle = async (publicKey: string, retire: () => Promise<unknown>): Promise<boolean> => {
+    try {
+      if (await deps.exists(publicKey)) await retire();
+      recycled.push(publicKey);
+      return true;
+    } catch (err) {
+      console.error(
+        "[playground] cleanup could not recycle an account",
+        { sessionId: session.id, account: publicKey },
+        err instanceof Error ? err.name : "unknown"
+      );
+      return false;
+    }
+  };
+  const result = (): RecycleResult => {
+    const gone = new Set(recycled);
+    return {
+      recycled,
+      complete: false,
+      patch: {
+        transferRecipient:
+          session.transferRecipient && !gone.has(session.transferRecipient.publicKey)
+            ? session.transferRecipient
+            : null,
+        helperAccounts: session.helperAccounts.filter((h) => !gone.has(h.publicKey)),
+        ephemeralIssuers: session.ephemeralIssuers.filter((e) => !gone.has(e.publicKey)),
+      },
+    };
+  };
+
+  if (!session.demolishDone) {
+    // A close transaction in flight is settled by the next round, never raced by a merge here.
+    if (session.demolishPending !== null) return result();
+    const demo = Keypair.fromSecret(deps.decrypt(session.encDemoSecret));
+    if (!(await settle(session.demoPublic, () => deps.merge(demo, mmPublic)))) return result();
+  }
+
+  let complete = true;
+  const recipient = session.transferRecipient;
+  if (recipient) {
+    const { steps, expectation } = resolvePlan(session.selection);
+    const opened = steps.flatMap((s) =>
+      s.action.kind === "open_recipient" ? s.action.assets : []
+    );
+    // Only a finished close has paid the recipient what the session recorded.
+    const received = session.demolishDone
+      ? expectation.dispositions.filter((d) => d.choice === "transfer")
+      : [];
+    const ok = await settle(recipient.publicKey, () =>
+      deps.submit(
+        Keypair.fromSecret(deps.decrypt(recipient.encSecret)),
+        retireRecipientOps(issuer.publicKey(), mmPublic, opened, received)
+      )
+    );
+    complete &&= ok;
+  }
+  for (const h of session.helperAccounts) {
+    const ok = await settle(h.publicKey, async () => {
+      const kp = Keypair.fromSecret(deps.decrypt(h.encSecret));
+      const sponsored = h.role === "beneficiary" ? sponsoredEntriesOf(session) : null;
+      // A beneficiary still holds its entries unless the resolution released them.
+      const released = sponsored
+        ? await deps
+            .submit(kp, [
+              Operation.changeTrust({ asset: sponsored.asset, limit: "0" }),
+              Operation.manageData({ name: sponsored.dataKey, value: null }),
+              Operation.accountMerge({ destination: mmPublic }),
+            ])
+            .then(() => true)
+            .catch(() => false)
+        : false;
+      if (!released) await deps.merge(kp, mmPublic);
+    });
+    complete &&= ok;
+  }
+  for (const eph of session.ephemeralIssuers) {
+    const ok = await settle(eph.publicKey, async () => {
+      const kp = Keypair.fromSecret(deps.decrypt(eph.encSecret));
+      // A forfeited balance names its issuer as a claimant; the issuer sponsors it, so it claims
+      // it back before it can merge.
+      const forfeited = session.claimableBalances.filter(
+        (b) => b.intent === "forfeit" && b.asset.endsWith(`:${eph.publicKey}`)
+      );
+      if (forfeited.length > 0) {
+        await deps
+          .submit(
+            kp,
+            forfeited.map((b) => Operation.claimClaimableBalance({ balanceId: b.id }))
+          )
+          .catch(() => {
+            console.error("[playground] cleanup claim-back failed", { issuer: eph.publicKey });
+          });
       }
-      for (const h of session.helperAccounts) {
-        try {
-          const kp = Keypair.fromSecret(deps.decrypt(h.encSecret));
-          const sponsored = h.role === "beneficiary" ? sponsoredEntriesOf(session) : null;
-          // A beneficiary still holds its entries unless the resolution released them.
-          const released = sponsored
-            ? await deps
-                .submit(kp, [
-                  Operation.changeTrust({ asset: sponsored.asset, limit: "0" }),
-                  Operation.manageData({ name: sponsored.dataKey, value: null }),
-                  Operation.accountMerge({ destination: mm.publicKey() }),
-                ])
-                .then(() => true)
-                .catch(() => false)
-            : false;
-          if (!released) await deps.merge(kp, mm.publicKey());
-          recycled.push(h.publicKey);
-        } catch (err) {
-          console.error("[playground] cleanup helper failed", { helper: h.publicKey }, err);
-        }
-      }
-      for (const eph of session.ephemeralIssuers) {
-        try {
-          const kp = Keypair.fromSecret(deps.decrypt(eph.encSecret));
-          // A forfeited balance names its issuer as a claimant; the issuer sponsors it, so it
-          // claims it back before it can merge.
-          const forfeited = session.claimableBalances.filter(
-            (b) => b.intent === "forfeit" && b.asset.endsWith(`:${eph.publicKey}`)
-          );
-          if (forfeited.length > 0) {
-            await deps
-              .submit(
-                kp,
-                forfeited.map((b) => Operation.claimClaimableBalance({ balanceId: b.id }))
-              )
-              .catch((err: unknown) => {
-                console.error(
-                  "[playground] cleanup claim-back failed",
-                  { issuer: eph.publicKey },
-                  err
-                );
-              });
-          }
-          await deps.merge(kp, mm.publicKey());
-          recycled.push(eph.publicKey);
-        } catch (err) {
-          console.error("[playground] cleanup merge failed", { issuer: eph.publicKey }, err);
-        }
-      }
-      return recycled;
-    },
-  });
-  return actionResponse(result);
+      await deps.merge(kp, mmPublic);
+    });
+    complete &&= ok;
+  }
+  return { ...result(), complete };
 }
 
 export async function handleCredentials(
@@ -575,4 +706,33 @@ export async function handleState(id: string, deps: StateRouteDeps): Promise<Nex
   return actionResponse(
     await readSessionState(session, { getAccount: deps.accountReader(apiUrl, apiKey) })
   );
+}
+
+export interface ReapRouteDeps {
+  cronSecret: () => string | undefined;
+  /** Builds the reaper's dependencies, or null when a key or setting is missing. Called only
+   *  once the request has shown the cron secret. */
+  reaper: () => ReaperDeps | null;
+}
+
+/**
+ * The scheduled reaper. The cron secret is checked before anything is read, decrypted or sent, and
+ * the summary holds counts only.
+ */
+export async function handleReap(req: NextRequest, deps: ReapRouteDeps): Promise<NextResponse> {
+  if (!isCronAuthorized(req.headers.get("authorization"), deps.cronSecret())) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  const reaper = deps.reaper();
+  if (!reaper) return notConfiguredResponse();
+  try {
+    return NextResponse.json(await runReaper(reaper), {
+      headers: { "cache-control": "no-store" },
+    });
+  } catch (err) {
+    if (err instanceof PlaygroundStoreUnavailableError || err instanceof PlaygroundConfigError) {
+      return notConfiguredResponse();
+    }
+    throw err;
+  }
 }

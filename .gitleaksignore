@@ -15,3 +15,9 @@
 154344ec55b5f452af7c1dc815d19cc4551eafcf:apps/playground/tests/unit/crypto.test.ts:generic-api-key:15
 1e38a09be559c38338fd9a9a7fa0eacb33484909:tests/unit/playground-crypto.test.ts:generic-api-key:10
 1e38a09be559c38338fd9a9a7fa0eacb33484909:tests/unit/playground-crypto.test.ts:generic-api-key:15
+
+# A synthetic, human-readable test string used as the cron secret in the playground's
+# route-handler and reaper tests in the commit below. It was never a credential: the tests now
+# generate the value per run, so it remains only in that commit's history.
+c2edb2d07d2e78ac888088d773739a24090af214:apps/playground/tests/unit/route-handlers.test.ts:generic-api-key:137
+c2edb2d07d2e78ac888088d773739a24090af214:apps/playground/tests/unit/reaper.test.ts:generic-api-key:30
