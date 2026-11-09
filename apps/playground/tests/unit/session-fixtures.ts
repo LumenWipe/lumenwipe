@@ -1,4 +1,5 @@
 import { memoryKv } from "@/lib/kv";
+import { selectionForMode } from "@/lib/mess-plan";
 import { createSessionStore, type NewSessionData, type SessionStore } from "@/lib/session-store";
 
 export interface FakeClock {
@@ -26,9 +27,7 @@ export function newSessionData(): NewSessionData {
     demolishLog: [],
     demolishPending: null,
     demolishDone: false,
-    fundRareAssets: [],
-    offerCount: 0,
-    dataEntryCount: 0,
+    selection: selectionForMode("light"),
   };
 }
 

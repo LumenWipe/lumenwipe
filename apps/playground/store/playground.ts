@@ -1,12 +1,14 @@
 import { create } from "zustand";
 import type { AccountState } from "@lumenwipe/sdk";
-import type { MessStepDef, PlaygroundCustomConfig, PlaygroundMode } from "@/lib/mess-plan";
+import type { PlaygroundCustomConfig, PlaygroundMode } from "@/lib/mess-plan";
 import { DEFAULT_CUSTOM_CONFIG } from "@/lib/mess-plan";
+import type { MessStepDef, SceneNodeKind } from "@/lib/scenarios";
+
+export type { SceneNodeKind };
 
 export type PlaygroundPhase =
   "IDLE" | "MESSING" | "DIRTY" | "DEMOLISHING" | "COMPLETE" | "EXPIRED" | "ERROR";
 
-export type SceneNodeKind = "trustline" | "offer" | "data" | "signer";
 export type SceneNodeStatus = "incoming" | "docked" | "converting" | "destroyed";
 
 export interface SceneNode {

@@ -12,9 +12,12 @@ import {
 } from "@stellar/stellar-sdk";
 import { VerificationError } from "@lumenwipe/verify";
 import type { CloseTransaction } from "@lumenwipe/sdk";
+import { selectionForMode } from "@/lib/mess-plan";
+import type { ScenarioSelection } from "@/lib/scenarios";
 import {
   expectationFromSession,
   maxOperations,
+  PLAYGROUND_CLOSE_OPERATION_TYPES,
   PlaygroundVerificationError,
   verifyDemolishTransaction,
   type PlaygroundCloseExpectation,
@@ -35,20 +38,33 @@ afterEach(() => setSystemTime());
 const demo = Keypair.random().publicKey();
 const sink = Keypair.random().publicKey();
 const lwdemoIssuer = Keypair.random().publicKey();
+const airdropIssuer = Keypair.random().publicKey();
 const rugIssuer = Keypair.random().publicKey();
 const forgotten = Keypair.random().publicKey();
 const LWDEMO = new Asset("LWDEMO", lwdemoIssuer);
 const RUGPULL = new Asset("RUGPULL", rugIssuer);
 
-function expectation(): PlaygroundCloseExpectation {
+const SELECTION: ScenarioSelection = {
+  scenarios: [
+    { id: "lwdemo-holding", params: {} },
+    { id: "junk-airdrops", params: { tokens: 2 } },
+    { id: "data-entries", params: { count: 2 } },
+    { id: "stale-offers", params: { count: 2 } },
+    { id: "forgotten-signer", params: {} },
+  ],
+};
+
+const ISSUERS = [
+  { assetCode: "AIRDROP1", publicKey: airdropIssuer, encSecret: "enc" },
+  { assetCode: "RUGPULL", publicKey: rugIssuer, encSecret: "enc" },
+];
+
+function expectation(
+  selection = SELECTION,
+  ephemeralIssuers = ISSUERS
+): PlaygroundCloseExpectation {
   return expectationFromSession(
-    {
-      demoPublic: demo,
-      ephemeralIssuers: [{ assetCode: "RUGPULL", publicKey: rugIssuer, encSecret: "enc" }],
-      recordedSigners: [forgotten],
-      offerCount: 2,
-      dataEntryCount: 2,
-    },
+    { demoPublic: demo, ephemeralIssuers, recordedSigners: [forgotten], selection },
     sink,
     lwdemoIssuer
   );
@@ -131,15 +147,28 @@ const returnToIssuer = (asset: Asset) =>
 
 type Recipe = (typeof recipeFixture.recipes)[number];
 
+/** The registry selection each fixture recipe models (apps/api/tests/unit/playground-recipe.test.ts). */
+const RECIPE_SELECTIONS: Record<string, ScenarioSelection> = {
+  light: selectionForMode("light"),
+  full: selectionForMode("full"),
+  "custom-max": selectionForMode("custom", {
+    trustlineCount: 5,
+    offerCount: 5,
+    dataEntryCount: 5,
+    addSigner: true,
+  }),
+};
+
 function recipeExpectation(recipe: Recipe, recordedSigners: string[]): PlaygroundCloseExpectation {
   const { session } = recipe;
+  const selection = RECIPE_SELECTIONS[recipe.name];
+  if (!selection) throw new Error(`no selection for recipe ${recipe.name}`);
   return expectationFromSession(
     {
       demoPublic: session.demoPublic,
       ephemeralIssuers: session.ephemeralIssuers.map((e) => ({ ...e, encSecret: "enc" })),
       recordedSigners,
-      offerCount: session.offerCount,
-      dataEntryCount: session.dataEntryCount,
+      selection,
     },
     session.sinkPublic,
     session.lwdemoIssuer
@@ -163,6 +192,23 @@ describe("the API's real transactions for today's recipes", () => {
     }
   });
 
+  test("each recipe's session counts are what its registry selection plans", () => {
+    for (const recipe of recipeFixture.recipes) {
+      const expected = recipeExpectation(recipe, recipe.session.recordedSigners);
+      expect({
+        recipe: recipe.name,
+        offers: expected.offerCount,
+        data: expected.dataEntryCount,
+        assets: expected.assets.length,
+      }).toEqual({
+        recipe: recipe.name,
+        offers: recipe.session.offerCount,
+        data: recipe.session.dataEntryCount,
+        assets: recipe.session.ephemeralIssuers.length + 1,
+      });
+    }
+  });
+
   test("covers the light, full and largest custom recipes", () => {
     expect(recipeFixture.recipes.map((r) => r.name)).toEqual(["light", "full", "custom-max"]);
   });
@@ -175,17 +221,38 @@ describe("the API's real transactions for today's recipes", () => {
 });
 
 describe("expectationFromSession", () => {
-  test("takes the assets from the persistent issuer and the session's ephemeral issuers", () => {
+  test("takes the planned assets from the persistent issuer and the session's ephemeral issuers", () => {
     expect(expectation().assets).toEqual([
       { code: "LWDEMO", issuer: lwdemoIssuer },
+      { code: "AIRDROP1", issuer: airdropIssuer },
       { code: "RUGPULL", issuer: rugIssuer },
     ]);
+    expect([expectation().offerCount, expectation().dataEntryCount]).toEqual([2, 2]);
+  });
+
+  test("a session that did not select the demo token cannot return it", () => {
+    const noLwdemo: ScenarioSelection = {
+      scenarios: [{ id: "junk-airdrops", params: { tokens: 2 } }],
+    };
+    const expected = expectation(noLwdemo);
+    expect(expected.assets.map((a) => a.code)).toEqual(["AIRDROP1", "RUGPULL"]);
+    expect(outcome(envelope([returnToIssuer(LWDEMO)]), expected)).toBe("transfer_not_chosen");
+    expect(outcome(envelope([returnToIssuer(RUGPULL)]), expected)).toBe("accepted");
+  });
+
+  test("a planned asset without the session's own issuer is refused", () => {
+    expect(() => expectation(SELECTION, ISSUERS.slice(0, 1))).toThrow("session_issuer_missing");
   });
 
   test("copies the recorded signers rather than sharing the session's array", () => {
     const recordedSigners = [forgotten];
     const expected = expectationFromSession(
-      { demoPublic: demo, ephemeralIssuers: [], recordedSigners, offerCount: 0, dataEntryCount: 0 },
+      {
+        demoPublic: demo,
+        ephemeralIssuers: [],
+        recordedSigners,
+        selection: selectionForMode("light"),
+      },
       sink,
       lwdemoIssuer
     );
@@ -306,12 +373,12 @@ describe("memo", () => {
 
 describe("ceilings", () => {
   test("the operation count is capped by what the session's entries can explain", () => {
-    // 2 assets x 2 + 2 offers + 2 data entries + 1 signer + threshold reset + merge.
-    expect(maxOperations(expectation())).toBe(11);
+    // 3 assets x 2 + 2 offers + 2 data entries + 1 signer + threshold reset + merge.
+    expect(maxOperations(expectation())).toBe(13);
     const removals = (n: number) =>
       Array.from({ length: n }, () => Operation.manageData({ name: "promo_code", value: null }));
-    expect(outcome(envelope(removals(10)))).toBe("accepted");
-    expect(outcome(envelope(removals(11)))).toBe("too_many_operations");
+    expect(outcome(envelope(removals(12)))).toBe("accepted");
+    expect(outcome(envelope(removals(13)))).toBe("too_many_operations");
   });
 
   test("the fee is capped at ten times the base fee per operation", () => {
@@ -403,5 +470,40 @@ describe("what a playground close never contains", () => {
   test("a sponsorship revocation, as the real builder emits it, is accepted", () => {
     const op = Operation.revokeDataSponsorship({ account: demo, name: "promo_code" });
     expect(outcome(envelope([op]))).toBe("accepted");
+  });
+});
+
+describe("the playground's close operation types", () => {
+  test("one close holding every listed type is accepted, and lists exactly those types", () => {
+    const ops = [
+      Operation.revokeAccountSponsorship({ account: demo }),
+      Operation.revokeTrustlineSponsorship({ account: demo, asset: LWDEMO }),
+      Operation.revokeOfferSponsorship({ seller: demo, offerId: "1" }),
+      Operation.revokeDataSponsorship({ account: demo, name: "promo_code" }),
+      Operation.revokeSignerSponsorship({ account: demo, signer: { ed25519PublicKey: forgotten } }),
+      Operation.manageData({ name: "promo_code", value: null }),
+      Operation.manageSellOffer({
+        selling: Asset.native(),
+        buying: LWDEMO,
+        amount: "0",
+        price: "2",
+        offerId: "1",
+      }),
+      returnToIssuer(LWDEMO),
+      Operation.changeTrust({ asset: LWDEMO, limit: "0" }),
+      Operation.setOptions({ signer: { ed25519PublicKey: forgotten, weight: 0 } }),
+    ];
+    const xdrBase64 = envelope(ops);
+    expect(outcome(xdrBase64)).toBe("accepted");
+    const parsed = TransactionBuilder.fromXDR(xdrBase64, PASSPHRASE);
+    if (!(parsed instanceof Transaction)) throw new Error("expected a transaction");
+    expect(new Set(parsed.operations.map((op) => op.type))).toEqual(
+      new Set(PLAYGROUND_CLOSE_OPERATION_TYPES)
+    );
+  });
+
+  test("a type the shared anchor allows but no scenario creates is refused", () => {
+    const claim = Operation.claimClaimableBalance({ balanceId: `00000000${"a".repeat(64)}` });
+    expect(outcome(envelope([claim]))).toBe("operation_not_allowed");
   });
 });

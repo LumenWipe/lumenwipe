@@ -7,7 +7,7 @@ import {
   type TransferChoice,
 } from "@lumenwipe/verify";
 import type { CloseTransaction } from "@lumenwipe/sdk";
-import { LWDEMO_CODE } from "./mess-plan";
+import { LWDEMO_CODE, resolvePlan, type CloseOperationType } from "./scenarios";
 import type { PlaygroundSession } from "./session-store";
 
 // The check the playground's backend runs on every XDR the real API returns, before signing it.
@@ -38,6 +38,26 @@ export class PlaygroundVerificationError extends Error {
   }
 }
 
+/**
+ * The operation types a playground close may contain. Every scenario's close expectation lists
+ * only these (tests/unit/scenario-registry.test.ts), and a transaction with any other is refused
+ * here, whatever the shared verifier would allow for a production close.
+ */
+export const PLAYGROUND_CLOSE_OPERATION_TYPES: readonly CloseOperationType[] = [
+  "accountMerge",
+  "payment",
+  "changeTrust",
+  "manageData",
+  "manageSellOffer",
+  "setOptions",
+  // The API revokes a sponsorship it finds on one of these entries before removing it.
+  "revokeAccountSponsorship",
+  "revokeTrustlineSponsorship",
+  "revokeOfferSponsorship",
+  "revokeDataSponsorship",
+  "revokeSignerSponsorship",
+];
+
 /** One asset the session can hold: its code and the issuer it returns to. */
 export interface SessionAsset {
   code: string;
@@ -55,27 +75,33 @@ export interface PlaygroundCloseExpectation {
 }
 
 /**
- * The expectation for a session's demolish. `lwdemoIssuer` is the playground's persistent issuer
- * from its configuration; every other asset is one of the session's ephemeral issuers.
+ * The expectation for a session's demolish: the assets, offers and data entries its stored
+ * selection planned (lib/scenarios), the issuers it recorded, and the signers it recorded.
+ * `lwdemoIssuer` is the playground's persistent issuer from its configuration; every other asset
+ * must be one of the session's own ephemeral issuers.
  */
 export function expectationFromSession(
   session: Pick<
     PlaygroundSession,
-    "demoPublic" | "ephemeralIssuers" | "recordedSigners" | "offerCount" | "dataEntryCount"
+    "demoPublic" | "ephemeralIssuers" | "recordedSigners" | "selection"
   >,
   sinkPublic: string,
   lwdemoIssuer: string
 ): PlaygroundCloseExpectation {
+  const planned = resolvePlan(session.selection).expectation;
+  const assets = planned.assets.map((code): SessionAsset => {
+    if (code === LWDEMO_CODE) return { code, issuer: lwdemoIssuer };
+    const issuer = session.ephemeralIssuers.find((e) => e.assetCode === code);
+    if (!issuer) throw new PlaygroundVerificationError("session_issuer_missing");
+    return { code, issuer: issuer.publicKey };
+  });
   return {
     demoPublic: session.demoPublic,
     sinkPublic,
-    assets: [
-      { code: LWDEMO_CODE, issuer: lwdemoIssuer },
-      ...session.ephemeralIssuers.map((e) => ({ code: e.assetCode, issuer: e.publicKey })),
-    ],
+    assets,
     recordedSigners: [...session.recordedSigners],
-    offerCount: session.offerCount,
-    dataEntryCount: session.dataEntryCount,
+    offerCount: planned.offers,
+    dataEntryCount: planned.dataEntries,
   };
 }
 
@@ -141,6 +167,9 @@ export function verifyDemolishTransaction(
   });
 
   const ops = parsed.operations;
+  if (!ops.every((op) => PLAYGROUND_CLOSE_OPERATION_TYPES.some((type) => type === op.type))) {
+    throw new PlaygroundVerificationError("operation_not_allowed");
+  }
   if (ops.length > maxOperations(expected)) {
     throw new PlaygroundVerificationError("too_many_operations");
   }

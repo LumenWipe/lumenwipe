@@ -8,15 +8,8 @@ import {
   type SceneNodeKind,
 } from "@/store/playground";
 import { operationToSceneAction } from "@/lib/scene-actions";
-import {
-  EPHEMERAL_ASSETS,
-  EURC_DEMO_AMOUNT,
-  JUNK_DATA_ENTRIES,
-  JUNK_OFFERS,
-  LWDEMO_AMOUNT,
-  USDC_DEMO_AMOUNT,
-  type MessStepDef,
-} from "@/lib/mess-plan";
+import type { MessStepDef, SceneNodeSpec } from "@/lib/scenarios";
+import { selectionForMode } from "@/lib/mess-plan";
 import type { AccountState, IntentOperation } from "@lumenwipe/sdk";
 import { GENERIC_ERROR_COPY } from "@/lib/error-copy";
 import { PlaygroundApiError, playgroundRequest, SessionExpiredError } from "@/lib/playground-api";
@@ -81,44 +74,10 @@ const RING: Record<SceneNodeKind, { radius: number; durationSec: number }> = {
 
 const GOLDEN_ANGLE = 137.5;
 
-function offerLabel(index: number): string {
-  const o = JUNK_OFFERS[index];
-  if (!o) return `Offer #${index + 1}`;
-  const sell = o.selling === "native" ? "XLM" : o.selling;
-  const buy = o.buying === "native" ? "XLM" : o.buying;
-  return `Sell ${sell} → ${buy}`;
-}
-
-function buildSceneNode(nodeId: string, seq: number): SceneNode {
-  const [prefix, rest] = nodeId.split(":");
-
-  let kind: SceneNodeKind;
-  let label: string;
-
-  switch (prefix) {
-    case "tl":
-      kind = "trustline";
-      label = rest;
-      break;
-    case "data":
-      kind = "data";
-      label = JUNK_DATA_ENTRIES.find((d) => d.key === rest)?.key ?? rest;
-      break;
-    case "offer":
-      kind = "offer";
-      label = offerLabel(Number(rest));
-      break;
-    case "signer":
-      kind = "signer";
-      label = "Forgotten co-signer";
-      break;
-    default:
-      throw new Error(`Unknown scene node id: ${nodeId}`);
-  }
-
+function buildSceneNode({ id, kind, label }: SceneNodeSpec, seq: number): SceneNode {
   const ring = RING[kind];
   return {
-    id: nodeId,
+    id,
     kind,
     label,
     balance: null,
@@ -132,22 +91,10 @@ function buildSceneNode(nodeId: string, seq: number): SceneNode {
   };
 }
 
-/** Updates the displayed balance on an already-docked node when a mess step
- *  funds it rather than creating it (`MessStepDef.updatesNodeIds`) - ports the
- *  deleted `applyBalanceUpdates` (git show f416924^:apps/web/hooks/usePlaygroundExecution.ts). */
+/** Sets the displayed balance on the already-docked nodes a mess step funds. */
 function applyBalanceUpdates(step: MessStepDef): void {
   const { updateNode } = usePlaygroundStore.getState();
-  if (step.id === "FUND_RARE") {
-    for (const nodeId of step.updatesNodeIds) {
-      const code = nodeId.startsWith("tl:") ? nodeId.slice(3) : null;
-      if (!code) continue;
-      const amount = EPHEMERAL_ASSETS.find((a) => a.code === code)?.amount ?? null;
-      if (amount) updateNode(nodeId, { balance: amount });
-    }
-  }
-  if (step.id === "FUND_LWDEMO") updateNode("tl:LWDEMO", { balance: LWDEMO_AMOUNT });
-  if (step.id === "FUND_USDC") updateNode("tl:USDC", { balance: USDC_DEMO_AMOUNT });
-  if (step.id === "FUND_EURC") updateNode("tl:EURC", { balance: EURC_DEMO_AMOUNT });
+  for (const { nodeId, balance } of step.balances) updateNode(nodeId, { balance });
 }
 
 const DEMOLISH_STAGGER_MS = 500;
@@ -245,7 +192,7 @@ export function usePlaygroundExecution(): UsePlaygroundExecutionResult {
       const { selectedMode, customConfig } = usePlaygroundStore.getState();
       const session = await api<SessionResponse>("/session", {
         method: "POST",
-        body: JSON.stringify({ mode: selectedMode, customConfig }),
+        body: JSON.stringify({ selection: selectionForMode(selectedMode, customConfig) }),
       });
       usePlaygroundStore.getState().startSession(session);
       usePlaygroundStore.getState().addLog({
@@ -267,9 +214,9 @@ export function usePlaygroundExecution(): UsePlaygroundExecutionResult {
 
         const after = usePlaygroundStore.getState();
         after.addLog({ label: step.label, txHash, kind: "mess" });
-        if (step.nodeIds.length > 0) {
+        if (step.nodes.length > 0) {
           after.dockNodes(
-            step.nodeIds.map((id) => buildSceneNode(id, nodeSeq.current++)),
+            step.nodes.map((node) => buildSceneNode(node, nodeSeq.current++)),
             txHash
           );
         }

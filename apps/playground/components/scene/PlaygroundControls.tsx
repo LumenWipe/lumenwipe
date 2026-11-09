@@ -24,8 +24,10 @@ import { usePlaygroundStore } from "@/store/playground";
 import { errorCopy, GENERIC_ERROR_COPY } from "@/lib/error-copy";
 import {
   DEFAULT_CUSTOM_CONFIG,
+  MAX_CUSTOM_DATA_ENTRIES,
+  MAX_CUSTOM_TRUSTLINES,
   PLAYGROUND_MODE_CONFIGS,
-  estimateCustomDuration,
+  estimateSeconds,
   maxOfferCount,
   type PlaygroundCustomConfig,
   type PlaygroundMode,
@@ -151,8 +153,7 @@ function ModeSelector({
       <div className="grid grid-cols-2 gap-1.5">
         {PLAYGROUND_MODE_CONFIGS.map((cfg) => {
           const active = selected === cfg.mode;
-          const secs =
-            cfg.mode === "custom" ? estimateCustomDuration(custom) : cfg.estimatedSeconds;
+          const secs = estimateSeconds(cfg.mode, custom);
           return (
             <button
               key={cfg.mode}
@@ -175,9 +176,7 @@ function ModeSelector({
                 )}
               </div>
               <p className="text-[10px] text-white/40 leading-tight">{cfg.description}</p>
-              {secs > 0 && (
-                <p className="mt-1 text-[10px] text-white/30 mkt-mono">{durationLabel(secs)}</p>
-              )}
+              <p className="mt-1 text-[10px] text-white/30 mkt-mono">{durationLabel(secs)}</p>
             </button>
           );
         })}
@@ -198,7 +197,7 @@ function ModeSelector({
                 label="Trustlines"
                 value={custom.trustlineCount}
                 min={1}
-                max={5}
+                max={MAX_CUSTOM_TRUSTLINES}
                 onChange={(v) => patchCustom({ trustlineCount: v })}
               />
               <Counter
@@ -212,7 +211,7 @@ function ModeSelector({
                 label="Data entries"
                 value={custom.dataEntryCount}
                 min={0}
-                max={5}
+                max={MAX_CUSTOM_DATA_ENTRIES}
                 onChange={(v) => patchCustom({ dataEntryCount: v })}
               />
               <div className="flex items-center justify-between gap-2 pt-0.5">
@@ -231,7 +230,7 @@ function ModeSelector({
                 </button>
               </div>
               <p className="text-[10px] text-white/30 mkt-mono pt-0.5">
-                {durationLabel(estimateCustomDuration(custom))} estimated
+                {durationLabel(estimateSeconds("custom", custom))} estimated
               </p>
             </div>
           )}

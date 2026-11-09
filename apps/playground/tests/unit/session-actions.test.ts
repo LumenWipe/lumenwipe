@@ -4,12 +4,20 @@ import { PlaygroundConfigError } from "@/lib/crypto";
 import type { DemolishRoundResult } from "@/lib/demolish";
 import { readSessionState, runCleanup, runDemolishRound, runMessStep } from "@/lib/session-actions";
 import type { DemolishLogEntry, PendingDemolishTx, SessionStore } from "@/lib/session-store";
+import type { MessStepDef } from "@/lib/scenarios";
 import { gate, memoryStore, newSessionData, tick } from "./session-fixtures";
 
 const UNKNOWN_ID = "6f1c2a4e-3b5d-4c7e-9a8b-1d2e3f4a5b6c";
 
 const outcome = (r: { body: Record<string, unknown> }): string =>
   typeof r.body.error === "string" ? r.body.error : "ok";
+
+/** A session that selected only the forgotten signer, with its setup step already done. */
+const signerSessionData = () => ({
+  ...newSessionData(),
+  selection: { scenarios: [{ id: "forgotten-signer" as const, params: {} }] },
+  completedMessSteps: ["SETUP"],
+});
 
 const DONE: DemolishRoundResult = { done: true, remainingSteps: 0 };
 
@@ -87,8 +95,8 @@ test("two different mess steps on one session do not run at the same time", asyn
   const session = await store.createSession(newSessionData());
   const release = gate();
   const executed: string[] = [];
-  const executeStep = async (stepId: string): Promise<string> => {
-    executed.push(stepId);
+  const executeStep = async (step: MessStepDef): Promise<string> => {
+    executed.push(step.id);
     await release.wait;
     return "hash";
   };
@@ -447,7 +455,7 @@ test("the lock is released after a failed step, so a retry can run", async () =>
 
 test("signers the step records are kept in the session, alongside the completed step", async () => {
   const store = memoryStore();
-  const session = await store.createSession(newSessionData());
+  const session = await store.createSession(signerSessionData());
   const result = await runMessStep(store, session.id, "ADD_SIGNER", {
     executeStep: async (_step, _session, recordSigner) => {
       await recordSigner("GSIGNER1");
@@ -458,12 +466,12 @@ test("signers the step records are kept in the session, alongside the completed 
   expect(outcome(result)).toBe("ok");
   const stored = await store.loadSession(session.id);
   expect(stored?.recordedSigners).toEqual(["GSIGNER1", "GSIGNER2"]);
-  expect(stored?.completedMessSteps).toEqual(["ADD_SIGNER"]);
+  expect(stored?.completedMessSteps).toEqual(["SETUP", "ADD_SIGNER"]);
 });
 
 test("a signer recorded before its transaction failed stays recorded", async () => {
   const store = memoryStore();
-  const session = await store.createSession(newSessionData());
+  const session = await store.createSession(signerSessionData());
   const result = await runMessStep(store, session.id, "ADD_SIGNER", {
     executeStep: async (_step, _session, recordSigner) => {
       await recordSigner("GSIGNER");
@@ -473,7 +481,7 @@ test("a signer recorded before its transaction failed stays recorded", async () 
   expect(result.status).toBe(502);
   const stored = await store.loadSession(session.id);
   expect(stored?.recordedSigners).toEqual(["GSIGNER"]);
-  expect(stored?.completedMessSteps).toEqual([]);
+  expect(stored?.completedMessSteps).toEqual(["SETUP"]);
 });
 
 test("an unknown session is a 404 and takes no lock", async () => {
@@ -635,4 +643,63 @@ test("an id that is not a session uuid is a 404 and never reaches the store or t
   }
   expect(storeCalls).toBe(0);
   expect(logged).toEqual([]);
+});
+
+describe("the session's own plan decides which step may run", () => {
+  test("a light session refuses steps it did not select, and nothing runs", async () => {
+    const store = memoryStore();
+    const session = await store.createSession(newSessionData());
+    const executed: string[] = [];
+    for (const stepId of ["ADD_SIGNER", "TRUST_USDC", "OFFERS", "FUND_RARE"] as const) {
+      const result = await runMessStep(store, session.id, stepId, {
+        executeStep: async (step) => {
+          executed.push(step.id);
+          return "hash";
+        },
+      });
+      expect({ stepId, result }).toEqual({
+        stepId,
+        result: { status: 400, body: { error: "step_not_in_plan" } },
+      });
+    }
+    expect(executed).toEqual([]);
+    const stored = await store.loadSession(session.id);
+    expect(stored?.recordedSigners).toEqual([]);
+    expect(stored?.completedMessSteps).toEqual([]);
+  });
+
+  test("a step runs only when every step before it in the plan is done", async () => {
+    const store = memoryStore();
+    const session = await store.createSession(newSessionData());
+    const executed: string[] = [];
+    const executeStep = async (step: MessStepDef): Promise<string> => {
+      executed.push(step.id);
+      return "hash";
+    };
+    expect(await runMessStep(store, session.id, "FUND_LWDEMO", { executeStep })).toEqual({
+      status: 409,
+      body: { error: "step_out_of_order" },
+    });
+    expect(await runMessStep(store, session.id, "TRUST_LWDEMO", { executeStep })).toEqual({
+      status: 409,
+      body: { error: "step_out_of_order" },
+    });
+    for (const stepId of ["SETUP", "TRUST_LWDEMO", "FUND_LWDEMO"] as const) {
+      expect(outcome(await runMessStep(store, session.id, stepId, { executeStep }))).toBe("ok");
+    }
+    expect(executed).toEqual(["SETUP", "TRUST_LWDEMO", "FUND_LWDEMO"]);
+  });
+
+  test("the executor receives the plan's own step, with its action", async () => {
+    const store = memoryStore();
+    const session = await store.createSession(newSessionData());
+    const received: MessStepDef[] = [];
+    await runMessStep(store, session.id, "SETUP", {
+      executeStep: async (step) => {
+        received.push(step);
+        return "hash";
+      },
+    });
+    expect(received.map((s) => [s.id, s.action.kind])).toEqual([["SETUP", "setup"]]);
+  });
 });

@@ -4,17 +4,21 @@ import { Keypair } from "@stellar/stellar-sdk";
 import { PlaygroundConfigError } from "./crypto";
 import {
   DEFAULT_CUSTOM_CONFIG,
-  LWDEMO_CODE,
+  MAX_CUSTOM_DATA_ENTRIES,
+  MAX_CUSTOM_TRUSTLINES,
   type PlaygroundCustomConfig,
   type PlaygroundMode,
-  getFundRareAssets,
-  getMessCounts,
-  getMessPlanForMode,
-  getNeededEphemeralCodes,
-  isMessStepId,
   maxOfferCount,
-  type MessStepId,
+  selectionForMode,
 } from "./mess-plan";
+import {
+  LWDEMO_CODE,
+  isMessStepId,
+  parseSelection,
+  validateSelection,
+  type MessStepDef,
+  type ValidationResult,
+} from "./scenarios";
 import type { MessContext } from "./mess-builders";
 import type { DemolishRoundResult, RunDemolishOptions } from "./demolish";
 import { CREDENTIALS_PER_DAY_PER_IP, SESSIONS_PER_DAY_PER_IP, type RateLimit } from "./rate-limit";
@@ -62,7 +66,7 @@ export interface CreateSessionDeps extends PlaygroundKeys {
 export interface MessDeps extends PlaygroundKeys {
   store: SessionStore;
   decrypt: (payload: string) => string;
-  executeMessStep: (stepId: MessStepId, ctx: MessContext) => Promise<string>;
+  executeMessStep: (step: MessStepDef, ctx: MessContext) => Promise<string>;
 }
 
 export interface DemolishRouteDeps extends PlaygroundKeys {
@@ -94,44 +98,61 @@ export interface StateRouteDeps {
   accountReader: (apiUrl: string, apiKey: string) => StateDeps["getAccount"];
 }
 
-export interface CreateRequest {
-  mode: PlaygroundMode;
-  customConfig: PlaygroundCustomConfig;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** Reads the mode and custom config from a create request body; anything unrecognized gets defaults. */
-export function parseCreateBody(body: unknown): CreateRequest {
-  let mode: PlaygroundMode = "standard";
-  let customConfig: PlaygroundCustomConfig = DEFAULT_CUSTOM_CONFIG;
-  if (typeof body !== "object" || body === null) return { mode, customConfig };
-  const { mode: rawMode, customConfig: rawCustom } = body as {
-    mode?: unknown;
-    customConfig?: unknown;
+const clamp = (value: unknown, min: number, max: number, fallback: number): number =>
+  typeof value === "number" ? Math.max(min, Math.min(max, value)) : fallback;
+
+function parseMode(value: unknown): PlaygroundMode {
+  return value === "light" || value === "full" || value === "custom" ? value : "standard";
+}
+
+/** The original size modes; out-of-range custom values are clamped as they always were. */
+function legacyCustomConfig(raw: unknown): PlaygroundCustomConfig {
+  if (!isRecord(raw)) return DEFAULT_CUSTOM_CONFIG;
+  const trustlineCount = clamp(
+    raw.trustlineCount,
+    1,
+    MAX_CUSTOM_TRUSTLINES,
+    DEFAULT_CUSTOM_CONFIG.trustlineCount
+  );
+  const maxOffers = maxOfferCount(trustlineCount);
+  return {
+    trustlineCount,
+    offerCount: clamp(
+      raw.offerCount,
+      0,
+      maxOffers,
+      Math.min(DEFAULT_CUSTOM_CONFIG.offerCount, maxOffers)
+    ),
+    dataEntryCount: clamp(
+      raw.dataEntryCount,
+      0,
+      MAX_CUSTOM_DATA_ENTRIES,
+      DEFAULT_CUSTOM_CONFIG.dataEntryCount
+    ),
+    addSigner: typeof raw.addSigner === "boolean" ? raw.addSigner : DEFAULT_CUSTOM_CONFIG.addSigner,
   };
-  if (rawMode === "light" || rawMode === "standard" || rawMode === "full" || rawMode === "custom") {
-    mode = rawMode;
+}
+
+/**
+ * Reads the scenario selection from a create request and validates it. A body with `selection`
+ * must be a valid one; a body without it is read as one of the original modes.
+ */
+export function parseCreateBody(body: unknown): ValidationResult {
+  if (isRecord(body) && body.selection !== undefined) {
+    const selection = parseSelection(body.selection);
+    if (!selection) return { ok: false, message: "The scenario selection could not be read." };
+    return validateSelection(selection);
   }
-  if (mode === "custom" && rawCustom && typeof rawCustom === "object") {
-    const c = rawCustom as Record<string, unknown>;
-    const tc =
-      typeof c.trustlineCount === "number"
-        ? Math.max(1, Math.min(5, c.trustlineCount))
-        : DEFAULT_CUSTOM_CONFIG.trustlineCount;
-    const maxOc = maxOfferCount(tc);
-    customConfig = {
-      trustlineCount: tc,
-      offerCount:
-        typeof c.offerCount === "number"
-          ? Math.max(0, Math.min(maxOc, c.offerCount))
-          : Math.min(DEFAULT_CUSTOM_CONFIG.offerCount, maxOc),
-      dataEntryCount:
-        typeof c.dataEntryCount === "number"
-          ? Math.max(0, Math.min(5, c.dataEntryCount))
-          : DEFAULT_CUSTOM_CONFIG.dataEntryCount,
-      addSigner: typeof c.addSigner === "boolean" ? c.addSigner : DEFAULT_CUSTOM_CONFIG.addSigner,
-    };
-  }
-  return { mode, customConfig };
+  const mode = isRecord(body) ? parseMode(body.mode) : "standard";
+  const custom =
+    mode === "custom" && isRecord(body)
+      ? legacyCustomConfig(body.customConfig)
+      : DEFAULT_CUSTOM_CONFIG;
+  return validateSelection(selectionForMode(mode, custom));
 }
 
 export async function handleCreateSession(
@@ -156,14 +177,21 @@ export async function handleCreateSession(
     // Malformed or absent body - use defaults.
     body = undefined;
   }
-  const { mode, customConfig } = parseCreateBody(body);
+  const parsed = parseCreateBody(body);
+  if (!parsed.ok) {
+    return NextResponse.json(
+      { error: "invalid_selection", message: parsed.message },
+      { status: 400 }
+    );
+  }
+  const { plan } = parsed;
 
-  const neededCodes = getNeededEphemeralCodes(mode, customConfig);
-  const fundRareAssets = getFundRareAssets(mode, customConfig);
-  const { offerCount, dataEntryCount } = getMessCounts(mode, customConfig);
-
+  // Keys are always fresh randomness, never derived from anything in the request.
   const demo = Keypair.random();
-  const ephemeral = neededCodes.map((code) => ({ assetCode: code, keypair: Keypair.random() }));
+  const ephemeral = plan.ephemeralAssets.map((code) => ({
+    assetCode: code,
+    keypair: Keypair.random(),
+  }));
 
   if (!(await deps.fundAccount(demo.publicKey()))) {
     return NextResponse.json({ error: "friendbot_failed" }, { status: 502 });
@@ -189,16 +217,14 @@ export async function handleCreateSession(
       demolishLog: [],
       demolishPending: null,
       demolishDone: false,
-      fundRareAssets,
-      offerCount,
-      dataEntryCount,
+      selection: plan.selection,
     });
 
     return NextResponse.json({
       sessionId: session.id,
       demoPublic: session.demoPublic,
       expiresAt: sessionExpiresAt(),
-      messPlan: getMessPlanForMode(mode, customConfig),
+      messPlan: plan.steps,
       accounts: {
         issuer: issuer.publicKey(),
         mm: mm.publicKey(),
@@ -221,11 +247,11 @@ export async function handleMess(
 ): Promise<NextResponse> {
   let stepId: unknown;
   try {
-    const body = await req.json();
+    const body: unknown = await req.json();
     if (body === null || typeof body !== "object") {
       throw new Error("invalid body");
     }
-    stepId = (body as Record<string, unknown>).stepId;
+    stepId = "stepId" in body ? body.stepId : undefined;
   } catch {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
@@ -249,9 +275,6 @@ export async function handleMess(
         ),
         persistentIssuer: issuer,
         mmPublic: mm.publicKey(),
-        fundRareAssets: session.fundRareAssets,
-        offerCount: session.offerCount,
-        dataEntryCount: session.dataEntryCount,
         recordSigner,
       }),
   });
