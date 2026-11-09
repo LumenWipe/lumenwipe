@@ -1,5 +1,5 @@
 import "server-only";
-import { Networks, TransactionBuilder, type Transaction } from "@stellar/stellar-sdk";
+import { Networks, Transaction, TransactionBuilder } from "@stellar/stellar-sdk";
 import {
   exitExpectations,
   verifyCloseTransaction,
@@ -125,20 +125,24 @@ export function verifyDemolishTransaction(
   tx: CloseTransaction,
   expected: PlaygroundCloseExpectation
 ): void {
+  // A playground close is signed and paid for by the demo account itself; the API never wraps it.
+  const parsed = TransactionBuilder.fromXdr(tx.xdr, Networks.TESTNET);
+  if (!(parsed instanceof Transaction)) {
+    throw new PlaygroundVerificationError("fee_bump_not_allowed");
+  }
+
   verifyCloseTransaction({
     unsignedXdr: tx.xdr,
     network: "testnet",
     expected: sharedExpectation(expected),
   });
 
-  // Decoded only after the shared verifier accepted it, which it never does for a fee bump: that
-  // envelope has no source account of its own, so it fails the transaction source check.
-  const ops = (TransactionBuilder.fromXdr(tx.xdr, Networks.TESTNET) as Transaction).operations;
+  const ops = parsed.operations;
   if (ops.length > maxOperations(expected)) {
     throw new PlaygroundVerificationError("too_many_operations");
   }
   // The shared verifier already refuses a second merge; this pins the one merge to the end.
-  if (ops[ops.length - 1]!.type !== "accountMerge") {
+  if (ops.length === 0 || ops[ops.length - 1].type !== "accountMerge") {
     throw new PlaygroundVerificationError("merge_not_final");
   }
 }

@@ -8,7 +8,7 @@ import {
   Operation,
   Transaction,
   TransactionBuilder,
-  type xdr,
+  xdr,
 } from "@stellar/stellar-sdk";
 import { VerificationError } from "@lumenwipe/verify";
 import type { CloseTransaction } from "@lumenwipe/sdk";
@@ -93,6 +93,25 @@ function closeTx(xdrBase64: string): CloseTransaction {
       operations: [],
     },
   };
+}
+
+/** Rewrites an envelope to carry no operations, which the SDK's builder never produces. */
+function withoutOperations(envelopeXdr: string): string {
+  const envelope = xdr.TransactionEnvelope.fromXdr(envelopeXdr, "base64");
+  if (envelope.type !== "envelopeTypeTx") throw new Error("expected a v1 envelope");
+  const { tx } = envelope.v1;
+  const empty = new xdr.Transaction({
+    sourceAccount: tx.sourceAccount,
+    fee: tx.fee,
+    seqNum: tx.seqNum,
+    cond: tx.cond,
+    memo: tx.memo,
+    operations: [],
+    ext: tx.ext,
+  });
+  return xdr.TransactionEnvelope.envelopeTypeTx(
+    new xdr.TransactionV1Envelope({ tx: empty, signatures: [] })
+  ).toXdr("base64");
 }
 
 /** The refusal code, or "accepted". */
@@ -259,6 +278,10 @@ describe("the merge", () => {
     expect(outcome(envelope([op], {}, false))).toBe("merge_not_final");
   });
 
+  test("a transaction with no operations is refused", () => {
+    expect(outcome(withoutOperations(envelope([], { fee: 0 })))).toBe("merge_not_final");
+  });
+
   test("a merge that is not the final operation is refused", () => {
     const ops = [
       Operation.accountMerge({ destination: sink }),
@@ -356,10 +379,21 @@ describe("what a playground close never contains", () => {
     expect(outcome(envelope([op]))).toBe("operation_source_mismatch");
   });
 
-  test("a fee bump is refused", () => {
+  test("a fee bump is refused, whoever pays its fee", () => {
     const inner = TransactionBuilder.fromXDR(envelope([]), PASSPHRASE) as Transaction;
-    const bump = TransactionBuilder.buildFeeBumpTransaction(sink, "200", inner, PASSPHRASE);
-    expect(outcome(bump.toEnvelope().toXdr("base64"))).toBe("transaction_source_mismatch");
+    for (const feeSource of [sink, demo]) {
+      const bump = TransactionBuilder.buildFeeBumpTransaction(feeSource, "200", inner, PASSPHRASE);
+      expect({ feeSource, outcome: outcome(bump.toEnvelope().toXdr("base64")) }).toEqual({
+        feeSource,
+        outcome: "fee_bump_not_allowed",
+      });
+    }
+  });
+
+  test("a fee bump paid by the demo account itself is refused", () => {
+    const inner = TransactionBuilder.fromXDR(envelope([]), PASSPHRASE) as Transaction;
+    const bump = TransactionBuilder.buildFeeBumpTransaction(demo, "200", inner, PASSPHRASE);
+    expect(outcome(bump.toEnvelope().toXdr("base64"))).toBe("fee_bump_not_allowed");
   });
 
   test("a transaction for another account is refused", () => {
