@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "type-check": "bun run --filter '@lumenwipe/verify' build && tsc --noEmit && tsc -p tests/tsconfig.json --noEmit",
     "test": "bun run --filter '@lumenwipe/verify' build:js && bun test tests/unit",
+    "test:e2e": "bun run --filter '@lumenwipe/verify' build:js && playwright test",
     "test:integration": "LUMENWIPE_RUN_INTEGRATION=1 bun test tests/integration"
   },
   "dependencies": {
@@ -26,6 +27,7 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/bun": "^1.4.3",
     "@types/node": "^26.6.5",

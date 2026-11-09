@@ -74,12 +74,65 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
 
+  # The playground's suite (apps/playground/tests/e2e): the standard recipe end to end through the
+  # real API, and the plain-language error copy. Its own job so a playground failure never reads
+  # as the close path breaking. No secret: tests/e2e/serve.ts creates the playground's issuer and
+  # market maker per run through Friendbot, with a fresh encryption key, and the API key below is
+  # scoped to this run. The hosted playground's accounts are never used.
+  playground:
+    name: playground against testnet
+    runs-on: ubuntu-latest
+    # One recipe (about 3 to 6 minutes of testnet confirmations) plus one retry, with room for
+    # the dev server's first compile.
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.4.4"
+
+      - run: bun install --frozen-lockfile
+
+      - name: Install Playwright browser
+        run: bunx playwright install --with-deps chromium
+        working-directory: apps/playground
+
+      - name: Run the suite
+        working-directory: apps/playground
+        env:
+          # Gateway first: SDF's endpoint stalls for seconds on a share of calls. SDF stays as the failover.
+          STELLAR_RPC_TESTNET: https://soroban-rpc.testnet.stellar.gateway.fm,https://soroban-testnet.stellar.org
+          PATH_ROUTING_API_TESTNET: https://horizon-testnet.stellar.org
+          # Its own label, as the hosted playground has; the key is everything after the first `=`.
+          API_KEYS: playground=${{ github.run_id }}-playground
+          LUMENWIPE_API_URL: http://localhost:3001
+          LUMENWIPE_API_KEY: ${{ github.run_id }}-playground
+        run: bun run --filter '@lumenwipe/playground' test:e2e
+
+      # Always, for the same reason as the web suite's report. No spec reads the credentials
+      # route, so the report and traces hold no demo secret.
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playground-playwright-report
+          path: |
+            apps/playground/playwright-report/
+            apps/playground/test-results/
+          retention-days: 30
+          if-no-files-found: warn
+
   # A red run in the Actions tab is the same as no signal at all if nobody is looking, which is
   # the state this workflow exists to fix. A failure becomes an issue; a later green run closes
-  # it, so a flaky night does not leave a stale one behind.
+  # it, so a flaky night does not leave a stale one behind. One tracker per suite, so a playground
+  # failure is never filed as the close path failing; the web suite's title, labels and assignee
+  # are the ones this job has always used.
   report:
-    name: open an issue on failure
-    needs: e2e
+    name: open an issue on failure (${{ matrix.suite }})
+    needs: [e2e, playground]
     # Manual runs report too. Gating this on `schedule` meant the run you would actually use to
     # confirm a fix could not close the issue, and left the whole reporting path impossible to
     # exercise except by waiting for a 07:00 UTC failure.
@@ -88,16 +141,44 @@ jobs:
     timeout-minutes: 5
     permissions:
       issues: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: web
+            job: e2e
+            name: Nightly e2e
+            assignee: miguelnietoa
+            failed: The nightly end-to-end suite failed against testnet.
+            meaning: |-
+              This suite is the only automated coverage of the full irreversible close path, so a
+              failure here means that path is unverified until it is fixed - it does not mean the
+              tests are wrong. Testnet flakiness is possible; download the playwright-report
+              artifact from the run above before assuming either.
+          - suite: playground
+            job: playground
+            name: Nightly playground e2e
+            assignee: salazarsebas
+            failed: The nightly playground end-to-end suite failed against testnet.
+            meaning: |-
+              The playground's full cycle (create, mess, demolish through the real API, merge) or
+              its plain-language error copy is broken, so the demo may be failing for visitors.
+              Testnet flakiness is possible; download the playground-playwright-report artifact
+              from the run above before assuming either.
     steps:
       - name: Open or close the tracking issue
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          RESULT: ${{ needs.e2e.result }}
+          RESULT: ${{ needs[matrix.job].result }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          NAME: ${{ matrix.name }}
+          ASSIGNEE: ${{ matrix.assignee }}
+          FAILED: ${{ matrix.failed }}
+          MEANING: ${{ matrix.meaning }}
         run: |
           set -euo pipefail
-          TITLE="Nightly e2e is failing against testnet"
+          TITLE="$NAME is failing against testnet"
 
           # Exact title match against the list endpoint, not `--search ... in:title`. That
           # qualifier tokenizes, so an unrelated open issue mentioning these words could be
@@ -107,27 +188,24 @@ jobs:
           EXISTING=$(gh issue list --repo "$REPO" --state open --limit 200 --json number,title 2>/dev/null \
             | jq -r --arg t "$TITLE" 'map(select(.title == $t)) | .[0].number // empty' || true)
 
-          # Only a real failure opens an issue. `needs.e2e.result` is also `cancelled` and
+          # Only a real failure opens an issue. `needs.<job>.result` is also `cancelled` and
           # `skipped` - a queued run superseded by a newer one, or a human stopping a hung job -
           # and reporting those as "the close path is unverified" is the noise that trains
           # people to ignore the tracker.
           if [ "$RESULT" != "failure" ]; then
             if [ "$RESULT" = "success" ] && [ -n "$EXISTING" ]; then
-              gh issue comment "$EXISTING" --repo "$REPO" --body "Nightly e2e is green again: $RUN_URL"
+              gh issue comment "$EXISTING" --repo "$REPO" --body "$NAME is green again: $RUN_URL"
               gh issue close "$EXISTING" --repo "$REPO" --reason completed
             fi
             exit 0
           fi
 
           BODY=$(printf '%s\n' \
-            "The nightly end-to-end suite failed against testnet." \
+            "$FAILED" \
             "" \
             "Run: $RUN_URL" \
             "" \
-            "This suite is the only automated coverage of the full irreversible close path, so a" \
-            "failure here means that path is unverified until it is fixed - it does not mean the" \
-            "tests are wrong. Testnet flakiness is possible; download the playwright-report" \
-            "artifact from the run above before assuming either." \
+            "$MEANING" \
             "" \
             "This issue closes itself on the next green run, including a manual one from the" \
             "Actions tab - so a fix can be confirmed without waiting for 07:00 UTC.")
@@ -138,5 +216,5 @@ jobs:
             # Assigned, not just labelled: an unassigned issue in the backlog is the same
             # "nobody is looking" failure this workflow exists to fix, one level removed.
             gh issue create --repo "$REPO" --title "$TITLE" --body "$BODY" \
-              --label bug --label area:web --assignee miguelnietoa
+              --label bug --label area:web --assignee "$ASSIGNEE"
           fi
