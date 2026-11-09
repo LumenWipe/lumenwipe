@@ -22,6 +22,7 @@ import { stroopsToFixedXlm, xlmToStroops } from "@/lib/utils/amounts";
 import * as rpcModule from "@/lib/stellar/rpc";
 import * as registry from "@/lib/exchange-registry";
 import * as conversionModule from "@/lib/close-api/token-conversion-round";
+import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { mirrorSnapshot } from "./fixtures/ledger-trustlines";
 import { authorizationOf } from "./fixtures/trustline";
@@ -453,8 +454,11 @@ describe("a token conversion round, with no fee sponsor", () => {
       validUntilLedger: 1060,
       covers: ["HANDLE_ASSETS"],
       coversTargets: [TOKEN],
-      intent: { summary: "Exchange 25 XTAR for XLM", operations: [] },
-    } as unknown as CloseTransaction;
+      intent: {
+        ...intentFromXdr(tx.toXDR(), Networks.TESTNET),
+        summary: "Exchange 25 XTAR for XLM",
+      },
+    };
   }
 
   function convert(s: AccountState) {
