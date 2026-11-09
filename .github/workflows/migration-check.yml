@@ -1,0 +1,53 @@
+name: Migration check
+
+# Run by hand after a project or organization move, or an IAM or policy change. Read-only: see
+# scripts/migration-check.sh. Checks the deploy identity is not allowed to read are reported as
+# SKIPPED; run the script as an operator for the full list.
+on:
+  workflow_dispatch:
+    inputs:
+      drill:
+        description: "fail-check makes one check fail, to prove the run fails"
+        type: choice
+        options: [none, fail-check]
+        default: none
+
+permissions: {}
+
+jobs:
+  check:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read # lists the deploy workflow's runs
+      id-token: write # required for keyless auth (Workload Identity Federation)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Authenticate to Google Cloud (keyless / WIF)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SA }}
+
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        with:
+          install_components: beta
+
+      - name: Run the migration check
+        env:
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCP_REGION: ${{ vars.GCP_REGION }}
+          SERVICE: lumenwipe-api
+          API_DOMAIN: ${{ vars.API_DOMAIN }}
+          ALERT_CHANNEL: ${{ vars.ALERT_CHANNEL }}
+          WIF_PROVIDER: ${{ secrets.GCP_WIF_PROVIDER }}
+          CHECK_API_KEY: ${{ secrets.MIGRATION_CHECK_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          SKIP_DENIED: "1"
+          DRILL: ${{ inputs.drill }}
+        run: scripts/migration-check.sh

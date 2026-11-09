@@ -520,6 +520,9 @@ jobs:
       - name: Test the API deploy script
         run: bun test scripts/deploy-api.test.ts
 
+      - name: Test the migration check
+        run: bun test scripts/migration-check.test.ts
+
       - name: Audit dependencies
         run: bun run scripts/audit-gate.ts
 

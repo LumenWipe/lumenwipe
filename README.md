@@ -212,6 +212,7 @@ The web and the API each read their own `.env.local` (copy from each app's `.env
 | `REQUIRE_EXPLICIT_MAINNET_ENDPOINTS`       | Set to `true` to refuse to start while a mainnet endpoint is unset          |
 | `MEDIATOR_PUBLIC_*` / `MEDIATOR_SECRET_*`  | Shared mediator keys (operator-only; enables exchange closes)               |
 | `ADMIN_API_TOKEN` / `FIRESTORE_PROJECT_ID` | Optional; enables self-serve API key management (`/admin/api-keys`, #289)   |
+| `FIRESTORE_DATABASE_ID`                    | Optional; the Firestore database the stores use, `(default)` when unset     |
 
 **`apps/web/.env.local`** - the web:
 

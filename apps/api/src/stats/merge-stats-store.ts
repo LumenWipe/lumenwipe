@@ -1,5 +1,6 @@
 import { FieldValue, Firestore, Timestamp } from "@google-cloud/firestore";
 import type { MergeRecord, Network } from "@lumenwipe/types";
+import { createFirestore } from "@/config/firestore";
 
 export interface Totals {
   accountsClosed: number;
@@ -207,5 +208,5 @@ export class InMemoryMergeStatsStore implements MergeStatsStore {
 export function createMergeStatsStore(): MergeStatsStore {
   const projectId = process.env.FIRESTORE_PROJECT_ID;
   if (!projectId) return new InMemoryMergeStatsStore();
-  return new FirestoreMergeStatsStore(new Firestore({ projectId }));
+  return new FirestoreMergeStatsStore(createFirestore(projectId));
 }

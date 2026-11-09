@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "crypto";
 import { Firestore, Timestamp } from "@google-cloud/firestore";
 import { fail } from "@/common/fail";
+import { createFirestore } from "@/config/firestore";
 import { isValidNetwork, type Network } from "@/config/networks";
 import { withTimeout } from "@/lib/utils/with-timeout";
 
@@ -327,5 +328,5 @@ export class InMemoryApiKeyStore implements ApiKeyStore {
 export function createApiKeyStore(): ApiKeyStore {
   const projectId = process.env.FIRESTORE_PROJECT_ID;
   if (!projectId) return new InMemoryApiKeyStore();
-  return new FirestoreApiKeyStore(new Firestore({ projectId }));
+  return new FirestoreApiKeyStore(createFirestore(projectId));
 }

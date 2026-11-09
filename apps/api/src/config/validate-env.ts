@@ -15,6 +15,7 @@
 
 import { endpointHeaderVars, splitEndpointList, type Network } from "./networks";
 import { isMalformedFlag, ON_UNLESS_FALSE_FLAGS, flagOn } from "./kill-switches";
+import { firestoreDatabaseId, isFirestoreDatabaseId } from "./firestore";
 
 export interface EnvProblem {
   variable: string;
@@ -191,6 +192,17 @@ export function checkEnv(env: NodeJS.ProcessEnv = process.env): {
     } else if (!flagOn(env[name])) {
       warnings.push({ variable: name, message: `${name} is false - ${pauses}.` });
     }
+  }
+
+  // A wrong database id would boot and then fail every key lookup; refusing it keeps the previous
+  // revision serving.
+  if (!isFirestoreDatabaseId(firestoreDatabaseId(env))) {
+    problems.push({
+      variable: "FIRESTORE_DATABASE_ID",
+      message:
+        "FIRESTORE_DATABASE_ID must be `(default)` or 4 to 63 lowercase letters, digits or " +
+        "hyphens, starting with a letter and not ending with a hyphen.",
+    });
   }
 
   for (const list of ENDPOINT_LISTS) {
