@@ -1,0 +1,177 @@
+---
+title: "Restore API keys"
+description: "Back up the API key store, restore it into a separate database, prove a staging service reads it, and check the infrastructure after a migration."
+icon: "box-archive"
+---
+
+<Note>
+  Not yet rehearsed. The recovery time below is a placeholder until the first restore drill records
+  it.
+</Note>
+
+Self-serve API keys are stored only as hashes in the `apiKeys` Firestore collection, so a raw key can never be read back or reissued from the hash. If the collection is lost or corrupted, every self-serve key stops working at once and the only way back is a backup. Static keys in `API_KEYS` are not in Firestore and keep working ([Firestore outage](/runbooks/firestore-outage) has the full blast radius).
+
+The API reads the database named by `FIRESTORE_DATABASE_ID` in the project named by `FIRESTORE_PROJECT_ID`. Unset means `(default)`. An invalid id refuses the boot, so a typo leaves the previous revision serving, and each revision logs `Firestore database: <id>` at boot. A restore is always made into a new, separately named database and checked from a staging service before production is pointed at it.
+
+## Recovery objective
+
+| Path                         | Point-in-time window       | Elapsed time (restore to key resolving) | Rehearsed on       |
+| ---------------------------- | -------------------------- | --------------------------------------- | ------------------ |
+| Point-in-time clone          | Last 7 days, by the minute | `<rehearsed elapsed time>`              | `<rehearsal date>` |
+| Import from the daily export | Daily, kept 30 days        | `<rehearsed elapsed time>`              | `<rehearsal date>` |
+
+## Backup configuration
+
+Run once per project, and again after any project move. Placeholders: `<project>`, `<location>` (the location of the `(default)` database, from `gcloud firestore databases describe --database='(default)' --format='value(locationId)'`), `<export bucket>` and `<export account>` (a service account used only by the scheduled export).
+
+1. **Turn on point-in-time recovery** (seven days of versions, readable by the minute):
+
+   ```bash
+   gcloud firestore databases update --database='(default)' --enable-pitr --project=<project>
+   gcloud firestore databases describe --database='(default)' --project=<project> --format='value(pointInTimeRecoveryEnablement,versionRetentionPeriod)'
+   ```
+
+   Expected: `POINT_IN_TIME_RECOVERY_ENABLED` and `604800s`.
+
+2. **Create the export bucket**, private and in the same project, so only the project's own Firestore service agent writes to it:
+
+   ```bash
+   gcloud storage buckets create gs://<export bucket> --project=<project> --location=<location> \
+     --uniform-bucket-level-access --public-access-prevention
+   echo '{"rule":[{"action":{"type":"Delete"},"condition":{"age":30}}]}' > lifecycle.json
+   gcloud storage buckets update gs://<export bucket> --lifecycle-file=lifecycle.json
+   ```
+
+   Grant nobody else access to the bucket. Expected from `gcloud storage buckets describe gs://<export bucket>`: `public_access_prevention: enforced`, `uniform_bucket_level_access: true`, and the 30 day delete rule.
+
+3. **Schedule the daily export** of the `apiKeys` collection:
+
+   ```bash
+   gcloud projects add-iam-policy-binding <project> \
+     --member=serviceAccount:<export account> --role=roles/datastore.importExportAdmin
+   gcloud scheduler jobs create http firestore-export-api-keys --project=<project> --location=<location> \
+     --schedule='0 3 * * *' --time-zone=Etc/UTC --http-method=POST \
+     --uri='https://firestore.googleapis.com/v1/projects/<project>/databases/(default):exportDocuments' \
+     --message-body='{"outputUriPrefix":"gs://<export bucket>","collectionIds":["apiKeys"]}' \
+     --oauth-service-account-email=<export account>
+   ```
+
+   Run it once by hand with `gcloud scheduler jobs run firestore-export-api-keys --location=<location>`. Expected after a minute: `gcloud storage ls gs://<export bucket>` lists a folder named by the export's start time.
+
+4. **Confirm audit logging** for Firestore: in the project's audit log settings, the Cloud Firestore API has Data Write (and Admin Read) on. Expected from `gcloud projects get-iam-policy <project> --format=json | jq '.auditConfigs'`: an entry for `datastore.googleapis.com` listing `DATA_WRITE`.
+
+### Service account permissions
+
+The API's runtime service account holds only what the API needs:
+
+| Role                                 | Granted on                          | Why                                        |
+| ------------------------------------ | ----------------------------------- | ------------------------------------------ |
+| `roles/datastore.user`               | The project                         | Read and write keys, usage and the counter |
+| `roles/secretmanager.secretAccessor` | Each secret the service mounts only | Read its own secrets at boot, never others |
+
+No other project role. The `service-account` check of the [migration check](#migration-check) fails when the runtime account holds any other project role.
+
+## Restore
+
+Pick a new database id for the restore, such as `keys-restore-<yyyymmdd>`: 4 to 63 lowercase letters, digits or hyphens, starting with a letter. Never restore over `(default)`. Start a timer: the elapsed time until a key resolves is the recovery time to record.
+
+### From point-in-time recovery
+
+Use this when the loss happened in the last seven days. Pick the last whole minute before the loss, in UTC:
+
+```bash
+gcloud firestore databases clone --project=<project> \
+  --source-database='projects/<project>/databases/(default)' \
+  --snapshot-time=<yyyy-mm-ddThh:mm:00Z> --destination-database=<restore id>
+```
+
+The clone holds every collection as of that minute: keys, usage and the counter. To restore only the keys, export them as of that minute and import them as below:
+
+```bash
+gcloud firestore export gs://<export bucket>/pitr-<yyyymmdd> --project=<project> \
+  --database='(default)' --snapshot-time=<yyyy-mm-ddThh:mm:00Z> --collection-ids=apiKeys
+```
+
+### From the daily export
+
+Use this when the loss is older than seven days or point-in-time recovery is unavailable. Pick the newest export folder from before the loss:
+
+```bash
+gcloud storage ls gs://<export bucket>
+gcloud firestore databases create --project=<project> --database=<restore id> \
+  --location=<location> --type=firestore-native
+gcloud firestore import gs://<export bucket>/<export folder> --project=<project> \
+  --database=<restore id> --collection-ids=apiKeys
+```
+
+Expected: the import operation ends `SUCCESSFUL`. Only `apiKeys` is in the export, so usage and the counter start empty in this database.
+
+### Point a staging service at it
+
+A separate service, so production's configuration and traffic are not touched. Use the image production serves now and the same runtime service account:
+
+```bash
+gcloud run services describe lumenwipe-api --region us-central1 --format='value(spec.template.spec.containers[0].image,spec.template.spec.serviceAccountName)'
+gcloud run deploy lumenwipe-api-restore --region us-central1 --image <image> \
+  --service-account <runtime account> --no-allow-unauthenticated --max-instances=1 \
+  --set-env-vars FIRESTORE_PROJECT_ID=<project>,FIRESTORE_DATABASE_ID=<restore id> \
+  --set-secrets API_KEYS=<API_KEYS secret>:latest
+gcloud run services proxy lumenwipe-api-restore --region us-central1 --port 8081
+```
+
+In a second terminal, with `$KEY` a testnet test key created before the restore point, never an integrator's key:
+
+```bash
+curl -s -H "Authorization: Bearer $KEY" http://localhost:8081/v1/testnet/close/status
+gcloud logging read 'resource.labels.service_name="lumenwipe-api-restore" AND textPayload:"Firestore database"' --freshness=15m --limit=1 --format='value(textPayload,jsonPayload.message)'
+```
+
+Expected: `{"error":{"code":"invalid_source",...}}`, which the API only answers once the key has resolved (an unknown key answers `401`), and `Firestore database: <restore id>`. Stop the timer and record the elapsed time in the [recovery objective](#recovery-objective).
+
+### Point production at it
+
+Only after the staging check passes, during a real loss:
+
+```bash
+gcloud run services update lumenwipe-api --region us-central1 --update-env-vars FIRESTORE_DATABASE_ID=<restore id>
+```
+
+If traffic is pinned to one revision, this does not reach users until traffic follows the latest revision again ([Runbooks, conventions](/runbooks/overview#conventions)). Expected: the boot log names `<restore id>`, and a self-serve key resolves against `$API`.
+
+### Clean up after a drill
+
+```bash
+gcloud run services delete lumenwipe-api-restore --region us-central1
+gcloud firestore databases delete --database=<restore id> --project=<project>
+```
+
+## Migration check
+
+`scripts/migration-check.sh` is the required step after any project or organization move, and after any IAM, policy or service change. It is read-only: it only describes, lists and reads (`gcloud` describe, list and get-iam-policy, `gh run list`, `curl` GET). It prints PASS, FAIL or SKIPPED per check and exits non-zero on any failure.
+
+| Check             | Passes when                                                                                     |
+| ----------------- | ----------------------------------------------------------------------------------------------- |
+| `health`          | `/health` answers on the platform URL and the custom domain, and `/health/deep` on the domain   |
+| `ingress-invoker` | The service's ingress and its `roles/run.invoker` binding are the expected ones                 |
+| `deploy-pipeline` | The latest manual run of the deploy workflow succeeded, and the trust condition names this repo |
+| `revision`        | The latest revision booted (it read its secrets) and the service is ready                       |
+| `service-account` | The runtime account holds exactly the expected project roles                                    |
+| `test-key`        | A testnet test key resolves, which reads Firestore                                              |
+| `domain`          | The custom domain mapping is ready; the certificate expiry is printed                           |
+| `billing`         | Billing is enabled and a budget with an alert threshold exists                                  |
+| `logging`         | The `_Default` bucket keeps logs long enough and the `_Required` and `_Default` sinks are on    |
+| `alerting`        | Every alert policy is enabled and routed to the alert channel, and an uptime check exists       |
+| `org-policies`    | The organization policy constraints in force can be read; they are listed                       |
+
+Run it signed in to the project, after a manual run of the deploy workflow:
+
+```bash
+GCP_PROJECT_ID=<project> GCP_REGION=us-central1 SERVICE=lumenwipe-api API_DOMAIN=<api domain> \
+  GITHUB_REPOSITORY=LumenWipe/lumenwipe WIF_PROVIDER=<provider resource name> \
+  CHECK_API_KEY=<testnet test key> ALERT_CHANNEL=<notification channel> \
+  scripts/migration-check.sh
+```
+
+Expected: `11 passed, 0 failed, 0 skipped`. A check whose input is unset is SKIPPED. The header of the script lists every input and its default, and how to add a check. To prove the gate fails, run it with `DRILL=fail-check`: `ingress-invoker` expects a wrong member, fails, and the run exits `1`.
+
+The **Migration check** workflow runs the same script by hand from GitHub Actions, as the deploy identity. Checks that identity is not allowed to read are reported as SKIPPED; run the script as an operator for the full list.

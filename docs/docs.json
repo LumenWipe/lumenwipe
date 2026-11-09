@@ -60,6 +60,7 @@
           "runbooks/rotate-secrets",
           "runbooks/provider-outage",
           "runbooks/firestore-outage",
+          "runbooks/restore-api-keys",
           "runbooks/bad-deploy",
           "runbooks/drained-sponsor",
           "runbooks/registry-expiry",

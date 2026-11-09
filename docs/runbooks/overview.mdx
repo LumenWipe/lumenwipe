@@ -6,18 +6,20 @@ icon: "book"
 
 These pages are the procedures a maintainer follows when something goes wrong, or when a key has to change. Each one lists the steps in order, the blast radius, and how to confirm the fix, with the command to run and the result to expect.
 
-| Runbook                                                    | Use it when                                                                              |
-| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| [Incident response](/runbooks/incident-response)           | Anything is wrong and you need to decide how bad it is, who acts, and what to say        |
-| [Rotate the relay account](/runbooks/rotate-relay-account) | The relay account (mediator) key may be exposed, or a planned rotation is due            |
-| [Rotate the fee sponsor](/runbooks/rotate-fee-sponsor)     | The fee sponsor key may be exposed, or a planned rotation is due                         |
-| [Rotate operator secrets](/runbooks/rotate-secrets)        | The admin token, the integrator secret, a static API key or a provider key has to change |
-| [Provider outage](/runbooks/provider-outage)               | An RPC or Horizon-compatible provider is failing or rate limiting                        |
-| [Firestore outage](/runbooks/firestore-outage)             | Self-serve keys, usage or the merge counter fail                                         |
-| [Bad deploy](/runbooks/bad-deploy)                         | A revision that reached traffic misbehaves                                               |
-| [Drained fee sponsor](/runbooks/drained-sponsor)           | The sponsor balance alert fired, or sponsored closes fail                                |
-| [Registry expiry](/runbooks/registry-expiry)               | The exchange or contract registry is near or past its `validUntil` date                  |
-| [Close stuck mid-flow](/runbooks/stuck-close)              | A user or integrator reports a close that stopped partway                                |
+| Runbook                                                       | Use it when                                                                              |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| [Incident response](/runbooks/incident-response)              | Anything is wrong and you need to decide how bad it is, who acts, and what to say        |
+| [Rotate the relay account](/runbooks/rotate-relay-account)    | The relay account (mediator) key may be exposed, or a planned rotation is due            |
+| [Rotate the fee sponsor](/runbooks/rotate-fee-sponsor)        | The fee sponsor key may be exposed, or a planned rotation is due                         |
+| [Rotate operator secrets](/runbooks/rotate-secrets)           | The admin token, the integrator secret, a static API key or a provider key has to change |
+| [Provider outage](/runbooks/provider-outage)                  | An RPC or Horizon-compatible provider is failing or rate limiting                        |
+| [Firestore outage](/runbooks/firestore-outage)                | Self-serve keys, usage or the merge counter fail                                         |
+| [Restore API keys](/runbooks/restore-api-keys)                | The API key store is lost or corrupted, or a restore drill is due                        |
+| [Migration check](/runbooks/restore-api-keys#migration-check) | After any project or organization move, or an IAM, policy or service change: required    |
+| [Bad deploy](/runbooks/bad-deploy)                            | A revision that reached traffic misbehaves                                               |
+| [Drained fee sponsor](/runbooks/drained-sponsor)              | The sponsor balance alert fired, or sponsored closes fail                                |
+| [Registry expiry](/runbooks/registry-expiry)                  | The exchange or contract registry is near or past its `validUntil` date                  |
+| [Close stuck mid-flow](/runbooks/stuck-close)                 | A user or integrator reports a close that stopped partway                                |
 
 ## Conventions
 
