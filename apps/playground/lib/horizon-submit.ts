@@ -7,6 +7,10 @@
  *  so pointing the playground at a different Horizon is a one-line change. */
 export const HORIZON_TESTNET_URL = "https://horizon-testnet.stellar.org";
 
+/** The Soroban RPC lib/soroban-submit.ts simulates and sends through; sequences still come from
+ *  Horizon above. */
+export const SOROBAN_RPC_TESTNET_URL = "https://soroban-testnet.stellar.org";
+
 export class TxSubmitError extends Error {
   constructor(
     message: string,

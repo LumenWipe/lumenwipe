@@ -28,6 +28,7 @@ import {
   verifyDemolishTransaction,
   type PlaygroundCloseExpectation,
 } from "@/lib/verify";
+import { SorobanVerificationError } from "@/lib/verify-soroban";
 import recipeFixture from "../fixtures/api-recipe-close.json";
 import dispositionsFixture from "../fixtures/api-recipe-dispositions.json";
 import claimsFixture from "../fixtures/api-recipe-claims.json";
@@ -209,6 +210,7 @@ function outcome(xdrBase64: string, expected = expectation()): string {
   } catch (err) {
     if (err instanceof VerificationError) return err.code;
     if (err instanceof PlaygroundVerificationError) return err.message;
+    if (err instanceof SorobanVerificationError) return err.message;
     throw err;
   }
 }
@@ -649,13 +651,14 @@ describe("what a playground close never contains", () => {
     expect(outcome(envelope([create]))).toBe("operation_unknown");
   });
 
-  test("a Soroban call is refused: the demo account holds no DeFi position", () => {
+  test("a Soroban call is refused: the session seeded no protocol", () => {
     const op = Operation.invokeContractFunction({
       contract: "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
       function: "withdraw",
       args: [],
     });
-    expect(outcome(envelope([op], {}, false))).toBe("exit_contract_not_position");
+    // By the playground's own Soroban module, before the shared verifier (verify-soroban.test.ts).
+    expect(outcome(envelope([op], {}, false))).toBe("soroban_contract_not_pinned");
   });
 
   test("an operation sent by another account is refused", () => {
@@ -735,7 +738,11 @@ describe("the playground's close operation types", () => {
       if (!(parsed instanceof Transaction)) throw new Error("expected a transaction");
       for (const op of parsed.operations) types.add(op.type);
     }
-    expect(types).toEqual(new Set(PLAYGROUND_CLOSE_OPERATION_TYPES));
+    // No scenario seeds a Soroban protocol yet, so no close holds a contract call; the type is
+    // covered by tests/unit/verify-soroban.test.ts.
+    expect(types).toEqual(
+      new Set(PLAYGROUND_CLOSE_OPERATION_TYPES.filter((t) => t !== "invokeHostFunction"))
+    );
   });
 
   test("a type the shared anchor allows but no scenario creates is refused", () => {
