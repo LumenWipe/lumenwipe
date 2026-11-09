@@ -13,6 +13,8 @@ const CODES = [
   "step_already_executed",
   "invalid_step",
   "invalid_json",
+  "cleanup_failed",
+  "network_error",
 ];
 
 test("every route error code maps to its own copy", () => {

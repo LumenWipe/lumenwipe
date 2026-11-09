@@ -14,6 +14,8 @@ const ERROR_COPY = new Map<string, string>(
     step_in_progress: "This step is already running. Wait for it to finish.",
     step_already_executed: "This step already ran for this demo. Start a new one to run it again.",
     invalid_step: "This demo step is not recognized. Start a new demo.",
+    cleanup_failed: "The demo finished, but its leftover test accounts could not be cleared.",
+    network_error: "Could not reach the playground. Check your connection and try again.",
     invalid_json: "The request could not be read. Please try again.",
   })
 );

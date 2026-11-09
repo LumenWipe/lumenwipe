@@ -265,3 +265,16 @@ describe("failure responses carry a code and no upstream text", () => {
     expect(leaks(result)).toBe(false);
   });
 });
+
+test("a store failure during cleanup is a cleanup_failed code, not a bare 500", async () => {
+  const store = memoryStore();
+  const session = await store.createSession(newSessionData());
+  const failingStore: SessionStore = {
+    ...store,
+    deleteSession: async () => {
+      throw new Error("ECONNRESET upstash.example 7f3a");
+    },
+  };
+  const result = await runCleanup(failingStore, session.id, { recycle: async () => [] });
+  expect(result).toEqual({ status: 502, body: { error: "cleanup_failed" } });
+});

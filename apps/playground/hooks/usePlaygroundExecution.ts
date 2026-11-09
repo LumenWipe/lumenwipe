@@ -18,7 +18,8 @@ import {
   type MessStepDef,
 } from "@/lib/mess-plan";
 import type { AccountState, IntentOperation } from "@lumenwipe/sdk";
-import { playgroundRequest, SessionExpiredError } from "@/lib/playground-api";
+import { GENERIC_ERROR_COPY } from "@/lib/error-copy";
+import { PlaygroundApiError, playgroundRequest, SessionExpiredError } from "@/lib/playground-api";
 
 interface SessionResponse {
   sessionId: string;
@@ -152,8 +153,8 @@ export function usePlaygroundExecution(): UsePlaygroundExecutionResult {
       store.setPhase("EXPIRED");
       return;
     }
-    const message = err instanceof Error ? err.message : String(err);
-    store.setLastError(message);
+    if (!(err instanceof PlaygroundApiError)) console.error("[playground] unexpected error:", err);
+    store.setLastError(err instanceof PlaygroundApiError ? err.message : GENERIC_ERROR_COPY);
     store.setPhase("ERROR");
   }, []);
 

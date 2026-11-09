@@ -1,6 +1,9 @@
 import { errorCopy } from "./error-copy";
 
-export class SessionExpiredError extends Error {}
+/** An error whose message is already plain-language copy, safe to show as is. */
+export class PlaygroundApiError extends Error {}
+
+export class SessionExpiredError extends PlaygroundApiError {}
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -20,14 +23,19 @@ export async function playgroundRequest<T>(
   path: string,
   init?: RequestInit
 ): Promise<T> {
-  const res = await fetchImpl(`/api${path}`, {
-    headers: { "Content-Type": "application/json" },
-    ...init,
-  });
+  let res: Response;
+  try {
+    res = await fetchImpl(`/api${path}`, {
+      headers: { "Content-Type": "application/json" },
+      ...init,
+    });
+  } catch {
+    throw new PlaygroundApiError(errorCopy("network_error"));
+  }
   if (res.ok) return (await res.json()) as T;
   const code = errorCode(await res.json().catch(() => null));
   if (res.status === 404 && code === "session_not_found") {
     throw new SessionExpiredError(errorCopy(code));
   }
-  throw new Error(errorCopy(code, res.status));
+  throw new PlaygroundApiError(errorCopy(code, res.status));
 }

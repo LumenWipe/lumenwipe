@@ -150,7 +150,8 @@ export async function runCleanup(
     });
   } catch (err) {
     if (isConfigError(err)) return NOT_CONFIGURED;
-    throw err;
+    console.error(`[playground] cleanup failed for session ${id}:`, err);
+    return { status: 502, body: { error: "cleanup_failed" } };
   }
 }
 

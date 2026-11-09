@@ -1,6 +1,11 @@
 import { test, expect } from "bun:test";
 import { errorCopy, GENERIC_ERROR_COPY } from "@/lib/error-copy";
-import { playgroundRequest, SessionExpiredError, type FetchLike } from "@/lib/playground-api";
+import {
+  PlaygroundApiError,
+  playgroundRequest,
+  SessionExpiredError,
+  type FetchLike,
+} from "@/lib/playground-api";
 
 const respond =
   (status: number, body: unknown): FetchLike =>
@@ -44,4 +49,21 @@ test("an error's copy comes from its code, never from the response text", async 
   const err = await failure(respond(502, { error: "tx_failed", detail: "op_underfunded" }));
   expect((err as Error).message).toBe(errorCopy("tx_failed"));
   expect((err as Error).message).not.toContain("op_underfunded");
+});
+
+test("a fetch that never reaches the server carries the network copy, not the browser's text", async () => {
+  const err = await failure(async () => {
+    throw new TypeError("Failed to fetch");
+  });
+  expect(err).toBeInstanceOf(PlaygroundApiError);
+  expect(err).not.toBeInstanceOf(SessionExpiredError);
+  expect((err as Error).message).toBe(errorCopy("network_error"));
+  expect((err as Error).message).not.toContain("Failed to fetch");
+});
+
+test("every failure response is a PlaygroundApiError carrying copy", async () => {
+  expect(await failure(respond(502, { error: "tx_failed" }))).toBeInstanceOf(PlaygroundApiError);
+  expect(await failure(respond(404, { error: "session_not_found" }))).toBeInstanceOf(
+    PlaygroundApiError
+  );
 });
