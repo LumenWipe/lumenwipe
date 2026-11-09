@@ -276,12 +276,13 @@ To add an exchange:
 
 1. Find the exchange's official Stellar deposit address documentation.
 2. Determine the memo type they require (`text`, `id`, `hash`, or none).
-3. Open a PR that adds the entry to `packages/types/src/exchange-registry.json` - there is one registry file, in the shared types package, served by the API and used by the web as an offline floor. Include a link to the source documentation in the PR description.
-4. A maintainer will verify the address and merge.
+3. Open a PR that adds the entry to `apps/api/src/config/exchange-registry.json`. There is one registry file: the API loads it and serves it, and the web bundles the same file through the `@registry/*` alias as an offline floor for when the API is unreachable. Include a link to the source documentation in the PR description.
+4. Run `bun test tests/unit/exchange-registry-validation.test.ts` from `apps/api` before opening the PR; the suite validates the shipped file, so a malformed edit fails CI.
+5. A maintainer will verify the address and merge.
 
 **Deposit addresses only.** Exchanges also publish withdrawal and cold-storage addresses, and those are deliberately excluded: the registry answers "is this where a user is depositing", and a cold-storage address listed as an exchange would route a close through the mediator for no reason.
 
-**The registry expires, and expiry blocks exchange closes.** The registry carries `lastVerified` and `validUntil`. Past `validUntil` the web refuses to close into a listed exchange and says why, rather than proceeding on rules nobody has checked. That is deliberate: a wrong memo rule means the funds arrive at a live address and are credited to nobody - the transaction succeeds, there is no error, and the source account is gone.
+**The registry expires, and expiry blocks exchange closes.** The registry carries `lastVerified` and `validUntil`. Past `validUntil`, both sides refuse a close into a listed exchange rather than proceed on rules nobody has checked: the API answers `POST /close/transactions` with `503 registry_expired` (see `docs/runbooks/registry-expiry.mdx`), and the web says why on the destination and plan screens and has `verify()` reject the transaction with `registry_expired` before anything is signed. Closes into any other destination are unaffected. That is deliberate: a wrong memo rule means the funds arrive at a live address and are credited to nobody - the transaction succeeds, there is no error, and the source account is gone.
 
 **Refreshing it is quarterly, bounded, manual work.** Twenty entries. For each, open the exchange's own deposit documentation and confirm the address and the memo type still match; `https://api.stellar.expert/explorer/public/directory` (which needs a `User-Agent` header, and returns 403 without one) is useful for discovery and for cross-checking the memo-required flag, but it carries no memo _type_, so it cannot replace reading the exchange's docs. Then set `lastVerified` to today and `validUntil` 90 days out, and say in the PR what you checked against.
 
