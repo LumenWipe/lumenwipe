@@ -22,6 +22,7 @@ export const MESS_STEP_IDS = [
   "TRUST_BONUS",
   "CLAIMABLE_BALANCES",
   "SPONSORED_ENTRIES",
+  "MULTISIG",
 ] as const;
 
 export type MessStepId = (typeof MESS_STEP_IDS)[number];
@@ -57,7 +58,15 @@ export type StepAction =
       asset: AssetCode;
       dataEntry: { key: string; value: string };
       helperFundingXlm: string;
-    };
+    }
+  | { kind: "multisig"; variant: MultisigVariant };
+
+/**
+ * two_of_three: two co-signers beside the master key, any two of the three sign. hash_x: the
+ * master key and a hash(x) signer, both needed. pre_auth: two_of_three plus a pre-authorized
+ * transaction signer whose transaction expired before it was made, so it can never sign.
+ */
+export type MultisigVariant = "two_of_three" | "hash_x" | "pre_auth";
 
 /**
  * How the close treats a claimable balance the mess creates: the demo claims it, adds the trustline
@@ -210,7 +219,8 @@ export type ScenarioId =
   | "forgotten-signer"
   | "dispositions"
   | "claimable-balances"
-  | "sponsored-reserves";
+  | "sponsored-reserves"
+  | "multisig";
 
 export interface OrderedStep {
   /** Steps from every scenario are sorted by this key into one plan. */

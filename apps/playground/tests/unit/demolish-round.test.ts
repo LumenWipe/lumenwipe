@@ -7,7 +7,7 @@ import {
   type TransactionLookupResponse,
   type TransactionsResponse,
 } from "@lumenwipe/sdk";
-import { runCloseRound, type DemolishApi } from "@/lib/demolish";
+import { runCloseRound, type DemolishApi, type DemolishChain } from "@/lib/demolish";
 import { runDemolishRound } from "@/lib/session-actions";
 import type { PlaygroundSession, SessionStore } from "@/lib/session-store";
 import { expectationFromSession } from "@/lib/verify";
@@ -27,6 +27,14 @@ const demo = Keypair.random();
 const sink = Keypair.random().publicKey();
 const lwdemoIssuer = Keypair.random().publicKey();
 const DATA_KEY = "promo_code";
+
+/** The demo as the playground creates it: its master key alone, every threshold 0. */
+const MASTER_ONLY: DemolishChain = {
+  signerState: async () => ({
+    signers: [{ key: demo.publicKey(), type: "ed25519_public_key", weight: 1 }],
+    thresholds: { low: 0, med: 0, high: 0 },
+  }),
+};
 
 const hashOf = (xdr: string): string =>
   Buffer.from(TransactionBuilder.fromXdr(xdr, PASSPHRASE).hash()).toString("hex");
@@ -170,8 +178,10 @@ function round(store: SessionStore, id: string, api: FakeApi) {
     round: (session, hooks) =>
       runCloseRound(
         api,
+        MASTER_ONLY,
         {
           demoKeypair: demo,
+          signingKeys: [],
           expected: expectationFromSession(session, sink, lwdemoIssuer),
           apiUrl: "unused",
           apiKey: "unused",
@@ -357,8 +367,10 @@ describe("a demolish round resumes from where a request died", () => {
       round: (s, hooks) =>
         runCloseRound(
           api,
+          MASTER_ONLY,
           {
             demoKeypair: demo,
+            signingKeys: [],
             expected: expectationFromSession(
               {
                 ...s,

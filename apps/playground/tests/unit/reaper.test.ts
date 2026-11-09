@@ -2,7 +2,11 @@ import { randomBytes } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { NextRequest } from "next/server";
 import { Keypair } from "@stellar/stellar-sdk";
-import { DemolishDecisionUnanswerableError, type DemolishRoundHooks } from "@/lib/demolish";
+import {
+  DemolishDecisionUnanswerableError,
+  runCloseRound,
+  type DemolishRoundHooks,
+} from "@/lib/demolish";
 import { TxSubmitError } from "@/lib/horizon-submit";
 import { selectionForMode } from "@/lib/mess-plan";
 import {
@@ -12,7 +16,14 @@ import {
   type ReaperDeps,
   type ReaperSummary,
 } from "@/lib/reaper";
-import { cleanupActionDeps, handleCreateSession, handleReap } from "@/lib/route-handlers";
+import { multisigSigners } from "@/lib/mess-builders";
+import {
+  cleanupActionDeps,
+  demolishRoundDeps,
+  handleCreateSession,
+  handleReap,
+} from "@/lib/route-handlers";
+import type { MultisigVariant } from "@/lib/scenarios";
 import { PlaygroundVerificationError } from "@/lib/verify";
 import {
   SESSION_RECORD_TTL_SECONDS,
@@ -20,7 +31,10 @@ import {
   type PlaygroundSession,
   type SessionStore,
 } from "@/lib/session-store";
+import { FakeMultisigLedger } from "./multisig-fixtures";
 import { fakeClock, memoryStore, newSessionData, type FakeClock } from "./session-fixtures";
+
+const MULTISIG_VARIANTS: readonly MultisigVariant[] = ["two_of_three", "hash_x", "pre_auth"];
 
 // Fake store and fake network only. Every key is Keypair.random() per run, and the "encryption"
 // is a reversible stand-in so the tests can see which secrets were decrypted and prove none of
@@ -534,4 +548,75 @@ describe("reaper route", () => {
     });
     expect(res.status).toBe(503);
   });
+});
+
+describe("an abandoned multi-signature session", () => {
+  test.each([
+    [0, "two of three keys"],
+    [1, "a hash(x) signer"],
+    [2, "a dormant pre-authorized transaction"],
+  ] as const)(
+    "variant %d, %s: the signers go in their own round, then the merge",
+    async (variant) => {
+      const store = memoryStore();
+      const demo = Keypair.random();
+      const signers = multisigSigners(MULTISIG_VARIANTS[variant]!, demo.publicKey());
+      const secrets = [demo.secret(), ...signers.flatMap((s) => (s.secret ? [s.secret] : []))];
+      const session = await store.createSession({
+        ...newSessionData(),
+        demoPublic: demo.publicKey(),
+        encDemoSecret: encrypt(demo.secret()),
+        selection: { scenarios: [{ id: "multisig", params: { variant } }] },
+        completedMessSteps: ["SETUP", "MULTISIG"],
+        recordedSigners: signers.map(({ type, key, weight, secret }) => ({
+          type,
+          key,
+          weight,
+          encSecret: secret === null ? null : encrypt(secret),
+        })),
+      });
+      const ledger = new FakeMultisigLedger(demo.publicKey(), mm.publicKey(), signers);
+      const net = network(demo);
+      let inRound = false;
+      const outsideRound: string[] = [];
+      const round = demolishRoundDeps({
+        mm: () => mm,
+        issuer: () => issuer,
+        api: () => ({ apiUrl: "http://localhost:3001", apiKey: "unused" }),
+        decrypt: (payload) => {
+          if (!inRound) outsideRound.push(payload);
+          return Buffer.from(payload.slice(ENC.length), "base64").toString("utf8");
+        },
+        runDemolish: async (opts) => {
+          const result = await runCloseRound(ledger, ledger, opts, async () => {});
+          if (!ledger.open) net.live.delete(demo.publicKey());
+          return result;
+        },
+      })!;
+      const deps = reaper(store, net, {
+        round: {
+          round: async (s, hooks) => {
+            inRound = true;
+            try {
+              return await round.round(s, hooks);
+            } finally {
+              inRound = false;
+            }
+          },
+        },
+      });
+
+      const summary = await runReaper(deps);
+
+      expect(counts(summary)).toEqual({ reaped: 1, kept: 0, young: 0, pruned: 0 });
+      expect(ledger.submitted.map((s) => [s.ops[0], s.refused])).toEqual([
+        ["setOptions", null],
+        ["accountMerge", null],
+      ]);
+      expect(ledger.open).toBe(false);
+      expect(outsideRound).toEqual([]);
+      expect(await store.loadSession(session.id)).toBeNull();
+      expectNoSecretLogged(secrets);
+    }
+  );
 });

@@ -31,6 +31,7 @@ function expected(over: Partial<PlaygroundCloseExpectation> = {}): PlaygroundClo
       { code: "LWGEM", issuer: ISSUER },
     ],
     recordedSigners: [],
+    raisesThresholds: false,
     offerCount: 0,
     dataEntryCount: 0,
     transfers: [],

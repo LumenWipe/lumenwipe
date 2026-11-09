@@ -25,6 +25,13 @@ const destroyIfLive = (live: readonly LiveNode[], nodeId: string): SceneAction |
 const pulseIfLive = (live: readonly LiveNode[], nodeId: string): SceneAction | null =>
   live.some((n) => n.id === nodeId) ? { type: "pulse", nodeId } : null;
 
+/** The scene nodes a removed signer of each type can stand for, in the order they are taken. */
+const SIGNER_NODES: Partial<Record<string, readonly string[]>> = {
+  ed25519_public_key: ["signer:extra", "signer:cosigner:1", "signer:cosigner:2"],
+  hash_x: ["signer:hashx"],
+  preauth_tx: ["signer:preauth"],
+};
+
 /** No visual: the operation changes nothing the scene draws. */
 const noVisual = (): null => null;
 
@@ -40,8 +47,12 @@ export const SCENE_HANDLERS: { [T in OperationType]: Handler<T> } = {
     const node = live.find((n) => n.offerId === op.offerId);
     return node ? { type: "destroy", nodeIds: [node.id] } : null;
   },
-  set_options: (op, live) =>
-    op.signer && op.signer.weight === 0 ? destroyIfLive(live, "signer:extra") : null,
+  set_options: (op, live) => {
+    if (!op.signer || op.signer.weight !== 0) return null;
+    const candidates = SIGNER_NODES[op.signer.type] ?? [];
+    const node = candidates.find((id) => live.some((n) => n.id === id));
+    return node ? { type: "destroy", nodeIds: [node] } : null;
+  },
   payment: (op, live) => pulseIfLive(live, trustlineNodeId(op.asset)),
   account_merge: () => ({ type: "merge" }),
   // A conversion empties the trustline into XLM, as a payment out of it does.

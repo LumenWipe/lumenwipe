@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import {
   Account,
@@ -6,20 +7,24 @@ import {
   Memo,
   Networks,
   Operation,
+  StrKey,
   Transaction,
   TransactionBuilder,
+  hash,
   xdr,
 } from "@stellar/stellar-sdk";
 import { VerificationError } from "@lumenwipe/verify";
 import type { CloseTransaction } from "@lumenwipe/sdk";
 import { selectionForMode } from "@/lib/mess-plan";
 import { parseSelection, type ScenarioSelection } from "@/lib/scenarios";
+import type { RecordedSigner } from "@/lib/session-store";
 import {
   amountToStroops,
   expectationFromSession,
   maxOperations,
   PLAYGROUND_CLOSE_OPERATION_TYPES,
   PlaygroundVerificationError,
+  sessionThresholds,
   verifyDemolishTransaction,
   type PlaygroundCloseExpectation,
 } from "@/lib/verify";
@@ -44,6 +49,13 @@ const lwdemoIssuer = Keypair.random().publicKey();
 const airdropIssuer = Keypair.random().publicKey();
 const rugIssuer = Keypair.random().publicKey();
 const forgotten = Keypair.random().publicKey();
+const ed25519 = (key: string): RecordedSigner => ({
+  type: "ed25519_public_key",
+  key,
+  weight: 1,
+  encSecret: null,
+});
+const FORGOTTEN = ed25519(forgotten);
 const LWDEMO = new Asset("LWDEMO", lwdemoIssuer);
 const LWCOIN = new Asset("LWCOIN", lwdemoIssuer);
 const LWGEM = new Asset("LWGEM", lwdemoIssuer);
@@ -84,7 +96,7 @@ function expectation(
     {
       demoPublic: demo,
       ephemeralIssuers,
-      recordedSigners: [forgotten],
+      recordedSigners: [FORGOTTEN],
       selection,
       transferRecipient: null,
       helperAccounts: [],
@@ -114,7 +126,7 @@ function claimsExpectation(selection = CLAIMS_SELECTION): PlaygroundCloseExpecta
         { assetCode: "GIFT", publicKey: giftIssuer, encSecret: "enc" },
         { assetCode: "PERK", publicKey: perkIssuer, encSecret: "enc" },
       ],
-      recordedSigners: [forgotten],
+      recordedSigners: [FORGOTTEN],
       selection,
       transferRecipient: null,
       helperAccounts: [{ role: "beneficiary", publicKey: beneficiary, encSecret: "enc" }],
@@ -226,7 +238,7 @@ function recipeExpectation(recipe: Recipe, recordedSigners: string[]): Playgroun
     {
       demoPublic: session.demoPublic,
       ephemeralIssuers: session.ephemeralIssuers.map((e) => ({ ...e, encSecret: "enc" })),
-      recordedSigners,
+      recordedSigners: recordedSigners.map(ed25519),
       selection,
       transferRecipient: null,
       helperAccounts: [],
@@ -324,7 +336,7 @@ describe("expectationFromSession", () => {
   });
 
   test("copies the recorded signers rather than sharing the session's array", () => {
-    const recordedSigners = [forgotten];
+    const recordedSigners = [FORGOTTEN];
     const expected = expectationFromSession(
       {
         demoPublic: demo,
@@ -338,8 +350,8 @@ describe("expectationFromSession", () => {
       sink,
       lwdemoIssuer
     );
-    recordedSigners.push(Keypair.random().publicKey());
-    expect(expected.recordedSigners).toEqual([forgotten]);
+    recordedSigners.push(ed25519(Keypair.random().publicKey()));
+    expect(expected.recordedSigners).toEqual([{ type: "ed25519_public_key", key: forgotten }]);
   });
 });
 
@@ -409,6 +421,129 @@ describe("setOptions", () => {
     ]) {
       expect(outcome(envelope([op]))).toBe("account_settings_changed");
     }
+  });
+});
+
+describe("a multi-signature session's signer removal round", () => {
+  const preimage = randomBytes(32);
+  const cosigners = [Keypair.random().publicKey(), Keypair.random().publicKey()];
+  const hashKey = StrKey.encodeSha256Hash(hash(preimage));
+  const preauthKey = StrKey.encodePreAuthTx(randomBytes(32));
+  const recorded: Record<string, RecordedSigner> = {
+    ed25519: { ...ed25519(cosigners[0]!), encSecret: "enc" },
+    hash_x: { type: "hash_x", key: hashKey, weight: 1, encSecret: "enc" },
+    preauth_tx: { type: "preauth_tx", key: preauthKey, weight: 1, encSecret: null },
+  };
+  const multisigExpectation = (
+    signers: RecordedSigner[],
+    selection: ScenarioSelection = { scenarios: [{ id: "multisig", params: { variant: 2 } }] }
+  ): PlaygroundCloseExpectation =>
+    expectationFromSession(
+      {
+        demoPublic: demo,
+        ephemeralIssuers: [],
+        recordedSigners: signers,
+        selection,
+        transferRecipient: null,
+        helperAccounts: [],
+        claimableBalances: [],
+      },
+      sink,
+      lwdemoIssuer
+    );
+  const ALL = multisigExpectation([
+    recorded.ed25519!,
+    { ...ed25519(cosigners[1]!), encSecret: "enc" },
+    recorded.hash_x!,
+    recorded.preauth_tx!,
+  ]);
+  const remove = (type: string, key: string, weight = 0): xdr.Operation => {
+    if (type === "hash_x") {
+      return Operation.setOptions({ signer: { sha256Hash: StrKey.decodeSha256Hash(key), weight } });
+    }
+    if (type === "preauth_tx") {
+      return Operation.setOptions({ signer: { preAuthTx: StrKey.decodePreAuthTx(key), weight } });
+    }
+    return Operation.setOptions({ signer: { ed25519PublicKey: key, weight } });
+  };
+  const reset = (low = 0, med = 1, high = 1) =>
+    Operation.setOptions({ lowThreshold: low, medThreshold: med, highThreshold: high });
+  const round = (ops: xdr.Operation[], expected = ALL) =>
+    outcome(envelope(ops, {}, false), expected);
+
+  test("the expectation carries each recorded signer with its type, and the raised thresholds", () => {
+    expect(ALL.raisesThresholds).toBe(true);
+    expect(ALL.recordedSigners.map((s) => s.type)).toEqual([
+      "ed25519_public_key",
+      "ed25519_public_key",
+      "hash_x",
+      "preauth_tx",
+    ]);
+    expect(expectation().raisesThresholds).toBe(false);
+  });
+
+  test("the account thresholds handed to the shared verifier are the ones the plan sets", () => {
+    expect(sessionThresholds(ALL)).toEqual({ low: 2, med: 2, high: 2 });
+    expect(sessionThresholds(expectation())).toEqual({ low: 0, med: 0, high: 0 });
+  });
+
+  test("removing every recorded signer, of each type, then the reset is accepted", () => {
+    const all = [...cosigners.map((k) => remove("ed25519", k)), remove("hash_x", hashKey)];
+    expect(round([...all, remove("preauth_tx", preauthKey), reset()])).toBe("accepted");
+    for (const [type, signer] of Object.entries(recorded)) {
+      const only = multisigExpectation([signer]);
+      expect([type, round([remove(type, signer.key), reset()], only)]).toEqual([type, "accepted"]);
+    }
+  });
+
+  test("removing a signer the session did not record is refused, for each type", () => {
+    const strangers: [string, string][] = [
+      ["ed25519", Keypair.random().publicKey()],
+      ["hash_x", StrKey.encodeSha256Hash(randomBytes(32))],
+      ["preauth_tx", StrKey.encodePreAuthTx(randomBytes(32))],
+    ];
+    for (const [type, key] of strangers) {
+      expect([type, round([remove(type, key), reset()])]).toEqual([type, "signer_unknown"]);
+    }
+  });
+
+  test("a recorded key presented as another signer type is refused", () => {
+    // The hash(x) key's bytes as a pre-authorized transaction: same 32 bytes, another signer.
+    const asPreauth = StrKey.encodePreAuthTx(StrKey.decodeSha256Hash(hashKey));
+    const only = multisigExpectation([recorded.hash_x!]);
+    expect(round([remove("preauth_tx", asPreauth), reset()], only)).toBe("signer_unknown");
+  });
+
+  test("each signer is removed once, and only by a weight of zero", () => {
+    const twice = [remove("hash_x", hashKey), remove("hash_x", hashKey), reset()];
+    expect(round(twice)).toBe("signer_removal_duplicate");
+    expect(round([remove("hash_x", hashKey, 1), reset()])).toBe("signer_added");
+  });
+
+  test("the round ends in exactly the 0/1/1 reset and nothing else", () => {
+    expect(round([remove("hash_x", hashKey)])).toBe("threshold_reset_invalid");
+    expect(round([reset(), remove("hash_x", hashKey)])).toBe("threshold_reset_invalid");
+    expect(round([remove("hash_x", hashKey), reset(0, 0, 1)])).toBe("threshold_reset_invalid");
+    expect(round([remove("hash_x", hashKey), reset(1, 1, 1)])).toBe("threshold_reset_invalid");
+    expect(round([remove("hash_x", hashKey), reset(), reset()])).toBe("threshold_reset_invalid");
+    const withThreshold = Operation.setOptions({
+      signer: { sha256Hash: StrKey.decodeSha256Hash(hashKey), weight: 0 },
+      highThreshold: 1,
+    });
+    expect(round([withThreshold, reset()])).toBe("threshold_reset_invalid");
+  });
+
+  test("anything but signer removals and the reset makes it no removal round", () => {
+    const data = Operation.manageData({ name: "promo_code", value: null });
+    expect(round([remove("hash_x", hashKey), data, reset()])).toBe("merge_not_final");
+  });
+
+  test("a session that never raised its thresholds gets no removal round", () => {
+    const forgottenOnly = multisigExpectation([FORGOTTEN], {
+      scenarios: [{ id: "forgotten-signer", params: {} }],
+    });
+    expect(forgottenOnly.raisesThresholds).toBe(false);
+    expect(round([remove("ed25519", forgotten), reset()], forgottenOnly)).toBe("merge_not_final");
   });
 });
 
@@ -625,7 +760,7 @@ describe("dispositions the session chose", () => {
       {
         demoPublic: demo,
         ephemeralIssuers: ISSUERS,
-        recordedSigners: [forgotten],
+        recordedSigners: [FORGOTTEN],
         selection: CHOSEN,
         transferRecipient: { publicKey: recipient, encSecret: "enc" },
         helperAccounts: [],
@@ -663,7 +798,7 @@ describe("dispositions the session chose", () => {
         {
           demoPublic: demo,
           ephemeralIssuers: ISSUERS,
-          recordedSigners: [forgotten],
+          recordedSigners: [FORGOTTEN],
           selection: CHOSEN,
           transferRecipient: null,
           helperAccounts: [],

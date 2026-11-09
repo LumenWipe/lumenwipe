@@ -1,5 +1,6 @@
 import {
   AIRDROP_ASSETS,
+  BASE_FEE_XLM,
   BASE_RESERVE_XLM,
   DEMO_SWAP_PRICE,
   DISPOSITION_ASSETS,
@@ -18,6 +19,8 @@ import {
   SPONSOR_FUNDING_XLM,
   SPONSORED_DATA_ENTRY,
   SPONSORED_OFFER,
+  MULTISIG_SIGNER_WEIGHT,
+  MULTISIG_THRESHOLD,
   TIME_GATED_AMOUNT,
   UNREVOCABLE_BENEFICIARY_FUNDING_XLM,
   SWAP_ASSETS,
@@ -33,7 +36,9 @@ import {
   type DispositionChoice,
   type MessStepDef,
   type MessStepId,
+  type MultisigVariant,
   type OrderedStep,
+  type SceneNodeSpec,
   type ScenarioCost,
   type ScenarioDefinition,
 } from "./types";
@@ -52,6 +57,8 @@ export const ORDER = {
   claims: 50,
   sponsorships: 60,
   signers: 90,
+  /** Last: once the thresholds are raised the master key alone cannot sign another step. */
+  multisig: 95,
 } as const;
 
 /** The assets the demo opens a trustline to during the mess; the others arrive in the close or
@@ -732,6 +739,92 @@ const sponsoredReserves: ScenarioDefinition = {
   },
 };
 
+const MULTISIG_VARIANTS: readonly MultisigVariant[] = ["two_of_three", "hash_x", "pre_auth"];
+
+const COSIGNER_NODES: SceneNodeSpec[] = [
+  { id: "signer:cosigner:1", kind: "signer", label: "Co-signer 1" },
+  { id: "signer:cosigner:2", kind: "signer", label: "Co-signer 2" },
+];
+
+const MULTISIG_NODES: Record<MultisigVariant, SceneNodeSpec[]> = {
+  two_of_three: COSIGNER_NODES,
+  hash_x: [{ id: "signer:hashx", kind: "signer", label: "hash(x) signer" }],
+  pre_auth: [
+    ...COSIGNER_NODES,
+    { id: "signer:preauth", kind: "signer", label: "Dormant pre-authorized transaction" },
+  ],
+};
+
+/**
+ * What a multi-signature demo costs beyond its signers' reserves: the mess transaction that adds
+ * them and the close's own transaction that removes them, each at the most it can be charged.
+ */
+export function multisigFeesXlm(signers: number): number {
+  const ops = signers + 1;
+  return 2 * ops * ops * BASE_FEE_XLM + ops * BASE_FEE_XLM;
+}
+
+const multisig: ScenarioDefinition = {
+  id: "multisig",
+  featureSet: "classic",
+  label: "Multi-signature account",
+  description:
+    "Thresholds of two, so the master key alone cannot close the account: the close first removes the other signers, signed with the keys, hash(x) preimage or nothing at all for a dormant pre-authorized transaction.",
+  params: {
+    variant: {
+      label: "Signers",
+      min: 0,
+      max: MULTISIG_VARIANTS.length - 1,
+      default: 0,
+      choices: [
+        "Two of three keys",
+        "Master key and a hash(x) signer",
+        "Two of three keys and a dormant pre-authorized transaction",
+      ],
+    },
+  },
+  heldAssets: () => [],
+  requiresAnyOf: [],
+  conflicts: [],
+  build: ({ variant: index }) => {
+    const variant = MULTISIG_VARIANTS[index ?? 0];
+    if (!variant) return { ok: false, message: "Multi-signature account has no such variant." };
+    const nodes = MULTISIG_NODES[variant];
+    const signers = nodes.length;
+    return {
+      ok: true,
+      build: {
+        steps: [
+          {
+            order: ORDER.multisig,
+            step: {
+              id: "MULTISIG",
+              label: `Add ${signers} ${plural(signers, "signer", "signers")} with weight ${MULTISIG_SIGNER_WEIGHT} and raise the thresholds to ${MULTISIG_THRESHOLD}`,
+              nodes,
+              balances: [],
+              action: { kind: "multisig", variant },
+            },
+          },
+        ],
+        ephemeralAssets: [],
+        expectation: {
+          assets: [],
+          offers: 0,
+          dataEntries: 0,
+          signers,
+          closeOperations: signers,
+          operationTypes: ["setOptions"],
+          dispositions: [],
+          arrivingAssets: [],
+          sponsoredEntries: [],
+          resolutions: [],
+        },
+        cost: cost(1, 2, signers * BASE_RESERVE_XLM + multisigFeesXlm(signers), signers),
+      },
+    };
+  },
+};
+
 /** Every scenario, in the order a selection lists them. */
 export const SCENARIOS: readonly ScenarioDefinition[] = [
   lwdemoHolding,
@@ -743,4 +836,5 @@ export const SCENARIOS: readonly ScenarioDefinition[] = [
   dispositions,
   claimableBalances,
   sponsoredReserves,
+  multisig,
 ];

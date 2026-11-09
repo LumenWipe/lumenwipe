@@ -20,6 +20,7 @@ import {
   type DemolishLogEntry,
   type PlaygroundSession,
   type RecordedClaimableBalance,
+  type RecordedSigner,
   type SessionLock,
   type SessionPatch,
   type SessionStore,
@@ -49,7 +50,7 @@ export interface MessStepDeps {
   executeStep: (
     step: MessStepDef,
     session: PlaygroundSession,
-    recordSigner: (publicKey: string) => Promise<void>,
+    recordSigner: (signer: RecordedSigner) => Promise<void>,
     recordClaimableBalances: (balances: RecordedClaimableBalance[]) => Promise<void>
   ) => Promise<string>;
 }
@@ -127,9 +128,9 @@ export async function runMessStep(
       if (next !== step) return STEP_OUT_OF_ORDER;
       // Recorded before the transaction is sent: a signer that never lands is harmless (removing
       // it would fail on chain), while one that lands unrecorded would make the demolish refuse.
-      const recordSigner = async (publicKey: string): Promise<void> => {
+      const recordSigner = async (signer: RecordedSigner): Promise<void> => {
         await store.updateSession(lock, (current) => ({
-          recordedSigners: [...current.recordedSigners, publicKey],
+          recordedSigners: [...current.recordedSigners, signer],
         }));
       };
       // Recorded before each attempt is sent, replacing the last attempt's: a balance id is fixed by

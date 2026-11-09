@@ -27,7 +27,7 @@ export const SESSION_COUNTDOWN_SECONDS = 3600;
 export const SESSION_RECORD_TTL_SECONDS = 72 * 3600;
 
 /** Bumped whenever the stored shape changes; a session of any other version reads as expired. */
-export const SESSION_SCHEMA_VERSION = 6;
+export const SESSION_SCHEMA_VERSION = 7;
 
 /** Longer than any route's maxDuration, so a request the platform kills frees its session soon after. */
 export const SESSION_LOCK_TTL_MS = 150_000;
@@ -90,6 +90,23 @@ export interface RecordedClaimableBalance {
   intent: ClaimIntent;
 }
 
+export const SIGNER_TYPES = ["ed25519_public_key", "hash_x", "preauth_tx"] as const;
+
+export type SignerType = (typeof SIGNER_TYPES)[number];
+
+/**
+ * A signer the mess added to the demo account, as its strkey (`G...`, `X...` or `T...`) and the
+ * weight it was given. `encSecret` is what signs for it, encrypted like the demo's key: an ed25519
+ * co-signer's secret key or a hash(x) signer's preimage in hex. Null when nothing can sign for it:
+ * a forgotten co-signer whose key was discarded, or a pre-authorized transaction.
+ */
+export interface RecordedSigner {
+  type: SignerType;
+  key: string;
+  weight: number;
+  encSecret: string | null;
+}
+
 export interface PlaygroundSession {
   schemaVersion: typeof SESSION_SCHEMA_VERSION;
   id: string;
@@ -97,9 +114,10 @@ export interface PlaygroundSession {
   encDemoSecret: string;
   ephemeralIssuers: EphemeralIssuer[];
   completedMessSteps: string[];
-  /** Public keys of the signers the mess added to the demo account. The demolish may remove these
-   *  and no other signer (lib/verify.ts). Recorded here, never read back from the API. */
-  recordedSigners: string[];
+  /** The signers the mess added to the demo account. The demolish may remove these and no other
+   *  signer (lib/verify.ts), and signs only with these and the demo key (lib/demolish.ts).
+   *  Recorded here before the transaction that adds them is sent, never read back from the API. */
+  recordedSigners: RecordedSigner[];
   /** Confirmed demolish transaction hashes plus each transaction's operations, so the frontend can
    *  replay the close operation-by-operation instead of only transaction-by-transaction. */
   demolishLog: DemolishLogEntry[];
@@ -168,6 +186,16 @@ function isHelperAccount(value: unknown): value is HelperAccount {
   );
 }
 
+function isRecordedSigner(value: unknown): value is RecordedSigner {
+  return (
+    isRecord(value) &&
+    SIGNER_TYPES.some((t) => t === value.type) &&
+    typeof value.key === "string" &&
+    typeof value.weight === "number" &&
+    (value.encSecret === null || typeof value.encSecret === "string")
+  );
+}
+
 function isRecordedClaimableBalance(value: unknown): value is RecordedClaimableBalance {
   return (
     isRecord(value) &&
@@ -208,7 +236,8 @@ export function isPlaygroundSession(value: unknown): value is PlaygroundSession 
     Array.isArray(value.ephemeralIssuers) &&
     value.ephemeralIssuers.every(isEphemeralIssuer) &&
     isStringArray(value.completedMessSteps) &&
-    isStringArray(value.recordedSigners) &&
+    Array.isArray(value.recordedSigners) &&
+    value.recordedSigners.every(isRecordedSigner) &&
     Array.isArray(value.demolishLog) &&
     value.demolishLog.every(isDemolishLogEntry) &&
     (value.demolishPending === null || isPendingDemolishTx(value.demolishPending)) &&

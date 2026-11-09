@@ -226,6 +226,40 @@ describe("schema version", () => {
     expect(await (await stored(v5)).loadSession(SID)).toBeNull();
   });
 
+  test("a version 6 session, saved with signers as bare public keys, reads as expired", async () => {
+    const v6 = { ...current(), schemaVersion: 6, recordedSigners: ["GSIGNER"] };
+    expect(await (await stored(v6)).loadSession(SID)).toBeNull();
+    expect(await (await stored({ ...current(), schemaVersion: 6 })).loadSession(SID)).toBeNull();
+  });
+
+  test("a session with typed signers loads with them; a signer of another type does not", async () => {
+    const signer = <T extends string>(type: T, encSecret: string | null) => ({
+      type,
+      key: "K",
+      weight: 1,
+      encSecret,
+    });
+    const withSigners: PlaygroundSession = {
+      ...current(),
+      recordedSigners: [
+        signer("ed25519_public_key", "e"),
+        signer("hash_x", "e"),
+        signer("preauth_tx", null),
+      ],
+    };
+    expect(await (await stored(withSigners)).loadSession(SID)).toEqual(withSigners);
+    const signedPayload = {
+      ...current(),
+      recordedSigners: [signer("ed25519_signed_payload", null)],
+    };
+    expect(await (await stored(signedPayload)).loadSession(SID)).toBeNull();
+    const missingSecret = {
+      ...current(),
+      recordedSigners: [{ type: "hash_x", key: "K", weight: 1 }],
+    };
+    expect(await (await stored(missingSecret)).loadSession(SID)).toBeNull();
+  });
+
   test("a session with helpers and recorded balances loads with them", async () => {
     const withRecords: PlaygroundSession = {
       ...current(),

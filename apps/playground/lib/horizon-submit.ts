@@ -59,6 +59,41 @@ export async function loadNativeBalance(address: string): Promise<NativeBalance>
   return { balance: native.balance, sellingLiabilities: native.selling_liabilities ?? "0" };
 }
 
+/** An account's signers and per-category thresholds, as the ledger holds them now. */
+export interface SignerState {
+  /** `type` uses the close API's names: Horizon's `sha256_hash` is `hash_x`. */
+  signers: { key: string; type: string; weight: number }[];
+  thresholds: { low: number; med: number; high: number };
+}
+
+interface HorizonAccountSigners {
+  signers?: { key?: unknown; type?: unknown; weight?: unknown }[];
+  thresholds?: { low_threshold?: unknown; med_threshold?: unknown; high_threshold?: unknown };
+}
+
+const isCount = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v) && v >= 0;
+
+/** The account's live signers and thresholds; throws for a missing account or an unreadable answer. */
+export async function loadSignerState(address: string): Promise<SignerState> {
+  const res = await readAccount(address);
+  if (!res.ok) throw new Error(`Horizon account fetch failed (${res.status})`);
+  const json = (await res.json()) as HorizonAccountSigners;
+  const t = json.thresholds;
+  if (!t || !isCount(t.low_threshold) || !isCount(t.med_threshold) || !isCount(t.high_threshold)) {
+    throw new Error("Horizon account has no readable thresholds");
+  }
+  const signers = (json.signers ?? []).map((s) => {
+    if (typeof s.key !== "string" || typeof s.type !== "string" || !isCount(s.weight)) {
+      throw new Error("Horizon account has an unreadable signer");
+    }
+    return { key: s.key, type: s.type === "sha256_hash" ? "hash_x" : s.type, weight: s.weight };
+  });
+  return {
+    signers,
+    thresholds: { low: t.low_threshold, med: t.med_threshold, high: t.high_threshold },
+  };
+}
+
 /** False only for Horizon's 404; any other failure throws, so it is never read as "gone". */
 export async function accountExists(address: string): Promise<boolean> {
   const res = await readAccount(address);

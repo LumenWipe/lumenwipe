@@ -692,6 +692,7 @@ describe("mess step", () => {
       store,
       issuer: () => issuer,
       mm: () => mm,
+      encrypt,
       decrypt,
       executeMessStep: async (planned: MessStepDef, ctx: MessContext) => {
         executed.push([planned, ctx]);
@@ -773,26 +774,38 @@ describe("mess step", () => {
     expect(executed).toEqual([]);
   });
 
-  test("a signer the step records is persisted on the session", async () => {
+  test("a signer the step records is persisted on the session, its secret encrypted", async () => {
     const store = memoryStore();
     const plan = getMessPlanForMode("standard").map((s) => s.id);
     const seeded = await seed(store, {
       completedMessSteps: plan.filter((id) => id !== "ADD_SIGNER"),
     });
-    const signer = Keypair.random().publicKey();
+    const forgotten = Keypair.random().publicKey();
+    const cosigner = Keypair.random();
     const res = await step(
       seeded.id,
       { stepId: "ADD_SIGNER" },
       {
         ...messDeps(store),
         executeMessStep: async (_planned, ctx) => {
-          await ctx.recordSigner(signer);
+          const base = { type: "ed25519_public_key" as const, weight: 1 };
+          await ctx.recordSigner({ ...base, key: forgotten, secret: null });
+          await ctx.recordSigner({ ...base, key: cosigner.publicKey(), secret: cosigner.secret() });
           return "b".repeat(64);
         },
       }
     );
     expect(res.status).toBe(200);
-    expect((await store.loadSession(seeded.id))?.recordedSigners).toEqual([signer]);
+    expect(JSON.stringify(await jsonBody(res))).not.toContain(cosigner.secret());
+    expect((await store.loadSession(seeded.id))?.recordedSigners).toEqual([
+      { type: "ed25519_public_key", key: forgotten, weight: 1, encSecret: null },
+      {
+        type: "ed25519_public_key",
+        key: cosigner.publicKey(),
+        weight: 1,
+        encSecret: encrypt(cosigner.secret()),
+      },
+    ]);
   });
 
   test("a body that is not a JSON object is invalid_json", async () => {
@@ -902,7 +915,9 @@ describe("demolish", () => {
   test("the round runs against the session record and marks the session done", async () => {
     const store = memoryStore();
     const signer = Keypair.random().publicKey();
-    const seeded = await seed(store, { recordedSigners: [signer] });
+    const seeded = await seed(store, {
+      recordedSigners: [{ type: "ed25519_public_key", key: signer, weight: 1, encSecret: null }],
+    });
     const runs: RunDemolishOptions[] = [];
     const res = await handleDemolishRound(seeded.id, demolishDeps(store, runs));
 
@@ -917,7 +932,7 @@ describe("demolish", () => {
     expect(opts.expected).toMatchObject({
       demoPublic: seeded.demo.publicKey(),
       sinkPublic: mm.publicKey(),
-      recordedSigners: [signer],
+      recordedSigners: [{ type: "ed25519_public_key", key: signer }],
       offerCount: 3,
       dataEntryCount: 3,
     });

@@ -153,8 +153,8 @@ test("addForgottenSigner records the signer before sending the transaction that 
   const hash = await addForgottenSigner(
     {
       demo,
-      recordSigner: async (publicKey) => {
-        recorded = publicKey;
+      recordSigner: async (signer) => {
+        recorded = signer.key;
         events.push("record");
       },
     },

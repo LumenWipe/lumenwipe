@@ -15,7 +15,9 @@ import {
   type TransactionsResponse,
   type UnresolvedSubmission,
 } from "@lumenwipe/sdk";
+import { loadSignerState, type SignerState } from "./horizon-submit";
 import { logEntryOf, type DemolishLogEntry, type PendingDemolishTx } from "./session-store";
+import { requiredWeight, signForWeight, type SigningKey } from "./signing";
 import { verifyDemolishTransaction, type PlaygroundCloseExpectation } from "./verify";
 
 /** The calls a demolish round makes to the LumenWipe API; `LumenWipeClient` provides them. */
@@ -43,8 +45,16 @@ export interface DemolishRoundHooks {
   onConfirmed: (entry: DemolishLogEntry, closesAccount: boolean) => void;
 }
 
+/** What a round reads from the network itself, never from the API. */
+export interface DemolishChain {
+  /** The demo's live signers and thresholds, which the signing weight is judged against. */
+  signerState: (address: string) => Promise<SignerState>;
+}
+
 export interface RunDemolishOptions {
   demoKeypair: Keypair;
+  /** The recorded signers the playground can sign for, decrypted for this round only. */
+  signingKeys: SigningKey[];
   /** What the close may do, from the session record (`expectationFromSession`). */
   expected: PlaygroundCloseExpectation;
   apiUrl: string;
@@ -234,6 +244,7 @@ function submissionOf(pending: PendingDemolishTx): UnresolvedSubmission {
  */
 export async function runCloseRound(
   client: DemolishApi,
+  chain: DemolishChain,
   opts: RunDemolishOptions,
   sleep?: (ms: number) => Promise<void>
 ): Promise<DemolishRoundResult> {
@@ -251,6 +262,13 @@ export async function runCloseRound(
   let remaining: TransactionsResponse["remaining"] | undefined;
   // The transaction last signed, so the record written before it is sent can name it.
   let signing: CloseTransaction | undefined;
+  // The demo's signers and thresholds, read after each build: a signer removal that confirmed in an
+  // earlier round changes what the next transaction needs.
+  let signers: SignerState | undefined;
+  const liveSigners = (): SignerState => {
+    if (!signers) throw new Error("No signer state was read for this round");
+    return signers;
+  };
 
   const deps: CloseEngineDeps = {
     getTransactions: async () => {
@@ -274,20 +292,27 @@ export async function runCloseRound(
         decisions,
       });
       remaining = res.remaining;
+      signers = await chain.signerState(demoPublic);
       return res;
     },
     verify: (tx: CloseTransaction) => {
       verifyDemolishTransaction(tx, opts.expected);
     },
-    // The demo account is always single-sig from the master key's point of view:
-    // ADD_SIGNER (mess step) only ever adds a co-signer, never raises the master
-    // key's own weight requirement below what it already satisfies.
-    requiredWeight: () => 1,
+    requiredWeight: (tx) => requiredWeight(parseOwn(tx.xdr), liveSigners()),
+    // Only the demo key and the session's own recorded signers ever sign. The engine compares the
+    // weight returned here with `requiredWeight` and refuses to submit a transaction short of it.
     sign: async (tx, xdr) => {
       const parsed = parseOwn(xdr);
-      parsed.sign(opts.demoKeypair);
+      const state = liveSigners();
+      const weight = signForWeight(
+        parsed,
+        opts.demoKeypair,
+        opts.signingKeys,
+        state,
+        requiredWeight(parsed, state)
+      );
       signing = tx;
-      return { xdr: parsed.toEnvelope().toXdr("base64"), weight: 1 };
+      return { xdr: parsed.toEnvelope().toXdr("base64"), weight };
     },
     submit: async (_tx, xdr) => {
       const res = await client.submit(xdr);
@@ -361,6 +386,7 @@ export function runDemolish(opts: RunDemolishOptions): Promise<DemolishRoundResu
       submit: (signedXdr) => client.submit(signedXdr),
       getTransaction: (hash) => client.getTransaction(hash),
     },
+    { signerState: loadSignerState },
     opts
   );
 }

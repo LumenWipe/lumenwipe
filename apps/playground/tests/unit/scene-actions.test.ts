@@ -11,7 +11,11 @@ const SOURCE = "GDEMO";
 const live = (...ids: string[]): LiveNode[] => ids.map((id) => ({ id }));
 
 const setOptions = (
-  signer: { key: string; weight: number; type: "ed25519_public_key" } | null
+  signer: {
+    key: string;
+    weight: number;
+    type: "ed25519_public_key" | "hash_x" | "preauth_tx";
+  } | null
 ): IntentOperation => ({
   type: "set_options",
   source: SOURCE,
@@ -139,4 +143,24 @@ test("set_options only destroys the signer node when it removes a signer", () =>
   const added = setOptions({ key: "GEXTRA", weight: 1, type: "ed25519_public_key" });
   expect(operationToSceneAction(added, live("signer:extra"))).toBeNull();
   expect(operationToSceneAction(setOptions(null), live("signer:extra"))).toBeNull();
+});
+
+test("a removed signer destroys a node of its own type, one per removal", () => {
+  const nodes = live("signer:cosigner:1", "signer:cosigner:2", "signer:hashx", "signer:preauth");
+  const removed = (type: "ed25519_public_key" | "hash_x" | "preauth_tx") =>
+    operationToSceneAction(setOptions({ key: "K", weight: 0, type }), nodes);
+  expect(removed("hash_x")).toEqual({ type: "destroy", nodeIds: ["signer:hashx"] });
+  expect(removed("preauth_tx")).toEqual({ type: "destroy", nodeIds: ["signer:preauth"] });
+  expect(removed("ed25519_public_key")).toEqual({
+    type: "destroy",
+    nodeIds: ["signer:cosigner:1"],
+  });
+  const second = operationToSceneAction(
+    setOptions({ key: "K", weight: 0, type: "ed25519_public_key" }),
+    live("signer:cosigner:2")
+  );
+  expect(second).toEqual({ type: "destroy", nodeIds: ["signer:cosigner:2"] });
+  expect(
+    operationToSceneAction(setOptions({ key: "K", weight: 0, type: "hash_x" }), live())
+  ).toBeNull();
 });

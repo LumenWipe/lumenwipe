@@ -110,6 +110,15 @@ export const DEMO_HEADROOM_XLM = 20;
 export const EPHEMERAL_ISSUER_FUNDING_XLM = "3";
 export const BASE_RESERVE_XLM = 0.5;
 
+/** A multi-signature demo's thresholds, and each added signer's weight: the master key alone (weight
+ *  1) can no longer sign, so the close removes the other signers in a transaction of its own first. */
+export const MULTISIG_THRESHOLD = 2;
+export const MULTISIG_SIGNER_WEIGHT = 1;
+/** The network's base fee, 100 stroops: the close bids it per operation (the API's
+ *  `BASE_FEE_STROOPS`), and a mess transaction bids twice it times its operation count per
+ *  operation (lib/mess-builders.ts `buildSignSubmit`). */
+export const BASE_FEE_XLM = 0.00001;
+
 export const JUNK_DATA_ENTRIES = [
   { key: "promo_code", value: "WELCOME2024" },
   { key: "legacy_app_state", value: "deprecated" },

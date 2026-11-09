@@ -62,6 +62,7 @@ import {
   type PlaygroundSession,
   type SessionStore,
 } from "./session-store";
+import { signingKeyOf, type SigningKey } from "./signing";
 import { expectationFromSession } from "./verify";
 
 // The playground's route handlers, with every side effect injected. Each app/api route file wires
@@ -103,6 +104,7 @@ export interface ScenariosRouteDeps {
 
 export interface MessDeps extends PlaygroundKeys {
   store: SessionStore;
+  encrypt: (secret: string) => string;
   decrypt: (payload: string) => string;
   executeMessStep: (step: MessStepDef, ctx: MessContext) => Promise<string>;
 }
@@ -430,11 +432,29 @@ export async function handleMess(
           session.transferRecipient &&
           Keypair.fromSecret(deps.decrypt(session.transferRecipient.encSecret)),
         helpers: helperKeys(session, deps.decrypt),
-        recordSigner,
+        // Encrypted here, before it is stored: a co-signer's secret or a preimage is never written
+        // in the clear.
+        recordSigner: ({ type, key, weight, secret }) =>
+          recordSigner({
+            type,
+            key,
+            weight,
+            encSecret: secret === null ? null : deps.encrypt(secret),
+          }),
         recordClaimableBalances,
       }),
   });
   return actionResponse(result);
+}
+
+/** The recorded signers the playground holds a secret for, decrypted for one round. */
+function signingKeysOf(
+  session: PlaygroundSession,
+  decrypt: (payload: string) => string
+): SigningKey[] {
+  return session.recordedSigners.flatMap(({ type, key, encSecret }) =>
+    encSecret === null ? [] : [signingKeyOf(type, key, decrypt(encSecret))]
+  );
 }
 
 function helperKeys(
@@ -536,6 +556,7 @@ export function demolishRoundDeps(
     round: (session, hooks) =>
       deps.runDemolish({
         demoKeypair: Keypair.fromSecret(deps.decrypt(session.encDemoSecret)),
+        signingKeys: signingKeysOf(session, deps.decrypt),
         expected: expectationFromSession(session, mm.publicKey(), issuer.publicKey()),
         apiUrl,
         apiKey,

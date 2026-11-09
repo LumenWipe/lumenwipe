@@ -1,11 +1,14 @@
 import "server-only";
+import { randomBytes } from "node:crypto";
 import {
   Account,
   Asset,
   Claimant,
   Keypair,
   Operation,
+  StrKey,
   TransactionBuilder,
+  hash,
   type Transaction,
   type xdr,
 } from "@stellar/stellar-sdk";
@@ -19,7 +22,10 @@ import {
 } from "./horizon-submit";
 import { formatStroops, networkStroops } from "./stroops";
 import { standingLiquidityOps, type HorizonBalance, type HorizonOffer } from "./standing-liquidity";
+import type { SignerType } from "./session-store";
 import {
+  MULTISIG_SIGNER_WEIGHT,
+  MULTISIG_THRESHOLD,
   TIME_GATE_SECONDS,
   SPONSORED_OFFER,
   isPersistentAsset,
@@ -27,6 +33,7 @@ import {
   type ClaimIntent,
   type HelperRole,
   type MessStepDef,
+  type MultisigVariant,
   type ResolutionKind,
   type OfferAsset,
   type StepAction,
@@ -56,10 +63,22 @@ export interface MessContext {
   /** The claimant, sponsor or beneficiary the session holds a key for. */
   helpers: ReadonlyMap<HelperRole, Keypair>;
   /** Persists a signer in the session record before the step adds it to the demo account. */
-  recordSigner: (publicKey: string) => Promise<void>;
+  recordSigner: (signer: NewSigner) => Promise<void>;
   /** Records the claimable balances a signed transaction creates, before it is sent. Each attempt
    *  replaces the last: only the transaction that lands creates balances. */
   recordClaimableBalances: (balances: ClaimableBalanceRecord[]) => Promise<void>;
+}
+
+/**
+ * A signer a step is about to add, with what signs for it in the clear: an ed25519 secret key or a
+ * hash(x) preimage in hex, or null when nothing can. The route encrypts `secret` before it is
+ * stored, so it exists in plain text only in this request's memory.
+ */
+export interface NewSigner {
+  type: SignerType;
+  key: string;
+  weight: number;
+  secret: string | null;
 }
 
 export interface ClaimableBalanceRecord {
@@ -334,6 +353,21 @@ export const MESS_EXECUTORS: { [K in StepActionKind]: Executor<K> } = {
       )
     ),
   add_signer: (_action, ctx, _submit, deps) => addForgottenSigner(ctx, deps),
+  // Every signer is recorded before the transaction that adds it is sent. The thresholds rise in
+  // the same transaction, which the master key alone still authorizes: signatures are checked
+  // against the account as it was before any of its operations applies.
+  multisig: async (action, ctx, submit) => {
+    const signers = multisigSigners(action.variant, ctx.demo.publicKey());
+    for (const signer of signers) await ctx.recordSigner(signer);
+    return submit(ctx.demo, [
+      ...signers.map(addSignerOp),
+      Operation.setOptions({
+        lowThreshold: MULTISIG_THRESHOLD,
+        medThreshold: MULTISIG_THRESHOLD,
+        highThreshold: MULTISIG_THRESHOLD,
+      }),
+    ]);
+  },
   // The demo creates the recipient, which trusts the assets it will receive, in one transaction.
   open_recipient: (action, ctx, submit) => {
     const recipient = ctx.transferRecipient;
@@ -525,11 +559,72 @@ export async function addForgottenSigner(
   deps: BuildSignSubmitDeps = {}
 ): Promise<string> {
   const forgotten = Keypair.random().publicKey();
-  await ctx.recordSigner(forgotten);
+  await ctx.recordSigner({ type: "ed25519_public_key", key: forgotten, weight: 1, secret: null });
   return buildSignSubmit(
     ctx.demo,
     [Operation.setOptions({ signer: { ed25519PublicKey: forgotten, weight: 1 } })],
     [],
     deps
   );
+}
+
+const cosigner = (): NewSigner => {
+  const kp = Keypair.random();
+  return {
+    type: "ed25519_public_key",
+    key: kp.publicKey(),
+    weight: MULTISIG_SIGNER_WEIGHT,
+    secret: kp.secret(),
+  };
+};
+
+/**
+ * The key of a pre-authorized transaction that can never be submitted: a sequence bump whose time
+ * bounds closed in 1970. Nothing is kept but the key; the close removes the signer like any other.
+ */
+export function dormantPreAuthKey(demoPublic: string): string {
+  const tx = new TransactionBuilder(new Account(demoPublic, "0"), {
+    fee: "100",
+    networkPassphrase: PASSPHRASE,
+    timebounds: { minTime: 0, maxTime: 1 },
+  })
+    .addOperation(Operation.bumpSequence({ bumpTo: "0" }))
+    .build();
+  return StrKey.encodePreAuthTx(tx.hash());
+}
+
+/** The signers a multi-signature variant adds, each with weight `MULTISIG_SIGNER_WEIGHT`. */
+export function multisigSigners(variant: MultisigVariant, demoPublic: string): NewSigner[] {
+  if (variant === "hash_x") {
+    const preimage = randomBytes(32);
+    return [
+      {
+        type: "hash_x",
+        key: StrKey.encodeSha256Hash(hash(preimage)),
+        weight: MULTISIG_SIGNER_WEIGHT,
+        secret: preimage.toString("hex"),
+      },
+    ];
+  }
+  const cosigners = [cosigner(), cosigner()];
+  if (variant === "two_of_three") return cosigners;
+  return [
+    ...cosigners,
+    {
+      type: "preauth_tx",
+      key: dormantPreAuthKey(demoPublic),
+      weight: MULTISIG_SIGNER_WEIGHT,
+      secret: null,
+    },
+  ];
+}
+
+function addSignerOp({ type, key, weight }: NewSigner): xdr.Operation {
+  if (type === "hash_x") {
+    return Operation.setOptions({ signer: { sha256Hash: StrKey.decodeSha256Hash(key), weight } });
+  }
+  if (type === "preauth_tx") {
+    return Operation.setOptions({ signer: { preAuthTx: StrKey.decodePreAuthTx(key), weight } });
+  }
+  return Operation.setOptions({ signer: { ed25519PublicKey: key, weight } });
 }
