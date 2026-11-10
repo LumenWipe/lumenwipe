@@ -1042,6 +1042,7 @@ export interface PhoenixStakePosition extends DefiPositionBase {
     positionType: "stake";
     // (undocumented)
     protocol: "phoenix";
+    shareToken?: string;
     // (undocumented)
     stakedAmount: string;
     stakedAtEpoch: string;

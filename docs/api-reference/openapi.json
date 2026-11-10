@@ -10635,6 +10635,10 @@
           "stakedAtEpoch": {
             "type": "string",
             "description": "Unix seconds; unbonding needs the original stake's timestamp."
+          },
+          "shareToken": {
+            "type": "string",
+            "description": "The pool's separate LP share token contract."
           }
         },
         "required": [

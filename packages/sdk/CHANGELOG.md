@@ -11,6 +11,10 @@ version number before 0.4.0. Neither has a git tag.
 
 ## [Unreleased]
 
+### Added
+
+- `PhoenixStakePosition` gains optional `shareToken`, the pool's LP share token.
+
 ## [0.11.0] - 2026-11-09
 
 ### Added

@@ -235,6 +235,25 @@ test("a Phoenix position pins its pool and the bundled registry's stake contract
   });
 });
 
+test("a Phoenix stake carries its pool's share token, so a read holding only stakes admits it", () => {
+  const PHOENIX_POOL = "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV";
+  const PHOENIX_SHARE = "CC53IRMBHWTXE4BWPD5N4LH2L43YSYBMOFD6UARPMZBTWPSODFFKW2EG";
+  const stake = (stakedAtEpoch: string) => ({
+    protocol: "phoenix" as const,
+    positionType: "stake" as const,
+    contractAddress: PHOENIX_POOL,
+    stakedAmount: "1",
+    stakedAtEpoch,
+    shareToken: PHOENIX_SHARE,
+    usdValue: null,
+  });
+  const e = exitExpectations(state([stake("1700000000"), stake("1700000100")]), "testnet");
+  expect(e.positionTokenContracts).toEqual([PHOENIX_SHARE]);
+  expect(e.ownTokensByContract).toEqual({ [PHOENIX_POOL]: [PHOENIX_SHARE] });
+  expect(e.shareTokenContracts).toEqual([PHOENIX_SHARE]);
+  expect(e.heldTokenContracts).not.toContain(PHOENIX_SHARE);
+});
+
 test("a FxDAO vault position pins only the vault itself, to pay_debt - no router, backstop, or stake", () => {
   const VAULT = "CBUZ5NJKA5PRS4TBPHWMN4JGGRVIOQOKI4JUYLA2IXS3BEJKQKEWFW7D";
   const e = exitExpectations(

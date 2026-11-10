@@ -12,6 +12,7 @@ import {
   LEDGER_READ_CONCURRENCY,
 } from "@/lib/defi-positions/testnet-direct-read";
 import type { ContractRegistryEntry } from "@/lib/contract-registry";
+import type { PhoenixStakePosition } from "@lumenwipe/types";
 import {
   addressListVal,
   contractDataEntry,
@@ -34,15 +35,21 @@ const PHOENIX_POOL = "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD";
 const PHOENIX_WASM_HASH = "2".repeat(64);
 const PHOENIX_SHARE = "CC53IRMBHWTXE4BWPD5N4LH2L43YSYBMOFD6UARPMZBTWPSODFFKW2EG";
 const FXDAO_STABLE = "CAEGVALLV7CA2SIFEDJNA52RKGUWRQWQXM5YNFUH7TH5G6X6QXMRQM4L";
+const PHOENIX_STAKE = StrKey.encodeContract(Buffer.alloc(32, 7));
+const PHOENIX_STAKE_WASM_HASH = "3".repeat(64);
 
-/** A Phoenix pool's persistent `CONFIG`, naming its separate share token. */
-const phoenixConfigEntry = (shareToken: xdr.ScVal = new Address(PHOENIX_SHARE).toScVal()) =>
+/** A Phoenix pool's persistent `CONFIG`, naming its separate share token and stake contract;
+ *  a null stake contract leaves the field out. */
+const phoenixConfigEntry = (
+  shareToken: xdr.ScVal = new Address(PHOENIX_SHARE).toScVal(),
+  stakeContract: xdr.ScVal | null = new Address(PHOENIX_STAKE).toScVal()
+) =>
   contractDataEntry(
     PHOENIX_POOL,
     xdr.ScVal.scvSymbol("CONFIG"),
     structVal({
       share_token: shareToken,
-      stake_contract: new Address(BLEND_POOL).toScVal(),
+      ...(stakeContract ? { stake_contract: stakeContract } : {}),
       token_a: new Address(FXDAO_VAULTS).toScVal(),
       token_b: new Address(FXDAO_STABLE).toScVal(),
     })
@@ -480,6 +487,213 @@ test("Phoenix: a zero balance, a missing CONFIG, or a share token that is not a 
     });
     expect(result.positions).toEqual([]);
   }
+});
+
+const phoenixStakeRegistry = (stakeHash: string | null = PHOENIX_STAKE_WASM_HASH) => [
+  ...phoenixRegistry(),
+  registryEntry({
+    address: PHOENIX_STAKE,
+    protocol: "phoenix",
+    kind: "stake",
+    wasmHash: stakeHash,
+  }),
+];
+
+/** The stake contract's `BondingInfo` for USER, keyed by the bare account address. */
+const bondingEntry = (stakes: Array<[bigint, bigint]>, contract: string = PHOENIX_STAKE) =>
+  contractDataEntry(
+    contract,
+    new Address(USER).toScVal(),
+    structVal({
+      last_reward_time: nativeToScVal(0n, { type: "u64" }),
+      reward_debt: nativeToScVal(0n, { type: "u128" }),
+      stakes: xdr.ScVal.scvVec(
+        stakes.map(([amount, at]) =>
+          structVal({
+            stake: i128Val(amount),
+            stake_timestamp: nativeToScVal(at, { type: "u64" }),
+          })
+        )
+      ),
+      total_stake: i128Val(stakes.reduce((sum, [amount]) => sum + amount, 0n)),
+    })
+  );
+
+/** The bonding key built by hand: persistent, keyed by the account's bare ScAddress. */
+const BARE_BONDING_KEY = xdr.LedgerKey.contractData(
+  new xdr.LedgerKeyContractData({
+    contract: new Address(PHOENIX_STAKE).toScAddress(),
+    key: xdr.ScVal.scvAddress(new Address(USER).toScAddress()),
+    durability: xdr.ContractDataDurability.persistent,
+  })
+).toXdr("base64");
+
+const phoenixShares = (amount: bigint) =>
+  contractDataEntry(PHOENIX_SHARE, variantVal("Balance", addressVal(USER)), i128Val(amount));
+
+const phoenixLedger = (...extra: ReturnType<typeof contractDataEntry>[]) => [
+  contractInstanceEntry(PHOENIX_POOL, PHOENIX_WASM_HASH),
+  contractInstanceEntry(PHOENIX_STAKE, PHOENIX_STAKE_WASM_HASH),
+  phoenixConfigEntry(),
+  ...extra,
+];
+
+const phoenixStake = (amount: string, at: string): PhoenixStakePosition => ({
+  protocol: "phoenix",
+  positionType: "stake",
+  contractAddress: PHOENIX_POOL,
+  wasmHash: PHOENIX_WASM_HASH,
+  stakedAmount: amount,
+  stakedAtEpoch: at,
+  shareToken: PHOENIX_SHARE,
+  usdValue: null,
+});
+
+test("Phoenix: an account that bonded every share is reported by its stakes, oldest first, on the pool", async () => {
+  for (const shares of [[phoenixShares(0n)], []]) {
+    const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+      rpc: mockRpc(
+        phoenixLedger(
+          ...shares,
+          bondingEntry([
+            [3_0000000n, 1_700_000_200n],
+            [2_0000000n, 1_700_000_100n],
+          ])
+        )
+      ),
+      registryEntries: phoenixStakeRegistry(),
+    });
+    expect(result.unrecognizedPositions).toEqual([]);
+    expect(result.positions).toEqual([
+      phoenixStake("20000000", "1700000100"),
+      phoenixStake("30000000", "1700000200"),
+    ]);
+  }
+});
+
+test("Phoenix: a partly staked account reports its LP shares first, then its stake", async () => {
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc(phoenixLedger(phoenixShares(5n), bondingEntry([[7n, 9n]]))),
+    registryEntries: phoenixStakeRegistry(),
+  });
+  expect(result.unrecognizedPositions).toEqual([]);
+  expect(result.positions).toEqual([
+    {
+      protocol: "phoenix",
+      positionType: "lp",
+      contractAddress: PHOENIX_POOL,
+      wasmHash: PHOENIX_WASM_HASH,
+      shareAmount: "5",
+      shareToken: PHOENIX_SHARE,
+      usdValue: null,
+    },
+    phoenixStake("7", "9"),
+  ]);
+});
+
+test("Phoenix: no bonding entry, an empty one, or a zero stake adds no stake position", async () => {
+  for (const bonding of [[], [bondingEntry([])], [bondingEntry([[0n, 9n]])]]) {
+    const staked = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+      rpc: mockRpc(phoenixLedger(phoenixShares(5n), ...bonding)),
+      registryEntries: phoenixStakeRegistry(),
+    });
+    expect(staked.unrecognizedPositions).toEqual([]);
+    expect(staked.positions.map((p) => p.positionType)).toEqual(["lp"]);
+
+    const empty = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+      rpc: mockRpc(phoenixLedger(phoenixShares(0n), ...bonding)),
+      registryEntries: phoenixStakeRegistry(),
+    });
+    expect(empty.unrecognizedPositions).toEqual([]);
+    expect(empty.positions).toEqual([]);
+  }
+});
+
+test("Phoenix: a bonding entry that does not decode is flagged, never read as no stake", async () => {
+  const malformed = contractDataEntry(
+    PHOENIX_STAKE,
+    new Address(USER).toScVal(),
+    structVal({ stakes: i128Val(5n) })
+  );
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc(phoenixLedger(phoenixShares(0n), malformed)),
+    registryEntries: phoenixStakeRegistry(),
+  });
+  expect(result.positions).toEqual([]);
+  expect(result.unrecognizedPositions).toEqual([
+    expect.objectContaining({ protocol: "phoenix", rawType: "bonding-info-unreadable" }),
+  ]);
+});
+
+test("Phoenix: a pool whose CONFIG names no stake contract is flagged, its LP shares still reported", async () => {
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([
+      contractInstanceEntry(PHOENIX_POOL, PHOENIX_WASM_HASH),
+      contractInstanceEntry(PHOENIX_STAKE, PHOENIX_STAKE_WASM_HASH),
+      phoenixConfigEntry(undefined, null),
+      phoenixShares(5n),
+    ]),
+    registryEntries: phoenixStakeRegistry(),
+  });
+  expect(result.positions.map((p) => p.positionType)).toEqual(["lp"]);
+  expect(result.unrecognizedPositions).toEqual([
+    expect.objectContaining({ protocol: "phoenix", rawType: "stake-contract-unknown" }),
+  ]);
+});
+
+test("Phoenix: stakes held on a stake contract the registry does not verify are flagged, not decoded", async () => {
+  const otherNetwork = phoenixStakeRegistry().map((e) =>
+    e.kind === "stake" ? { ...e, network: "mainnet" as const } : e
+  );
+  for (const registryEntries of [
+    phoenixRegistry(),
+    otherNetwork,
+    phoenixStakeRegistry("4".repeat(64)),
+  ]) {
+    const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+      rpc: mockRpc(phoenixLedger(phoenixShares(0n), bondingEntry([[7n, 9n]]))),
+      registryEntries,
+    });
+    expect(result.positions).toEqual([]);
+    expect(result.unrecognizedPositions).toContainEqual(
+      expect.objectContaining({ protocol: "phoenix", rawType: "stake-contract-unregistered" })
+    );
+  }
+});
+
+test("Phoenix: the bonding entry is read in the same call as the share balance, under the bare account key", async () => {
+  const keysSeen: xdr.LedgerKey[][] = [];
+  const inner = mockRpc(phoenixLedger(phoenixShares(0n), bondingEntry([[7n, 9n]])));
+  const { rpc, sizes } = tracingRpc({
+    getLedgerEntries: async (...keys: xdr.LedgerKey[]) => {
+      keysSeen.push(keys);
+      return inner.getLedgerEntries(...keys);
+    },
+  } as unknown as TracedRpc);
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc,
+    registryEntries: phoenixStakeRegistry(),
+  });
+  expect(result.positions).toHaveLength(1);
+  // The instance read for pool and stake contract, then the pool's CONFIG, then one batch.
+  expect(sizes).toEqual([2, 1, 2]);
+  expect(keysSeen[2]!.map((k) => k.toXdr("base64"))).toContain(BARE_BONDING_KEY);
+});
+
+test("Phoenix: a failing stake read rejects the account read rather than reporting no stake", async () => {
+  const inner = mockRpc(phoenixLedger(phoenixShares(0n), bondingEntry([[7n, 9n]])));
+  const rpc = {
+    getLedgerEntries: async (...keys: xdr.LedgerKey[]) => {
+      if (keys.some((k) => k.toXdr("base64") === BARE_BONDING_KEY)) throw new Error("boom");
+      return inner.getLedgerEntries(...keys);
+    },
+  } as unknown as TracedRpc;
+  await expect(
+    detectDefiPositionsViaDirectRead(USER, "testnet", {
+      rpc,
+      registryEntries: phoenixStakeRegistry(),
+    })
+  ).rejects.toThrow("boom");
 });
 
 test("FxDAO: a denomination named only by its VaultsInfo is still probed, and reported without a debt token", async () => {

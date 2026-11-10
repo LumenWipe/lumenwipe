@@ -114,6 +114,9 @@ export interface PhoenixStakePosition extends DefiPositionBase {
   stakedAmount: string;
   /** Unix seconds; unbonding requires the original stake's timestamp (architecture.md §9.6). */
   stakedAtEpoch: string;
+  /** The pool's LP share token (`CONFIG.share_token`): unbonding returns the shares to it, and the
+   *  withdrawal that follows transfers them back to the pool. Read from the pool. */
+  shareToken?: string;
 }
 
 export interface FxdaoCdpPosition extends DefiPositionBase {

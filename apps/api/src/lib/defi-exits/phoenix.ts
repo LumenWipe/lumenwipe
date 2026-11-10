@@ -140,6 +140,16 @@ export function phoenixShareToken(configEntry: xdr.LedgerEntryData): string | nu
     return null;
   }
 }
+
+/** The stake contract a pool's `CONFIG` entry names, or null, never a throw. Only a contract. */
+export function phoenixStakeContract(configEntry: xdr.LedgerEntryData): string | null {
+  try {
+    return contractAddressOf(mapView(contractDataEntry(configEntry).val).get("stake_contract"));
+  } catch {
+    return null;
+  }
+}
+
 const totalSharesKey = (pool: string): xdr.LedgerKey => persistentKey(pool, xdr.ScVal.scvU32(0));
 const reserveAKey = (pool: string): xdr.LedgerKey => persistentKey(pool, xdr.ScVal.scvU32(1));
 const reserveBKey = (pool: string): xdr.LedgerKey => persistentKey(pool, xdr.ScVal.scvU32(2));
@@ -151,7 +161,7 @@ const balanceKey = (token: string, account: string): xdr.LedgerKey =>
   );
 
 /** The stake contract's per-account bonding entry: keyed by the bare account address, no wrapping. */
-const bondingInfoKey = (stakeContract: string, account: string): xdr.LedgerKey =>
+export const bondingInfoKey = (stakeContract: string, account: string): xdr.LedgerKey =>
   persistentKey(stakeContract, new Address(account).toScVal());
 
 async function readEntries(
@@ -165,7 +175,7 @@ async function readEntries(
 }
 
 /** The individual stakes a `BondingInfo` entry holds, oldest first. Null on a malformed shape. */
-function stakesFrom(val: xdr.ScVal): PhoenixStakeEntry[] | null {
+export function stakesFrom(val: xdr.ScVal): PhoenixStakeEntry[] | null {
   const fields = mapView(val);
   const stakesVal = fields.get("stakes");
   if (!stakesVal || stakesVal.type !== "scvVec") return null;

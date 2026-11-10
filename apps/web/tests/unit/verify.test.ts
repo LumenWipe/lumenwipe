@@ -4932,6 +4932,49 @@ describe("a served registry snapshot passed to verifyCloseTransaction", () => {
   });
 });
 
+describe("a Phoenix withdrawal after the account's stakes were unbonded", () => {
+  const fixture = REAL_EXIT_ENVELOPES.find((f) => f.name === "Phoenix withdraw_liquidity")!;
+  const [lp] = fixture.account.defiPositions.positions;
+  if (lp?.protocol !== "phoenix" || lp.positionType !== "lp") throw new Error("not a Phoenix LP");
+  /** The read the user reviewed: every share was bonded, so it holds only the stake. */
+  const stakeOnly = (shareToken?: string): AccountState => ({
+    ...fixture.account,
+    defiPositions: {
+      ...fixture.account.defiPositions,
+      positions: [
+        {
+          protocol: "phoenix",
+          positionType: "stake",
+          contractAddress: lp.contractAddress,
+          stakedAmount: lp.shareAmount,
+          stakedAtEpoch: "1700000000",
+          ...(shareToken ? { shareToken } : {}),
+          usdValue: null,
+        },
+      ],
+    },
+  });
+  beforeEach(() => {
+    setSystemTime(new Date((Number(fixture.expected.maxTime) - 300) * 1000));
+  });
+  afterEach(() => {
+    setSystemTime();
+  });
+
+  test("is accepted when the stake carries its pool's share token", () => {
+    const expected = realExitExpectation(fixture, stakeOnly(lp.shareToken));
+    expect(() => verifyReal(fixture, fixture.xdr, expected)).not.toThrow();
+  });
+
+  test("is refused when the stake names no share token: the share transfer is foreign", () => {
+    expectRefusal(
+      () => verifyReal(fixture, fixture.xdr, realExitExpectation(fixture, stakeOnly())),
+      "exit_foreign_contract",
+      /has no position, balance, or pool token in/
+    );
+  });
+});
+
 // Last in the file: the tests above reached every refusal through expectRefusal, so the codes
 // they saw are exactly the registry. A code nothing throws, or a refusal with no test, fails here.
 test("the refusal tests cover every registered code, and nothing outside the registry", () => {
