@@ -41,6 +41,7 @@ describe("playground", () => {
     "package.json",
     "packages/verify/src/index.ts",
     "apps/web/lib/stellar/verify.ts",
+    "apps/web/lib/stellar/verify-revoke-allowance.ts",
     "apps/web/config/networks.ts",
     "apps/api/src/config/exchange-registry.json",
   ])("builds when %s changes", (file) => {

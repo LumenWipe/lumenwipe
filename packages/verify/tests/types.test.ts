@@ -12,11 +12,20 @@ import type {
 } from "../../../apps/web/lib/stellar/exit-expectations";
 import type { mediatorAllowedFor } from "../../../apps/web/lib/exchange-registry";
 import type {
+  RevokeAllowanceVerificationError as WebRevokeAllowanceVerificationError,
+  RevokeAllowanceVerificationErrorCode as WebRevokeAllowanceVerificationErrorCode,
+  verifyRevokeAllowanceTransaction as webVerifyRevokeAllowanceTransaction,
+} from "../../../apps/web/lib/stellar/verify-revoke-allowance";
+import type {
   CloseExpectationInput,
   ExitExpectations,
   exitExpectations,
   requiresMediator,
+  RevokeAllowanceExpectation,
+  RevokeAllowanceVerificationError,
+  RevokeAllowanceVerificationErrorCode,
   verifyCloseTransaction,
+  verifyRevokeAllowanceTransaction,
   VerifyCloseInput,
   ServedRegistry,
 } from "../src/index";
@@ -35,6 +44,7 @@ type Pinned<A, B> =
 type WebInput = Parameters<typeof webVerifyCloseTransaction>[0];
 type WebExpected = WebInput["expected"];
 type Value<T> = T[keyof T];
+type WebRevokeParams = Parameters<typeof webVerifyRevokeAllowanceTransaction>;
 
 const pins = {
   input: true satisfies Pinned<VerifyCloseInput, WebInput>,
@@ -80,6 +90,27 @@ const pins = {
   mediatorReturn: true satisfies Pinned<
     ReturnType<typeof requiresMediator>,
     ReturnType<typeof mediatorAllowedFor>
+  >,
+  revokeExpected: true satisfies Pinned<RevokeAllowanceExpectation, WebRevokeParams[2]>,
+  revokeParams: true satisfies Pinned<
+    Parameters<typeof verifyRevokeAllowanceTransaction>,
+    WebRevokeParams
+  >,
+  revokeReturn: true satisfies Pinned<
+    ReturnType<typeof verifyRevokeAllowanceTransaction>,
+    ReturnType<typeof webVerifyRevokeAllowanceTransaction>
+  >,
+  revokeCode: true satisfies Pinned<
+    RevokeAllowanceVerificationErrorCode,
+    WebRevokeAllowanceVerificationErrorCode
+  >,
+  revokeError: true satisfies Pinned<
+    RevokeAllowanceVerificationError,
+    WebRevokeAllowanceVerificationError
+  >,
+  revokeErrorCode: true satisfies Pinned<
+    RevokeAllowanceVerificationError["code"],
+    RevokeAllowanceVerificationErrorCode
   >,
 };
 

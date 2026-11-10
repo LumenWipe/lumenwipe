@@ -1,6 +1,7 @@
 /**
- * Writes `vectors/close-v1.json`, the conformance vector set, or with `--check` fails when the
- * committed file differs from what this script builds.
+ * Writes the conformance vector sets, `vectors/close-v1.json` and (from `revoke-vectors.ts`)
+ * `vectors/revoke-allowance-v1.json`, or with `--check` fails when a committed file differs from
+ * what this script builds.
  *
  *   bun scripts/generate-vectors.ts          regenerate
  *   bun scripts/generate-vectors.ts --check  compare only (run by the package tests)
@@ -32,6 +33,7 @@ import {
   type VerificationErrorCode,
   type VerifyCloseInput,
 } from "../src/index";
+import { buildRevokeVectorFile, REVOKE_VECTORS_PATH } from "./revoke-vectors";
 
 export const VECTORS_PATH = fileURLToPath(new URL("../vectors/close-v1.json", import.meta.url));
 
@@ -942,26 +944,38 @@ export function buildVectorFile(): VectorFile {
   };
 }
 
-export const serialize = (file: VectorFile): string => `${JSON.stringify(file, null, 2)}\n`;
+export const serialize = (file: unknown): string => `${JSON.stringify(file, null, 2)}\n`;
+
+const OUTPUTS: [path: string, build: () => unknown][] = [
+  [VECTORS_PATH, buildVectorFile],
+  [REVOKE_VECTORS_PATH, buildRevokeVectorFile],
+];
 
 if (import.meta.main) {
-  const fresh = serialize(buildVectorFile());
-  if (process.argv.includes("--check")) {
-    let committed: string;
-    try {
-      committed = readFileSync(VECTORS_PATH, "utf8");
-    } catch {
-      committed = "";
+  const check = process.argv.includes("--check");
+  let stale = false;
+  for (const [path, buildFile] of OUTPUTS) {
+    const fresh = serialize(buildFile());
+    const file = `vectors/${path.split("/").pop()}`;
+    if (check) {
+      let committed: string;
+      try {
+        committed = readFileSync(path, "utf8");
+      } catch {
+        committed = "";
+      }
+      if (committed !== fresh) {
+        console.error(
+          `${file} is out of date. Run \`bun run --filter '@lumenwipe/verify' vectors\` and commit the result.`
+        );
+        stale = true;
+      } else {
+        console.log(`${file} is up to date.`);
+      }
+    } else {
+      writeFileSync(path, fresh);
+      console.log(`Wrote ${path}.`);
     }
-    if (committed !== fresh) {
-      console.error(
-        "vectors/close-v1.json is out of date. Run `bun run --filter '@lumenwipe/verify' vectors` and commit the result."
-      );
-      process.exit(1);
-    }
-    console.log("vectors/close-v1.json is up to date.");
-  } else {
-    writeFileSync(VECTORS_PATH, fresh);
-    console.log(`Wrote ${VECTORS_PATH}.`);
   }
+  if (stale) process.exit(1);
 }

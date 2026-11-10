@@ -48,10 +48,12 @@ for (const [file, source, sdkImport] of bundles) {
 
 test("exports exactly the documented surface, in both formats", async () => {
   const surface = [
+    "RevokeAllowanceVerificationError",
     "VerificationError",
     "exitExpectations",
     "requiresMediator",
     "verifyCloseTransaction",
+    "verifyRevokeAllowanceTransaction",
   ];
   const esm = await import(new URL("../dist/index.js", import.meta.url).href);
   const cjs = createRequire(import.meta.url)(
