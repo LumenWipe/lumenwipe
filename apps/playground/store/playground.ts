@@ -79,6 +79,8 @@ interface PlaygroundState {
   recoveredXlm: string | null;
   /** The last error stopped a close that had started: the demo can resume it. */
   demolishFailed: boolean;
+  /** The session's close as SDK code, once the server has built it. */
+  sdkSnippet: string | null;
   /** The scenarios picked on the IDLE screen, and the preset they came from (null once edited).
    *  Both survive COMPLETE/EXPIRED resets. */
   selection: ScenarioSelection;
@@ -108,6 +110,7 @@ interface PlaygroundState {
   setRecoveredXlm: (xlm: string) => void;
   setLastError: (error: string | null, blocker?: StoppedClose | null) => void;
   setDemolishFailed: (failed: boolean) => void;
+  setSdkSnippet: (snippet: string) => void;
   setSelection: (
     selection: ScenarioSelection,
     preset: PresetId | null,
@@ -135,6 +138,7 @@ const sessionInitialState = {
   blocker: null,
   recoveredXlm: null,
   demolishFailed: false,
+  sdkSnippet: null,
 };
 
 let logCounter = 0;
@@ -201,6 +205,8 @@ export const usePlaygroundStore = create<PlaygroundState>((set) => ({
   setLastError: (lastError, blocker = null) => set({ lastError, blocker }),
 
   setDemolishFailed: (demolishFailed) => set({ demolishFailed }),
+
+  setSdkSnippet: (sdkSnippet) => set({ sdkSnippet }),
 
   setSelection: (selection, preset, seed = null) => set({ selection, preset, seed }),
 

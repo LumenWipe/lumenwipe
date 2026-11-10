@@ -13,13 +13,15 @@ import {
   parseReplayCode,
   resolvePlan,
 } from "@/lib/scenarios";
-import { usePlaygroundStore } from "@/store/playground";
+import { usePlaygroundStore, type PlaygroundPhase } from "@/store/playground";
 import { buildSceneNode, usePlaygroundExecution } from "@/hooks/usePlaygroundExecution";
 import PlaygroundControls from "@/components/scene/PlaygroundControls";
 import TxLogPanel from "@/components/scene/TxLogPanel";
+import SdkSnippetPanel from "@/components/scene/SdkSnippetPanel";
 import ScenarioPicker from "@/components/scene/ScenarioPicker";
 import OrbitalNode from "@/components/scene/OrbitalNode";
 import PlaygroundClient from "@/app/PlaygroundClient";
+import { tick } from "./session-fixtures";
 
 // The playground as the visitor sees it. The scenario picker: presets, toggles, the live totals
 // and the step list, and how the scene draws what it is given. The demolish: the hook, the control
@@ -321,6 +323,100 @@ test("a mess step that sent nothing is logged without a transaction link", async
       .map((s) => EXPLORER_TX + hashOf(s.id))
       .reverse()
   );
+});
+
+describe("the session's SDK code", () => {
+  const SNIPPET_ROUTE = `/api/session/${SESSION_ID}/sdk-snippet`;
+
+  test("is fetched once the mess is done, and kept through the close", async () => {
+    routes.handlers.set(SNIPPET_ROUTE, async () => ({
+      status: 200,
+      body: { snippet: "await runClose({});" },
+    }));
+    await dirtyAccount();
+    await rtl.waitFor(() =>
+      expect(usePlaygroundStore.getState().sdkSnippet).toBe("await runClose({});")
+    );
+    expect(routes.count(`GET ${SNIPPET_ROUTE}`)).toBe(1);
+  });
+
+  test("an answer that arrives after the session ended is dropped", async () => {
+    const answer = deferred<{ status: number; body: unknown }>();
+    routes.handlers.set(SNIPPET_ROUTE, () => answer.promise);
+    await dirtyAccount();
+    await rtl.waitFor(() => expect(routes.count(`GET ${SNIPPET_ROUTE}`)).toBe(1));
+    rtl.act(() => usePlaygroundStore.getState().reset());
+    answer.resolve({ status: 200, body: { snippet: "await runClose({});" } });
+    await tick();
+    expect(usePlaygroundStore.getState().sdkSnippet).toBeNull();
+  });
+
+  test("a failed fetch leaves the run as it was, with no code", async () => {
+    routes.handlers.set(SNIPPET_ROUTE, async () => ({
+      status: 500,
+      body: { error: "snippet_unavailable" },
+    }));
+    await dirtyAccount();
+    await rtl.waitFor(() => expect(routes.count(`GET ${SNIPPET_ROUTE}`)).toBe(1));
+    expect(usePlaygroundStore.getState().phase).toBe("DIRTY");
+    expect(usePlaygroundStore.getState().sdkSnippet).toBeNull();
+  });
+});
+
+describe("the SDK code panel", () => {
+  const SNIPPET = 'import { LumenWipeClient } from "@lumenwipe/sdk";\nconst source = "GDEMO";';
+  let copied: string[];
+
+  beforeEach(() => {
+    copied = [];
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: async (text: string) => void copied.push(text) },
+    });
+  });
+
+  function show(phase: PlaygroundPhase, snippet: string | null = SNIPPET): void {
+    const store = usePlaygroundStore.getState();
+    store.setPhase(phase);
+    if (snippet !== null) store.setSdkSnippet(snippet);
+    rtl.render(<SdkSnippetPanel />);
+  }
+
+  test("before the close, it shows the same close in code", () => {
+    show("DIRTY");
+    expect(rtl.screen.getByRole("region", { name: "The same close in code" })).toBeTruthy();
+    expect(rtl.screen.getByLabelText("SDK code for this close").textContent).toBe(SNIPPET);
+  });
+
+  test("after the close, it names the close that ran", () => {
+    show("COMPLETE");
+    expect(rtl.screen.getByRole("region", { name: "This close with the SDK" })).toBeTruthy();
+  });
+
+  test("the copy button copies the snippet and says so", async () => {
+    show("DIRTY");
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: "Copy the SDK code" }));
+    await rtl.screen.findByText("Copied to the clipboard");
+    expect(copied).toEqual([SNIPPET]);
+    expect(rtl.screen.getByRole("status").textContent).toBe("Copied to the clipboard");
+  });
+
+  test("nothing is shown without a snippet, or before the mess is done", () => {
+    show("DIRTY", null);
+    expect(rtl.screen.queryByRole("region")).toBeNull();
+    rtl.cleanup();
+    for (const phase of ["IDLE", "MESSING", "EXPIRED"] as const) {
+      show(phase);
+      expect(rtl.screen.queryByRole("region")).toBeNull();
+      rtl.cleanup();
+    }
+  });
+
+  test("a new session clears the last session's snippet", () => {
+    usePlaygroundStore.getState().setSdkSnippet(SNIPPET);
+    usePlaygroundStore.getState().reset();
+    expect(usePlaygroundStore.getState().sdkSnippet).toBeNull();
+  });
 });
 
 describe("the demolish runs round by round", () => {
