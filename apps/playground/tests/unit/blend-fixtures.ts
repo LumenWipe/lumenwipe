@@ -51,6 +51,14 @@ export class FakeBlendLedger implements DemolishApi, DemolishChain {
     };
   }
 
+  async nativeBalance(): Promise<string> {
+    throw new Error("This ledger closes into no exchange");
+  }
+
+  async ledgerTransaction(): Promise<null> {
+    throw new Error("This ledger closes into no exchange");
+  }
+
   async closePlan(): Promise<{ decisionPoints: DecisionPoint[]; blockers: { code: string }[] }> {
     return { decisionPoints: [], blockers: [] };
   }
@@ -186,6 +194,10 @@ export class FakeBlendLedger implements DemolishApi, DemolishChain {
 
   async feeBumpSponsor(): Promise<{ transaction: string }> {
     throw new Error("This ledger pays its own fees");
+  }
+
+  async mediatorSign(): Promise<{ transaction: string }> {
+    throw new Error("This ledger closes into no exchange");
   }
 
   async getTransaction(txHash: string): Promise<TransactionLookupResponse> {

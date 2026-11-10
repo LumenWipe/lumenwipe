@@ -22,16 +22,28 @@ import {
   type TransactionsResponse,
   type UnresolvedSubmission,
 } from "@lumenwipe/sdk";
-import { loadSignerState, type SignerState } from "./horizon-submit";
+import {
+  loadLedgerTransaction,
+  loadNativeBalance,
+  loadSignerState,
+  type SignerState,
+} from "./horizon-submit";
 import { logEntryOf, type DemolishLogEntry, type PendingDemolishTx } from "./session-store";
 import { requiredWeight, signForWeight, type SigningKey } from "./signing";
 import {
+  closeDestination,
   FEE_ACCOUNT_NOT_CONFIGURED,
   PlaygroundVerificationError,
   verifyDemolishTransaction,
+  withRecordedBalance,
   type PlaygroundCloseExpectation,
 } from "./verify";
 import { assertSponsoredEnvelope } from "./verify-feebump";
+import {
+  assertCosignedEnvelope,
+  assertDeliveredOnLedger,
+  type LedgerTransaction,
+} from "./verify-mediator";
 
 /** The calls a demolish round makes to the LumenWipe API; `LumenWipeClient` provides them. */
 export interface DemolishApi {
@@ -43,6 +55,8 @@ export interface DemolishApi {
   getTransaction(hash: string): Promise<TransactionLookupResponse>;
   /** Wraps a signed transaction whose own fee is zero in the API sponsor's fee-bump envelope. */
   feeBumpSponsor(signedXdr: string): Promise<{ transaction: string }>;
+  /** Adds the API mediator's signature to a signed relay hand-off. */
+  mediatorSign(signedXdr: string): Promise<{ transaction: string }>;
 }
 
 /** How a round reads and records the session's demolish progress (lib/session-actions.ts). */
@@ -64,6 +78,10 @@ export interface DemolishRoundHooks {
 export interface DemolishChain {
   /** The demo's live signers and thresholds, which the signing weight is judged against. */
   signerState: (address: string) => Promise<SignerState>;
+  /** The demo's XLM balance, which an exchange session's forward is held to. */
+  nativeBalance: (address: string) => Promise<string>;
+  /** A transaction the network applied, by its hash; null while the network does not know it. */
+  ledgerTransaction: (hash: string) => Promise<LedgerTransaction | null>;
 }
 
 export interface RunDemolishOptions {
@@ -72,6 +90,9 @@ export interface RunDemolishOptions {
   signingKeys: SigningKey[];
   /** What the close may do, from the session record (`expectationFromSession`). */
   expected: PlaygroundCloseExpectation;
+  /** The API mediator's public key, from this deployment's configuration, which an exchange
+   *  session's co-signature must verify against; null when none is configured. */
+  mediatorKey: string | null;
   apiUrl: string;
   apiKey: string;
   hooks: DemolishRoundHooks;
@@ -120,6 +141,27 @@ export class DemolishFeeUnsponsoredError extends Error {
   }
 }
 
+/**
+ * An exchange session's merge confirmed, but the ledger did not show the stand-in paid with the
+ * session's memo: the transaction could not be read back, or it is not the one checked before
+ * signing. The account is merged either way. `code` is for the log only.
+ */
+export class DemolishDeliveryUnconfirmedError extends Error {
+  constructor(readonly code: string) {
+    super("The exchange deposit could not be confirmed on the ledger");
+    this.name = "DemolishDeliveryUnconfirmedError";
+  }
+}
+
+/** An exchange session's hand-off, with no mediator key configured to check the co-signature
+ *  against: refused before the demo key signs it. */
+export const MEDIATOR_NOT_CONFIGURED = "exchange_mediator_not_configured";
+
+/** Reads of a confirmed hand-off before it counts as not found: Horizon trails the API's
+ *  confirmation by about a ledger. */
+const DELIVERY_READ_ATTEMPTS = 6;
+const DELIVERY_READ_DELAY_MS = 2_000;
+
 /** Plan blockers the close cannot build past, which stop the round before anything is built. */
 export class DemolishBlockedError extends Error {
   constructor(readonly blockers: string[]) {
@@ -152,12 +194,21 @@ function claimChoice(balanceId: string, expected: PlaygroundCloseExpectation): s
 export function planAnswers(expected: PlaygroundCloseExpectation): DecisionAnswer[] {
   const ids = [...expected.claims.map((c) => c.id), ...expected.forfeits];
   return [
-    { id: destinationDecisionId(expected.sinkPublic), choice: DESTINATION_ACK_CHOICE },
+    ...destinationAnswers(expected),
     ...ids.flatMap((id) => {
       const choice = claimChoice(id, expected);
       return choice ? [{ id: claimDecisionId(id), choice }] : [];
     }),
   ];
+}
+
+/**
+ * The acknowledgement that the destination is an account the session controls: true of the market
+ * maker, and never given for the exchange stand-in, which the registry lists and nobody controls.
+ */
+function destinationAnswers(expected: PlaygroundCloseExpectation): DecisionAnswer[] {
+  if (expected.exchange) return [];
+  return [{ id: destinationDecisionId(expected.sinkPublic), choice: DESTINATION_ACK_CHOICE }];
 }
 
 export interface DemolishDecisions {
@@ -204,7 +255,7 @@ export function buildDemolishDecisions(
   expected: PlaygroundCloseExpectation
 ): DemolishDecisions {
   const destinationId = destinationDecisionId(expected.sinkPublic);
-  const answers: DecisionAnswer[] = [{ id: destinationId, choice: DESTINATION_ACK_CHOICE }];
+  const answers: DecisionAnswer[] = destinationAnswers(expected);
   const unanswerable: string[] = [];
   for (const dp of decisionPoints) {
     if (dp.id === destinationId) continue;
@@ -297,6 +348,50 @@ async function sponsoredIfUnpaid(
   return envelope;
 }
 
+/**
+ * The envelope an exchange session's hand-off is sent in: the one the playground signed with the
+ * API mediator's signature added, and nothing else changed (./verify-mediator).
+ */
+async function cosigned(
+  client: Pick<DemolishApi, "mediatorSign">,
+  mediatorKey: string | null,
+  signedXdr: string
+): Promise<string> {
+  if (mediatorKey === null) throw new PlaygroundVerificationError(MEDIATOR_NOT_CONFIGURED);
+  const envelope = (await client.mediatorSign(signedXdr)).transaction;
+  assertCosignedEnvelope(signedXdr, envelope, mediatorKey);
+  return envelope;
+}
+
+/**
+ * Reads a confirmed hand-off back by its hash and holds it to the session: the id memo it drew,
+ * and the stand-in paid by the relay at least the balance recorded for that round.
+ */
+async function confirmDelivery(
+  chain: DemolishChain,
+  hash: string,
+  expected: PlaygroundCloseExpectation,
+  recordedBalance: string | null,
+  sleep: (ms: number) => Promise<void>
+): Promise<void> {
+  const { exchange } = expected;
+  if (!exchange) return;
+  let ledger: LedgerTransaction | null = null;
+  for (let attempt = 0; attempt < DELIVERY_READ_ATTEMPTS && !ledger; attempt++) {
+    if (attempt > 0) await sleep(DELIVERY_READ_DELAY_MS);
+    ledger = await chain.ledgerTransaction(hash);
+  }
+  if (!ledger) throw new DemolishDeliveryUnconfirmedError("exchange_delivery_not_found");
+  try {
+    assertDeliveredOnLedger(ledger, expected.demoPublic, { ...exchange, recordedBalance });
+  } catch (err) {
+    if (err instanceof PlaygroundVerificationError) {
+      throw new DemolishDeliveryUnconfirmedError(err.message);
+    }
+    throw err;
+  }
+}
+
 function submissionOf(pending: PendingDemolishTx): UnresolvedSubmission {
   return {
     hash: pending.hash,
@@ -326,7 +421,17 @@ export async function runCloseRound(
 ): Promise<DemolishRoundResult> {
   const { hooks } = opts;
   const demoPublic = opts.demoKeypair.publicKey();
-  const sinkPublic = opts.expected.sinkPublic;
+  const destination = closeDestination(opts.expected);
+  const exchange = opts.expected.exchange;
+  // An exchange session's close carries its memo; any other carries none.
+  const memo = exchange ? { memo: exchange.memo, memoType: exchange.memoType } : {};
+  // This round's expectation: an exchange session's carries the balance read below, so a forward
+  // is held to what the playground saw on the network, never to the API's figure.
+  let expected = opts.expected;
+  // The merge that confirmed, and the balance its round recorded, for the delivery read.
+  const outcome: { merged: { hash: string; recordedBalance: string | null } | null } = {
+    merged: null,
+  };
 
   // The advisory read whose answer set every request of this round reuses. Deferred to the first
   // fetch: a left-over merge that confirmed ends the round before it, when the account is gone.
@@ -351,7 +456,7 @@ export async function runCloseRound(
       if (!decisions) {
         const plan = await client.closePlan({
           source: demoPublic,
-          destination: sinkPublic,
+          destination,
           decisions: planAnswers(opts.expected),
         });
         const stops = plan.blockers.map((b) => b.code).filter((c) => !PASSABLE_BLOCKERS.has(c));
@@ -366,8 +471,9 @@ export async function runCloseRound(
       try {
         res = await client.closeTransactions({
           source: demoPublic,
-          destination: sinkPublic,
+          destination,
           decisions,
+          ...memo,
         });
       } catch (err) {
         // A drained demo can only close sponsored: an API that will not sponsor it says it is short.
@@ -382,11 +488,17 @@ export async function runCloseRound(
       }
       remaining = res.remaining;
       signers = await chain.signerState(demoPublic);
+      if (exchange)
+        expected = withRecordedBalance(opts.expected, await chain.nativeBalance(demoPublic));
       return res;
     },
     verify: (tx: CloseTransaction) => {
       try {
-        verifyDemolishTransaction(tx, opts.expected);
+        verifyDemolishTransaction(tx, expected);
+        // Every rule held, but the mediator's signature could not be checked: nothing is signed.
+        if (exchange && closesAccount(tx.xdr, demoPublic) && opts.mediatorKey === null) {
+          throw new PlaygroundVerificationError(MEDIATOR_NOT_CONFIGURED);
+        }
       } catch (err) {
         // Every other rule held; only the sponsor's envelope could not be checked. Nothing is
         // signed, and the close goes on once the demo can pay its own fee.
@@ -418,7 +530,12 @@ export async function runCloseRound(
       signing = tx;
       return { xdr: parsed.toEnvelope().toXdr("base64"), weight };
     },
-    prepare: (_tx, xdr) => sponsoredIfUnpaid(client, opts.expected, xdr),
+    // An exchange session's hand-off goes to the API's mediator for its co-signature, checked
+    // before it is sent; any other transaction goes to the sponsor only when its fee is zero.
+    prepare: (_tx, xdr) =>
+      exchange && closesAccount(xdr, demoPublic)
+        ? cosigned(client, opts.mediatorKey, xdr)
+        : sponsoredIfUnpaid(client, opts.expected, xdr),
     submit: async (_tx, xdr) => {
       const res = await client.submit(xdr);
       return res.hash;
@@ -441,21 +558,30 @@ export async function runCloseRound(
           operations: signing.intent.operations,
           validUntil: submission.validUntil,
           closesAccount: submissionClosesAccount(submission),
+          recordedBalance: expected.exchange?.recordedBalance ?? null,
         });
       },
       ...(hooks.pending && { unresolved: submissionOf(hooks.pending) }),
       onResolved: (submission) => {
         const left = hooks.pending;
         if (left && left.hash === submission.hash) {
-          hooks.onConfirmed(logEntryOf(left), submissionClosesAccount(submission));
+          const closes = submissionClosesAccount(submission);
+          if (closes) outcome.merged = { hash: left.hash, recordedBalance: left.recordedBalance };
+          hooks.onConfirmed(logEntryOf(left), closes);
         }
       },
     },
-    onConfirmed: (tx, hash) =>
+    onConfirmed: (tx, hash) => {
+      const closes = tx.covers.includes("MERGE");
+      // Read from the envelope the playground verified, not from what the API says it covers.
+      if (closesAccount(tx.xdr, demoPublic)) {
+        outcome.merged = { hash, recordedBalance: expected.exchange?.recordedBalance ?? null };
+      }
       hooks.onConfirmed(
         { txId: tx.id, hash, summary: tx.intent.summary, operations: tx.intent.operations },
-        tx.covers.includes("MERGE")
-      ),
+        closes
+      );
+    },
     // One round per request; the client calls again while `done` is false.
     maxRounds: 1,
     ...(sleep && { sleep }),
@@ -464,6 +590,17 @@ export async function runCloseRound(
   try {
     const { mergeConfirmed } = await runClose(deps);
     if (!mergeConfirmed) throw new Error("The close ended without a confirmed merge");
+    const confirmed = outcome.merged;
+    if (exchange) {
+      if (!confirmed) throw new DemolishDeliveryUnconfirmedError("exchange_merge_hash_unknown");
+      await confirmDelivery(
+        chain,
+        confirmed.hash,
+        opts.expected,
+        confirmed.recordedBalance,
+        sleep ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
+      );
+    }
     return { done: true, remainingSteps: 0 };
   } catch (err) {
     if (
@@ -491,8 +628,13 @@ export function runDemolish(opts: RunDemolishOptions): Promise<DemolishRoundResu
       submit: (signedXdr) => client.submit(signedXdr),
       getTransaction: (hash) => client.getTransaction(hash),
       feeBumpSponsor: (signedXdr) => client.feeBumpSponsor(signedXdr),
+      mediatorSign: (signedXdr) => client.mediatorSign(signedXdr),
     },
-    { signerState: loadSignerState },
+    {
+      signerState: loadSignerState,
+      nativeBalance: async (address) => (await loadNativeBalance(address)).balance,
+      ledgerTransaction: loadLedgerTransaction,
+    },
     opts
   );
 }

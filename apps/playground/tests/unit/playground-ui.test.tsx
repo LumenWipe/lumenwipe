@@ -595,9 +595,12 @@ describe("the scenario picker", () => {
     });
 
     test("a feature set with nothing to run says so and cannot be chosen", () => {
-      usePlaygroundStore
-        .getState()
-        .setUnavailable(new Map([["fee-bump", "Not set up on this deployment."]]));
+      usePlaygroundStore.getState().setUnavailable(
+        new Map([
+          ["fee-bump", "Not set up on this deployment."],
+          ["exchange-close", "Not set up on this deployment."],
+        ])
+      );
       rtl.render(<ScenarioPicker />);
       const api = button(/API, batch and exchange/);
       expect(api.getAttribute("aria-disabled")).toBe("true");

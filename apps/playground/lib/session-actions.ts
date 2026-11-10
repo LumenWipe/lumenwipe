@@ -5,6 +5,7 @@ import { PlaygroundConfigError } from "./crypto";
 import {
   DemolishBlockedError,
   DemolishDecisionUnanswerableError,
+  DemolishDeliveryUnconfirmedError,
   DemolishFeeUnsponsoredError,
   type DemolishRoundHooks,
   type DemolishRoundResult,
@@ -320,6 +321,14 @@ export async function runDemolishRound(
       // Nothing was sent. The API's code is logged, never returned.
       console.warn("[playground] demolish fee not sponsored", { sessionId: id, code: err.code });
       return { status: 502, body: { error: "demolish_fee_unsponsored" } };
+    }
+    if (err instanceof DemolishDeliveryUnconfirmedError) {
+      // The merge landed; only its read-back did not show the deposit. The code is logged only.
+      console.error("[playground] exchange deposit not confirmed", {
+        sessionId: id,
+        code: err.code,
+      });
+      return { status: 502, body: { error: "demolish_delivery_unconfirmed" } };
     }
     console.error("[playground] demolish round failed", { sessionId: id }, err);
     const error =

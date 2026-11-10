@@ -15,6 +15,7 @@ const CODES = [
   "demolish_failed",
   "demolish_outcome_unknown",
   "demolish_fee_unsponsored",
+  "demolish_delivery_unconfirmed",
   "demolish_decision_unanswerable",
   "demolish_blocked",
   "demolish_in_progress",

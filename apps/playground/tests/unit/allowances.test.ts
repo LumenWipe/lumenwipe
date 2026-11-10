@@ -347,6 +347,7 @@ describe("runRevokeAllowance", () => {
           operations: [],
           validUntil: null,
           closesAccount: false,
+          recordedBalance: null,
         },
       },
     ]) {

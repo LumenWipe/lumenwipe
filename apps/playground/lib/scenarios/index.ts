@@ -3,6 +3,7 @@
 // Isomorphic: no server-only code, no Stellar SDK, no I/O.
 export * from "./caps";
 export * from "./catalog";
+export * from "./exchange";
 export { SCENARIOS } from "./definitions";
 export * from "./pinned";
 export * from "./prerequisites";

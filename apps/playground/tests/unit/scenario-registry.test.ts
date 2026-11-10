@@ -82,6 +82,10 @@ function builds(def: ScenarioDefinition): ScenarioBuild[] {
   });
 }
 
+/** The exchange deposit changes only where the close goes: it adds no entry and no mess step,
+ *  and costs the demo nothing but the close round of its own its relay merge takes. */
+const DESTINATION_ONLY: readonly string[] = ["exchange-close"];
+
 describe.each(SCENARIOS.map((def) => [def.id, def] as const))("%s", (_id, def) => {
   test("has a label, a description and sane parameter ranges", () => {
     expect(def.label.length).toBeGreaterThan(0);
@@ -95,6 +99,10 @@ describe.each(SCENARIOS.map((def) => [def.id, def] as const))("%s", (_id, def) =
 
   test("declares steps, each with an executor for its action", () => {
     for (const build of builds(def)) {
+      if (DESTINATION_ONLY.includes(def.id)) {
+        expect(build.steps).toEqual([]);
+        continue;
+      }
       expect(build.steps.length).toBeGreaterThan(0);
       for (const { step } of build.steps) {
         expect(step.label.length).toBeGreaterThan(0);
@@ -108,6 +116,11 @@ describe.each(SCENARIOS.map((def) => [def.id, def] as const))("%s", (_id, def) =
       const { cost } = build;
       expect(cost.classicTransactions + cost.sorobanTransactions).toBe(build.steps.length);
       expect(cost.seconds).toBeGreaterThan(0);
+      if (DESTINATION_ONLY.includes(def.id)) {
+        expect(cost.xlm).toBe(0);
+        expect(cost.subEntries).toBe(0);
+        continue;
+      }
       expect(cost.xlm).toBeGreaterThan(0);
       expect(cost.batchSize).toBeGreaterThanOrEqual(1);
     }
@@ -122,7 +135,10 @@ describe.each(SCENARIOS.map((def) => [def.id, def] as const))("%s", (_id, def) =
       // drain only changes who pays the close's fee.
       const kinds = build.steps.flatMap(({ step }) => step.nodes).map((n) => n.kind);
       const allowances = kinds.filter((k) => k === "allowance").length;
-      if (build.steps.every(({ step }) => step.action.kind === "drain_to_fee_floor")) {
+      if (
+        DESTINATION_ONLY.includes(def.id) ||
+        build.steps.every(({ step }) => step.action.kind === "drain_to_fee_floor")
+      ) {
         expect(kinds).toEqual([]);
         expect(expectation.closeOperations).toBe(0);
         expect(expectation.operationTypes).toEqual([]);

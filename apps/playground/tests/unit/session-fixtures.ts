@@ -32,8 +32,19 @@ export function newSessionData(): NewSessionData {
     helperAccounts: [],
     claimableBalances: [],
     allowances: [],
+    exchange: null,
   };
 }
+
+/** The reads only an exchange session's close makes, for a chain that closes into none. */
+export const NO_EXCHANGE_READS = {
+  nativeBalance: async (): Promise<string> => {
+    throw new Error("This chain closes into no exchange");
+  },
+  ledgerTransaction: async (): Promise<null> => {
+    throw new Error("This chain closes into no exchange");
+  },
+};
 
 export function gate(): { wait: Promise<void>; open: () => void } {
   let open = (): void => {};

@@ -11,7 +11,9 @@ import type { CloseTransaction } from "@lumenwipe/sdk";
 import {
   AQUARIUS,
   BLEND,
+  closesToExchange,
   conversionFloorStroops,
+  EXCHANGE_STAND_IN,
   isPersistentAsset,
   MULTISIG_THRESHOLD,
   PHOENIX,
@@ -24,6 +26,12 @@ import {
 import type { PlaygroundSession, SignerType } from "./session-store";
 import { parseStroops } from "./stroops";
 import { assertSorobanTransaction, type SeededProtocol } from "./verify-soroban";
+import { PlaygroundVerificationError } from "./verify-error";
+import {
+  assertExchangeTransaction,
+  isRelayHandOff,
+  type ExchangeExpectation,
+} from "./verify-mediator";
 
 // The check the playground's backend runs on every XDR the real API returns, before signing it.
 //
@@ -33,7 +41,8 @@ import { assertSorobanTransaction, type SeededProtocol } from "./verify-soroban"
 // What makes it narrower is what it is told to expect, all of it taken from the session record and
 // the playground's own configuration, never from the API's response:
 //
-// - the merge goes to the fixed sink, with no memo;
+// - the merge goes to the fixed sink, with no memo, unless the session closes to the exchange
+//   (the last rule below);
 // - a payment may only return an asset of the session to its own issuer, unless the session chose
 //   another disposition for it: a transfer goes only to the session's own recipient, and an asset
 //   chosen to convert can only be converted, to XLM, into the demo, for no less than the floor its
@@ -51,7 +60,13 @@ import { assertSorobanTransaction, type SeededProtocol } from "./verify-soroban"
 //   is a transaction of its own, never beside the merge;
 // - a transaction may leave its own fee at zero only in a session that selected the sponsored fee
 //   with a fee account configured, and the envelope the API's sponsor wraps it in must then pass
-//   lib/verify-feebump.ts before it is sent.
+//   lib/verify-feebump.ts before it is sent;
+// - a session that selected the exchange close deposits into the bundled registry's stand-in with
+//   the memo it drew, through the API's relay account: every transaction first passes
+//   lib/verify-mediator.ts (the two-operation hand-off, held to the balance the playground read
+//   from Horizon this round; any other round neither merges nor carries a memo), and the shared
+//   verifier is then told the stand-in, the memo and that balance. The cleanup round before the
+//   hand-off is held to the merge transaction's rules below, less the merge.
 //
 // The shared verifier holds a transfer to a floor; the playground also holds a transfer and a
 // conversion to at most the amount the mess paid in, so the two together pin a transfer exactly.
@@ -69,12 +84,7 @@ import { assertSorobanTransaction, type SeededProtocol } from "./verify-soroban"
 // signers, each once, and the reset to 0/1/1. Any other round that is not the final merge is
 // refused before it is signed.
 
-export class PlaygroundVerificationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "PlaygroundVerificationError";
-  }
-}
+export { PlaygroundVerificationError };
 
 /**
  * The operation types a playground close may contain. Every scenario's close expectation lists
@@ -165,6 +175,9 @@ export interface PlaygroundCloseExpectation {
   /** The configured fee account, for a sponsored session: only with one may a transaction leave
    *  its own fee at zero for the API's sponsor to pay. Null otherwise, or with none configured. */
   sponsorFeeAccount: string | null;
+  /** For a session that selected the exchange close, where it deposits and with which memo, and
+   *  the balance read this round (lib/demolish.ts fills it in); null for any other session. */
+  exchange: ExchangeExpectation | null;
 }
 
 /** A sponsored session's close left at a fee of zero, with no fee account configured to check the
@@ -189,7 +202,8 @@ export function expectationFromSession(
     | "transferRecipient"
     | "helperAccounts"
     | "claimableBalances"
-  >,
+  > &
+    Partial<Pick<PlaygroundSession, "exchange">>,
   sinkPublic: string,
   persistentIssuer: string,
   feeAccount: string | null
@@ -222,6 +236,7 @@ export function expectationFromSession(
       : []
   );
   const sponsored = plan.steps.some((s) => s.action.kind === "drain_to_fee_floor");
+  const exchange = exchangeExpectation(session, sinkPublic, persistentIssuer);
   const forfeits = session.claimableBalances.filter((b) => b.intent === "forfeit").map((b) => b.id);
   const beneficiary = session.helperAccounts.find((h) => h.role === "beneficiary");
   const sponsoredEntries = planned.sponsoredEntries.map((entry): PlaygroundSponsoredEntry => {
@@ -260,7 +275,61 @@ export function expectationFromSession(
     sorobanSeeded: seededProtocols(plan.steps),
     sponsored,
     sponsorFeeAccount: sponsored ? feeAccount : null,
+    exchange,
   };
+}
+
+/**
+ * The exchange half of the expectation: the stand-in and memo the session recorded, which must be
+ * there exactly when its selection closes to the exchange, and must name the bundled stand-in.
+ * The balance is left unread; the round that signs reads it (lib/demolish.ts).
+ */
+function exchangeExpectation(
+  session: Pick<
+    PlaygroundSession,
+    "demoPublic" | "ephemeralIssuers" | "selection" | "transferRecipient" | "helperAccounts"
+  > &
+    Partial<Pick<PlaygroundSession, "exchange">>,
+  sinkPublic: string,
+  persistentIssuer: string
+): ExchangeExpectation | null {
+  const recorded = session.exchange ?? null;
+  if (!closesToExchange(session.selection)) {
+    if (recorded !== null) throw new PlaygroundVerificationError("session_exchange_unexpected");
+    return null;
+  }
+  if (recorded === null) throw new PlaygroundVerificationError("session_exchange_missing");
+  if (recorded.destination !== EXCHANGE_STAND_IN.address || recorded.memoType !== "id") {
+    throw new PlaygroundVerificationError("session_exchange_not_stand_in");
+  }
+  return {
+    destination: recorded.destination,
+    memo: recorded.memo,
+    memoType: recorded.memoType,
+    recordedBalance: null,
+    sessionAccounts: [
+      session.demoPublic,
+      sinkPublic,
+      persistentIssuer,
+      ...session.ephemeralIssuers.map((e) => e.publicKey),
+      ...(session.transferRecipient ? [session.transferRecipient.publicKey] : []),
+      ...session.helperAccounts.map((h) => h.publicKey),
+    ],
+  };
+}
+
+/** The address the close goes to: the session's stand-in, or the market maker. */
+export function closeDestination(expected: PlaygroundCloseExpectation): string {
+  return expected.exchange?.destination ?? expected.sinkPublic;
+}
+
+/** The expectation with the balance the playground read from Horizon for this round. */
+export function withRecordedBalance(
+  expected: PlaygroundCloseExpectation,
+  balance: string
+): PlaygroundCloseExpectation {
+  if (!expected.exchange) return expected;
+  return { ...expected, exchange: { ...expected.exchange, recordedBalance: balance } };
 }
 
 /**
@@ -424,15 +493,17 @@ export function sharedExpectation(expected: PlaygroundCloseExpectation): CloseEx
   for (const { asset, minAmountOut } of expected.conversions) {
     classicConversions[asset] = { minAmountOut };
   }
+  const { exchange } = expected;
   return {
     ...exitExpectations(null, "testnet"),
     ...sorobanExitExpectations(expected),
     source: expected.demoPublic,
-    destination: expected.sinkPublic,
+    destination: closeDestination(expected),
     // The sink is not an exchange, so the mediated hand-off this would floor is refused anyway.
-    nativeBalance: "0",
-    memo: null,
-    memoType: null,
+    // The stand-in is, and its forward is floored at the balance the playground read itself.
+    nativeBalance: exchange?.recordedBalance ?? "0",
+    memo: exchange?.memo ?? null,
+    memoType: exchange?.memoType ?? null,
     claimTrustlineAssets: [
       ...new Set(expected.claims.filter((c) => c.addTrustline).map((c) => c.asset)),
     ],
@@ -581,6 +652,32 @@ function assertNormalizationTransaction(
   });
 }
 
+/**
+ * In an exchange session, the round before the hand-off that is neither the claim round nor the
+ * signer round: what a direct close's merge transaction would hold, without the merge.
+ */
+function isExchangeCleanup(ops: Operations, expected: PlaygroundCloseExpectation): boolean {
+  const claimRound =
+    expected.claims.length > 0 &&
+    ops.every((op) => op.type === "claimClaimableBalance" || raisesTrustline(op));
+  const signerRound = expected.raisesThresholds && ops.every((op) => op.type === "setOptions");
+  return ops.length > 0 && !claimRound && !signerRound;
+}
+
+/**
+ * The cleanup round of an exchange session, held to the merge transaction's rules: no claim, no
+ * trustline added, only recorded revokes, no transfer or conversion above what the mess paid in,
+ * and no more operations than the session's entries explain, less the merge it does not carry.
+ * lib/verify-mediator.ts has already refused a merge or a memo in it.
+ */
+function assertExchangeCleanup(ops: Operations, expected: PlaygroundCloseExpectation): void {
+  assertMergeTransaction(ops, expected);
+  assertWithinRecordedAmounts(ops, expected);
+  if (ops.length > maxOperations(expected) - 1) {
+    throw new PlaygroundVerificationError("too_many_operations");
+  }
+}
+
 /** In the merge transaction: no claim, no trustline added, and only recorded revokes, each once. */
 function assertMergeTransaction(ops: Operations, expected: PlaygroundCloseExpectation): void {
   const revoked = new Set<string>();
@@ -651,6 +748,10 @@ function assertCloseRules(
     });
   }
 
+  // Before the shared verifier as well: the relay rules hold every transaction of an exchange
+  // session to the stand-in, the session's memo and the balance read this round.
+  if (expected.exchange) assertExchangeTransaction(parsed, expected.demoPublic, expected.exchange);
+
   verifyCloseTransaction({
     unsignedXdr: tx.xdr,
     network: "testnet",
@@ -661,9 +762,15 @@ function assertCloseRules(
   if (!ops.every((op) => PLAYGROUND_CLOSE_OPERATION_TYPES.some((type) => type === op.type))) {
     throw new PlaygroundVerificationError("operation_not_allowed");
   }
+  // The hand-off: lib/verify-mediator.ts above held it to its two operations.
+  if (expected.exchange && isRelayHandOff(parsed)) return;
   if (!ops.some((op) => op.type === "accountMerge")) {
     // A protocol exit: lib/verify-soroban.ts above already held it to one call, alone.
     if (ops.length === 1 && ops[0].type === "invokeHostFunction") return;
+    if (expected.exchange && isExchangeCleanup(ops, expected)) {
+      assertExchangeCleanup(ops, expected);
+      return;
+    }
     if (ops.length > 0 && ops.every((op) => op.type === "setOptions")) {
       assertNormalizationTransaction(ops, expected);
     } else {

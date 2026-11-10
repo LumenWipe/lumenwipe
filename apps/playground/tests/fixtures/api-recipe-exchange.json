@@ -1,0 +1,49 @@
+{
+  "builtAtSeconds": 1793000000,
+  "standIn": {
+    "address": "GB4VXLVR2DDIJUPVVY74QVPEIHINBMMXO6WUY67JUEYO42LQSDS5IMKW",
+    "name": "LumenWipe testnet exchange",
+    "requiresMediator": true,
+    "requiresMemo": true,
+    "memoType": "id",
+    "network": "testnet"
+  },
+  "recipes": [
+    {
+      "name": "exchange",
+      "selection": {
+        "scenarios": [
+          {
+            "id": "data-entries",
+            "params": {
+              "count": 2
+            }
+          },
+          {
+            "id": "exchange-close",
+            "params": {}
+          }
+        ]
+      },
+      "session": {
+        "demoPublic": "GD5EQNAUP5XGSDBWSPX7MEZWARSAHTMK4KQU6MNTYQDTLBLJEOKWLSJG",
+        "sinkPublic": "GAMX62ZD4FWIKMWGVPEDR6WNL2TYTPQMO2ZJEAZUAON7VCZ5G2GWDF7W",
+        "persistentIssuer": "GBCQRID2VFAXA7Z6WLNZJSEJPKALFQIZOR3LNXRBHLBHHX35Q3CP6J7I",
+        "exchange": {
+          "destination": "GB4VXLVR2DDIJUPVVY74QVPEIHINBMMXO6WUY67JUEYO42LQSDS5IMKW",
+          "memo": "9007199254740993",
+          "memoType": "id"
+        }
+      },
+      "relay": "GCKHLRWPB3NDIBLVFDMGSR4B5TESVVRZ27RL2J3WD3J665ESJPVQPDLG",
+      "balances": ["30.0000000", "29.9999800"],
+      "requiresAnotherCall": [true, false],
+      "transactions": [
+        "AAAAAgAAAAD6SDQUf25pDDaT7/YTNgRkA82K4qFPMbPEBzWFaSOVZQAAAMgAAAAAAAAAZQAAAAEAAAAAAAAAAAAAAABq3wNsAAAAAAAAAAIAAAAAAAAACgAAAApwcm9tb19jb2RlAAAAAAAAAAAAAAAAAAoAAAAQbGVnYWN5X2FwcF9zdGF0ZQAAAAAAAAAAAAAAAA==",
+        "AAAAAgAAAAD6SDQUf25pDDaT7/YTNgRkA82K4qFPMbPEBzWFaSOVZQAAAMgAAAAAAAAAZgAAAAEAAAAAAAAAAAAAAABq3wNsAAAAAgAgAAAAAAABAAAAAgAAAAAAAAAIAAAAAJR1xs8O2jQFdSjYaUeB7Mkq1jnX4r0ndh7T73SSS+sHAAAAAQAAAACUdcbPDto0BXUo2GlHgezJKtY51+K9J3Ye0+90kkvrBwAAAAEAAAAAeVuusdDGhNH1rj/IVeRB0NCxl3etTHvpoTDuaXCQ5dQAAAAAAAAAABHhoXAAAAAAAAAAAA=="
+      ],
+      "signed": "AAAAAgAAAAD6SDQUf25pDDaT7/YTNgRkA82K4qFPMbPEBzWFaSOVZQAAAMgAAAAAAAAAZgAAAAEAAAAAAAAAAAAAAABq3wNsAAAAAgAgAAAAAAABAAAAAgAAAAAAAAAIAAAAAJR1xs8O2jQFdSjYaUeB7Mkq1jnX4r0ndh7T73SSS+sHAAAAAQAAAACUdcbPDto0BXUo2GlHgezJKtY51+K9J3Ye0+90kkvrBwAAAAEAAAAAeVuusdDGhNH1rj/IVeRB0NCxl3etTHvpoTDuaXCQ5dQAAAAAAAAAABHhoXAAAAAAAAAAAWkjlWUAAABAFwZgVC29zhV4aHCBvq2puV/C5gU4yIMFTX8qX/jrvLrkbp5o9aJl4SaetLrm+wxYznKGaLpNUTtreVn2XzejDg==",
+      "cosigned": "AAAAAgAAAAD6SDQUf25pDDaT7/YTNgRkA82K4qFPMbPEBzWFaSOVZQAAAMgAAAAAAAAAZgAAAAEAAAAAAAAAAAAAAABq3wNsAAAAAgAgAAAAAAABAAAAAgAAAAAAAAAIAAAAAJR1xs8O2jQFdSjYaUeB7Mkq1jnX4r0ndh7T73SSS+sHAAAAAQAAAACUdcbPDto0BXUo2GlHgezJKtY51+K9J3Ye0+90kkvrBwAAAAEAAAAAeVuusdDGhNH1rj/IVeRB0NCxl3etTHvpoTDuaXCQ5dQAAAAAAAAAABHhoXAAAAAAAAAAAmkjlWUAAABAFwZgVC29zhV4aHCBvq2puV/C5gU4yIMFTX8qX/jrvLrkbp5o9aJl4SaetLrm+wxYznKGaLpNUTtreVn2XzejDpJL6wcAAABAPKCviIP9hwBHncjokmrcxXpOKCvTtxgIYl+A1i6sHpzH3mjEdK8y3OAz1dgweApRzp2rGomLsyUXe/1gDkuvDA=="
+    }
+  ]
+}

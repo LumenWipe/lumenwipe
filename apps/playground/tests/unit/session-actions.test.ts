@@ -37,6 +37,7 @@ const pending = (n: number, closesAccount = false): PendingDemolishTx => ({
   ...entry(n),
   validUntil: 1_800_000_100,
   closesAccount,
+  recordedBalance: null,
 });
 
 test("two simultaneous requests for the same mess step execute it once", async () => {

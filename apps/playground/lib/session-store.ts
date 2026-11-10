@@ -3,7 +3,9 @@ import { v4 as uuidv4 } from "uuid";
 import type { IntentOperation } from "@lumenwipe/sdk";
 import { isRedisConfigured } from "./upstash-redis";
 import { DEV_STORE_FILE, devFileKv, upstashKv, type SessionKv } from "./kv";
+import { parseStroops } from "./stroops";
 import {
+  EXCHANGE_STAND_IN,
   parseSelection,
   validateSelection,
   type ClaimIntent,
@@ -27,7 +29,7 @@ export const SESSION_COUNTDOWN_SECONDS = 3600;
 export const SESSION_RECORD_TTL_SECONDS = 72 * 3600;
 
 /** Bumped whenever the stored shape changes; a session of any other version reads as expired. */
-export const SESSION_SCHEMA_VERSION = 8;
+export const SESSION_SCHEMA_VERSION = 9;
 
 /** Longer than any route's maxDuration, so a request the platform kills frees its session soon after. */
 export const SESSION_LOCK_TTL_MS = 150_000;
@@ -56,6 +58,21 @@ export interface PendingDemolishTx extends DemolishLogEntry {
   validUntil: number | null;
   /** Whether the envelope merges the demo account away. */
   closesAccount: boolean;
+  /** For an exchange session, the demo's XLM balance as the playground read it from Horizon in
+   *  the round that signed this envelope: what its forward was held to, and what the delivery
+   *  read from the ledger is held to once it confirms. Null otherwise. */
+  recordedBalance: string | null;
+}
+
+/**
+ * Where an exchange session's close deposits: the bundled registry's stand-in
+ * (lib/scenarios/exchange.ts), never a value from configuration or the request, and the deposit
+ * memo the session drew for it, a random uint64 sent as an id memo, the type the registry names.
+ */
+export interface SessionExchange {
+  destination: string;
+  memo: string;
+  memoType: "id";
 }
 
 /** The log entry a confirmed in-flight record becomes. */
@@ -149,6 +166,8 @@ export interface PlaygroundSession {
   claimableBalances: RecordedClaimableBalance[];
   /** The allowances the mess approved, in spender order: entry `i` is spender `i + 1`. */
   allowances: RecordedAllowance[];
+  /** Where the close deposits, for a session that selected the exchange close; null otherwise. */
+  exchange: SessionExchange | null;
 }
 
 type FixedFields = "schemaVersion" | "id" | "createdAt";
@@ -246,7 +265,28 @@ function isPendingDemolishTx(value: unknown): value is PendingDemolishTx {
     isDemolishLogEntry(value) &&
     isRecord(value) &&
     (value.validUntil === null || typeof value.validUntil === "number") &&
-    typeof value.closesAccount === "boolean"
+    typeof value.closesAccount === "boolean" &&
+    (value.recordedBalance === null ||
+      (typeof value.recordedBalance === "string" && parseStroops(value.recordedBalance) !== null))
+  );
+}
+
+/** The largest value an id memo holds. */
+const MAX_UINT64 = BigInt("18446744073709551615");
+
+/** A uint64 as an id memo is written: decimal, no sign and no leading zero. */
+export function isIdMemo(value: unknown): value is string {
+  return (
+    typeof value === "string" && /^(0|[1-9][0-9]{0,19})$/.test(value) && BigInt(value) <= MAX_UINT64
+  );
+}
+
+function isSessionExchange(value: unknown): value is SessionExchange {
+  return (
+    isRecord(value) &&
+    value.destination === EXCHANGE_STAND_IN.address &&
+    isIdMemo(value.memo) &&
+    value.memoType === "id"
   );
 }
 
@@ -275,7 +315,8 @@ export function isPlaygroundSession(value: unknown): value is PlaygroundSession 
     Array.isArray(value.claimableBalances) &&
     value.claimableBalances.every(isRecordedClaimableBalance) &&
     Array.isArray(value.allowances) &&
-    value.allowances.every(isRecordedAllowance)
+    value.allowances.every(isRecordedAllowance) &&
+    (value.exchange === null || isSessionExchange(value.exchange))
   );
 }
 

@@ -1304,6 +1304,55 @@ const feeBump: ScenarioDefinition = {
   }),
 };
 
+/**
+ * The close into an exchange: the destination is the bundled registry's testnet stand-in
+ * (./exchange.ts) instead of the market maker, so the API cleans the account up in a round of its
+ * own and then merges it into its relay account, which forwards the balance to the stand-in with
+ * the session's id memo, in one two-operation transaction the API's mediator co-signs. The
+ * playground checks that transaction with lib/verify-mediator.ts as well as the shared verifier,
+ * checks the co-signed envelope, and reads the payment back from the ledger once it confirms.
+ *
+ * It adds no entry and no mess step: it only changes where the close goes. It cannot come with
+ * the sponsored fee, the one scenario that does not fit a relay close: the drain leaves the demo
+ * less than the least forward the API will build and the merge's own fee, and the API never
+ * sponsors the relay merge. Every other scenario's entries are removed in the cleanup round (or
+ * their own claim, signer or exit rounds first), which carries no merge and no memo, exactly as
+ * it would before a direct merge.
+ */
+const exchangeClose: ScenarioDefinition = {
+  id: "exchange-close",
+  featureSet: "api",
+  label: "Exchange deposit",
+  description:
+    "The demo closes into a testnet exchange that needs a deposit memo: the API merges it into its relay account, which forwards the balance to the exchange with the memo.",
+  params: {},
+  heldAssets: () => [],
+  requiresAnyOf: [],
+  conflicts: ["fee-bump"],
+  build: () => ({
+    ok: true,
+    build: {
+      steps: [],
+      ephemeralAssets: [],
+      expectation: {
+        assets: [],
+        offers: 0,
+        dataEntries: 0,
+        signers: 0,
+        // The relay's forward rides the merge, in a transaction held to exactly two operations.
+        closeOperations: 0,
+        operationTypes: [],
+        dispositions: [],
+        arrivingAssets: [],
+        sponsoredEntries: [],
+        resolutions: [],
+      },
+      // The relay merge is a close round of its own once the cleanup lands.
+      cost: cost(0, 1, 0, 0),
+    },
+  }),
+};
+
 /** Every scenario, in the order a selection lists them. */
 export const SCENARIOS: readonly ScenarioDefinition[] = [
   lwdemoHolding,
@@ -1322,4 +1371,5 @@ export const SCENARIOS: readonly ScenarioDefinition[] = [
   phoenixLp,
   allowances,
   feeBump,
+  exchangeClose,
 ];

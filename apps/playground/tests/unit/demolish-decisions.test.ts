@@ -42,6 +42,7 @@ function expected(over: Partial<PlaygroundCloseExpectation> = {}): PlaygroundClo
     sorobanSeeded: [],
     sponsored: false,
     sponsorFeeAccount: null,
+    exchange: null,
     ...over,
   };
 }
