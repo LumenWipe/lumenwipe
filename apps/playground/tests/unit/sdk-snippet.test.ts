@@ -149,10 +149,17 @@ const multisig: SdkSnippetInput = {
   }),
 };
 
+const masterAndHashX: SdkSnippetInput = {
+  network: "testnet",
+  close: close({ signers: [{ type: "hash_x", key: hashX }] }),
+};
+
 describe("the generated snippet", () => {
   test("type-checks against the SDK and verifier public types, with no diagnostic", () => {
-    const snippets = [plain, exchange, withDecisions, multisig].map(buildSdkSnippet);
-    expect(diagnostics(snippets)).toEqual([[], [], [], []]);
+    const snippets = [plain, exchange, withDecisions, multisig, masterAndHashX].map(
+      buildSdkSnippet
+    );
+    expect(diagnostics(snippets)).toEqual([[], [], [], [], []]);
   });
 
   test("a multi-signature close signs with each co-signer from its own variable until the weight is met", () => {
@@ -165,13 +172,27 @@ describe("the generated snippet", () => {
     expect(text).toContain("if (weight >= required || keyWeight === 0) continue;");
     expect(text).toContain("live = round.sourceAccount ?? (await client.getAccount(source));");
     expect(text).toContain(
-      `// Not signed with a key here:\n//   hash(x) signer ${hashX}\n//   pre-authorized transaction ${preAuth}\n`
+      `// Needs no signature: the pre-authorized transaction\n//   ${preAuth}\n`
     );
     for (const secret of [...cosignerKeys.map((k) => k.secret()), preimage.toString("hex")]) {
       expect(text).not.toContain(secret);
     }
     expect(text).not.toMatch(STRKEY_SECRET);
     expect(buildSdkSnippet(plain)).not.toContain("LUMENWIPE_COSIGNER");
+  });
+
+  test("a hash(x) signer signs with its preimage from its own variable, after the keys", () => {
+    const text = buildSdkSnippet(masterAndHashX);
+    expect(text).toContain(`key: ${JSON.stringify(hashX)}`);
+    expect(text).toContain("preimage: process.env.LUMENWIPE_HASHX_PREIMAGE_1");
+    const keys = text.indexOf("tx.sign(key);");
+    const hashXSign = text.indexOf('tx.signHashX(Buffer.from(preimage, "hex"));');
+    expect(keys).toBeGreaterThan(0);
+    expect(hashXSign).toBeGreaterThan(keys);
+    expect(text).toContain("if (!preimage || weight >= required || keyWeight === 0) continue;");
+    expect(text).toContain("const keys = [signer];");
+    expect(text).not.toContain(preimage.toString("hex"));
+    expect(buildSdkSnippet(plain)).not.toContain("signHashX");
   });
 
   test("calls the client, then closePlan, then runClose with a verify and a sign hook", () => {
@@ -402,6 +423,27 @@ describe("a playground session's snippet", () => {
       ...data.recordedSigners.map((sg) => sg.encSecret!),
     ];
     for (const value of secrets) expect(text).not.toContain(value);
+    expect(diagnostics([text])).toEqual([[]]);
+  });
+
+  test("a master-plus-hash(x) session signs with the preimage variable, compiles, and holds no preimage", () => {
+    const sessionPreimage = randomBytes(32);
+    const key = StrKey.encodeSha256Hash(hash(sessionPreimage));
+    const data: NewSessionData = {
+      ...newSessionData(),
+      demoPublic: account(),
+      encDemoSecret: ENCRYPTED(),
+      selection: resolvePlan({ scenarios: [{ id: "multisig", params: { variant: 1 } }] }).selection,
+      recordedSigners: [{ type: "hash_x", key, weight: 1, encSecret: ENCRYPTED() }],
+    };
+    const text = buildSdkSnippet(
+      snippetInputFromExpectation(expectationFromSession(data, account(), account(), null))
+    );
+    expect(text).toContain("preimage: process.env.LUMENWIPE_HASHX_PREIMAGE_1");
+    expect(text).toContain(`key: ${JSON.stringify(key)}`);
+    for (const value of [sessionPreimage.toString("hex"), data.recordedSigners[0]!.encSecret!]) {
+      expect(text).not.toContain(value);
+    }
     expect(diagnostics([text])).toEqual([[]]);
   });
 

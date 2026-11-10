@@ -300,17 +300,46 @@ function closeBody(close: SnippetClose): string[] {
   const multisig = close.signers.length > 0;
   const cosigners = close.signers.filter((sg) => sg.type === "ed25519_public_key");
   const cosignerEnv = cosigners.map((_, i) => `LUMENWIPE_COSIGNER_${i + 1}_SECRET`);
-  const unkeyed = close.signers.filter((sg) => sg.type !== "ed25519_public_key");
+  const hashSigners = close.signers.filter((sg) => sg.type === "hash_x");
+  const preimageEnv = hashSigners.map((_, i) => `LUMENWIPE_HASHX_PREIMAGE_${i + 1}`);
+  const preAuth = close.signers.filter((sg) => sg.type === "preauth_tx");
+  const preimageLines =
+    hashSigners.length > 0
+      ? [
+          "// Each hash(x) signer's preimage, in hex, from its own variable.",
+          "const preimages: { key: string; preimage: string | undefined }[] = [",
+          ...hashSigners.flatMap((sg, i) =>
+            objectLines(
+              "  ",
+              "",
+              [
+                ["key", str(sg.key)],
+                ["preimage", `process.env.${preimageEnv[i]}`],
+              ],
+              ","
+            )
+          ),
+          "];",
+        ]
+      : [];
+  const hashXLoop =
+    hashSigners.length > 0
+      ? [
+          "    for (const { key, preimage } of preimages) {",
+          "      const keyWeight = live.signers.find((s) => s.key === key)?.weight ?? 0;",
+          "      if (!preimage || weight >= required || keyWeight === 0) continue;",
+          '      tx.signHashX(Buffer.from(preimage, "hex"));',
+          "      weight += keyWeight;",
+          "    }",
+        ]
+      : [];
   const keyLines = multisig
     ? [
         "",
         "// Each co-signer's secret comes from its own variable; it signs only while weight is short.",
         ...cosigners.map((sg, i) => `// ${cosignerEnv[i]} signs for ${sg.key}`),
-        ...(unkeyed.length > 0 ? ["// Not signed with a key here:"] : []),
-        ...unkeyed.map(
-          (sg) =>
-            `//   ${sg.type === "hash_x" ? "hash(x) signer" : "pre-authorized transaction"} ${sg.key}`
-        ),
+        ...(preAuth.length > 0 ? ["// Needs no signature: the pre-authorized transaction"] : []),
+        ...preAuth.map((sg) => `//   ${sg.key}`),
         ...(cosigners.length > 0
           ? [
               "const cosigners = [",
@@ -319,6 +348,7 @@ function closeBody(close: SnippetClose): string[] {
               "const keys = [signer, ...cosigners];",
             ]
           : ["const keys = [signer];"]),
+        ...preimageLines,
         "// The signers and thresholds each round was built against.",
         'let live: Pick<typeof account, "signers" | "thresholds"> = account;',
       ]
@@ -348,6 +378,7 @@ function closeBody(close: SnippetClose): string[] {
         "      tx.sign(key);",
         "      weight += keyWeight;",
         "    }",
+        ...hashXLoop,
         "    return { xdr: tx.toXDR(), weight };",
         "  },",
       ]
