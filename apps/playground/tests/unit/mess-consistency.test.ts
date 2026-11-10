@@ -521,22 +521,72 @@ const popcount = (mask: number): number => {
 };
 
 /**
- * Every accepted single scenario, pair and triple, and every largest accepted selection (one no
- * other scenario can join), each with every parameter at its minimum and then its maximum. Only
- * validation sweeps every subset; the cases actually run grow polynomially with the registry.
+ * The scenarios that change only where the close goes: no mess step and no cost at any parameter
+ * (today the exchange deposit). Read from the registry, so a new one is found without naming it.
+ */
+const DESTINATION_ONLY_MASK = SCENARIOS.reduce((mask, def, i) => {
+  const builds = (["min", "max"] as const).map((end) =>
+    def.build(
+      Object.fromEntries(Object.entries(def.params).map(([name, spec]) => [name, spec[end]])),
+      { heldAssets: [] }
+    )
+  );
+  const destinationOnly = builds.every(
+    (b) =>
+      b.ok &&
+      b.build.steps.length === 0 &&
+      b.build.cost.xlm === 0 &&
+      b.build.cost.subEntries === 0 &&
+      b.build.cost.classicTransactions + b.build.cost.sorobanTransactions === 0
+  );
+  return destinationOnly ? mask | (1 << i) : mask;
+}, 0);
+
+/**
+ * Every accepted single scenario, pair and triple, and every largest accepted selection, each with
+ * every parameter at its minimum and then its maximum. Only validation sweeps every subset; the
+ * cases actually run grow polynomially with the registry.
+ *
+ * A destination-only scenario (DESTINATION_ONLY_MASK) changes only the close's destination and
+ * memo, which the singles, pairs and triples already exercise beside every other scenario. The
+ * largest selections exist to reach the cost caps, and these scenarios cost nothing, so as members
+ * they would only double that sweep for each one the registry gains. They are left out of it:
+ * a largest selection is one no other scenario can join, and each is then run once more with
+ * every destination-only scenario added that still fits it.
  */
 function* registrySelections(): Generator<ScenarioSelection> {
   const all = 1 << SCENARIOS.length;
+  const destinationOnly = SCENARIOS.map((_, i) => 1 << i).filter(
+    (bit) => DESTINATION_ONLY_MASK & bit
+  );
   for (const end of ["min", "max"] as const) {
     const valid = new Uint8Array(all);
     for (let mask = 1; mask < all; mask++) {
       valid[mask] = validateSelection(selectionOf(mask, end)).ok ? 1 : 0;
     }
+    const yielded = new Set<number>();
+    const emit = (mask: number): ScenarioSelection | null => {
+      if (yielded.has(mask)) return null;
+      yielded.add(mask);
+      return selectionOf(mask, end);
+    };
     for (let mask = 1; mask < all; mask++) {
-      if (!valid[mask]) continue;
-      const size = popcount(mask);
-      const largest = SCENARIOS.every((_, i) => mask & (1 << i) || !valid[mask | (1 << i)]);
-      if (size <= 3 || largest) yield selectionOf(mask, end);
+      if (valid[mask] && popcount(mask) <= 3) yield emit(mask)!;
+    }
+    for (let mask = 1; mask < all; mask++) {
+      if (!valid[mask] || mask & DESTINATION_ONLY_MASK) continue;
+      const largest = SCENARIOS.every(
+        (_, i) => mask & (1 << i) || DESTINATION_ONLY_MASK & (1 << i) || !valid[mask | (1 << i)]
+      );
+      if (!largest) continue;
+      const alone = emit(mask);
+      if (alone) yield alone;
+      let joined = mask;
+      for (const bit of destinationOnly) if (valid[joined | bit]) joined |= bit;
+      if (joined !== mask) {
+        const withDestination = emit(joined);
+        if (withDestination) yield withDestination;
+      }
     }
   }
 }
@@ -582,14 +632,20 @@ describe("the plan, the chain and the close expectation agree", () => {
     }
   });
 
+  test("the destination-only scenarios are read from the registry", () => {
+    const ids = SCENARIOS.filter((_, i) => DESTINATION_ONLY_MASK & (1 << i)).map((d) => d.id);
+    expect(ids).toEqual(["exchange-close"]);
+  });
+
   test("every pair and triple of scenarios and every largest accepted selection, at their smallest and largest parameters", async () => {
     let cases = 0;
     for (const selection of registrySelections()) {
       await runAndCheck(selection);
       cases++;
     }
-    // The accepted singles, pairs, triples and largest selections at both parameter extremes;
-    // pinned so a change to the registry or its rules shows up here.
-    expect(cases).toBe(13533);
+    // The accepted singles, pairs, triples and largest selections at both parameter extremes, each
+    // largest one also with the destination-only scenarios that fit it; pinned so a change to the
+    // registry or its rules shows up here.
+    expect(cases).toBe(7000);
   }, 240_000);
 });
