@@ -14,6 +14,9 @@ version number before 0.4.0. Neither has a git tag.
 ### Added
 
 - `PhoenixStakePosition` gains optional `shareToken`, the pool's LP share token.
+- `ExchangeRegistryEntry` gains optional `network`, set to `"testnet"` on an entry that applies
+  on testnet only, as `getExchangeRegistry()` already returns it. An entry without it applies on
+  every network.
 
 ## [0.11.0] - 2026-11-09
 

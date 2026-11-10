@@ -2,6 +2,7 @@
 
 import { useState, type ClipboardEvent } from "react";
 import { AlertTriangle } from "lucide-react";
+import type { Network } from "@/config/networks";
 import { containsSecretKey, isValidGAddress, SECRET_KEY_WARNING } from "@/lib/utils/validation";
 import {
   activeRegistry,
@@ -20,6 +21,7 @@ import { Field, Input } from "@/components/ui/field";
 import { Callout } from "@/components/ui/callout";
 
 interface DestinationInputProps {
+  network: Network;
   destination: string;
   onDestinationChange: (value: string) => void;
   memo: string;
@@ -48,6 +50,7 @@ interface DestinationInputProps {
  * source-equals-destination warning.
  */
 export default function DestinationInput({
+  network,
   destination,
   onDestinationChange,
   memo,
@@ -59,7 +62,7 @@ export default function DestinationInput({
   acknowledged,
   onAcknowledgedChange,
 }: DestinationInputProps) {
-  const field = memoField(destination, memo, chosenMemoType, memoTypeChosen);
+  const field = memoField(destination, network, memo, chosenMemoType, memoTypeChosen);
   const memoRequired = field.required;
   const memoType = field.type;
   const [memoTouched, setMemoTouched] = useState(false);
@@ -107,7 +110,7 @@ export default function DestinationInput({
   // exchange deposit address is unrecoverable - exchanges credit payments carrying a memo and
   // cannot credit an account merge - so an address we do not recognize is confirmed by the only
   // party who knows where it came from, rather than assumed safe.
-  const needsAcknowledgement = isValidGAddress(destination) && !isCexAddress(destination);
+  const needsAcknowledgement = isValidGAddress(destination) && !isCexAddress(destination, network);
 
   return (
     <div className="space-y-4">
@@ -209,21 +212,23 @@ export default function DestinationInput({
                 condition that disables the button - nesting it under requiresMemo meant a listed
                 exchange with no memo requirement produced a disabled button and no message
                 anywhere on the page. */}
-            {isCexAddress(destination) && !isRegistryUsable() && (
+            {isCexAddress(destination, network) && !isRegistryUsable() && (
               <p role="alert" className="text-xs text-danger-fg">
                 These deposit rules expired on {activeRegistry().validUntil} and have not been
                 re-checked. Closing into an exchange on unverified rules can send the funds
                 somewhere nobody can credit them, so this is blocked until they are refreshed.
               </p>
             )}
-            {isCexAddress(destination) && isRegistryUsable() && memoTypeInDispute(destination) && (
-              <p role="alert" className="text-xs text-danger-fg">
-                We could not confirm which kind of memo {field.exchangeName} expects: our two copies
-                of its deposit rules disagree. A memo of the wrong kind can leave the funds
-                uncredited, so closing into this exchange is blocked for now. Try again later, or
-                choose another destination.
-              </p>
-            )}
+            {isCexAddress(destination, network) &&
+              isRegistryUsable() &&
+              memoTypeInDispute(destination) && (
+                <p role="alert" className="text-xs text-danger-fg">
+                  We could not confirm which kind of memo {field.exchangeName} expects: our two
+                  copies of its deposit rules disagree. A memo of the wrong kind can leave the funds
+                  uncredited, so closing into this exchange is blocked for now. Try again later, or
+                  choose another destination.
+                </p>
+              )}
           </div>
         }
       >

@@ -1,5 +1,12 @@
 import embedded from "@registry/exchange-registry.json";
-import { isUsableAt, mergeServedRegistry, type RegistryEntry } from "./merge";
+import type { Network } from "@/config/networks";
+import {
+  appliesOn,
+  bundledEntries,
+  isUsableAt,
+  mergeServedRegistry,
+  type RegistryEntry,
+} from "./merge";
 
 /**
  * The exchange registry, as the browser sees it.
@@ -30,19 +37,12 @@ export interface RegistrySnapshot {
   memoTypeDisputes?: readonly string[];
 }
 
-function snapshotFrom(
-  data: { entries: unknown; lastVerified: string; validUntil: string },
-  served: boolean
-): RegistrySnapshot {
-  return {
-    entries: data.entries as RegistryEntry[],
-    lastVerified: data.lastVerified,
-    validUntil: data.validUntil,
-    served,
-  };
-}
-
-const EMBEDDED: RegistrySnapshot = snapshotFrom(embedded, false);
+const EMBEDDED: RegistrySnapshot = {
+  entries: bundledEntries(embedded.entries),
+  lastVerified: embedded.lastVerified,
+  validUntil: embedded.validUntil,
+  served: false,
+};
 
 // Module-level, because `verify()` is synchronous and runs immediately before signing: it
 // cannot await a fetch at that moment. The flow loads the registry earlier (analyze time) and
@@ -121,28 +121,35 @@ export async function loadServedRegistry(
   }
 }
 
-function byAddress(): Map<string, RegistryEntry> {
-  return new Map(current.entries.map((e) => [e.address, e]));
+function byAddress(network: Network): Map<string, RegistryEntry> {
+  return new Map(current.entries.filter((e) => appliesOn(e, network)).map((e) => [e.address, e]));
 }
 
-export function lookupExchange(address: string): RegistryEntry | null {
-  return byAddress().get(address) ?? null;
+/** The entry for `address` on `network`, or null. A testnet-only entry is invisible on mainnet. */
+export function lookupExchange(address: string, network: Network): RegistryEntry | null {
+  return byAddress(network).get(address) ?? null;
 }
 
-export function isCexAddress(address: string): boolean {
-  return byAddress().has(address);
+export function isCexAddress(address: string, network: Network): boolean {
+  return byAddress(network).has(address);
 }
 
-export function requiresMediatorForAddress(address: string): boolean {
-  return byAddress().get(address)?.requiresMediator ?? false;
+export function requiresMediatorForAddress(address: string, network: Network): boolean {
+  return byAddress(network).get(address)?.requiresMediator ?? false;
+}
+
+/** The bundled entry for `address` on `network`, whatever has been served since, or null. */
+export function bundledExchange(address: string, network: Network): RegistryEntry | null {
+  return EMBEDDED.entries.find((e) => e.address === address && appliesOn(e, network)) ?? null;
 }
 
 /**
  * Whether a close to this address may take the mediated hand-off. Only an exchange the bundled
- * registry lists qualifies; a served copy can tighten its rules but cannot add one.
+ * registry lists on this network qualifies; a served copy can tighten its rules but cannot add
+ * one, and cannot widen a testnet-only entry to mainnet.
  */
-export function mediatorAllowedFor(address: string): boolean {
-  return EMBEDDED.entries.find((e) => e.address === address)?.requiresMediator === true;
+export function mediatorAllowedFor(address: string, network: Network): boolean {
+  return bundledExchange(address, network)?.requiresMediator === true;
 }
 
 /**
@@ -154,12 +161,15 @@ export function memoTypeInDispute(address: string): boolean {
   return current.memoTypeDisputes?.includes(address) ?? false;
 }
 
-export function getMemoRequirement(address: string): {
+export function getMemoRequirement(
+  address: string,
+  network: Network
+): {
   requiresMemo: boolean;
   memoType: "text" | "id" | "hash" | null;
   exchangeName: string | null;
 } {
-  const entry = byAddress().get(address);
+  const entry = byAddress(network).get(address);
   if (!entry) return { requiresMemo: false, memoType: null, exchangeName: null };
   return {
     requiresMemo: entry.requiresMemo,

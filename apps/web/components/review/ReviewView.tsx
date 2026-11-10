@@ -142,7 +142,8 @@ export default function ReviewView({ network }: ReviewViewProps) {
   const firstRun = allows(journey, "sent-only-when-signed");
 
   // The relay is said where verify() holds the close to it, never from the stored flag.
-  const viaRelay = destinationAddress !== null && relayRoute(destinationAddress) === "relay";
+  const viaRelay =
+    destinationAddress !== null && relayRoute(destinationAddress, network) === "relay";
   const cosign =
     accountState &&
     cosignRequirement({
@@ -153,7 +154,7 @@ export default function ReviewView({ network }: ReviewViewProps) {
       viaRelay,
     });
   const memoShown = memoLine(
-    destinationAddress ? confirmedMemo(destinationAddress, memo, memoType) : null
+    destinationAddress ? confirmedMemo(destinationAddress, network, memo, memoType) : null
   );
 
   // One fee on this screen: the exact sum of the steps' fees, which the list below shows one by
@@ -269,7 +270,7 @@ export default function ReviewView({ network }: ReviewViewProps) {
           network={network}
           source={sourceAddress}
           destination={destinationAddress}
-          kind={destinationKind(destinationAddress, {
+          kind={destinationKind(destinationAddress, network, {
             acknowledgedFor: destinationAcknowledgedFor,
           })}
           memo={memoShown}

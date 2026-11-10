@@ -35,6 +35,7 @@ function baseAccount(over: Partial<AccountState> = {}): AccountState {
 function renderAccordion(account: AccountState) {
   return render(
     <StatefulPlanAccordion
+      network="mainnet"
       account={account}
       conversions={[]}
       assetDispositions={{}}

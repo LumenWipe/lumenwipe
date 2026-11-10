@@ -11,6 +11,7 @@ const noop = (): void => {};
 function renderInput(destination: string): void {
   render(
     <DestinationInput
+      network="mainnet"
       destination={destination}
       onDestinationChange={noop}
       memo=""
@@ -59,6 +60,7 @@ function Controlled({
   const [chosenFor, setChosenFor] = useState<string | null>(null);
   return (
     <DestinationInput
+      network="mainnet"
       destination={destination}
       onDestinationChange={noop}
       memo={memo}
@@ -174,7 +176,10 @@ test("the type picked for an exchange only the served registry lists is the one 
 
     expect(types).toEqual(["text"]);
     expect(radio("Text").checked).toBe(true);
-    expect(confirmedMemo(address, "4411", types[0])).toEqual({ memo: "4411", memoType: "text" });
+    expect(confirmedMemo(address, "mainnet", "4411", types[0])).toEqual({
+      memo: "4411",
+      memoType: "text",
+    });
     const alert = screen.getByRole("alert").textContent ?? "";
     expect(alert).toContain(
       "Newly Listed's deposit rules list a numeric memo, not the text memo you chose."
@@ -184,7 +189,10 @@ test("the type picked for an exchange only the served registry lists is the one 
     fireEvent.click(radio("ID (numbers only)"));
 
     expect(types).toEqual(["text", "id"]);
-    expect(confirmedMemo(address, "4411", types[1])).toEqual({ memo: "4411", memoType: "id" });
+    expect(confirmedMemo(address, "mainnet", "4411", types[1])).toEqual({
+      memo: "4411",
+      memoType: "id",
+    });
     expect(screen.queryByRole("alert")).toBeNull();
   });
 });
@@ -199,7 +207,7 @@ test("a bundled exchange keeps its own memo type with no choice offered", () => 
     expect(
       screen.getByText(`${listed.name} requires a numeric memo for all deposits.`)
     ).toBeDefined();
-    expect(confirmedMemo(listed.address, "4411", "text")?.memoType).toBe("id");
+    expect(confirmedMemo(listed.address, "mainnet", "4411", "text")?.memoType).toBe("id");
   } finally {
     setRegistry(before);
   }
@@ -252,6 +260,7 @@ test.each([
     const [memo, setMemo] = useState("deposit");
     return (
       <DestinationInput
+        network="mainnet"
         destination={UNLISTED}
         onDestinationChange={noop}
         memo={memo}

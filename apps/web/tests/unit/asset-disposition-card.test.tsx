@@ -10,6 +10,7 @@ const NOTE = /can reclaim this balance at any time/;
 function renderCard(item: Partial<AssetConvertibility>) {
   return render(
     <AssetDispositionCard
+      network="mainnet"
       item={{ asset: "USDC:GISSUER", code: "USDC", balance: "5", convertible: true, ...item }}
       disposition={undefined}
       transferDestination={undefined}
@@ -52,6 +53,7 @@ test("an asset with no market keeps the no-route wording", () => {
 function renderAnswered(item: Partial<AssetConvertibility>, disposition?: "convert" | "transfer") {
   return render(
     <AssetDispositionCard
+      network="mainnet"
       item={{ asset: "USDC:GISSUER", code: "USDC", balance: "5", convertible: true, ...item }}
       disposition={disposition}
       transferDestination={undefined}

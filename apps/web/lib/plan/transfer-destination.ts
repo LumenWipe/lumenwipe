@@ -1,31 +1,40 @@
+import type { Network } from "@/config/networks";
 import { lookupExchange } from "@/lib/exchange-registry";
 import { addressErrorMessage, isValidGAddress } from "@/lib/utils/validation";
 import type { AssetDisposition } from "@/types/plan";
 
 /** Why the address cannot receive a transfer, or null. A transfer outside the merge carries no
  *  deposit memo, so an exchange the registry lists could not credit it. */
-export function depositAddressMessage(destination: string): string | null {
-  const exchange = lookupExchange(destination);
+export function depositAddressMessage(destination: string, network: Network): string | null {
+  const exchange = lookupExchange(destination, network);
   if (!exchange) return null;
   return `This is a ${exchange.name} deposit address. A transfer in a close carries no deposit memo, so ${exchange.name} could not credit it. Send it to a wallet you control.`;
 }
 
-export function transferDestinationError(destination: string): string | null {
-  return addressErrorMessage(destination) ?? depositAddressMessage(destination);
+export function transferDestinationError(destination: string, network: Network): string | null {
+  return addressErrorMessage(destination) ?? depositAddressMessage(destination, network);
 }
 
-export function isUsableTransferDestination(destination: string | null | undefined): boolean {
-  return !!destination && isValidGAddress(destination) && lookupExchange(destination) === null;
+export function isUsableTransferDestination(
+  destination: string | null | undefined,
+  network: Network
+): boolean {
+  return (
+    !!destination && isValidGAddress(destination) && lookupExchange(destination, network) === null
+  );
 }
 
 /** The first asset whose chosen transfer destination the registry now lists, or null. */
 export function refusedTransferAsset(
   dispositions: Record<string, AssetDisposition>,
-  destinations: Record<string, string>
+  destinations: Record<string, string>,
+  network: Network
 ): string | null {
   for (const [asset, disposition] of Object.entries(dispositions)) {
     const destination = destinations[asset];
-    if (disposition === "transfer" && destination && lookupExchange(destination)) return asset;
+    if (disposition === "transfer" && destination && lookupExchange(destination, network)) {
+      return asset;
+    }
   }
   return null;
 }

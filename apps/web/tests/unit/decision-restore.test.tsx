@@ -372,11 +372,14 @@ describe("a resumed transfer to an address the registry now lists", () => {
       const usdc = { asset: USDC, code: "USDC", balance: "5.0000000", convertible: true };
       expect(
         assetResolved(usdc, {
+          network: "mainnet",
           dispositions: state.assetDispositions,
           transferDestinations: state.transferDestinations,
         })
       ).toBe(false);
-      expect(transferDestinationError(PAYEE)).toContain("Example Exchange deposit address");
+      expect(transferDestinationError(PAYEE, "mainnet")).toContain(
+        "Example Exchange deposit address"
+      );
     } finally {
       setRegistry(before);
     }

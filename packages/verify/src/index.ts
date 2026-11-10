@@ -160,6 +160,9 @@ export interface CloseExpectationInput extends ExitExpectations {
  * - It never enables the mediated hand-off. That stays limited to the exchanges the bundled
  *   registry lists ({@link requiresMediator}), so an address only the snapshot lists as needing
  *   the intermediary refuses both shapes until this package is updated.
+ * - It never changes the network a bundled exchange applies on: a testnet-only entry stays
+ *   unlisted on mainnet, and an entry listed on every network stays listed on both. An entry it
+ *   adds with `network: "testnet"` applies on testnet only; any other `network` value drops it.
  * - Its `validUntil` may move the bundled expiry later, by at most 120 days, never earlier.
  * - It never decides a memo type. A different type for a bundled exchange is refused with
  *   `registry_memo_type_conflict`, and a type for an address it adds that differs from the one
@@ -222,14 +225,15 @@ export function exitExpectations(
 }
 
 /**
- * Whether a close to `address` goes through the shared intermediary: true only for an exchange
- * the registry bundled in this package lists as unable to receive an account merge. The same
- * rule `verifyCloseTransaction` applies, so an integrator decides from it, never from the API's
+ * Whether a close to `address` on `network` goes through the shared intermediary: true only for
+ * an exchange the registry bundled in this package lists, on that network, as unable to receive
+ * an account merge. An entry scoped to testnet never answers true on mainnet. The same rule
+ * `verifyCloseTransaction` applies, so an integrator decides from it, never from the API's
  * response, whether a transaction needs the intermediary's co-signature. A served snapshot never
  * changes this answer, so it takes none.
  */
-export function requiresMediator(address: string): boolean {
-  return mediatorAllowedFor(address);
+export function requiresMediator(address: string, network: Network): boolean {
+  return mediatorAllowedFor(address, network);
 }
 
 /**

@@ -21,7 +21,7 @@ export async function destinationRefusal(
 
   // The browser decides the hand-off from its own bundled registry; an answer that disagrees
   // stops here rather than at signing.
-  if (needsMediator !== mediatorAllowedFor(destination)) {
+  if (needsMediator !== mediatorAllowedFor(destination, network)) {
     return "The rules for this destination could not be confirmed. Refresh the page and try again. If it keeps happening, close to a personal Stellar wallet you control and send to the exchange from there.";
   }
 

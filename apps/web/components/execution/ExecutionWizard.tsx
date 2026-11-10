@@ -464,7 +464,7 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
               signers,
               thresholds: accountState.thresholds,
               transactions: planTransactions,
-              viaRelay: relayRoute(destinationAddress) === "relay",
+              viaRelay: relayRoute(destinationAddress, network) === "relay",
             }),
         }
       : null;

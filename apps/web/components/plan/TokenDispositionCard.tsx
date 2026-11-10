@@ -2,6 +2,7 @@
 
 import { AlertTriangle, ArrowRightLeft, CheckCircle2, Send } from "lucide-react";
 import { formatStroops, type AssetConvertibility, type TokenQuote } from "@/lib/api/plan-adapters";
+import type { Network } from "@/config/networks";
 import type { AssetDisposition } from "@/types/plan";
 import { AddressField } from "@/components/ui/address-field";
 import {
@@ -13,6 +14,7 @@ import { ShortAddress } from "@/components/ui/short-address";
 import { DECISION_TAGS, DecisionCard, type DecisionOption } from "@/components/ui/decision-card";
 
 interface TokenDispositionCardProps {
+  network: Network;
   item: AssetConvertibility;
   disposition: AssetDisposition | undefined;
   transferDestination: string | undefined;
@@ -78,6 +80,7 @@ function unconvertibleReason(item: AssetConvertibility): string {
  * by name, that it stays with the address. Leaving is never pre-selected.
  */
 export default function TokenDispositionCard({
+  network,
   item,
   disposition,
   transferDestination,
@@ -92,7 +95,7 @@ export default function TokenDispositionCard({
   const isLeave = disposition === "leave";
   const isConvert = disposition === "convert" && item.convertible;
   const flagged = item.convertible && (token.quote?.flags.length ?? 0) > 0;
-  const transferReady = isTransfer && isUsableTransferDestination(transferDestination);
+  const transferReady = isTransfer && isUsableTransferDestination(transferDestination, network);
   const convertReady = isConvert && (!flagged || impactConfirmed);
   const resolved = convertReady || isLeave || transferReady;
 
@@ -157,11 +160,13 @@ export default function TokenDispositionCard({
             hideLabel
             value={transferDestination ?? ""}
             onChange={(next) => onSetTransferDestination(item.asset, next || null)}
-            error={transferDestination ? transferDestinationError(transferDestination) : null}
+            error={
+              transferDestination ? transferDestinationError(transferDestination, network) : null
+            }
             placeholder="G... (an account that exists)"
             helper="Not an exchange deposit address: a token transfer carries no deposit memo, so an exchange could not credit it."
           />
-          {isUsableTransferDestination(mergeDestination) &&
+          {isUsableTransferDestination(mergeDestination, network) &&
             transferDestination !== mergeDestination && (
               <button
                 type="button"

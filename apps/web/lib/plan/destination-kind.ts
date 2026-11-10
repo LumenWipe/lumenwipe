@@ -1,3 +1,4 @@
+import type { Network } from "@/config/networks";
 import {
   activeRegistry,
   lookupExchange,
@@ -36,9 +37,9 @@ export type ExchangeRoute = "relay" | "direct" | "refused";
  * it refuses a direct merge. Never from the store, so the screen cannot say "direct" for a close
  * `verify()` holds to the relay.
  */
-export function relayRoute(destination: string): ExchangeRoute {
-  if (mediatorAllowedFor(destination)) return "relay";
-  return requiresMediatorForAddress(destination) ? "refused" : "direct";
+export function relayRoute(destination: string, network: Network): ExchangeRoute {
+  if (mediatorAllowedFor(destination, network)) return "relay";
+  return requiresMediatorForAddress(destination, network) ? "refused" : "direct";
 }
 
 /** The calendar date of a registry timestamp, the same in every timezone. */
@@ -49,15 +50,16 @@ export function isoDay(value: string): string {
 
 export function destinationKind(
   destination: string,
+  network: Network,
   answers: { acknowledgedFor: string | null }
 ): DestinationKind {
-  const entry = isValidGAddress(destination) ? lookupExchange(destination) : null;
+  const entry = isValidGAddress(destination) ? lookupExchange(destination, network) : null;
   if (entry) {
     return {
       kind: "exchange",
       name: entry.name,
       memoRequired: entry.requiresMemo,
-      route: relayRoute(destination),
+      route: relayRoute(destination, network),
       lastVerified: isoDay(activeRegistry().lastVerified),
     };
   }

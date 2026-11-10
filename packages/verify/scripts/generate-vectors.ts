@@ -29,6 +29,7 @@ import {
   exitExpectations,
   type AccountState,
   type CloseExpectationInput,
+  type Network,
   type ServedRegistry,
   type VerificationErrorCode,
   type VerifyCloseInput,
@@ -57,6 +58,9 @@ const FRIEND = publicKey("friend");
 const ISSUER = publicKey("issuer");
 /** A listed exchange in the bundled registry that needs the intermediary and a text memo. */
 const COINBASE = "GB5CLRWUCBQ6DFK2LR5ZMWJ7QCVEB3XKMPTQUYCDIYB4DRZJBEW6M26D";
+/** The bundled registry's testnet-only exchange stand-in: the intermediary and an id memo on
+ *  testnet, unlisted on mainnet. */
+const TESTNET_STAND_IN = "GB4VXLVR2DDIJUPVVY74QVPEIHINBMMXO6WUY67JUEYO42LQSDS5IMKW";
 
 const USDC = new Asset("USDC", ISSUER);
 const EURT = new Asset("EURT", ISSUER);
@@ -64,6 +68,7 @@ const USDC_KEY = `USDC:${ISSUER}`;
 const BALANCE_ID = `00000000${"ab".repeat(32)}`;
 
 interface BuildOptions {
+  network?: Network;
   source?: string;
   /** Per-operation base fee in stroops; the transaction's fee is this times the operations. */
   feePerOperation?: number;
@@ -74,7 +79,7 @@ interface BuildOptions {
 function build(operations: xdr.Operation[], options: BuildOptions = {}): string {
   const builder = new TransactionBuilder(new Account(options.source ?? SOURCE, "4294967296"), {
     fee: String(options.feePerOperation ?? 100),
-    networkPassphrase: Networks.TESTNET,
+    networkPassphrase: options.network === "mainnet" ? Networks.PUBLIC : Networks.TESTNET,
     timebounds: { minTime: 0, maxTime: options.maxTime ?? NOW + 300 },
     ...(options.memo ? { memo: options.memo } : {}),
   });
@@ -95,7 +100,10 @@ const PLAIN_ACCOUNT = {
 } as unknown as AccountState;
 
 /** The expectation an integrator builds from the user's inputs and the reviewed account read. */
-function expectation(over: Partial<CloseExpectationInput> = {}): CloseExpectationInput {
+function expectation(
+  over: Partial<CloseExpectationInput> = {},
+  network: Network = "testnet"
+): CloseExpectationInput {
   return {
     source: SOURCE,
     destination: DESTINATION,
@@ -109,7 +117,7 @@ function expectation(over: Partial<CloseExpectationInput> = {}): CloseExpectatio
     tokenTransfers: {},
     classicConversions: {},
     tokenConversions: {},
-    ...exitExpectations(PLAIN_ACCOUNT, "testnet"),
+    ...exitExpectations(PLAIN_ACCOUNT, network),
     ...over,
   };
 }
@@ -160,7 +168,12 @@ function accept(
   description: string,
   unsignedXdr: string,
   expected: CloseExpectationInput,
-  extra: { nowSeconds?: number; provenance?: Provenance; servedRegistry?: ServedRegistry } = {}
+  extra: {
+    nowSeconds?: number;
+    provenance?: Provenance;
+    servedRegistry?: ServedRegistry;
+    network?: Network;
+  } = {}
 ): AcceptVector {
   const vector: AcceptVector = {
     name,
@@ -170,7 +183,7 @@ function accept(
     ...(extra.provenance ? { provenance: extra.provenance } : {}),
     input: {
       unsignedXdr,
-      network: "testnet",
+      network: extra.network ?? "testnet",
       expected,
       ...(extra.servedRegistry ? { servedRegistry: extra.servedRegistry } : {}),
     },
@@ -608,6 +621,39 @@ reject(
   build([merge(COINBASE)], { memo: deposit }),
   "merge_direct_refused",
   "This exchange cannot credit an account merge, so the balance has to reach it as a payment. This transaction would merge your account straight into it."
+);
+
+// --- The testnet-only exchange stand-in ------------------------------------------------------
+
+const idDeposit = Memo.id("4411");
+const standInExpected = (network: Network) =>
+  expectation({ destination: TESTNET_STAND_IN, memo: "4411", memoType: "id" }, network);
+const relayToStandIn = (network: Network) =>
+  build([merge(INTERMEDIARY), forward({ destination: TESTNET_STAND_IN })], {
+    memo: idDeposit,
+    network,
+  });
+
+accept(
+  "testnet-stand-in-close-through-intermediary",
+  "A testnet close to the bundled registry's testnet-only exchange stand-in: the merge pays an intermediary that forwards the whole balance to it, with the user's id memo.",
+  relayToStandIn("testnet"),
+  standInExpected("testnet")
+);
+const standInOnMainnet = accept(
+  "testnet-stand-in-is-a-wallet-on-mainnet",
+  "On mainnet the testnet-only stand-in is not listed, so a close to it is a plain merge straight to the address the user typed, with their memo.",
+  build([merge(TESTNET_STAND_IN)], { memo: idDeposit, network: "mainnet" }),
+  standInExpected("mainnet"),
+  { network: "mainnet" }
+);
+reject(
+  standInOnMainnet,
+  "testnet-stand-in-through-intermediary-on-mainnet",
+  "Routes the mainnet close through an intermediary, the shape accepted on testnet. On mainnet the stand-in is not listed, so the intermediary is not allowed.",
+  relayToStandIn("mainnet"),
+  "merge_destination_mismatch",
+  "The account would be merged to an address you did not choose."
 );
 
 // --- A transfer the user chose --------------------------------------------------------------

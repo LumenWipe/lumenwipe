@@ -163,6 +163,15 @@
       "requiresMediator": true,
       "requiresMemo": true,
       "memoType": "text"
+    },
+    {
+      "address": "GB4VXLVR2DDIJUPVVY74QVPEIHINBMMXO6WUY67JUEYO42LQSDS5IMKW",
+      "name": "LumenWipe testnet exchange",
+      "domain": "lumenwipe.com",
+      "requiresMediator": true,
+      "requiresMemo": true,
+      "memoType": "id",
+      "network": "testnet"
     }
   ]
 }

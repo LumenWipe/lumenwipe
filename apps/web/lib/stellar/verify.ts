@@ -1,5 +1,6 @@
 import { NETWORK_PASSPHRASES, type Network } from "@/config/networks";
 import {
+  bundledExchange,
   bundledRegistry,
   isRegistryUsable,
   lookupExchange,
@@ -7,7 +8,7 @@ import {
   memoTypeInDispute,
   type RegistryEntry,
 } from "@/lib/exchange-registry";
-import { isUsableAt, mergeServedRegistry } from "@/lib/exchange-registry/merge";
+import { appliesOn, isUsableAt, mergeServedRegistry } from "@/lib/exchange-registry/merge";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import { VerificationError } from "@/lib/stellar/verification-error";
 import { xlmToStroops } from "@/lib/utils/amounts";
@@ -1513,8 +1514,8 @@ export interface ServedRegistryInput {
   validUntil: string;
 }
 
-/** The exchange registry one verification reads: its entries, whether it is still usable, and
- *  whether the served copy disputes an address's bundled memo type. */
+/** The exchange registry one verification reads on one network: its entries, whether it is still
+ *  usable, and whether the served copy disputes an address's bundled memo type. */
 interface RegistryView {
   lookup: (address: string) => RegistryEntry | null;
   usable: () => boolean;
@@ -1533,9 +1534,13 @@ interface RegistryView {
  * transaction and reports the balance also choose which closes may route through an
  * intermediary it names.
  */
-function registryView(served: ServedRegistryInput | undefined): RegistryView {
+function registryView(served: ServedRegistryInput | undefined, network: Network): RegistryView {
   if (served === undefined) {
-    return { lookup: lookupExchange, usable: () => isRegistryUsable(), memoTypeInDispute };
+    return {
+      lookup: (address) => lookupExchange(address, network),
+      usable: () => isRegistryUsable(),
+      memoTypeInDispute,
+    };
   }
   const merged = mergeServedRegistry(bundledRegistry(), served);
   if (merged === null) {
@@ -1545,7 +1550,9 @@ function registryView(served: ServedRegistryInput | undefined): RegistryView {
         "lastVerified and validUntil), so this close cannot be checked against it."
     );
   }
-  const byAddress = new Map(merged.entries.map((e) => [e.address, e]));
+  const byAddress = new Map(
+    merged.entries.filter((e) => appliesOn(e, network)).map((e) => [e.address, e])
+  );
   const disputes = new Set(merged.memoTypeDisputes);
   return {
     lookup: (address) => byAddress.get(address) ?? null,
@@ -1567,6 +1574,7 @@ function registryView(served: ServedRegistryInput | undefined): RegistryView {
 function listedMemoType(
   exchange: RegistryEntry,
   registry: RegistryView,
+  network: Network,
   expected: { destination: string; memo: string | null; memoType: "text" | "id" | "hash" | null }
 ): "text" | "id" | "hash" | null {
   if (registry.memoTypeInDispute(expected.destination)) {
@@ -1576,8 +1584,7 @@ function listedMemoType(
         "bundled one, so the memo this close needs cannot be checked."
     );
   }
-  const bundled = bundledRegistry().entries.some((e) => e.address === expected.destination);
-  if (bundled) return exchange.memoType;
+  if (bundledExchange(expected.destination, network) !== null) return exchange.memoType;
   if (
     expected.memo !== null &&
     expected.memoType !== null &&
@@ -1645,7 +1652,7 @@ export function verifyCloseTransaction(opts: {
   };
 }): void {
   const intent = intentFromXdr(opts.unsignedXdr, NETWORK_PASSPHRASES[opts.network]);
-  const registry = registryView(opts.servedRegistry);
+  const registry = registryView(opts.servedRegistry, opts.network);
   const exchange = registry.lookup(opts.expected.destination);
 
   // Asserted here, not only in the UI. The plan view disables its button on an expired
@@ -1670,13 +1677,13 @@ export function verifyCloseTransaction(opts: {
       registry.lookup
     ),
     // From the bundled copy alone, whatever was served: see `registryView`.
-    mediatorRequired: mediatorAllowedFor(opts.expected.destination),
+    mediatorRequired: mediatorAllowedFor(opts.expected.destination, opts.network),
     directMergeRefused: exchange?.requiresMediator ?? false,
     memoRequired: exchange?.requiresMemo ?? false,
     memoType:
       exchange === null
         ? opts.expected.memoType
-        : listedMemoType(exchange, registry, opts.expected),
+        : listedMemoType(exchange, registry, opts.network, opts.expected),
     nowSeconds: Math.floor(Date.now() / 1000),
     preAuthorized: opts.preAuthorized === true,
   });

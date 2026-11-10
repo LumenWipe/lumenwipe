@@ -4,9 +4,12 @@ import shippedJson from "@/config/exchange-registry.json";
 import {
   REGISTRY_WARN_DAYS,
   RegistryValidationError,
+  getMemoRequirement,
+  lookupExchange,
   parseRegistry,
   registryDaysRemaining,
   registryExpiryWarning,
+  requiresMediatorForAddress,
   servedRegistry,
 } from "@/lib/exchange-registry";
 
@@ -80,12 +83,39 @@ describe("parseRegistry", () => {
   test("the shipped registry passes", () => {
     expect(servedRegistry().entries.length).toBeGreaterThan(0);
   });
+});
 
-  // The web and @lumenwipe/verify bundle this file and ignore "network", so a testnet-only entry
-  // would be live on mainnet in the browser until they learn the field.
-  test("no shipped entry is network-scoped while the web side does not read the field", () => {
-    const scoped = (shippedJson.entries as Record<string, unknown>[]).filter((e) => "network" in e);
-    expect(scoped).toEqual([]);
+describe("the shipped testnet stand-in", () => {
+  const scoped = (shippedJson.entries as Record<string, unknown>[]).filter((e) => "network" in e);
+  const standIn = scoped[0]?.address as string;
+
+  test("is the one network-scoped entry, a testnet-only id-memo exchange that needs the relay", () => {
+    expect(scoped).toHaveLength(1);
+    expect(scoped[0]).toMatchObject({
+      network: "testnet",
+      requiresMediator: true,
+      requiresMemo: true,
+      memoType: "id",
+    });
+  });
+
+  test("is recognized on testnet with its id memo", () => {
+    expect(lookupExchange(standIn, "testnet")?.network).toBe("testnet");
+    expect(requiresMediatorForAddress(standIn, "testnet")).toBe(true);
+    expect(getMemoRequirement(standIn, "testnet")).toMatchObject({
+      requiresMemo: true,
+      memoType: "id",
+    });
+  });
+
+  test("is invisible to every mainnet lookup", () => {
+    expect(lookupExchange(standIn, "mainnet")).toBeNull();
+    expect(requiresMediatorForAddress(standIn, "mainnet")).toBe(false);
+    expect(getMemoRequirement(standIn, "mainnet")).toEqual({
+      requiresMemo: false,
+      memoType: null,
+      exchangeName: null,
+    });
   });
 });
 

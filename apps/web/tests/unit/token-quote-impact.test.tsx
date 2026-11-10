@@ -67,6 +67,7 @@ function renderCard(
 ) {
   return render(
     <TokenDispositionCard
+      network="mainnet"
       item={item}
       disposition={disposition}
       transferDestination={undefined}
@@ -208,10 +209,13 @@ test("a flagged token is resolved only by a convert confirmed at the floor it ca
     transferDestinations: {},
     tokenConversionFloors: floors,
   };
-  expect(assetsResolved({ ...base, dispositions: {} })).toBe(false);
-  expect(assetsResolved({ ...base, dispositions: { [CONTRACT]: "convert" } })).toBe(false);
+  expect(assetsResolved({ network: "mainnet", ...base, dispositions: {} })).toBe(false);
+  expect(
+    assetsResolved({ network: "mainnet", ...base, dispositions: { [CONTRACT]: "convert" } })
+  ).toBe(false);
   expect(
     assetsResolved({
+      network: "mainnet",
       ...base,
       dispositions: { [CONTRACT]: "convert" },
       conversionImpactAcknowledgedFor: { [CONTRACT]: "40000000" },
@@ -219,14 +223,18 @@ test("a flagged token is resolved only by a convert confirmed at the floor it ca
   ).toBe(false);
   expect(
     assetsResolved({
+      network: "mainnet",
       ...base,
       dispositions: { [CONTRACT]: "convert" },
       conversionImpactAcknowledgedFor: { [CONTRACT]: "49750000" },
     })
   ).toBe(true);
-  expect(assetsResolved({ ...base, dispositions: { [CONTRACT]: "leave" } })).toBe(true);
+  expect(
+    assetsResolved({ network: "mainnet", ...base, dispositions: { [CONTRACT]: "leave" } })
+  ).toBe(true);
   expect(
     assetsResolved({
+      network: "mainnet",
       ...base,
       dispositions: { [CONTRACT]: "transfer" },
       transferDestinations: { [CONTRACT]: DEST },

@@ -619,6 +619,7 @@ export interface ExchangeRegistryEntry {
     memoType: "text" | "id" | "hash";
     // (undocumented)
     name: string;
+    network?: "testnet";
     // (undocumented)
     requiresMediator: boolean;
     // (undocumented)

@@ -1,3 +1,5 @@
+import type { Network } from "@/config/networks";
+
 /**
  * The stricter-only merge of a served exchange registry over the bundled one, as pure functions:
  * no network, no module state, no bundled data. The web runs it when the served copy arrives
@@ -12,6 +14,13 @@ export interface RegistryEntry {
   requiresMediator: boolean;
   requiresMemo: boolean;
   memoType: "text" | "id" | "hash";
+  /** Present only on an entry scoped to testnet. Absent means the entry applies on every network. */
+  network?: "testnet";
+}
+
+/** Whether an entry applies on `network`: an unscoped entry applies on every network. */
+export function appliesOn(entry: RegistryEntry, network: Network): boolean {
+  return entry.network === undefined || entry.network === network;
 }
 
 /** Shape-checks one served entry. An `as` cast would let `entries: [null]` reach the render
@@ -26,8 +35,20 @@ function isUsableEntry(e: unknown): e is RegistryEntry {
     typeof r.name === "string" &&
     typeof r.requiresMediator === "boolean" &&
     typeof r.requiresMemo === "boolean" &&
-    (r.memoType === "text" || r.memoType === "id" || r.memoType === "hash")
+    (r.memoType === "text" || r.memoType === "id" || r.memoType === "hash") &&
+    (!("network" in r) || r.network === "testnet")
   );
+}
+
+/**
+ * The bundled entries, refused whole when one is malformed, as the API refuses the same file. A
+ * network value other than "testnet" must never be read as "every network".
+ */
+export function bundledEntries(raw: unknown): RegistryEntry[] {
+  if (!Array.isArray(raw)) throw new Error("The bundled exchange registry has no entries list.");
+  const bad = raw.findIndex((e) => !isUsableEntry(e));
+  if (bad !== -1) throw new Error(`The bundled exchange registry entry ${bad} is malformed.`);
+  return raw as RegistryEntry[];
 }
 
 /**
@@ -47,9 +68,12 @@ function isUsableEntry(e: unknown): e is RegistryEntry {
  * the whole point of serving it: a new address gains its memo rule and the
  * unrecognized-destination confirmation stops applying, but it never enables the mediated
  * hand-off (`mediatorAllowedFor`).
+ *
+ * The bundled entry's network scope stands: a served copy can neither widen a testnet-only entry
+ * to mainnet nor hide a bundled exchange from a network by scoping it.
  */
 function tightenedOver(embeddedEntry: RegistryEntry, servedEntry: RegistryEntry): RegistryEntry {
-  return {
+  const tightened: RegistryEntry = {
     ...servedEntry,
     requiresMemo: embeddedEntry.requiresMemo || servedEntry.requiresMemo,
     requiresMediator: embeddedEntry.requiresMediator || servedEntry.requiresMediator,
@@ -58,6 +82,9 @@ function tightenedOver(embeddedEntry: RegistryEntry, servedEntry: RegistryEntry)
     // (`mergeServedRegistry`) and the close is refused until the bundled copy is updated.
     memoType: embeddedEntry.memoType,
   };
+  if (embeddedEntry.network === undefined) delete tightened.network;
+  else tightened.network = embeddedEntry.network;
+  return tightened;
 }
 
 /** How far past the embedded copy's own expiry a served payload may extend validity. Without

@@ -4,6 +4,7 @@ import { ArrowRightLeft, AlertTriangle, CheckCircle2, Send } from "lucide-react"
 import { formatStroops, type AssetConvertibility } from "@/lib/api/plan-adapters";
 import { classicFloorFromQuote } from "@/lib/api/close-decisions";
 import { convertFloorOf } from "@/lib/plan/asset-resolution";
+import type { Network } from "@/config/networks";
 import type { AssetDisposition } from "@/types/plan";
 import { AddressField } from "@/components/ui/address-field";
 import {
@@ -15,6 +16,7 @@ import { ShortAddress } from "@/components/ui/short-address";
 import { DECISION_TAGS, DecisionCard, type DecisionOption } from "@/components/ui/decision-card";
 
 interface AssetDispositionCardProps {
+  network: Network;
   item: AssetConvertibility;
   /** The disposition currently recorded for this asset, or undefined while unresolved. */
   disposition: AssetDisposition | undefined;
@@ -44,6 +46,7 @@ interface AssetDispositionCardProps {
  * "will be swapped to XLM" over a plan that burns the balance.
  */
 export default function AssetDispositionCard({
+  network,
   item,
   disposition,
   transferDestination,
@@ -55,7 +58,7 @@ export default function AssetDispositionCard({
   const isIssuer = disposition === "issuer";
   // A transfer is only resolved once its destination is a usable address. Until then the asset
   // counts as unresolved, exactly like an unconfirmed return-to-issuer.
-  const transferReady = isTransfer && isUsableTransferDestination(transferDestination);
+  const transferReady = isTransfer && isUsableTransferDestination(transferDestination, network);
   // Without a floor there is no minimum to hold a swap to, so the swap is not offered and the
   // asset stays open until it is sent or returned (asset-resolution.ts).
   const swappable = item.convertible && convertFloorOf(item) !== undefined;
@@ -105,12 +108,14 @@ export default function AssetDispositionCard({
           hideLabel
           value={transferDestination ?? ""}
           onChange={(next) => onSetTransferDestination(item.asset, next || null)}
-          error={transferDestination ? transferDestinationError(transferDestination) : null}
+          error={
+            transferDestination ? transferDestinationError(transferDestination, network) : null
+          }
           placeholder={`G... (an account that already holds ${item.code})`}
         />
         {/* A shortcut, not a constraint: the API takes any address per asset, and hiding that
             behind a single fixed destination would make the UI narrower than the contract. */}
-        {isUsableTransferDestination(mergeDestination) &&
+        {isUsableTransferDestination(mergeDestination, network) &&
           transferDestination !== mergeDestination && (
             <button
               type="button"

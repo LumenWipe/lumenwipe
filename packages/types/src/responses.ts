@@ -142,6 +142,8 @@ export interface ExchangeRegistryEntry {
   requiresMemo: boolean;
   /** The required memo type, if `requiresMemo` is true. */
   memoType: "text" | "id" | "hash";
+  /** Present only on an entry scoped to testnet. Absent means the entry applies on every network. */
+  network?: "testnet";
 }
 
 /**
