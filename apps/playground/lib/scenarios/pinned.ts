@@ -127,6 +127,43 @@ export const BLEND_SEED = {
 } as const;
 
 /**
+ * Phoenix on testnet: the XYK pool the registry vouches for (apps/api/src/config/
+ * contract-registry.json, `phoenix` / `pool`, code `14ed2bb1…`), and the stake contract its own
+ * config names (`phoenix` / `stake`, code `a27578aa…`), which bonds with a minimum of one share
+ * and unbonds at once. The pool's token_a is LWPHX, a custom SEP-41 token with 7 decimals and no
+ * trustline, and token_b is XLM; it keeps its shares in a separate token contract, `shareToken`.
+ * Its fee is 30 bps, and it allows at most 500 bps of spread and of slippage.
+ */
+export const PHOENIX = {
+  pool: "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV",
+  stake: "CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP",
+  tokenA: "CDI3UIVKFNJAFBWOUMWQ6AO34BQ5JMFBHG4EUB3ZVKCKH5FINXE6QGGZ",
+  tokenB: XLM_SAC,
+  shareToken: "CC53IRMBHWTXE4BWPD5N4LH2L43YSYBMOFD6UARPMZBTWPSODFFKW2EG",
+} as const;
+
+/**
+ * What the Phoenix scenario swaps and pairs. No key mints LWPHX for it: the demo buys it from the
+ * pinned pool itself, then pairs all of it back with XLM at the pool's price.
+ */
+export const PHOENIX_SEED = {
+  /** XLM swapped for LWPHX in the pool. */
+  swapXlm: "0.5",
+  /** The least LWPHX the swap must quote, in base units, or the pool is too thin to use. */
+  minSwapOut: BigInt(10_000),
+  /** The most spread the swap may quote, and the most it may take on chain, in bps. */
+  maxSpreadBps: 300,
+  /** How far under the quote the swap's minimum sits, in bps. */
+  swapFloorBps: 100,
+  /** What the deposit offers over the XLM the pool's ratio needs, in bps. */
+  depositMarginBps: 200,
+  /** The most XLM the deposit may pair with the LWPHX. */
+  depositMaxXlm: "1",
+  /** The deposit's own slippage bound, the pool's maximum. */
+  depositSlippageBps: 500,
+} as const;
+
+/**
  * What the allowances scenario approves on XLM's asset contract (`XLM_SAC`), one amount per
  * spender in order. The first spender's allowance lives as long as the network allows: the latest
  * ledger plus the network's maximum entry TTL, less one, read live when the step runs. The others

@@ -29,6 +29,9 @@ export const MESS_STEP_IDS = [
   "SOROSWAP_DEPOSIT",
   "AQUARIUS_DEPOSIT",
   "BLEND_SUBMIT",
+  "PHOENIX_SWAP",
+  "PHOENIX_PROVIDE",
+  "PHOENIX_BOND",
   "APPROVE_ALLOWANCE_1",
   "APPROVE_ALLOWANCE_2",
   "APPROVE_ALLOWANCE_3",
@@ -82,6 +85,14 @@ export type StepAction =
   /** Supplies XLM to the pinned Blend pool as collateral and, in the borrow variant, borrows XLM
    *  against it, in one `submit`. `borrowXlm` is null when nothing is borrowed. */
   | { kind: "blend_submit"; variant: BlendVariant; supplyXlm: string; borrowXlm: string | null }
+  /** Swaps `offerXlm` of the demo's XLM for LWPHX in the pinned Phoenix pool, once a simulated
+   *  swap shows the pool can sell enough of it at a small enough spread. */
+  | { kind: "phoenix_swap"; offerXlm: string }
+  /** Pairs all the LWPHX the demo holds with XLM in the pinned Phoenix pool, at its live ratio,
+   *  for at most `maxXlm`. */
+  | { kind: "phoenix_provide"; maxXlm: string }
+  /** Bonds half the demo's Phoenix pool shares, read live, into the pool's stake contract. */
+  | { kind: "phoenix_bond" }
   /**
    * Approves the session's `index`th spender (from 1) to move `amountXlm` of the demo's XLM through
    * XLM's asset contract. `farExpiry` sets the allowance to live as long as the network allows,
@@ -97,6 +108,9 @@ export type StepAction =
 
 /** supply: XLM supplied as collateral. supply_and_borrow: the same, with XLM borrowed against it. */
 export type BlendVariant = "supply" | "supply_and_borrow";
+
+/** lp: Phoenix pool shares held. bonded: the same, with half of them bonded in its stake. */
+export type PhoenixVariant = "lp" | "bonded";
 
 /**
  * two_of_three: two co-signers beside the master key, any two of the three sign. hash_x: the
@@ -291,6 +305,7 @@ export type ScenarioId =
   | "soroswap-lp"
   | "aquarius-lp"
   | "blend-supply"
+  | "phoenix-lp"
   | "allowances"
   | "fee-bump";
 

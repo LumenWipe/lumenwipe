@@ -206,6 +206,7 @@ test("v1 draws from the six scenarios it shipped with, so a later scenario never
     "soroswap-lp",
     "aquarius-lp",
     "blend-supply",
+    "phoenix-lp",
     "allowances",
     "fee-bump",
   ]);

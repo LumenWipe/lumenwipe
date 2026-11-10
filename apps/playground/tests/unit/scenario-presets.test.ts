@@ -32,25 +32,37 @@ describe("presets", () => {
     expect(presetSelection("api", off("data-entries", "forgotten-signer"))).toBeNull();
     // The protocol set's scenarios, switched off, leave it with none.
     expect(
-      presetSelection("protocol", off("soroswap-lp", "aquarius-lp", "blend-supply", "allowances"))
+      presetSelection(
+        "protocol",
+        off("soroswap-lp", "aquarius-lp", "blend-supply", "phoenix-lp", "allowances")
+      )
     ).toBeNull();
     expect(
-      ids(presetSelection("protocol", off("soroswap-lp", "blend-supply", "allowances"))!)
+      ids(
+        presetSelection("protocol", off("soroswap-lp", "blend-supply", "phoenix-lp", "allowances"))!
+      )
     ).toEqual(["aquarius-lp"]);
   });
 
-  test("the protocol preset is every protocol scenario testnet can run", () => {
+  test("the protocol preset is every protocol scenario testnet can run, fitted to the caps", () => {
+    // All five need more XLM and more contract transactions than one demo may use, so the fit
+    // drops the last one, the allowances.
     expect(ids(presetSelection("protocol")!)).toEqual([
       "soroswap-lp",
       "aquarius-lp",
       "blend-supply",
-      "allowances",
+      "phoenix-lp",
     ]);
     // Each at its defaults: Blend supplies only, so the preset never depends on the pool lending,
-    // and two spenders are approved, the first until the far expiry.
+    // and the Phoenix shares are held, not bonded.
     const blend = presetSelection("protocol")!.scenarios.find((s) => s.id === "blend-supply");
     expect(blend?.params).toEqual({ variant: 0 });
-    const allowances = presetSelection("protocol")!.scenarios.find((s) => s.id === "allowances");
+    const phoenix = presetSelection("protocol")!.scenarios.find((s) => s.id === "phoenix-lp");
+    expect(phoenix?.params).toEqual({ variant: 0 });
+    // Without Phoenix, two spenders are approved, the first until the far expiry.
+    const allowances = presetSelection("protocol", off("phoenix-lp"))!.scenarios.find(
+      (s) => s.id === "allowances"
+    );
     expect(allowances?.params).toEqual({ spenders: 2 });
   });
 

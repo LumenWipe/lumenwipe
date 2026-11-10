@@ -32,6 +32,7 @@ import {
   ALLOWANCE_SEED,
   AQUARIUS_SEED,
   BLEND_SEED,
+  PHOENIX_SEED,
   SOROSWAP_SEED,
 } from "./pinned";
 import {
@@ -46,6 +47,7 @@ import {
   type MessStepId,
   type MultisigVariant,
   type OrderedStep,
+  type PhoenixVariant,
   type SceneNodeSpec,
   type ScenarioCost,
   type ScenarioDefinition,
@@ -1045,6 +1047,114 @@ const blendSupply: ScenarioDefinition = {
   },
 };
 
+const PHOENIX_VARIANTS: readonly PhoenixVariant[] = ["lp", "bonded"];
+
+/**
+ * LWPHX bought from the pinned Phoenix pool with a little XLM, then paired back with XLM in the
+ * same pool, and in the bonded variant half the shares bonded in its stake contract. Every amount
+ * is read live before its call is signed, and no key mints anything. The close leaves through the
+ * API's Phoenix exit, one call per transaction: the stake's unbond first when there is one, then
+ * the withdrawal. The LWPHX the withdrawal pays back is a Soroban token the close leaves with the
+ * closed address.
+ */
+const phoenixLp: ScenarioDefinition = {
+  id: "phoenix-lp",
+  featureSet: "protocol",
+  label: "Phoenix liquidity",
+  description:
+    "LWPHX bought from a real Phoenix pool and paired back with XLM in it, optionally with half the shares bonded. The close unbonds any stake, then withdraws, before the merge.",
+  params: {
+    variant: {
+      label: "Position",
+      min: 0,
+      max: PHOENIX_VARIANTS.length - 1,
+      default: 0,
+      choices: ["Hold the pool shares", "Bond half the pool shares"],
+    },
+  },
+  heldAssets: () => [],
+  requiresAnyOf: [],
+  conflicts: [],
+  build: ({ variant: index }) => {
+    const variant = PHOENIX_VARIANTS[index ?? 0];
+    if (!variant) return { ok: false, message: "Phoenix liquidity has no such variant." };
+    const bonded = variant === "bonded";
+    const node = "lp:phoenix";
+    const steps: OrderedStep[] = [
+      {
+        order: ORDER.protocol,
+        step: {
+          id: "PHOENIX_SWAP",
+          label: `Swap ${PHOENIX_SEED.swapXlm} XLM for LWPHX in the Phoenix pool`,
+          nodes: [],
+          balances: [],
+          action: { kind: "phoenix_swap", offerXlm: PHOENIX_SEED.swapXlm },
+        },
+      },
+      {
+        order: ORDER.protocol + 1,
+        step: {
+          id: "PHOENIX_PROVIDE",
+          label: "Add the LWPHX and XLM to the Phoenix pool",
+          nodes: [{ id: node, kind: "position", label: "Phoenix LWPHX/XLM" }],
+          balances: [],
+          action: { kind: "phoenix_provide", maxXlm: PHOENIX_SEED.depositMaxXlm },
+        },
+      },
+    ];
+    if (bonded) {
+      steps.push({
+        order: ORDER.protocol + 2,
+        step: {
+          id: "PHOENIX_BOND",
+          label: "Bond half the Phoenix pool shares",
+          nodes: [],
+          balances: [],
+          action: { kind: "phoenix_bond" },
+        },
+      });
+    }
+    // The swap, the deposit and the bond each seed a transaction; the exit is the withdrawal, and
+    // the unbond before it when there is a stake.
+    const seeds = steps.length;
+    const exits = bonded ? 2 : 1;
+    return {
+      ok: true,
+      build: {
+        steps,
+        ephemeralAssets: [],
+        expectation: {
+          assets: [],
+          offers: 0,
+          dataEntries: 0,
+          signers: 0,
+          // Each exit is a transaction of its own, and LWPHX needs no trustline.
+          closeOperations: 0,
+          operationTypes: ["invokeHostFunction"],
+          dispositions: [],
+          arrivingAssets: [],
+          sponsoredEntries: [],
+          resolutions: [],
+        },
+        cost: {
+          // The XLM swapped, the most the deposit pairs with it, and the fee ceiling of every
+          // seeding call and every exit. The deposit's XLM comes back with the withdrawal.
+          xlm:
+            Number(PHOENIX_SEED.swapXlm) +
+            Number(PHOENIX_SEED.depositMaxXlm) +
+            (seeds + exits) * SOROBAN_FEE_CAP_XLM,
+          classicTransactions: 0,
+          sorobanTransactions: seeds,
+          seconds:
+            seeds * SOROBAN_STEP_SECONDS + CLOSE_GROUP_SECONDS + exits * SOROBAN_STEP_SECONDS,
+          batchSize: 1,
+          subEntries: 0,
+        },
+      },
+    };
+  },
+};
+
 /**
  * One to three spenders approved to move the demo's XLM through XLM's asset contract, one `approve`
  * per spender, the first until the longest expiry the network allows. Before the close the page
@@ -1156,6 +1266,7 @@ const feeBump: ScenarioDefinition = {
     "soroswap-lp",
     "aquarius-lp",
     "blend-supply",
+    "phoenix-lp",
     "allowances",
   ],
   build: () => ({
@@ -1208,6 +1319,7 @@ export const SCENARIOS: readonly ScenarioDefinition[] = [
   soroswapLp,
   aquariusLp,
   blendSupply,
+  phoenixLp,
   allowances,
   feeBump,
 ];

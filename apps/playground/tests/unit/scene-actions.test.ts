@@ -6,7 +6,7 @@ import {
   type SceneAction,
 } from "@/lib/scene-actions";
 import type { IntentOperation } from "@lumenwipe/sdk";
-import { AQUARIUS, BLEND, PINNED_ASSETS, SOROSWAP, XLM_SAC } from "@/lib/scenarios";
+import { AQUARIUS, BLEND, PHOENIX, PINNED_ASSETS, SOROSWAP, XLM_SAC } from "@/lib/scenarios";
 
 const SOURCE = "GDEMO";
 const live = (...ids: string[]): LiveNode[] => ids.map((id) => ({ id }));
@@ -260,5 +260,40 @@ describe("the Blend position", () => {
       type: "destroy",
       nodeIds: ["lend:blend"],
     });
+  });
+});
+
+describe("the Phoenix position", () => {
+  const scene = live("lp:phoenix", "lend:blend");
+  const call = (contract: string, fn: string) => ({
+    ...SAMPLES.invoke_host_function,
+    contract,
+    function: fn,
+    args: [SOURCE, "1000"],
+  });
+
+  test("the pool's withdrawal empties the pool's node", () => {
+    expect(operationToSceneAction(call(PHOENIX.pool, "withdraw_liquidity"), scene)).toEqual({
+      type: "destroy",
+      nodeIds: ["lp:phoenix"],
+    });
+  });
+
+  test("an unbond before it leaves the node in place, with a pulse", () => {
+    expect(operationToSceneAction(call(PHOENIX.stake, "unbond"), scene)).toEqual({
+      type: "pulse",
+      nodeId: "lp:phoenix",
+    });
+  });
+
+  test("another function, another contract, or no node in the scene changes nothing", () => {
+    expect(operationToSceneAction(call(PHOENIX.pool, "unbond"), scene)).toBeNull();
+    expect(operationToSceneAction(call(PHOENIX.stake, "withdraw_liquidity"), scene)).toBeNull();
+    expect(operationToSceneAction(call(PHOENIX.pool, "swap"), scene)).toBeNull();
+    expect(operationToSceneAction(call(PHOENIX.shareToken, "transfer"), scene)).toBeNull();
+    expect(
+      operationToSceneAction(call(PHOENIX.pool, "withdraw_liquidity"), live("lend:blend"))
+    ).toBeNull();
+    expect(operationToSceneAction(call(PHOENIX.stake, "unbond"), live("lend:blend"))).toBeNull();
   });
 });
