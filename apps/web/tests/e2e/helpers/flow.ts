@@ -1,4 +1,5 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
+import { PLAN_REFRESH_FAILED } from "../../../lib/utils/user-error";
 import { confirmDestinationControl } from "./destination";
 
 /**
@@ -69,6 +70,30 @@ export async function openTestnetHome(page: Page): Promise<void> {
 export const TESTNET_STEP_TIMEOUT = 30_000;
 
 /**
+ * The API's own budget for one inbound request: `REQUEST_DEADLINE_MS` in
+ * apps/api/src/config/constants.ts. Past it the API answers with a typed error, so a wait on one
+ * request that is shorter than this gives up while the API is still within its own contract.
+ */
+const API_REQUEST_DEADLINE = 40_000;
+
+/**
+ * Budget for the account read the analyze page makes on arrival: one request at the API's
+ * deadline, plus room for the page to render what it read. Normal on testnet is 4.5 to 7.3 s;
+ * the deadline is what a slow upstream is allowed to take.
+ */
+export const TESTNET_ANALYZE_TIMEOUT = API_REQUEST_DEADLINE + 20_000;
+
+/**
+ * Budget for a step that waits on two sequential API requests: analyze -> review (the
+ * destination check, then the plan), and review -> execute, where `refreshReviewedPlan` reads the
+ * account and then plans again before the page moves on. Two requests at the 40 s deadline is
+ * 80 s; the rest is navigation and render. Normal on testnet is 6.4 to 7.5 s for analyze ->
+ * review and about 11 s for review -> execute, so this only matters when an upstream is slow -
+ * and then the 30 s step budget failed while the API was still inside its own deadline.
+ */
+export const TESTNET_PLAN_TIMEOUT = 2 * API_REQUEST_DEADLINE + 10_000;
+
+/**
  * Where a finished testnet close lands: its saved receipt, or the completion page when the
  * receipt could not be saved or the close did not finish.
  */
@@ -117,7 +142,46 @@ export async function enterSourceAndAnalyze(page: Page, source: string): Promise
   // The analyze page does the account read after this navigation, and that read hits
   // stellar.expert + RPC (and Horizon for open offers), which can take a while on testnet.
   await expect(page).toHaveURL(/\/testnet\/analyze/, { timeout: 30_000 });
-  await expect(page.getByText("Analyzing account...")).toHaveCount(0, { timeout: 60_000 });
+  await expect(page.getByText("Analyzing account...")).toHaveCount(0, {
+    timeout: TESTNET_ANALYZE_TIMEOUT,
+  });
+}
+
+/**
+ * Waits for a step that a refusal from the service can stop, and retries it once the way a user
+ * would: with the page's own retry control.
+ *
+ * A refusal here is the page reporting a temporary upstream failure (a 503 while the data
+ * provider is throttled), not the close path breaking, and the page offers the retry for exactly
+ * that case. One retry absorbs one bad moment; a second refusal fails the test, so a service that
+ * stays down is reported, never waited out.
+ */
+export async function untilDoneWithOneRetry(opts: {
+  /** What the wait is for, named in the failure. */
+  step: string;
+  /** True once the step has finished. */
+  done: () => boolean | Promise<boolean>;
+  /** The page's refusal, visible when the step was refused. */
+  refusal: Locator;
+  /** The control the page offers to try the step again. */
+  retry: Locator;
+  timeout: number;
+}): Promise<void> {
+  const outcome = async (): Promise<"done" | "refused" | "pending"> =>
+    (await opts.done()) ? "done" : (await opts.refusal.isVisible()) ? "refused" : "pending";
+
+  await expect
+    .poll(outcome, { timeout: opts.timeout, message: `${opts.step}: neither finished nor refused` })
+    .not.toBe("pending");
+  if ((await outcome()) === "done") return;
+
+  await opts.retry.click();
+  // The page clears its refusal when the retry starts, so a refusal seen after this is a new one.
+  await expect(opts.refusal).toBeHidden();
+  await expect
+    .poll(outcome, { timeout: opts.timeout, message: `${opts.step}: neither finished nor refused` })
+    .not.toBe("pending");
+  expect(await outcome(), `${opts.step}: refused again after one retry`).toBe("done");
 }
 
 // Destination step: fills the destination, then "Review the full plan" -> /review -> /execute.
@@ -125,17 +189,17 @@ export async function enterDestinationAndBegin(page: Page, destination: string):
   const beginButton = page.getByRole("button", { name: /Review the full plan/i });
   // The destination field is on screen from the start; the button unlocks once every item is decided.
   await expect(page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/)).toBeVisible({
-    timeout: 30_000,
+    timeout: TESTNET_ANALYZE_TIMEOUT,
   });
 
   await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(destination);
   await confirmDestinationControl(page);
 
-  await expect(beginButton).toBeEnabled({ timeout: TESTNET_STEP_TIMEOUT });
+  await expect(beginButton).toBeEnabled({ timeout: TESTNET_PLAN_TIMEOUT });
   await beginButton.click();
 
   // Whole-plan review gate: the user must explicitly confirm before anything is built.
-  await expect(page).toHaveURL(/\/testnet\/review/, { timeout: TESTNET_STEP_TIMEOUT });
+  await expect(page).toHaveURL(/\/testnet\/review/, { timeout: TESTNET_PLAN_TIMEOUT });
   const proceedButton = page.getByRole("button", {
     name: /Continue to signing/i,
   });
@@ -146,5 +210,14 @@ export async function enterDestinationAndBegin(page: Page, destination: string):
   await expect(proceedButton).toBeEnabled();
   await proceedButton.click();
 
-  await expect(page).toHaveURL(/\/testnet\/execute/, { timeout: TESTNET_STEP_TIMEOUT });
+  // Confirming plans again (`refreshReviewedPlan`) before it moves on. When that read is refused,
+  // the page says so and offers "Try again", which re-runs the confirm with the consent given.
+  const refusal = page.getByRole("alert").filter({ hasText: PLAN_REFRESH_FAILED });
+  await untilDoneWithOneRetry({
+    step: "review -> execute",
+    done: () => /\/testnet\/execute/.test(page.url()),
+    refusal,
+    retry: refusal.getByRole("button", { name: "Try again" }),
+    timeout: TESTNET_PLAN_TIMEOUT,
+  });
 }

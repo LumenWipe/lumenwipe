@@ -22,9 +22,10 @@ jobs:
   e2e:
     name: close flow against testnet
     runs-on: ubuntu-latest
-    # The suite's own per-test budgets sum to roughly 48 minutes, and `retries: 2` lets one
-    # failing test consume three times its own. A kill here is reported as a plain failure with
-    # no artifact, which is indistinguishable from the close path actually breaking.
+    # Run 42844639885 took 31.2 minutes for 69 tests on two workers, including `retries: 2`
+    # spent on 3 failed and 5 flaky tests, so 90 leaves room for a much slower night. A kill
+    # here is reported as a plain failure with no artifact, which is indistinguishable from the
+    # close path actually breaking.
     timeout-minutes: 90
     permissions:
       contents: read
@@ -57,6 +58,9 @@ jobs:
           API_KEYS: ci=${{ github.run_id }}-e2e
           LUMENWIPE_API_URL: http://localhost:3001
           LUMENWIPE_API_KEY: ${{ github.run_id }}-e2e
+        # The local API's Nest log is in this step's output, each line prefixed [WebServer]:
+        # playwright.config.ts pipes the API's stdout in CI. A 503 the page reports as
+        # "temporarily unavailable" has a matching "upstream read failed" line naming the target.
         run: bun run --filter '@lumenwipe/web' test:e2e
 
       # Always, not only on failure: a green run that mostly skipped is the outcome worth
@@ -82,10 +86,11 @@ jobs:
   playground:
     name: playground against testnet
     runs-on: ubuntu-latest
-    # Twelve tests whose own budgets sum to roughly 89 minutes (seven testnet recipes at 10 to 12,
-    # the replayed seed at 15), and `retries: 1` lets a failing one take twice its own. Playwright's
-    # globalTimeout (80 minutes in CI) ends the run first, so a slow night is a failure with a
-    # report, not a kill here that the report job below reads as cancelled and never files.
+    # Run 42844639885 (23 tests) ran into Playwright's globalTimeout (80 minutes in CI) at 1.3 h:
+    # six failures each spent their 6-minute wait twice under `retries: 1`, about 72 minutes, and
+    # 13 tests never ran. A healthy run has not been measured yet. The globalTimeout ends the run
+    # before this limit, so a slow night is a failure with a report, not a kill here that the
+    # report job below reads as cancelled and never files.
     timeout-minutes: 90
     permissions:
       contents: read

@@ -9,14 +9,12 @@ import {
   TransactionBuilder,
   type xdr,
 } from "@stellar/stellar-sdk";
-import { confirmDestinationControl } from "./helpers/destination";
 import {
   CLOSE_FINISHED_URL,
+  enterDestinationAndBegin,
   enterSecretKey,
-  enterSourceAddress,
+  enterSourceAndAnalyze,
   expectSigningPanel,
-  openTestnetHome,
-  TESTNET_STEP_TIMEOUT,
 } from "./helpers/flow";
 
 // E2E coverage for issue #70: a claimable balance for an asset the account holds no trustline
@@ -110,46 +108,6 @@ async function hasUsdcRouteFor(amount: string, attempts = 8, delayMs = 2_500): P
     await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
   return false;
-}
-
-async function enterSourceAndAnalyze(page: Page, source: string): Promise<void> {
-  await openTestnetHome(page);
-
-  await enterSourceAddress(page, source);
-
-  const analyzeButton = page.getByRole("button", { name: /Analyze account/i });
-  await expect(analyzeButton).toBeEnabled();
-  await analyzeButton.click();
-
-  await expect(page).toHaveURL(/\/testnet\/analyze/, { timeout: 30_000 });
-}
-
-async function enterDestinationAndBegin(page: Page, destination: string): Promise<void> {
-  const beginButton = page.getByRole("button", { name: /Review the full plan/i });
-  // The destination field is on screen from the start; the button unlocks once every item is decided.
-  await expect(page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/)).toBeVisible({
-    timeout: 30_000,
-  });
-
-  await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(destination);
-  await confirmDestinationControl(page);
-
-  await expect(beginButton).toBeEnabled({ timeout: TESTNET_STEP_TIMEOUT });
-  await beginButton.click();
-
-  // Whole-plan review gate: the user must explicitly confirm before anything is built.
-  await expect(page).toHaveURL(/\/testnet\/review/, { timeout: TESTNET_STEP_TIMEOUT });
-  const proceedButton = page.getByRole("button", {
-    name: /Continue to signing/i,
-  });
-  await expect(proceedButton).toBeDisabled({ timeout: TESTNET_STEP_TIMEOUT });
-
-  // Explicit acknowledgment checkbox (the only checkbox on the review panel) gates the button.
-  await page.getByRole("checkbox").check();
-  await expect(proceedButton).toBeEnabled();
-  await proceedButton.click();
-
-  await expect(page).toHaveURL(/\/testnet\/execute/, { timeout: TESTNET_STEP_TIMEOUT });
 }
 
 // The secret key is entered once; the engine drives every round (claim, then cleanup+merge)

@@ -1,6 +1,10 @@
 import { test, expect, type Page } from "@playwright/test";
 import { Keypair } from "@stellar/stellar-sdk";
-import { enterSourceAddress, openTestnetHome, TESTNET_STEP_TIMEOUT } from "./helpers/flow";
+import {
+  enterSourceAndAnalyze,
+  TESTNET_ANALYZE_TIMEOUT,
+  TESTNET_STEP_TIMEOUT,
+} from "./helpers/flow";
 
 // Regression coverage for issue #115: the exchange registry used to fail open. An address it
 // did not recognize was treated as a personal wallet, so the close built a direct
@@ -41,14 +45,9 @@ async function waitUntilIndexed(id: string, attempts = 10, delayMs = 1_500): Pro
 
 // Drives home -> analyze and stops at the destination panel, without entering a destination.
 async function reachDestinationStep(page: Page, source: Keypair): Promise<void> {
-  await openTestnetHome(page);
-  await enterSourceAddress(page, source.publicKey());
-  const analyzeButton = page.getByRole("button", { name: /Analyze account/i });
-  await expect(analyzeButton).toBeEnabled();
-  await analyzeButton.click();
-  await expect(page).toHaveURL(/\/testnet\/analyze/, { timeout: 30_000 });
+  await enterSourceAndAnalyze(page, source.publicKey());
   await expect(page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/)).toBeVisible({
-    timeout: 30_000,
+    timeout: TESTNET_ANALYZE_TIMEOUT,
   });
 }
 

@@ -7,13 +7,12 @@ import {
   TransactionBuilder,
   BASE_FEE,
 } from "@stellar/stellar-sdk";
-import { confirmDestinationControl } from "./helpers/destination";
 import {
   CLOSE_FINISHED_URL,
+  enterDestinationAndBegin,
   enterSecretKey,
-  enterSourceAddress,
+  enterSourceAndAnalyze,
   expectSigningPanel,
-  openTestnetHome,
   TESTNET_STEP_TIMEOUT,
 } from "./helpers/flow";
 import { connectStubWallet, installWalletStub } from "./helpers/wallet-stub";
@@ -302,38 +301,13 @@ test("pre-authorized close: the pasted transaction is decoded, confirmed by a se
   expect(await accountExists(master.publicKey())).toBe(false);
 });
 
-// Mirrors fast-path-close.spec.ts's driveFusedClose through the review gate, stopping
-// short of signing (this test drives two separate signing rounds itself).
+// Through the review gate, stopping short of signing (this test drives two separate signing
+// rounds itself).
 async function driveToExecute(
   page: Page,
   opts: { source: string; destination: string }
 ): Promise<void> {
-  await openTestnetHome(page);
-  await enterSourceAddress(page, opts.source);
-  const analyzeButton = page.getByRole("button", { name: /Analyze account/i });
-  await expect(analyzeButton).toBeEnabled();
-  await analyzeButton.click();
-  await expect(page).toHaveURL(/\/testnet\/analyze/, { timeout: 30_000 });
-
-  const beginButton = page.getByRole("button", { name: /Review the full plan/i });
-  // The destination field is on screen from the start; the button unlocks once every item is decided.
-  await expect(page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/)).toBeVisible({
-    timeout: 30_000,
-  });
-  await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(opts.destination);
-  await confirmDestinationControl(page);
-  await expect(beginButton).toBeEnabled({ timeout: TESTNET_STEP_TIMEOUT });
-  await beginButton.click();
-
-  await expect(page).toHaveURL(/\/testnet\/review/, { timeout: TESTNET_STEP_TIMEOUT });
-  const proceedButton = page.getByRole("button", {
-    name: /Continue to signing/i,
-  });
-  await expect(proceedButton).toBeDisabled({ timeout: TESTNET_STEP_TIMEOUT });
-  await page.getByRole("checkbox").check();
-  await expect(proceedButton).toBeEnabled();
-  await proceedButton.click();
-
-  await expect(page).toHaveURL(/\/testnet\/execute/, { timeout: TESTNET_STEP_TIMEOUT });
+  await enterSourceAndAnalyze(page, opts.source);
+  await enterDestinationAndBegin(page, opts.destination);
   await expectSigningPanel(page);
 }
