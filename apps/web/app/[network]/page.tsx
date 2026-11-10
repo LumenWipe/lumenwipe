@@ -63,7 +63,7 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
     // before memoType was added to SessionRecord (backward-compat).
     let memoType = session.memoType ?? undefined;
     if (!memoType && session.memo) {
-      const req = getMemoRequirement(session.destinationAddress);
+      const req = getMemoRequirement(session.destinationAddress, network);
       if (req.requiresMemo) memoType = req.memoType ?? undefined;
     }
     // Restore addresses into the store so PlanView can pre-fill the destination.

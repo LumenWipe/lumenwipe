@@ -8,20 +8,15 @@
  * silently altered memo credits a different deposit, or nobody.
  */
 
+import type { Network } from "@/config/networks";
 import { isValidGAddress } from "@/lib/utils/validation";
-import { bundledRegistry, lookupExchange } from "@/lib/exchange-registry";
+import { bundledExchange, lookupExchange } from "@/lib/exchange-registry";
 import type { MemoFact } from "@/lib/plan/open-items";
 
 export type ChosenMemoType = "text" | "id";
 
 /** Which registry lists the destination: the bundled one, only the served one, or neither. */
 export type MemoListing = "bundled" | "served" | "unlisted";
-
-/** Whether the bundled registry lists this address. A served copy can add an exchange, but its
- *  memo type is then the user's to state, never the served one. */
-function isBundledExchange(address: string): boolean {
-  return bundledRegistry().entries.some((e) => e.address === address);
-}
 
 export const TEXT_MEMO_MAX_BYTES = 28;
 const UINT64_MAX = BigInt("18446744073709551615");
@@ -78,13 +73,19 @@ function valueError(memo: string, type: MemoField["type"]): string | null {
  */
 export function memoField(
   destination: string,
+  network: Network,
   memo: string,
   chosen: ChosenMemoType,
   chosenForDestination: boolean
 ): MemoField {
-  const entry = isValidGAddress(destination) ? lookupExchange(destination) : null;
+  const entry = isValidGAddress(destination) ? lookupExchange(destination, network) : null;
+  // A served copy can add an exchange, but its memo type is then the user's to state.
   const listing: MemoListing =
-    entry === null ? "unlisted" : isBundledExchange(destination) ? "bundled" : "served";
+    entry === null
+      ? "unlisted"
+      : bundledExchange(destination, network) !== null
+        ? "bundled"
+        : "served";
   const typeFixed = entry !== null && (listing === "bundled" || entry.memoType === "hash");
   const type = typeFixed ? entry.memoType : chosen;
   const servedType = listing === "served" && entry !== null ? entry.memoType : null;
@@ -139,13 +140,15 @@ export interface ConfirmedMemo {
  */
 export function confirmedMemo(
   destination: string,
+  network: Network,
   memo: string | null,
   memoType: "text" | "id" | "hash" | null
 ): ConfirmedMemo | null {
   const normalized = memo?.trim() ?? "";
   if (normalized === "") return null;
-  const entry = isValidGAddress(destination) ? lookupExchange(destination) : null;
-  const bundled = entry !== null && isBundledExchange(destination) ? entry.memoType : null;
+  const entry = isValidGAddress(destination) ? lookupExchange(destination, network) : null;
+  const bundled =
+    entry !== null && bundledExchange(destination, network) !== null ? entry.memoType : null;
   return { memo: normalized, memoType: bundled ?? memoType ?? "text" };
 }
 

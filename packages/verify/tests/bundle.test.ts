@@ -63,15 +63,20 @@ test("exports exactly the documented surface, in both formats", async () => {
   expect(Object.keys(cjs).sort()).toEqual(surface);
 });
 
-test("requiresMediator answers from the bundled exchange registry, in both formats", async () => {
+test("requiresMediator answers from the bundled exchange registry by network, in both formats", async () => {
   const listed = "GB5CLRWUCBQ6DFK2LR5ZMWJ7QCVEB3XKMPTQUYCDIYB4DRZJBEW6M26D";
   const unlisted = "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD";
+  const testnetOnly = "GB4VXLVR2DDIJUPVVY74QVPEIHINBMMXO6WUY67JUEYO42LQSDS5IMKW";
   const esm = await import(new URL("../dist/index.js", import.meta.url).href);
   const cjs = createRequire(import.meta.url)(
     new URL("../dist/index.cjs", import.meta.url).pathname
   );
   for (const mod of [esm, cjs]) {
-    expect(mod.requiresMediator(listed)).toBe(true);
-    expect(mod.requiresMediator(unlisted)).toBe(false);
+    for (const network of ["mainnet", "testnet"]) {
+      expect(mod.requiresMediator(listed, network)).toBe(true);
+      expect(mod.requiresMediator(unlisted, network)).toBe(false);
+    }
+    expect(mod.requiresMediator(testnetOnly, "testnet")).toBe(true);
+    expect(mod.requiresMediator(testnetOnly, "mainnet")).toBe(false);
   }
 });

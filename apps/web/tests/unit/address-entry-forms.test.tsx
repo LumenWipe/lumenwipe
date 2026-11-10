@@ -41,6 +41,7 @@ function StoreBackedAssetCard(): ReactElement {
   const setTransferDestination = useDemolishStore((s) => s.setTransferDestination);
   return (
     <AssetDispositionCard
+      network="mainnet"
       item={{ asset: ASSET, code: "USDC", balance: "5", convertible: true }}
       disposition="transfer"
       transferDestination={stored}
@@ -63,6 +64,7 @@ function StoreBackedTokenCard(): ReactElement {
   } as unknown as AssetConvertibility;
   return (
     <TokenDispositionCard
+      network="mainnet"
       item={item}
       disposition="transfer"
       transferDestination={stored}
@@ -267,6 +269,7 @@ test("reselecting the active entry mode changes nothing", () => {
 function destinationInput(onDestinationChange: (value: string) => void = () => {}): ReactElement {
   return (
     <DestinationInput
+      network="mainnet"
       destination=""
       onDestinationChange={onDestinationChange}
       memo=""
@@ -296,6 +299,7 @@ test("the memo is named, described, and passes its value through untouched", () 
   const seen: string[] = [];
   render(
     <DestinationInput
+      network="mainnet"
       destination=""
       onDestinationChange={() => {}}
       memo=""
@@ -330,6 +334,7 @@ test("the destination reports a valid address as text alongside its helper", () 
     const [destination, setDestination] = useState("");
     return (
       <DestinationInput
+        network="mainnet"
         destination={destination}
         onDestinationChange={setDestination}
         memo=""
@@ -433,6 +438,7 @@ test("the destination refuses a pasted secret key, and a real address clears the
     const [destination, setDestination] = useState("");
     return (
       <DestinationInput
+        network="mainnet"
         destination={destination}
         onDestinationChange={(value) => {
           seen.push(value);

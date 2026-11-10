@@ -16,7 +16,7 @@ const exchange = before.entries.find((e) => e.requiresMediator && e.requiresMemo
 afterEach(() => setRegistry(before));
 
 test("a listed exchange names itself, its memo rule, the relay and the day the list was checked", () => {
-  expect(destinationKind(exchange.address, { acknowledgedFor: null })).toEqual({
+  expect(destinationKind(exchange.address, "mainnet", { acknowledgedFor: null })).toEqual({
     kind: "exchange",
     name: exchange.name,
     memoRequired: true,
@@ -27,23 +27,23 @@ test("a listed exchange names itself, its memo rule, the relay and the day the l
 
 test("the registry date reads as YYYY-MM-DD whatever form or timezone it was stored in", () => {
   setRegistry({ ...before, lastVerified: "2026-10-10T23:30:00-05:00" });
-  const kind = destinationKind(exchange.address, { acknowledgedFor: null });
+  const kind = destinationKind(exchange.address, "mainnet", { acknowledgedFor: null });
   expect(kind.kind === "exchange" && kind.lastVerified).toBe("2026-10-10");
   expect(isoDay("2026-01-02")).toBe("2026-01-02");
 });
 
 test("an unlisted address the user confirmed is a confirmed wallet", () => {
-  expect(destinationKind(WALLET, { acknowledgedFor: WALLET })).toEqual({
+  expect(destinationKind(WALLET, "mainnet", { acknowledgedFor: WALLET })).toEqual({
     kind: "confirmed-wallet",
   });
 });
 
 test("a confirmation given for another address does not carry over", () => {
   const other = Keypair.random().publicKey();
-  expect(destinationKind(WALLET, { acknowledgedFor: other })).toEqual({
+  expect(destinationKind(WALLET, "mainnet", { acknowledgedFor: other })).toEqual({
     kind: "wallet",
   });
-  expect(destinationKind(WALLET, { acknowledgedFor: null })).toEqual({
+  expect(destinationKind(WALLET, "mainnet", { acknowledgedFor: null })).toEqual({
     kind: "wallet",
   });
 });
@@ -83,17 +83,17 @@ test("the relay route is the registry's, as verify() reads it", () => {
       { ...served, address: unbacked, requiresMediator: true },
     ],
   });
-  expect(relayRoute(exchange.address)).toBe("relay");
-  expect(relayRoute(direct)).toBe("direct");
+  expect(relayRoute(exchange.address, "mainnet")).toBe("relay");
+  expect(relayRoute(direct, "mainnet")).toBe("direct");
   // A served entry may ask for the relay but cannot enable it: verify() refuses the direct merge.
-  expect(relayRoute(unbacked)).toBe("refused");
-  expect(relayRoute(WALLET)).toBe("direct");
+  expect(relayRoute(unbacked, "mainnet")).toBe("refused");
+  expect(relayRoute(WALLET, "mainnet")).toBe("direct");
 });
 
 test("a muxed address of a listed exchange is not shown as that exchange", () => {
   const muxed = new MuxedAccount(new Account(exchange.address, "0"), "42").accountId();
   expect(muxed.startsWith("M")).toBe(true);
-  expect(destinationKind(muxed, { acknowledgedFor: null })).toEqual({ kind: "wallet" });
+  expect(destinationKind(muxed, "mainnet", { acknowledgedFor: null })).toEqual({ kind: "wallet" });
 });
 
 test("control and format characters become visible code points, the rest stays as typed", () => {

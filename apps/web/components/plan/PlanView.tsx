@@ -294,6 +294,7 @@ export default function PlanView({
   // Empty is not the same as resolved - see assetCardsWithheld, where that distinction lives.
   const assetCardsWithheld = cardsWithheld(conversions, assetsNeedingDecision);
   const assetAnswers = {
+    network,
     dispositions: assetDispositions,
     transferDestinations,
     tokenConversionFloors,
@@ -421,7 +422,13 @@ export default function PlanView({
 
   // One memo, validated once: the value and type checked here are what the draft keeps, what the
   // review shows and what the request carries.
-  const memoState = memoField(destination, memo, memoType, memoTypeChosenFor === destination);
+  const memoState = memoField(
+    destination,
+    network,
+    memo,
+    memoType,
+    memoTypeChosenFor === destination
+  );
 
   useEffect(() => {
     keepDestinationDraft(
@@ -437,21 +444,21 @@ export default function PlanView({
   // plan accordion shows the correct step titles before the user clicks proceed.
   // The authoritative check happens in handleProceed.
   const previewMediatorRequired =
-    isValidGAddress(destination) && requiresMediatorForAddress(destination);
+    isValidGAddress(destination) && requiresMediatorForAddress(destination, network);
 
   // A destination the registry doesn't list may still be an exchange deposit address, and
   // closing directly into one is unrecoverable. Only the user knows where the address came
   // from, so their confirmation gates the flow (the API refuses the build without it too).
   const destinationAcknowledged =
     !isValidGAddress(destination) ||
-    isCexAddress(destination) ||
+    isCexAddress(destination, network) ||
     destinationAcknowledgedFor === destination;
 
   // Fail closed on a stale registry, but only where staleness can actually cause harm. The
   // registry's memo and mediator rules matter for an exchange destination; for a personal
   // wallet nothing about the close depends on them, so blocking every close on an expired file
   // would be a self-inflicted outage rather than a safeguard.
-  const registryBlocksExchange = isCexAddress(destination) && !isRegistryUsable();
+  const registryBlocksExchange = isCexAddress(destination, network) && !isRegistryUsable();
 
   const destinationFact: DestinationFact =
     destination === ""
@@ -474,7 +481,7 @@ export default function PlanView({
     destination: destinationFact,
     registryStale: registryBlocksExchange,
     // The verifier refuses this close at signing; say so here, before the user gets that far.
-    registryMemoTypeDisputed: isCexAddress(destination) && memoTypeInDispute(destination),
+    registryMemoTypeDisputed: isCexAddress(destination, network) && memoTypeInDispute(destination),
     memo: memoFact,
     destinationUnacknowledged: !destinationAcknowledged,
   });
@@ -541,7 +548,7 @@ export default function PlanView({
         memoState.normalized || undefined,
         memoState.memoType ?? undefined
       );
-      setMediatorRequired(mediatorAllowedFor(destination));
+      setMediatorRequired(mediatorAllowedFor(destination, network));
 
       // Request the final plan (for the execute sidebar) from the API with the destination
       // and the user's asset + claimable-balance decisions. Execution itself re-requests the
@@ -681,6 +688,7 @@ export default function PlanView({
         </CardHeader>
         <div className="p-3">
           <PlanAccordion
+            network={network}
             open={openGroup}
             onOpenChange={setOpenGroup}
             chips={chips}
@@ -716,6 +724,7 @@ export default function PlanView({
 
         <div id={DESTINATION_ID}>
           <DestinationInput
+            network={network}
             destination={destination}
             onDestinationChange={setDestination}
             memo={memo}

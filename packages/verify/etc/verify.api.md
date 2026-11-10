@@ -111,6 +111,7 @@ export interface ExchangeRegistryEntry {
     memoType: "text" | "id" | "hash";
     // (undocumented)
     name: string;
+    network?: "testnet";
     // (undocumented)
     requiresMediator: boolean;
     // (undocumented)
@@ -141,7 +142,7 @@ export function exitExpectations(accountState: AccountState | null | undefined, 
 export type Network = "mainnet" | "testnet";
 
 // @public
-export function requiresMediator(address: string): boolean;
+export function requiresMediator(address: string, network: Network): boolean;
 
 // @public
 export interface RevokeAllowanceExpectation {

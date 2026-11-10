@@ -63,8 +63,8 @@ test("an unparseable validUntil is treated as unusable, not as unlimited", () =>
 test("lookups read the active snapshot, not the bundled file", () => {
   const other = { ...ENTRY, address: "GDIFFERENT", name: "Other" };
   setRegistry(snapshot({ entries: [other] }));
-  expect(lookupExchange("GDIFFERENT")?.name).toBe("Other");
-  expect(lookupExchange(ENTRY.address)).toBeNull();
+  expect(lookupExchange("GDIFFERENT", "mainnet")?.name).toBe("Other");
+  expect(lookupExchange(ENTRY.address, "mainnet")).toBeNull();
 });
 
 // ─── loadServedRegistry ──────────────────────────────────────────────────────
@@ -159,7 +159,7 @@ test("a served entry cannot relax a memo requirement the bundle knows about", as
       ],
     })
   );
-  const entry = lookupExchange(COINBASE);
+  const entry = lookupExchange(COINBASE, "mainnet");
   expect(entry?.requiresMemo).toBe(true);
   expect(entry?.requiresMediator).toBe(true);
 });
@@ -183,7 +183,7 @@ test("a served entry may tighten a rule", async () => {
     })
   );
   // Adding an exchange can only ever add protection, so served-only addresses are adoptable.
-  expect(lookupExchange(NEW_ADDR)?.memoType).toBe("id");
+  expect(lookupExchange(NEW_ADDR, "mainnet")?.memoType).toBe("id");
 });
 
 test("a served entry cannot change the memo type of an exchange the bundle knows", async () => {
@@ -203,7 +203,7 @@ test("a served entry cannot change the memo type of an exchange the bundle knows
       ],
     })
   );
-  expect(lookupExchange(COINBASE)?.memoType).toBe("text");
+  expect(lookupExchange(COINBASE, "mainnet")?.memoType).toBe("text");
   expect(memoTypeInDispute(COINBASE)).toBe(true);
 });
 
@@ -221,7 +221,7 @@ test("an empty served payload cannot make the client forget every exchange", asy
   await loadServedRegistry(
     serve({ lastVerified: "2026-08-19", validUntil: "2099-01-01", entries: [] })
   );
-  expect(lookupExchange(COINBASE)).not.toBeNull();
+  expect(lookupExchange(COINBASE, "mainnet")).not.toBeNull();
 });
 
 test("a served payload cannot extend its own validity indefinitely", async () => {
@@ -242,5 +242,5 @@ test("a malformed entry is dropped rather than reaching the render path", async 
     })
   );
   // The embedded entries survive; nothing unusable was adopted.
-  expect(lookupExchange(COINBASE)).not.toBeNull();
+  expect(lookupExchange(COINBASE, "mainnet")).not.toBeNull();
 });

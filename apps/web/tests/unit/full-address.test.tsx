@@ -49,6 +49,7 @@ test("the merge step shows the destination whole, and only the closed account is
   const source = Keypair.random().publicKey();
   const { container } = render(
     <StatefulPlanAccordion
+      network="mainnet"
       initialOpen="MERGE"
       account={
         {

@@ -7,6 +7,27 @@ release is cut.
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** `requiresMediator(address)` is now `requiresMediator(address, network)`. The
+  network is required: a call without it is a type error, and the answer is for that network
+  only. Pass the network the close runs on, the same value you pass `verifyCloseTransaction`.
+
+### Added
+
+- An exchange registry entry may carry `network: "testnet"` (`ExchangeRegistryEntry.network`).
+  Such an entry applies on testnet only. On mainnet its address is not listed: `requiresMediator`
+  answers false, and `verifyCloseTransaction` checks a close to it as a close to a plain wallet,
+  so the mediated hand-off to it is refused. A served snapshot cannot change the network a
+  bundled entry applies on, and an entry it adds with any other `network` value is dropped.
+- The bundled exchange registry gains one testnet-only entry, "LumenWipe testnet exchange"
+  (`GB4VXLVR2DDIJUPVVY74QVPEIHINBMMXO6WUY67JUEYO42LQSDS5IMKW`), which needs the intermediary and
+  an id memo. The mainnet entries are unchanged.
+- Three vectors in `vectors/close-v1.json`: `testnet-stand-in-close-through-intermediary`,
+  accepted on testnet; `testnet-stand-in-is-a-wallet-on-mainnet`, accepted on mainnet; and its
+  rejected mutation `testnet-stand-in-through-intermediary-on-mainnet`. These are the first
+  vectors whose `input.network` is `mainnet`.
+
 ## [0.3.0] - 2026-11-10
 
 ### Added

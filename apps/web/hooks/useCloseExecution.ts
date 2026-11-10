@@ -491,7 +491,7 @@ export function useCloseExecution() {
       };
       const owner = closeOwner(network, sourceAddress);
       // The memo and type the request asks for are the ones every transaction is verified against.
-      const sentMemo = confirmedMemo(destinationAddress, memo, memoType);
+      const sentMemo = confirmedMemo(destinationAddress, network, memo, memoType);
       // Saved by an earlier page load: until it settles, this account signs nothing new.
       const recorded = await findUnresolved(network, sourceAddress);
       if (recorded?.unconfirmed && !useDemolishStore.getState().unconfirmedSubmission) {
@@ -513,7 +513,8 @@ export function useCloseExecution() {
               const live = useDemolishStore.getState();
               const refused = refusedTransferAsset(
                 live.assetDispositions,
-                live.transferDestinations
+                live.transferDestinations,
+                network
               );
               if (refused !== null) throw new TransferDestinationRefusedError(refused);
               const batch = await fetchCloseTransactions(
@@ -725,7 +726,7 @@ export function useCloseExecution() {
               // cannot change destination or amount, so funds can never be diverted. Decided
               // from the bundled registry, as `verify()` decides it, never from the store: a
               // restored session can carry a stale value, and the store is for display.
-              if (mediatorAllowedFor(destinationAddress) && tx.covers.includes("MERGE")) {
+              if (mediatorAllowedFor(destinationAddress, network) && tx.covers.includes("MERGE")) {
                 showProgress("relay", position);
                 // Defense-in-depth: the mediator may ONLY add its signature - assert it did not
                 // alter the body, and that it actually added one, before submit.
@@ -1123,7 +1124,7 @@ export function useCloseExecution() {
 
       const passphrase = NETWORK_PASSPHRASES[network];
       verifyPreAuthTxHash(xdr, passphrase, signer.key);
-      const sentMemo = confirmedMemo(destinationAddress, memo, memoType);
+      const sentMemo = confirmedMemo(destinationAddress, network, memo, memoType);
 
       const claimableBalanceSelections = useDemolishStore.getState().claimableBalanceSelections;
       const accountState = useDemolishStore.getState().accountState;

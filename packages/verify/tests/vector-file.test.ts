@@ -21,6 +21,8 @@ describe("close-v1.json", () => {
     for (const name of [
       "minimal-direct-merge",
       "exchange-close-through-intermediary",
+      "testnet-stand-in-close-through-intermediary",
+      "testnet-stand-in-is-a-wallet-on-mainnet",
       "claimable-balance-claim",
       "multisig-close",
     ]) {
@@ -33,6 +35,7 @@ describe("close-v1.json", () => {
       "threshold-raised",
       "memo-value-changed",
       "memo-type-changed",
+      "testnet-stand-in-through-intermediary-on-mainnet",
     ]) {
       expect(byName.get(name)?.verdict).toBe("reject");
     }
@@ -92,13 +95,18 @@ describe("close-v1.json", () => {
     }
   });
 
-  test("decodes every transaction on testnet", () => {
+  test("decodes every transaction on its own network, testnet unless it is a mainnet vector", () => {
+    const passphrase = { testnet: Networks.TESTNET, mainnet: Networks.PUBLIC } as const;
     for (const vector of vectors) {
-      expect(vector.input.network).toBe("testnet");
       expect(() =>
-        TransactionBuilder.fromXdr(vector.input.unsignedXdr, Networks.TESTNET)
+        TransactionBuilder.fromXdr(vector.input.unsignedXdr, passphrase[vector.input.network])
       ).not.toThrow();
     }
+    const mainnet = vectors.filter((v) => v.input.network === "mainnet").map((v) => v.name);
+    expect(mainnet).toEqual([
+      "testnet-stand-in-is-a-wallet-on-mainnet",
+      "testnet-stand-in-through-intermediary-on-mainnet",
+    ]);
     expect(accepts.length).toBeGreaterThanOrEqual(9);
   });
 

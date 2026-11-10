@@ -31,6 +31,7 @@ function asset(code: string, convertible: boolean): AssetConvertibility {
 test("an account with no balance-bearing assets is resolved", () => {
   expect(
     assetsResolved({
+      network: "mainnet",
       conversions: [],
       balanceBearingCount: 0,
       dispositions: {},
@@ -46,6 +47,7 @@ test("withheld asset cards are NOT resolved, however empty the list looks", () =
   // reached "Begin execution" and was refused for decisions the UI had never shown them.
   expect(
     assetsResolved({
+      network: "mainnet",
       conversions: [],
       balanceBearingCount: 38,
       dispositions: {},
@@ -57,6 +59,7 @@ test("withheld asset cards are NOT resolved, however empty the list looks", () =
 test("a convertible asset is resolved by default", () => {
   expect(
     assetsResolved({
+      network: "mainnet",
       conversions: [asset("USDC", true)],
       balanceBearingCount: 1,
       dispositions: {},
@@ -71,8 +74,10 @@ test("a non-convertible asset blocks until answered", () => {
     balanceBearingCount: 1,
     transferDestinations: {},
   };
-  expect(assetsResolved({ ...base, dispositions: {} })).toBe(false);
-  expect(assetsResolved({ ...base, dispositions: { [`FOO:${ISSUER}`]: "issuer" } })).toBe(true);
+  expect(assetsResolved({ network: "mainnet", ...base, dispositions: {} })).toBe(false);
+  expect(
+    assetsResolved({ network: "mainnet", ...base, dispositions: { [`FOO:${ISSUER}`]: "issuer" } })
+  ).toBe(true);
 });
 
 test("a transfer needs a valid address, not just the choice", () => {
@@ -80,11 +85,21 @@ test("a transfer needs a valid address, not just the choice", () => {
   const dispositions = { [`FOO:${ISSUER}`]: "transfer" as const };
   const base = { conversions, balanceBearingCount: 1, dispositions };
 
-  expect(assetsResolved({ ...base, transferDestinations: {} })).toBe(false);
-  expect(assetsResolved({ ...base, transferDestinations: { [`FOO:${ISSUER}`]: "nope" } })).toBe(
-    false
-  );
-  expect(assetsResolved({ ...base, transferDestinations: { [`FOO:${ISSUER}`]: DEST } })).toBe(true);
+  expect(assetsResolved({ network: "mainnet", ...base, transferDestinations: {} })).toBe(false);
+  expect(
+    assetsResolved({
+      network: "mainnet",
+      ...base,
+      transferDestinations: { [`FOO:${ISSUER}`]: "nope" },
+    })
+  ).toBe(false);
+  expect(
+    assetsResolved({
+      network: "mainnet",
+      ...base,
+      transferDestinations: { [`FOO:${ISSUER}`]: DEST },
+    })
+  ).toBe(true);
 });
 
 test("a convertible asset switched to transfer also needs the address", () => {
@@ -92,13 +107,20 @@ test("a convertible asset switched to transfer also needs the address", () => {
   const conversions = [asset("USDC", true)];
   const dispositions = { [`USDC:${ISSUER}`]: "transfer" as const };
   expect(
-    assetsResolved({ conversions, balanceBearingCount: 1, dispositions, transferDestinations: {} })
+    assetsResolved({
+      network: "mainnet",
+      conversions,
+      balanceBearingCount: 1,
+      dispositions,
+      transferDestinations: {},
+    })
   ).toBe(false);
 });
 
 test("one unresolved asset among many blocks the whole set", () => {
   expect(
     assetsResolved({
+      network: "mainnet",
       conversions: [asset("USDC", true), asset("FOO", false)],
       balanceBearingCount: 2,
       dispositions: {},
@@ -141,11 +163,16 @@ test("a Soroban token is resolved by an explicit leave, by a transfer with a usa
     balanceBearingCount: 1,
     transferDestinations: {},
   };
-  expect(assetsResolved({ ...base, dispositions: {} })).toBe(false);
-  expect(assetsResolved({ ...base, dispositions: { [TOKEN_CONTRACT]: "leave" } })).toBe(true);
-  expect(assetsResolved({ ...base, dispositions: { [TOKEN_CONTRACT]: "transfer" } })).toBe(false);
+  expect(assetsResolved({ network: "mainnet", ...base, dispositions: {} })).toBe(false);
+  expect(
+    assetsResolved({ network: "mainnet", ...base, dispositions: { [TOKEN_CONTRACT]: "leave" } })
+  ).toBe(true);
+  expect(
+    assetsResolved({ network: "mainnet", ...base, dispositions: { [TOKEN_CONTRACT]: "transfer" } })
+  ).toBe(false);
   expect(
     assetsResolved({
+      network: "mainnet",
       ...base,
       dispositions: { [TOKEN_CONTRACT]: "transfer" },
       transferDestinations: { [TOKEN_CONTRACT]: DEST },
@@ -153,6 +180,7 @@ test("a Soroban token is resolved by an explicit leave, by a transfer with a usa
   ).toBe(true);
   expect(
     assetsResolved({
+      network: "mainnet",
       ...base,
       conversions: [tokenItem(true)],
       dispositions: { [TOKEN_CONTRACT]: "convert" },
@@ -163,6 +191,7 @@ test("a Soroban token is resolved by an explicit leave, by a transfer with a usa
 test("a trustline is never resolved by leave: a balance in a trustline stops the merge", () => {
   expect(
     assetsResolved({
+      network: "mainnet",
       conversions: [asset("USDC", false)],
       balanceBearingCount: 1,
       dispositions: { [`USDC:${ISSUER}`]: "leave" },
@@ -181,6 +210,7 @@ const UNQUOTED: AssetConvertibility = {
   convertible: true,
 };
 const answers = (dispositions: Record<string, "convert" | "transfer" | "issuer">, to = {}) => ({
+  network: "mainnet" as const,
   dispositions,
   transferDestinations: to,
 });

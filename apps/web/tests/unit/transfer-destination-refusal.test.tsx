@@ -36,6 +36,7 @@ const token = {
 function assetCard(destination: string | undefined, merge: string | null) {
   return (
     <AssetDispositionCard
+      network="mainnet"
       item={classic}
       disposition="transfer"
       transferDestination={destination}
@@ -49,6 +50,7 @@ function assetCard(destination: string | undefined, merge: string | null) {
 function tokenCard(destination: string | undefined, merge: string | null) {
   return (
     <TokenDispositionCard
+      network="mainnet"
       item={token}
       disposition="transfer"
       transferDestination={destination}
@@ -103,6 +105,7 @@ describe("asset resolution", () => {
   test("a transfer to a listed exchange is not an answer, for a classic asset or a token", () => {
     for (const item of [classic, token]) {
       const answers = (destination: string) => ({
+        network: "mainnet" as const,
         dispositions: { [item.asset]: "transfer" as const },
         transferDestinations: { [item.asset]: destination },
       });
@@ -112,10 +115,12 @@ describe("asset resolution", () => {
   });
 
   test("a malformed address keeps its own message ahead of the exchange one", () => {
-    expect(transferDestinationError("GNOPE")).toBe("A Stellar account address has 56 characters.");
-    expect(transferDestinationError(WALLET)).toBeNull();
-    expect(isUsableTransferDestination(undefined)).toBe(false);
-    expect(isUsableTransferDestination(null)).toBe(false);
+    expect(transferDestinationError("GNOPE", "mainnet")).toBe(
+      "A Stellar account address has 56 characters."
+    );
+    expect(transferDestinationError(WALLET, "mainnet")).toBeNull();
+    expect(isUsableTransferDestination(undefined, "mainnet")).toBe(false);
+    expect(isUsableTransferDestination(null, "mainnet")).toBe(false);
   });
 });
 
@@ -130,21 +135,23 @@ describe("refusedTransferAsset", () => {
     expect(
       refusedTransferAsset(
         { [USDC]: "issuer", [TOKEN]: "transfer" },
-        { [USDC]: EXCHANGE.address, [TOKEN]: WALLET }
+        { [USDC]: EXCHANGE.address, [TOKEN]: WALLET },
+        "mainnet"
       )
     ).toBeNull();
     expect(
       refusedTransferAsset(
         { [USDC]: "convert", [TOKEN]: "transfer" },
-        { [TOKEN]: EXCHANGE.address }
+        { [TOKEN]: EXCHANGE.address },
+        "mainnet"
       )
     ).toBe(TOKEN);
-    expect(refusedTransferAsset({ [TOKEN]: "transfer" }, {})).toBeNull();
+    expect(refusedTransferAsset({ [TOKEN]: "transfer" }, {}, "mainnet")).toBeNull();
   });
 
   test("follows a served entry that lists an address after the plan", () => {
     const answers = [{ [USDC]: "transfer" as const }, { [USDC]: WALLET }] as const;
-    expect(refusedTransferAsset(...answers)).toBeNull();
+    expect(refusedTransferAsset(...answers, "mainnet")).toBeNull();
     setRegistry({
       ...before,
       entries: [
@@ -159,6 +166,6 @@ describe("refusedTransferAsset", () => {
         },
       ],
     });
-    expect(refusedTransferAsset(...answers)).toBe(USDC);
+    expect(refusedTransferAsset(...answers, "mainnet")).toBe(USDC);
   });
 });

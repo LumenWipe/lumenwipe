@@ -2,6 +2,7 @@
 
 import { useId, type ComponentProps } from "react";
 import { ChevronDown } from "lucide-react";
+import type { Network } from "@/config/networks";
 import type { AccountState, UnrecognizedDefiPosition } from "@/types/account";
 import { PROTOCOL_LABELS, describeDefiPosition } from "@/lib/plan/describe-position";
 import type { AssetConvertibility, ClaimableBalanceDecision } from "@/lib/api/plan-adapters";
@@ -18,6 +19,7 @@ import { FullAddress } from "@/components/ui/full-address";
 import { ShortAddress } from "@/components/ui/short-address";
 
 interface PlanAccordionProps {
+  network: Network;
   /** The group shown open, owned by the page so a jump can open the one it moves to. */
   open: PlanGroupType | null;
   onOpenChange: (open: PlanGroupType | null) => void;
@@ -62,6 +64,7 @@ function shortAddr(addr: string): string {
 const CHIP_TONE = { needs: "warning", done: "success", informational: "neutral" } as const;
 
 export default function PlanAccordion({
+  network,
   open,
   onOpenChange,
   chips,
@@ -251,6 +254,7 @@ export default function PlanAccordion({
             <div key={c.asset} data-open-item={`asset:${c.asset}`}>
               {c.token ? (
                 <TokenDispositionCard
+                  network={network}
                   item={c}
                   disposition={assetDispositions[c.asset]}
                   transferDestination={transferDestinations[c.asset]}
@@ -262,6 +266,7 @@ export default function PlanAccordion({
                 />
               ) : (
                 <AssetDispositionCard
+                  network={network}
                   item={c}
                   disposition={assetDispositions[c.asset]}
                   transferDestination={transferDestinations[c.asset]}

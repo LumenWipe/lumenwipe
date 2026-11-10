@@ -38,6 +38,7 @@ function account(): AccountState {
 function renderPlan() {
   return render(
     <StatefulPlanAccordion
+      network="mainnet"
       account={account()}
       conversions={[
         { asset: "USDC:GISSUER", code: "USDC", balance: "5.0000000", convertible: true },

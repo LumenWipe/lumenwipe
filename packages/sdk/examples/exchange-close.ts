@@ -55,7 +55,7 @@ export function assertTestnetOnly(network: ExampleNetwork): void {
  * Without this, the cleanup round would land and the merge would then be refused.
  */
 export function assertMediatorReady(check: MediatorCheckResult, destination: string): void {
-  if (!requiresMediator(destination)) {
+  if (!requiresMediator(destination, NETWORK)) {
     throw new Error(
       `${destination} is not an exchange the bundled registry routes through the intermediary.`
     );
@@ -71,7 +71,7 @@ export function assertMediatorReady(check: MediatorCheckResult, destination: str
  * Decided from the caller's input and the decoded transaction, never from the API's response.
  */
 export function needsCosign(xdr: string, destination: string, networkPassphrase: string): boolean {
-  if (!requiresMediator(destination)) return false;
+  if (!requiresMediator(destination, NETWORK)) return false;
   const parsed = TransactionBuilder.fromXdr(xdr, networkPassphrase);
   return (
     parsed instanceof Transaction && parsed.operations.some((op) => op.type === "accountMerge")

@@ -18,10 +18,16 @@ interface Registry {
   entries: RegistryEntry[];
 }
 
-interface ExchangeRegistry {
+export interface ExchangeRegistry {
   lastVerified: string;
   validUntil: string;
-  entries: { name: string; address: string; requiresMemo: boolean; memoType?: string }[];
+  entries: {
+    name: string;
+    address: string;
+    requiresMemo: boolean;
+    memoType?: string;
+    network?: string;
+  }[];
 }
 
 interface TokenLists {
@@ -173,15 +179,20 @@ function walletsBlock(): string {
   return table(["Wallet", "When enabled", "Network"], rows);
 }
 
-function destinationsBlock(): string {
-  const registry = readJson<ExchangeRegistry>("apps/api/src/config/exchange-registry.json");
-  const names = [...new Set(registry.entries.map((e) => e.name))].sort();
-  const memoTypes = [...new Set(registry.entries.map((e) => e.memoType ?? "none"))].sort();
-  const allMemo = registry.entries.every((e) => e.requiresMemo);
+/** The public count leaves out testnet-only entries: they are not exchanges a user can close to. */
+export function destinationsText(registry: ExchangeRegistry): string {
+  const entries = registry.entries.filter((e) => e.network === undefined);
+  const names = [...new Set(entries.map((e) => e.name))].sort();
+  const memoTypes = [...new Set(entries.map((e) => e.memoType ?? "none"))].sort();
+  const allMemo = entries.every((e) => e.requiresMemo);
   return [
-    `The exchange registry lists ${names.length} exchanges across ${registry.entries.length} deposit addresses: ${names.join(", ")}.`,
+    `The exchange registry lists ${names.length} exchanges across ${entries.length} deposit addresses: ${names.join(", ")}.`,
     `${allMemo ? "Every" : "Some"} listed address requires a memo (memo types in the registry: ${memoTypes.join(", ")}). Last verified ${registry.lastVerified}, valid until ${registry.validUntil}.`,
   ].join(" ");
+}
+
+function destinationsBlock(): string {
+  return destinationsText(readJson<ExchangeRegistry>("apps/api/src/config/exchange-registry.json"));
 }
 
 function tokensBlock(): string {

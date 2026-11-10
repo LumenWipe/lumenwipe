@@ -76,10 +76,16 @@ whether the merge must go through the shared intermediary are not inputs. The ve
 them from the exchange registry bundled in this package, tightened by `servedRegistry` when you
 pass one.
 
-`requiresMediator(address)` exposes that same decision. An exchange close is one transaction
-holding the merge into the intermediary and the intermediary's forward, which the API co-signs
-(`mediatorSign`). Decide whether to ask for that co-signature with `requiresMediator(destination)`
-on the address the user typed, never from the API's response.
+`requiresMediator(address, network)` exposes that same decision. An exchange close is one
+transaction holding the merge into the intermediary and the intermediary's forward, which the API
+co-signs (`mediatorSign`). Decide whether to ask for that co-signature with
+`requiresMediator(destination, network)` on the address the user typed and the network the close
+runs on, never from the API's response.
+
+A registry entry may carry `"network": "testnet"`. Such an entry applies on testnet only: on
+mainnet its address is not listed, so `requiresMediator` answers false there and the verifier
+checks a close to it as a close to a plain wallet. An entry without the field applies on every
+network.
 
 ## The bundled registries
 
@@ -103,8 +109,11 @@ because it can only make verification stricter:
   intermediary refuses both a direct merge and the hand-off until you upgrade. Accepting the
   hand-off on served data would let the API, which also builds the transaction and reports the
   balance the forward is checked against, choose which closes go through an intermediary.
+- It never changes the network a bundled exchange applies on: a testnet-only entry stays
+  unlisted on mainnet, and an entry listed on every network stays listed on both. An address it
+  adds with `"network": "testnet"` applies on testnet only.
 - Its `validUntil` may move the bundled expiry later, by at most 120 days, and never earlier.
-- An entry that is not well formed is dropped. A snapshot that is not a registry at all (no
+- An entry that is not well formed (a `network` other than `"testnet"` included) is dropped. A snapshot that is not a registry at all (no
   `entries` list, or no `lastVerified` or `validUntil` string) is refused with
   `registry_snapshot_invalid` rather than ignored.
 

@@ -28,6 +28,7 @@ function classic(issuer: string, over: Partial<AssetConvertibility> = {}): Asset
 function renderAsset(item: AssetConvertibility) {
   return render(
     <AssetDispositionCard
+      network="mainnet"
       item={item}
       disposition="convert"
       transferDestination={undefined}
@@ -43,6 +44,7 @@ test("two assets with one code show two different issuers", () => {
     <>
       <div data-testid="a">
         <AssetDispositionCard
+          network="mainnet"
           item={classic(ISSUER_A)}
           disposition="convert"
           transferDestination={undefined}
@@ -53,6 +55,7 @@ test("two assets with one code show two different issuers", () => {
       </div>
       <div data-testid="b">
         <AssetDispositionCard
+          network="mainnet"
           item={classic(ISSUER_B, { convertible: false })}
           disposition={undefined}
           transferDestination={undefined}
@@ -109,6 +112,7 @@ test("an asset only an exit pays in says the estimate is unavailable", () => {
 test("a token card shows its contract with a copy button", () => {
   render(
     <TokenDispositionCard
+      network="mainnet"
       item={{
         asset: CONTRACT,
         code: "TKN",
@@ -170,6 +174,7 @@ test("the trustline list shows each issuer, so lines sharing a code differ", () 
   };
   render(
     <StatefulPlanAccordion
+      network="mainnet"
       account={account}
       conversions={[]}
       assetDispositions={{}}

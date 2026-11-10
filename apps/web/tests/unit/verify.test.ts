@@ -4365,7 +4365,7 @@ describe("memo value and type", () => {
     });
     try {
       const sent = (type: "text" | "id") => {
-        const memo = confirmedMemo(address, MEMO, type);
+        const memo = confirmedMemo(address, "mainnet", MEMO, type);
         if (memo === null || memo.memoType === "hash") throw new Error("no memo to send");
         return { memo: memo.memo, memoType: memo.memoType };
       };
