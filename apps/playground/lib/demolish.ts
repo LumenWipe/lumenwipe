@@ -26,6 +26,7 @@ import { loadSignerState, type SignerState } from "./horizon-submit";
 import { logEntryOf, type DemolishLogEntry, type PendingDemolishTx } from "./session-store";
 import { requiredWeight, signForWeight, type SigningKey } from "./signing";
 import {
+  FEE_ACCOUNT_NOT_CONFIGURED,
   PlaygroundVerificationError,
   verifyDemolishTransaction,
   type PlaygroundCloseExpectation,
@@ -108,9 +109,9 @@ export class DemolishDecisionUnanswerableError extends Error {
 }
 
 /**
- * The API did not pay a sponsored close's fee: its sponsor refused the signed transaction, or it
- * built none for an account that cannot pay its own. Nothing was sent. `code` is the API's, for the
- * log only.
+ * A sponsored close's fee was not paid: the API's sponsor refused the signed transaction, the API
+ * built none for an account that cannot pay its own, or this deployment has no fee account to check
+ * the sponsor's envelope against. Nothing was sent. `code` is for the log only.
  */
 export class DemolishFeeUnsponsoredError extends Error {
   constructor(readonly code: string) {
@@ -371,7 +372,7 @@ export async function runCloseRound(
       } catch (err) {
         // A drained demo can only close sponsored: an API that will not sponsor it says it is short.
         if (
-          opts.expected.sponsorFeeAccount !== null &&
+          opts.expected.sponsored &&
           err instanceof LumenWipeApiError &&
           err.code === "close_fee_balance_short"
         ) {
@@ -384,7 +385,19 @@ export async function runCloseRound(
       return res;
     },
     verify: (tx: CloseTransaction) => {
-      verifyDemolishTransaction(tx, opts.expected);
+      try {
+        verifyDemolishTransaction(tx, opts.expected);
+      } catch (err) {
+        // Every other rule held; only the sponsor's envelope could not be checked. Nothing is
+        // signed, and the close goes on once the demo can pay its own fee.
+        if (
+          err instanceof PlaygroundVerificationError &&
+          err.message === FEE_ACCOUNT_NOT_CONFIGURED
+        ) {
+          throw new DemolishFeeUnsponsoredError(FEE_ACCOUNT_NOT_CONFIGURED);
+        }
+        throw err;
+      }
     },
     // Pins each verified transaction's hash, so what is signed and handed to `prepare` is checked
     // against it. A fee-bump envelope is never unwrapped here.

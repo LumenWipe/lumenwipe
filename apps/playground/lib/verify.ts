@@ -159,10 +159,16 @@ export interface PlaygroundCloseExpectation {
   sponsoredEntries: PlaygroundSponsoredEntry[];
   /** The Soroban protocols the session's selection seeds; a call to any other is refused. */
   sorobanSeeded: SeededProtocol[];
-  /** The configured fee account, when the session selected the sponsored fee: only then may a
-   *  transaction leave its own fee at zero for the API's sponsor to pay. Null otherwise. */
+  /** The session selected the sponsored fee, so its plan drains the demo below its own fee. */
+  sponsored: boolean;
+  /** The configured fee account, for a sponsored session: only with one may a transaction leave
+   *  its own fee at zero for the API's sponsor to pay. Null otherwise, or with none configured. */
   sponsorFeeAccount: string | null;
 }
+
+/** A sponsored session's close left at a fee of zero, with no fee account configured to check the
+ *  sponsor's envelope against: refused, and closed once the demo can pay its own fee. */
+export const FEE_ACCOUNT_NOT_CONFIGURED = "zero_fee_fee_account_not_configured";
 
 /**
  * The expectation for a session's demolish: the assets, offers, data entries and dispositions its
@@ -214,6 +220,7 @@ export function expectationFromSession(
       ? [{ id: b.id, asset: b.asset, addTrustline: b.intent === "add_trustline_then_claim" }]
       : []
   );
+  const sponsored = plan.steps.some((s) => s.action.kind === "drain_to_fee_floor");
   const forfeits = session.claimableBalances.filter((b) => b.intent === "forfeit").map((b) => b.id);
   const beneficiary = session.helperAccounts.find((h) => h.role === "beneficiary");
   const sponsoredEntries = planned.sponsoredEntries.map((entry): PlaygroundSponsoredEntry => {
@@ -250,9 +257,8 @@ export function expectationFromSession(
     forfeits,
     sponsoredEntries,
     sorobanSeeded: seededProtocols(plan.steps),
-    sponsorFeeAccount: plan.steps.some((s) => s.action.kind === "drain_to_fee_floor")
-      ? feeAccount
-      : null,
+    sponsored,
+    sponsorFeeAccount: sponsored ? feeAccount : null,
   };
 }
 
@@ -600,8 +606,10 @@ export function verifyDemolishTransaction(
     throw new PlaygroundVerificationError("fee_bump_not_allowed");
   }
   assertCloseRules(parsed, tx, expected);
-  if (parsed.fee === "0" && expected.sponsorFeeAccount === null) {
-    throw new PlaygroundVerificationError("zero_fee_not_sponsored");
+  if (parsed.fee !== "0") return;
+  if (!expected.sponsored) throw new PlaygroundVerificationError("zero_fee_not_sponsored");
+  if (expected.sponsorFeeAccount === null) {
+    throw new PlaygroundVerificationError(FEE_ACCOUNT_NOT_CONFIGURED);
   }
 }
 

@@ -1,31 +1,23 @@
 import { describe, expect, test } from "bun:test";
 import {
-  Account,
   FeeBumpTransaction,
   Keypair,
   Networks,
-  Operation,
   Transaction,
   TransactionBuilder,
 } from "@stellar/stellar-sdk";
-import {
-  LumenWipeApiError,
-  type CloseTransaction,
-  type DecisionPoint,
-  type TransactionLookupResponse,
-  type TransactionsResponse,
-} from "@lumenwipe/sdk";
-import { runCloseRound, type DemolishApi, type DemolishChain } from "@/lib/demolish";
+import { runCloseRound, type DemolishChain } from "@/lib/demolish";
 import type { ScenarioSelection } from "@/lib/scenarios";
 import { runDemolishRound } from "@/lib/session-actions";
 import type { PlaygroundSession, SessionStore } from "@/lib/session-store";
 import { expectationFromSession } from "@/lib/verify";
+import { apiError, FakeSponsoredApi, hashOf, hex, MAX_TIME } from "./fee-bump-fixtures";
 import { memoryStore, newSessionData } from "./session-fixtures";
 
 // A sponsored close end to end inside the process: the real close engine, the real verifier held
 // to a session that selected the sponsored fee, the sponsor's envelope checked in `prepare`, and the
 // real session-actions writes. Only the LumenWipe API, its fee sponsor and the network are faked;
-// the sponsor builds and signs real fee-bump envelopes, or tampers with them as a test asks.
+// the sponsor (./fee-bump-fixtures) builds and signs real fee-bump envelopes, or tampers with them.
 
 const PASSPHRASE = Networks.TESTNET;
 const noSleep = async (): Promise<void> => {};
@@ -49,126 +41,28 @@ const MASTER_ONLY: DemolishChain = {
   }),
 };
 
-const hex = (bytes: Uint8Array): string => Buffer.from(bytes).toString("hex");
-const hashOf = (xdr: string): string => hex(TransactionBuilder.fromXdr(xdr, PASSPHRASE).hash());
-
-function apiError(status: number, code: string): LumenWipeApiError {
-  return new LumenWipeApiError(status, { error: { code, message: "fake" } });
-}
-
-const MAX_TIME = Math.floor(Date.now() / 1000) + 300;
-
-/** The close the API builds: the data entry's removal and the merge, at `fee`. */
-function closeTransaction(fee: string, destination = sink): CloseTransaction {
-  const xdr = new TransactionBuilder(new Account(demo.publicKey(), "1"), {
-    fee,
-    networkPassphrase: PASSPHRASE,
-  })
-    .setTimebounds(0, MAX_TIME)
-    .addOperation(Operation.manageData({ name: "promo_code", value: null }))
-    .addOperation(Operation.accountMerge({ destination }))
-    .build()
-    .toEnvelope()
-    .toXdr("base64");
-  return {
-    id: "close-1",
-    order: 0,
-    dependsOn: [],
-    xdr,
-    networkPassphrase: PASSPHRASE,
-    sourceSequence: "1",
-    validUntilLedger: 100,
-    covers: ["REMOVE_DATA_ENTRIES", "MERGE"],
-    ...(fee === "0" && { needsSponsoredFee: true }),
-    intent: {
-      summary: "Remove 1 data entry and close the account",
-      source: demo.publicKey(),
-      fee,
-      memo: null,
-      memoType: null,
-      guarantees: { mergeDestination: sink, paymentsOnlyTo: [], minXlmFromConversions: null },
-      operations: [],
-    },
-  };
-}
-
-type Sponsor = "sign" | "refuse" | "other-source" | "drop-signature" | "unsigned";
-
-class FakeSponsoredApi implements DemolishApi {
-  fee = "0";
-  destination = sink;
-  sponsor: Sponsor = "sign";
-  closeError: LumenWipeApiError | null = null;
-  landSilently = false;
-  lookupSeesLanded = false;
-  readonly landed = new Set<string>();
-  readonly sponsored: string[] = [];
-  readonly submitted: string[] = [];
-  calls = { sponsor: 0, transactions: 0 };
-
-  async closePlan(): Promise<{ decisionPoints: DecisionPoint[]; blockers: { code: string }[] }> {
-    return { decisionPoints: [], blockers: [] };
-  }
-
-  async closeTransactions(): Promise<TransactionsResponse> {
-    this.calls.transactions++;
-    if (this.closeError) throw this.closeError;
-    return {
-      planHash: "plan",
-      status: "ready",
-      transactions: [closeTransaction(this.fee, this.destination)],
-      remaining: { steps: 0, requiresAnotherCall: false },
-    };
-  }
-
-  async feeBumpSponsor(signedXdr: string): Promise<{ transaction: string }> {
-    this.calls.sponsor++;
-    this.sponsored.push(signedXdr);
-    if (this.sponsor === "refuse") throw apiError(429, "sponsorship_budget_exhausted");
-    const inner = TransactionBuilder.fromXdr(signedXdr, PASSPHRASE) as Transaction;
-    if (this.sponsor === "drop-signature") inner.signatures.splice(0);
-    const other = Keypair.random();
-    const source = this.sponsor === "other-source" ? other : feeAccount;
-    const wrapped = TransactionBuilder.buildFeeBumpTransaction(source, "100", inner, PASSPHRASE);
-    if (this.sponsor !== "unsigned") wrapped.sign(source);
-    return { transaction: wrapped.toEnvelope().toXdr("base64") };
-  }
-
-  async submit(signedXdr: string): Promise<{ hash: string }> {
-    this.submitted.push(signedXdr);
-    const hash = hashOf(signedXdr);
-    this.landed.add(hash);
-    if (this.landSilently) throw apiError(504, "upstream_timeout");
-    return { hash };
-  }
-
-  async getTransaction(hash: string): Promise<TransactionLookupResponse> {
-    if (this.lookupSeesLanded && this.landed.has(hash)) {
-      return { status: "confirmed", hash, ledger: 10 };
-    }
-    const now = Math.floor(Date.now() / 1000);
-    return {
-      status: "not_found",
-      hash,
-      searched: {
-        oldestLedger: 1,
-        oldestLedgerCloseTime: now - 3600,
-        latestLedger: 10,
-        latestLedgerCloseTime: now,
-      },
-    };
-  }
-}
-
 async function newSession(store: SessionStore, selection = SPONSORED): Promise<PlaygroundSession> {
   return store.createSession({ ...newSessionData(), demoPublic: demo.publicKey(), selection });
+}
+
+/** The demo key, counting every signature it makes. */
+function countingDemo(): { keypair: Keypair; signatures: () => number } {
+  const keypair = Keypair.fromSecret(demo.secret());
+  const signDecorated = keypair.signDecorated.bind(keypair);
+  let count = 0;
+  keypair.signDecorated = (data) => {
+    count++;
+    return signDecorated(data);
+  };
+  return { keypair, signatures: () => count };
 }
 
 function round(
   store: SessionStore,
   id: string,
   api: FakeSponsoredApi,
-  configured: string | null = feeAccount.publicKey()
+  configured: string | null = feeAccount.publicKey(),
+  demoKeypair: Keypair = demo
 ) {
   return runDemolishRound(store, id, {
     round: (session, hooks) =>
@@ -176,7 +70,7 @@ function round(
         api,
         MASTER_ONLY,
         {
-          demoKeypair: demo,
+          demoKeypair,
           signingKeys: [],
           expected: expectationFromSession(session, sink, issuer, configured),
           apiUrl: "unused",
@@ -192,7 +86,7 @@ describe("a sponsored close", () => {
   test("sends the signed close to the sponsor, then submits its envelope under the outer hash", async () => {
     const store = memoryStore();
     const session = await newSession(store);
-    const api = new FakeSponsoredApi();
+    const api = new FakeSponsoredApi(demo.publicKey(), sink, feeAccount);
 
     const result = await round(store, session.id, api);
 
@@ -219,7 +113,7 @@ describe("a sponsored close", () => {
   test("an outcome lost in flight is recorded under the outer hash and settled by it", async () => {
     const store = memoryStore();
     const session = await newSession(store);
-    const api = new FakeSponsoredApi();
+    const api = new FakeSponsoredApi(demo.publicKey(), sink, feeAccount);
     api.landSilently = true;
 
     const unknown = await round(store, session.id, api);
@@ -244,7 +138,7 @@ describe("a sponsored close", () => {
   test("a close the demo pays for itself is never sent to the sponsor", async () => {
     const store = memoryStore();
     const session = await newSession(store);
-    const api = new FakeSponsoredApi();
+    const api = new FakeSponsoredApi(demo.publicKey(), sink, feeAccount);
     api.fee = "200";
 
     const result = await round(store, session.id, api);
@@ -256,7 +150,7 @@ describe("a sponsored close", () => {
   test("a sponsor refusal sends nothing and leaves nothing in flight", async () => {
     const store = memoryStore();
     const session = await newSession(store);
-    const api = new FakeSponsoredApi();
+    const api = new FakeSponsoredApi(demo.publicKey(), sink, feeAccount);
     api.sponsor = "refuse";
 
     const result = await round(store, session.id, api);
@@ -270,7 +164,7 @@ describe("a sponsored close", () => {
   test("an API that will not sponsor a drained demo is reported the same way", async () => {
     const store = memoryStore();
     const session = await newSession(store);
-    const api = new FakeSponsoredApi();
+    const api = new FakeSponsoredApi(demo.publicKey(), sink, feeAccount);
     api.closeError = apiError(422, "close_fee_balance_short");
     expect(await round(store, session.id, api)).toEqual({
       status: 502,
@@ -288,7 +182,7 @@ describe("a sponsored close", () => {
     for (const sponsor of ["other-source", "drop-signature", "unsigned"] as const) {
       const store = memoryStore();
       const session = await newSession(store);
-      const api = new FakeSponsoredApi();
+      const api = new FakeSponsoredApi(demo.publicKey(), sink, feeAccount);
       api.sponsor = sponsor;
 
       const result = await round(store, session.id, api);
@@ -305,7 +199,7 @@ describe("a sponsored close", () => {
   test("an inner transaction that breaks a normal rule is refused before the sponsor sees it", async () => {
     const store = memoryStore();
     const session = await newSession(store);
-    const api = new FakeSponsoredApi();
+    const api = new FakeSponsoredApi(demo.publicKey(), sink, feeAccount);
     api.destination = Keypair.random().publicKey();
 
     const result = await round(store, session.id, api);
@@ -314,13 +208,43 @@ describe("a sponsored close", () => {
     expect(api.submitted).toEqual([]);
   });
 
-  test("a zero fee is refused when this deployment has no fee account configured", async () => {
+  test("with no fee account configured, a drained session's zero-fee close is unsponsored, unsigned", async () => {
     const store = memoryStore();
     const session = await newSession(store);
-    const api = new FakeSponsoredApi();
+    const api = new FakeSponsoredApi(demo.publicKey(), sink, feeAccount);
+    const spy = countingDemo();
 
-    const result = await round(store, session.id, api, null);
-    expect(result).toEqual({ status: 502, body: { error: "demolish_failed" } });
+    const result = await round(store, session.id, api, null, spy.keypair);
+    expect(result).toEqual({ status: 502, body: { error: "demolish_fee_unsponsored" } });
+    expect(spy.signatures()).toBe(0);
+    expect(api.calls.sponsor).toBe(0);
+    expect(api.submitted).toEqual([]);
+    expect((await store.loadSession(session.id))?.demolishPending).toBeNull();
+  });
+
+  test("with no fee account configured, a drained session the API calls short is unsponsored", async () => {
+    const store = memoryStore();
+    const session = await newSession(store);
+    const api = new FakeSponsoredApi(demo.publicKey(), sink, feeAccount);
+    api.closeError = apiError(422, "close_fee_balance_short");
+    const spy = countingDemo();
+
+    const result = await round(store, session.id, api, null, spy.keypair);
+    expect(result).toEqual({ status: 502, body: { error: "demolish_fee_unsponsored" } });
+    expect(spy.signatures()).toBe(0);
+    expect(api.submitted).toEqual([]);
+  });
+
+  test("a zero-fee close in a session that did not select the sponsored fee is a hard refusal", async () => {
+    const store = memoryStore();
+    const session = await newSession(store, { scenarios: [{ id: "data-entries", params: {} }] });
+    const api = new FakeSponsoredApi(demo.publicKey(), sink, feeAccount);
+    for (const configured of [feeAccount.publicKey(), null]) {
+      const spy = countingDemo();
+      const result = await round(store, session.id, api, configured, spy.keypair);
+      expect(result).toEqual({ status: 502, body: { error: "demolish_failed" } });
+      expect(spy.signatures()).toBe(0);
+    }
     expect(api.calls.sponsor).toBe(0);
     expect(api.submitted).toEqual([]);
   });

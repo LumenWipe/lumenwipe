@@ -12,6 +12,7 @@ import { MAX_SPONSORED_FEE_STROOPS } from "@/lib/fee-policy";
 import type { ScenarioSelection } from "@/lib/scenarios";
 import {
   expectationFromSession,
+  FEE_ACCOUNT_NOT_CONFIGURED,
   PlaygroundVerificationError,
   verifyDemolishTransaction,
   type PlaygroundCloseExpectation,
@@ -116,7 +117,8 @@ describe("a close's own fee of zero", () => {
     expect(verify(closeXdr("0"), expectation(UNSPONSORED, feeAccount.publicKey()))).toBe(
       "zero_fee_not_sponsored"
     );
-    expect(verify(closeXdr("0"), expectation(SPONSORED, null))).toBe("zero_fee_not_sponsored");
+    // Sponsored, but nothing to check the sponsor's envelope against: refused with its own code.
+    expect(verify(closeXdr("0"), expectation(SPONSORED, null))).toBe(FEE_ACCOUNT_NOT_CONFIGURED);
   });
 
   test("a fee the demo pays is accepted either way", () => {
@@ -133,6 +135,9 @@ describe("a close's own fee of zero", () => {
       feeAccount.publicKey()
     );
     expect(expectation(UNSPONSORED, feeAccount.publicKey()).sponsorFeeAccount).toBeNull();
+    // Whether the session is sponsored is its plan's, whatever this deployment configures.
+    expect(expectation(SPONSORED, null).sponsored).toBe(true);
+    expect(expectation(UNSPONSORED, feeAccount.publicKey()).sponsored).toBe(false);
   });
 
   test("an inner transaction that breaks a normal rule is refused, sponsored or not", () => {

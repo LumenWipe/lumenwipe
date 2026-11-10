@@ -24,7 +24,7 @@ import {
   handleCreateSession,
   handleReap,
 } from "@/lib/route-handlers";
-import { XLM_SAC, type MultisigVariant } from "@/lib/scenarios";
+import { XLM_SAC, type MultisigVariant, type ScenarioSelection } from "@/lib/scenarios";
 import { PlaygroundVerificationError } from "@/lib/verify";
 import {
   SESSION_RECORD_TTL_SECONDS,
@@ -33,6 +33,7 @@ import {
   type SessionStore,
 } from "@/lib/session-store";
 import { FakeBlendLedger } from "./blend-fixtures";
+import { apiError, FakeSponsoredApi } from "./fee-bump-fixtures";
 import { FakeMultisigLedger } from "./multisig-fixtures";
 import { fakeClock, memoryStore, newSessionData, type FakeClock } from "./session-fixtures";
 
@@ -786,6 +787,78 @@ describe("an abandoned multi-signature session", () => {
       expectNoSecretLogged(secrets);
     }
   );
+});
+
+describe("an abandoned drained session with no fee account configured", () => {
+  // The session selected the sponsored fee and its mess drained the demo, but this deployment has
+  // no fee account to check the sponsor's envelope against. Both ways the close then meets it are
+  // answered with the top-up, and the close the demo then pays for itself merges it.
+  const SPONSORED: ScenarioSelection = {
+    scenarios: [
+      { id: "data-entries", params: { count: 1 } },
+      { id: "fee-bump", params: {} },
+    ],
+  };
+  const feeAccount = Keypair.random();
+
+  test.each([
+    ["the API builds the close with its fee at zero", false],
+    ["the API calls the drained demo short", true],
+  ] as const)("%s: the reaper tops the demo up and closes it", async (_label, apiShort) => {
+    const store = memoryStore();
+    const demo = Keypair.random();
+    const session = await store.createSession({
+      ...newSessionData(),
+      demoPublic: demo.publicKey(),
+      encDemoSecret: encrypt(demo.secret()),
+      selection: SPONSORED,
+      completedMessSteps: ["SETUP", "DATA_ENTRIES", "DRAIN_TO_FEE_FLOOR"],
+    });
+    const api = new FakeSponsoredApi(demo.publicKey(), mm.publicKey(), feeAccount);
+    if (apiShort) api.closeError = apiError(422, "close_fee_balance_short");
+    const net = network(demo);
+    const toppedUp: string[] = [];
+    const round = demolishRoundDeps({
+      mm: () => mm,
+      issuer: () => issuer,
+      api: () => ({ apiUrl: "http://localhost:3001", apiKey: "unused" }),
+      feeAccount: () => null,
+      decrypt: (payload) => Buffer.from(payload.slice(ENC.length), "base64").toString("utf8"),
+      runDemolish: async (opts) => {
+        const result = await runCloseRound(
+          api,
+          {
+            signerState: async () => ({
+              signers: [{ key: demo.publicKey(), type: "ed25519_public_key", weight: 1 }],
+              thresholds: { low: 0, med: 0, high: 0 },
+            }),
+          },
+          opts,
+          async () => {}
+        );
+        if (result.done) net.live.delete(demo.publicKey());
+        return result;
+      },
+    })!;
+
+    const summary = await runReaper(
+      reaper(store, net, {
+        round,
+        topUpDemo: async (demoPublic) => {
+          toppedUp.push(demoPublic);
+          // The demo can pay its own fee now, so the API builds one it pays.
+          api.closeError = null;
+          api.fee = "200";
+        },
+      })
+    );
+
+    expect(toppedUp).toEqual([demo.publicKey()]);
+    expect(api.calls.sponsor).toBe(0);
+    expect(api.submitted).toHaveLength(1);
+    expect(counts(summary)).toEqual({ reaped: 1, kept: 0, young: 0, pruned: 0 });
+    expect(await store.loadSession(session.id)).toBeNull();
+  });
 });
 
 describe("an abandoned Blend session", () => {

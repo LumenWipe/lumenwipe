@@ -40,6 +40,7 @@ function expected(over: Partial<PlaygroundCloseExpectation> = {}): PlaygroundClo
     forfeits: [],
     sponsoredEntries: [],
     sorobanSeeded: [],
+    sponsored: false,
     sponsorFeeAccount: null,
     ...over,
   };
