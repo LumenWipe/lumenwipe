@@ -22,7 +22,10 @@ describe("presets", () => {
   });
 
   test("a feature set with no scenario here has no preset", () => {
-    expect(presetSelection("api", off("fee-bump"))).toBeNull();
+    expect(presetSelection("api", off("fee-bump", "exchange-close"))).toBeNull();
+    // The exchange deposit cannot come with the sponsored fee, so the fit leaves it out of the
+    // preset while the sponsored fee runs here, and the preset is the exchange deposit without it.
+    expect(ids(presetSelection("api", off("fee-bump"))!)).toEqual(["exchange-close"]);
     // A preset scenario's requirement is met by the first one this deployment can run.
     expect(ids(presetSelection("api")!)).toEqual(["data-entries", "fee-bump"]);
     expect(ids(presetSelection("api", off("data-entries"))!)).toEqual([

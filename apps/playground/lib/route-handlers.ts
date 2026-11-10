@@ -1,4 +1,5 @@
 import "server-only";
+import { randomBytes } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { Asset, Keypair, Operation, type xdr } from "@stellar/stellar-sdk";
 import { PlaygroundConfigError } from "./crypto";
@@ -12,6 +13,8 @@ import {
   selectionForMode,
 } from "./mess-plan";
 import {
+  closesToExchange,
+  EXCHANGE_STAND_IN,
   LWDEMO_CODE,
   generateRandomSelection,
   helperRoleOf,
@@ -64,6 +67,7 @@ import {
   PlaygroundStoreUnavailableError,
   sessionExpiresAt,
   type PlaygroundSession,
+  type SessionExchange,
   type SessionStore,
 } from "./session-store";
 import { signingKeyOf, type SigningKey } from "./signing";
@@ -95,15 +99,20 @@ export interface CreateSessionDeps extends PlaygroundKeys {
   marketMakerBalance: (publicKey: string) => Promise<NativeBalance>;
   /** Creates the demo account from the market maker with `startingBalance` XLM. */
   provisionDemo: (mm: Keypair, demoPublic: string, startingBalance: string) => Promise<unknown>;
+  /** Creates `address` from the market maker when the network does not have it (the exchange
+   *  stand-in, after a testnet reset); does nothing when it exists. */
+  ensureExchangeAccount: (mm: Keypair, address: string) => Promise<unknown>;
   /** How long a start waits for the market maker's other submissions; tests shorten it. */
   accountLock?: AccountLockOptions;
   encrypt: (secret: string) => string;
   /** Scenarios this deployment cannot run, with the reason shown to the visitor. */
-  unavailable: () => ReadonlyMap<ScenarioId, string>;
+  unavailable: () => Unavailable | Promise<Unavailable>;
 }
 
+type Unavailable = ReadonlyMap<ScenarioId, string>;
+
 export interface ScenariosRouteDeps {
-  unavailable: () => ReadonlyMap<ScenarioId, string>;
+  unavailable: () => Unavailable | Promise<Unavailable>;
 }
 
 export interface MessDeps extends PlaygroundKeys {
@@ -118,6 +127,8 @@ export interface DemolishRouteDeps extends PlaygroundKeys {
   api: () => ApiConfig;
   /** The fee account the API's sponsor pays from, from this deployment's configuration. */
   feeAccount: () => string | null;
+  /** The API mediator's public key, from this deployment's configuration. */
+  mediatorKey: () => string | null;
   decrypt: (payload: string) => string;
   /** Runs one round of the close (lib/demolish.ts `runDemolish`). */
   runDemolish: (opts: RunDemolishOptions) => Promise<DemolishRoundResult>;
@@ -236,9 +247,20 @@ export function parseCreateBody(
 }
 
 /** The scenarios this deployment cannot run, for the picker to show disabled with their reason. */
-export function handleScenarios(deps: ScenariosRouteDeps): NextResponse {
-  const unavailable = [...deps.unavailable()].map(([id, reason]) => ({ id, reason }));
+export async function handleScenarios(deps: ScenariosRouteDeps): Promise<NextResponse> {
+  const unavailable = [...(await deps.unavailable())].map(([id, reason]) => ({ id, reason }));
   return NextResponse.json({ unavailable }, { headers: { "cache-control": "no-store" } });
+}
+
+/**
+ * The deposit memo an exchange session sends with its close: a uint64 from fresh randomness,
+ * written as an id memo is (decimal, no leading zero), never zero.
+ */
+export function newExchangeMemo(random: (size: number) => Buffer = randomBytes): string {
+  for (;;) {
+    const value = BigInt(`0x${random(8).toString("hex")}`);
+    if (value > BigInt(0)) return value.toString(10);
+  }
 }
 
 /** The plan's demo funding, from its setup step. */
@@ -304,7 +326,7 @@ export async function handleCreateSession(
     // Malformed or absent body - use defaults.
     body = undefined;
   }
-  const parsed = parseCreateBody(body, deps.unavailable());
+  const parsed = parseCreateBody(body, await deps.unavailable());
   if (!parsed.ok) {
     return NextResponse.json(
       { error: "invalid_selection", message: parsed.message },
@@ -335,6 +357,11 @@ export async function handleCreateSession(
     const role = helperRoleOf(s.action);
     return role ? [{ role, keypair: Keypair.random() }] : [];
   });
+  // The stand-in comes from the bundled registry, and the memo from fresh randomness; nothing in
+  // the request chooses either.
+  const exchange: SessionExchange | null = closesToExchange(plan.selection)
+    ? { destination: EXCHANGE_STAND_IN.address, memo: newExchangeMemo(), memoType: "id" }
+    : null;
 
   // The record, with every key encrypted, is written before the demo account exists, so there is
   // never a funded account whose key is held nowhere.
@@ -365,6 +392,7 @@ export async function handleCreateSession(
       })),
       claimableBalances: [],
       allowances: [],
+      exchange,
     });
   } catch (err) {
     if (err instanceof PlaygroundConfigError || err instanceof PlaygroundStoreUnavailableError) {
@@ -377,7 +405,11 @@ export async function handleCreateSession(
     await withAccountLock(
       deps.store,
       mm.publicKey(),
-      () => deps.provisionDemo(mm, demo.publicKey(), setupFundingXlm(plan.steps)),
+      async () => {
+        // Under the market maker's lock, so two sessions never both create the stand-in.
+        if (exchange) await deps.ensureExchangeAccount(mm, exchange.destination);
+        await deps.provisionDemo(mm, demo.publicKey(), setupFundingXlm(plan.steps));
+      },
       deps.accountLock
     );
   } catch (err) {
@@ -406,6 +438,7 @@ export async function handleCreateSession(
       ephemeral: ephemeral.map((e) => ({ code: e.assetCode, publicKey: e.keypair.publicKey() })),
       transferRecipient: recipient?.publicKey() ?? null,
       helpers: helpers.map(({ role, keypair }) => ({ role, publicKey: keypair.publicKey() })),
+      exchange,
     },
   });
 }
@@ -649,6 +682,7 @@ export function demolishRoundDeps(
           issuer.publicKey(),
           deps.feeAccount()
         ),
+        mediatorKey: deps.mediatorKey(),
         apiUrl,
         apiKey,
         hooks,

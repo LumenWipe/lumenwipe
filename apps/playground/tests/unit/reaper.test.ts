@@ -36,7 +36,13 @@ import { FakeBlendLedger } from "./blend-fixtures";
 import { apiError, FakeSponsoredApi } from "./fee-bump-fixtures";
 import { FakeMultisigLedger } from "./multisig-fixtures";
 import { FakePhoenixLedger } from "./phoenix-fixtures";
-import { fakeClock, memoryStore, newSessionData, type FakeClock } from "./session-fixtures";
+import {
+  fakeClock,
+  memoryStore,
+  newSessionData,
+  NO_EXCHANGE_READS,
+  type FakeClock,
+} from "./session-fixtures";
 
 const MULTISIG_VARIANTS: readonly MultisigVariant[] = ["two_of_three", "hash_x", "pre_auth"];
 
@@ -263,6 +269,7 @@ describe("reaper: allowances", () => {
         operations: [],
         validUntil: null,
         closesAccount: true,
+        recordedBalance: null,
       },
     });
     const net = network(seeded.demo, ...seeded.issuers);
@@ -413,6 +420,7 @@ describe("reaper", () => {
         operations: [],
         validUntil: null,
         closesAccount: true,
+        recordedBalance: null,
       },
     });
     // The merge already landed: the demo is gone, but its record still says in flight.
@@ -561,6 +569,7 @@ describe("reaper", () => {
         mm: () => mm,
         cronSecret: () => CRON_SECRET,
         marketMakerBalance: async () => ({ balance: "9000.0000000", sellingLiabilities: "0" }),
+        ensureExchangeAccount: async () => "exists",
         provisionDemo: async () => {
           throw new TxSubmitError("rejected", "tx_insufficient_balance");
         },
@@ -752,6 +761,7 @@ describe("an abandoned multi-signature session", () => {
         issuer: () => issuer,
         api: () => ({ apiUrl: "http://localhost:3001", apiKey: "unused" }),
         feeAccount: () => null,
+        mediatorKey: () => null,
         decrypt: (payload) => {
           if (!inRound) outsideRound.push(payload);
           return Buffer.from(payload.slice(ENC.length), "base64").toString("utf8");
@@ -824,6 +834,7 @@ describe("an abandoned drained session with no fee account configured", () => {
       issuer: () => issuer,
       api: () => ({ apiUrl: "http://localhost:3001", apiKey: "unused" }),
       feeAccount: () => null,
+      mediatorKey: () => null,
       decrypt: (payload) => Buffer.from(payload.slice(ENC.length), "base64").toString("utf8"),
       runDemolish: async (opts) => {
         const result = await runCloseRound(
@@ -833,6 +844,7 @@ describe("an abandoned drained session with no fee account configured", () => {
               signers: [{ key: demo.publicKey(), type: "ed25519_public_key", weight: 1 }],
               thresholds: { low: 0, med: 0, high: 0 },
             }),
+            ...NO_EXCHANGE_READS,
           },
           opts,
           async () => {}
@@ -885,6 +897,7 @@ describe("an abandoned Blend session", () => {
         issuer: () => issuer,
         api: () => ({ apiUrl: "http://localhost:3001", apiKey: "unused" }),
         feeAccount: () => null,
+        mediatorKey: () => null,
         decrypt: (payload) => Buffer.from(payload.slice(ENC.length), "base64").toString("utf8"),
         runDemolish: async (opts) => {
           const result = await runCloseRound(ledger, ledger, opts, async () => {});
@@ -946,6 +959,7 @@ describe("an abandoned Phoenix session", () => {
         issuer: () => issuer,
         api: () => ({ apiUrl: "http://localhost:3001", apiKey: "unused" }),
         feeAccount: () => null,
+        mediatorKey: () => null,
         decrypt: (payload) => Buffer.from(payload.slice(ENC.length), "base64").toString("utf8"),
         runDemolish: async (opts) => {
           const result = await runCloseRound(ledger, ledger, opts, async () => {});

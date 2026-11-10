@@ -28,6 +28,8 @@ import {
   BLEND,
   BLEND_REQUEST,
   BLEND_SEED,
+  closesToExchange,
+  EXCHANGE_STAND_IN,
   JUNK_OFFERS,
   PHOENIX,
   PHOENIX_SEED,
@@ -81,6 +83,7 @@ function setupFunding(plan: ReturnType<typeof resolvePlan>): string {
 
 async function runAndCheck(selection: ScenarioSelection): Promise<void> {
   const store = memoryStore();
+  const ensured: string[] = [];
   const created = await handleCreateSession(
     new NextRequest(new URL("/api/session", ORIGIN), {
       method: "POST",
@@ -93,6 +96,7 @@ async function runAndCheck(selection: ScenarioSelection): Promise<void> {
       mm: () => mm,
       cronSecret: () => CRON_SECRET,
       marketMakerBalance: async () => ({ balance: "10000.0000000", sellingLiabilities: "0" }),
+      ensureExchangeAccount: async (_mm, address) => ensured.push(address),
       provisionDemo: async () => {},
       encrypt,
       unavailable: () => new Map(),
@@ -178,6 +182,21 @@ async function runAndCheck(selection: ScenarioSelection): Promise<void> {
 
   const session = (await store.loadSession(sessionId))!;
   const expected = expectationFromSession(session, mm.publicKey(), issuer.publicKey(), null);
+  // An exchange session records the bundled stand-in and an id memo, and the market maker makes
+  // sure the stand-in exists before the demo is funded; any other session records neither.
+  if (closesToExchange(selection)) {
+    expect(session.exchange).toEqual({
+      destination: EXCHANGE_STAND_IN.address,
+      memo: expect.stringMatching(/^[1-9][0-9]*$/),
+      memoType: "id",
+    });
+    expect(ensured).toEqual([EXCHANGE_STAND_IN.address]);
+    expect(expected.exchange?.destination).toBe(EXCHANGE_STAND_IN.address);
+  } else {
+    expect(session.exchange).toBeNull();
+    expect(ensured).toEqual([]);
+    expect(expected.exchange).toBeNull();
+  }
   assertConsistent({
     plan,
     demoPublic,
@@ -571,6 +590,6 @@ describe("the plan, the chain and the close expectation agree", () => {
     }
     // The accepted singles, pairs, triples and largest selections at both parameter extremes;
     // pinned so a change to the registry or its rules shows up here.
-    expect(cases).toBe(6595);
+    expect(cases).toBe(13533);
   }, 240_000);
 });

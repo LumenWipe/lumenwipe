@@ -129,3 +129,26 @@ export async function withAccountLock<T>(
     await store.releaseLease(lease).catch(() => undefined);
   }
 }
+
+export interface EnsureAccountDeps {
+  /** Whether the account is on the network; false only when Horizon says it is not. */
+  exists: (publicKey: string) => Promise<boolean>;
+  /** Creates `destination` from the market maker with `startingBalance` XLM. */
+  create: (mm: Keypair, destination: string, startingBalance: string) => Promise<unknown>;
+}
+
+/**
+ * Creates an account the playground only ever pays (the exchange stand-in) from the market maker
+ * when the network does not have it, as after a testnet reset. No key for it is needed or held:
+ * creating an account takes only the funder's signature. Run under the market maker's lock.
+ */
+export async function ensureAccountFromMarketMaker(
+  mm: Keypair,
+  address: string,
+  startingBalance: string,
+  deps: EnsureAccountDeps
+): Promise<"exists" | "created"> {
+  if (await deps.exists(address)) return "exists";
+  await deps.create(mm, address, startingBalance);
+  return "created";
+}

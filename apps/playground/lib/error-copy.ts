@@ -24,6 +24,8 @@ const ERROR_COPY = new Map<string, string>(
       "The last close transaction is not confirmed yet. Wait a moment, then resume to check it.",
     demolish_fee_unsponsored:
       "The LumenWipe API did not pay this close's fee, and the demo cannot pay it itself, so nothing was sent. Resume later to try again.",
+    demolish_delivery_unconfirmed:
+      "The account was merged, but the test network did not show the exchange receiving the balance with this demo's memo.",
     demolish_decision_unanswerable:
       "The close stopped before signing anything: the LumenWipe API asked for a decision this demo has no answer for.",
     demolish_blocked:

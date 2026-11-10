@@ -18,6 +18,7 @@ import {
 import { DEMO_FEE_TOP_UP_XLM } from "@/lib/reaper";
 import { expectationFromSession } from "@/lib/verify";
 import { expectedFeeAccount } from "@/lib/verify-feebump";
+import { expectedMediator } from "@/lib/verify-mediator";
 
 // Hobby allows 300 s at most; the reaper spends 180 s of it on sessions (lib/reaper.ts).
 export const maxDuration = 300;
@@ -45,6 +46,7 @@ export async function GET(req: NextRequest) {
         issuer: () => issuer,
         api,
         feeAccount: expectedFeeAccount,
+        mediatorKey: expectedMediator,
         decrypt: decryptSecret,
         runDemolish,
       });

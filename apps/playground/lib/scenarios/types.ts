@@ -307,7 +307,8 @@ export type ScenarioId =
   | "blend-supply"
   | "phoenix-lp"
   | "allowances"
-  | "fee-bump";
+  | "fee-bump"
+  | "exchange-close";
 
 export interface OrderedStep {
   /** Steps from every scenario are sorted by this key into one plan. */

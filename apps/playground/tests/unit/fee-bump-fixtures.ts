@@ -119,6 +119,10 @@ export class FakeSponsoredApi implements DemolishApi {
     return { transaction: wrapped.toEnvelope().toXdr("base64") };
   }
 
+  async mediatorSign(): Promise<{ transaction: string }> {
+    throw new Error("This API closes into no exchange");
+  }
+
   async submit(signedXdr: string): Promise<{ hash: string }> {
     this.submitted.push(signedXdr);
     const hash = hashOf(signedXdr);

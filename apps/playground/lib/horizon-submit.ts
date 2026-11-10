@@ -170,6 +170,31 @@ export async function loadSignerState(address: string): Promise<SignerState> {
   };
 }
 
+const TX_HASH = /^[0-9a-f]{64}$/;
+
+/**
+ * A transaction the network applied, read from Horizon by its hash: whether it succeeded and the
+ * envelope it applied. Null for Horizon's 404 (not ingested yet, or unknown); any other failure
+ * throws. The hash is one the playground computed from the envelope it signed.
+ */
+export async function loadLedgerTransaction(
+  hash: string
+): Promise<{ successful: boolean; envelopeXdr: string } | null> {
+  if (!TX_HASH.test(hash)) throw new Error("Not a transaction hash");
+  const res = await fetch(`${HORIZON_TESTNET_URL}/transactions/${hash}`, {
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+    signal: AbortSignal.timeout(READ_TIMEOUT_MS),
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Horizon transaction fetch failed (${res.status})`);
+  const json = (await res.json()) as { successful?: unknown; envelope_xdr?: unknown };
+  if (typeof json.successful !== "boolean" || typeof json.envelope_xdr !== "string") {
+    throw new Error("Horizon returned an unreadable transaction");
+  }
+  return { successful: json.successful, envelopeXdr: json.envelope_xdr };
+}
+
 /** False only for Horizon's 404; any other failure throws, so it is never read as "gone". */
 export async function accountExists(address: string): Promise<boolean> {
   const res = await readAccount(address);

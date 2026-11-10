@@ -14,6 +14,7 @@ import {
   type PlaygroundSession,
   type SessionStore,
 } from "@/lib/session-store";
+import { EXCHANGE_STAND_IN } from "@/lib/scenarios";
 import { fakeClock, memoryStore, newSessionData } from "./session-fixtures";
 
 const SID = "0b9d6a52-7c41-4e8f-a3b2-5c6d7e8f9a01";
@@ -239,6 +240,62 @@ describe("schema version", () => {
     expect(await (await stored({ ...current(), schemaVersion: 7 })).loadSession(SID)).toBeNull();
   });
 
+  test("a version 8 session, saved before an exchange close was recorded, reads as expired", async () => {
+    const { exchange: _omitted, ...v8 } = { ...current(), schemaVersion: 8 };
+    expect(await (await stored(v8)).loadSession(SID)).toBeNull();
+    // Even with the field present: an older record is never read as the current shape.
+    expect(await (await stored({ ...current(), schemaVersion: 8 })).loadSession(SID)).toBeNull();
+  });
+
+  test("a session's exchange loads only as the bundled stand-in with an id memo", async () => {
+    const exchange = {
+      destination: EXCHANGE_STAND_IN.address,
+      memo: "4411",
+      memoType: "id" as const,
+    };
+    const withExchange = { ...current(), exchange };
+    expect(await (await stored(withExchange)).loadSession(SID)).toEqual(withExchange);
+    const largest = { ...exchange, memo: "18446744073709551615" };
+    expect(await (await stored({ ...current(), exchange: largest })).loadSession(SID)).toEqual({
+      ...current(),
+      exchange: largest,
+    });
+    for (const bad of [
+      { ...exchange, destination: "GSTANDIN" },
+      { ...exchange, memoType: "text" },
+      { ...exchange, memo: "18446744073709551616" },
+      { ...exchange, memo: "0441" },
+      { ...exchange, memo: "-1" },
+      { ...exchange, memo: "12a" },
+      { ...exchange, memo: 4411 },
+      { ...exchange, memo: "" },
+      EXCHANGE_STAND_IN.address,
+    ]) {
+      expect(await (await stored({ ...current(), exchange: bad })).loadSession(SID)).toBeNull();
+    }
+    const { exchange: _omitted, ...missing } = current();
+    expect(await (await stored(missing)).loadSession(SID)).toBeNull();
+  });
+
+  test("an in-flight record keeps the balance its forward was held to, or none", async () => {
+    const pending = {
+      txId: "t",
+      hash: "h",
+      summary: "s",
+      operations: [],
+      validUntil: null,
+      closesAccount: true,
+    };
+    for (const recordedBalance of [null, "29.9999800"]) {
+      const value = { ...current(), demolishPending: { ...pending, recordedBalance } };
+      expect(await (await stored(value)).loadSession(SID)).toEqual(value);
+    }
+    for (const recordedBalance of [undefined, "29.99998001", 29.99998, "x"]) {
+      const value = { ...current(), demolishPending: { ...pending, recordedBalance } };
+      expect(await (await stored(value)).loadSession(SID)).toBeNull();
+    }
+  });
+
   test("a session with recorded allowances loads with them; a malformed one does not", async () => {
     const allowance = { token: "CTOKEN", spender: "GSPENDER", liveUntilLedger: 8_760_306 };
     const withAllowances = { ...current(), allowances: [allowance] };
@@ -320,6 +377,7 @@ describe("schema version", () => {
         operations: [],
         validUntil: null,
         closesAccount: true,
+        recordedBalance: null,
       },
     };
     expect(await (await stored(inFlight)).loadSession(SID)).toEqual(inFlight);
@@ -352,6 +410,7 @@ describe("schema version", () => {
           operations: [],
           validUntil: "soon",
           closesAccount: false,
+          recordedBalance: null,
         },
       },
       "not-a-session",

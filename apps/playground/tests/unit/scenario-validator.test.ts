@@ -38,9 +38,9 @@ const subsets = (count: number, from: number, size: number): number[][] =>
 
 /** Largest selections (eight scenarios at their maximum) that fit every rule and cap, and those
  *  the XLM cap and the contract-transaction cap refuse. Pinned so a cost change shows up here. */
-const FITTED_AT_MAX = 819;
-const OVER_XLM_AT_MAX = 2191;
-const OVER_SOROBAN_AT_MAX = 323;
+const FITTED_AT_MAX = 2382;
+const OVER_XLM_AT_MAX = 3830;
+const OVER_SOROBAN_AT_MAX = 718;
 
 function messageOf(selection: ScenarioSelection, registry?: readonly ScenarioDefinition[]): string {
   const result = validateSelection(selection, { registry });
@@ -171,7 +171,8 @@ describe("the safety caps", () => {
     );
     // Leaving out a token holding leaves five stale offers without the tokens they trade, or
     // without any token at all, which is refused for that reason, and the sponsored fee is refused
-    // beside anything but data entries and a forgotten signer. The XLM cap is reached only with a
+    // beside anything but data entries and a forgotten signer, and never beside the exchange
+    // deposit, which adds no entry and no cost, so it fits beside any other selection. The XLM cap is reached only with a
     // protocol scenario beside the costliest classic ones, and the contract-transaction cap only
     // with the bonded Phoenix position beside three allowances and another protocol scenario.
     let fitted = 0;
@@ -196,6 +197,8 @@ describe("the safety caps", () => {
         expect(result.message).toEndWith(`the limit is ${MAX_SOROBAN_TRANSACTIONS}.`);
       } else if (result.message.startsWith("Sponsored fee ")) {
         expect(chosen.some((c) => c.id === "fee-bump")).toBe(true);
+      } else if (result.message.startsWith("Exchange deposit ")) {
+        expect(result.message).toBe("Exchange deposit cannot be combined with Sponsored fee.");
       } else expect(result.message).toStartWith("Stale DEX offers ");
     }
     expect({ fitted, overXlm, overSoroban }).toEqual({

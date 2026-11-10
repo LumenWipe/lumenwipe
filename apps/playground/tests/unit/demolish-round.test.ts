@@ -11,7 +11,7 @@ import { runCloseRound, type DemolishApi, type DemolishChain } from "@/lib/demol
 import { runDemolishRound } from "@/lib/session-actions";
 import type { PlaygroundSession, SessionStore } from "@/lib/session-store";
 import { expectationFromSession } from "@/lib/verify";
-import { memoryStore, newSessionData } from "./session-fixtures";
+import { memoryStore, newSessionData, NO_EXCHANGE_READS } from "./session-fixtures";
 
 // A demolish round end to end inside the process: the real close engine (`runClose`), the real
 // verifier held to the session record, and the real session-actions writes over the in-memory
@@ -34,6 +34,7 @@ const MASTER_ONLY: DemolishChain = {
     signers: [{ key: demo.publicKey(), type: "ed25519_public_key", weight: 1 }],
     thresholds: { low: 0, med: 0, high: 0 },
   }),
+  ...NO_EXCHANGE_READS,
 };
 
 const hashOf = (xdr: string): string =>
@@ -132,6 +133,10 @@ class FakeApi implements DemolishApi {
     throw new Error("This ledger pays its own fees");
   }
 
+  async mediatorSign(): Promise<{ transaction: string }> {
+    throw new Error("This ledger closes into no exchange");
+  }
+
   async getTransaction(hash: string): Promise<TransactionLookupResponse> {
     this.calls.lookup++;
     if (this.lookupSeesLanded && this.landed.has(hash)) {
@@ -186,6 +191,7 @@ function round(store: SessionStore, id: string, api: FakeApi) {
         {
           demoKeypair: demo,
           signingKeys: [],
+          mediatorKey: null,
           expected: expectationFromSession(session, sink, lwdemoIssuer, null),
           apiUrl: "unused",
           apiKey: "unused",
@@ -375,6 +381,7 @@ describe("a demolish round resumes from where a request died", () => {
           {
             demoKeypair: demo,
             signingKeys: [],
+            mediatorKey: null,
             expected: expectationFromSession(
               {
                 ...s,

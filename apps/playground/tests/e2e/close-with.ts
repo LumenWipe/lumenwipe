@@ -10,7 +10,11 @@ const BASE = "http://localhost:3002";
 
 export interface CreatedSession {
   demoPublic: string;
-  accounts: { mm: string };
+  accounts: {
+    mm: string;
+    /** Where an exchange session deposits, and with which memo; null for any other. */
+    exchange: { destination: string; memo: string; memoType: "id" } | null;
+  };
 }
 
 export interface HorizonOperation {
@@ -39,12 +43,14 @@ async function operationsOf(account: string): Promise<HorizonOperation[]> {
 }
 
 /** Runs a selection to the merge, resolving the blocker on the way when one is expected.
- *  `scenario` is the picker label the shared link must turn on before the run starts. */
+ *  `scenario` is the picker label the shared link must turn on before the run starts, and
+ *  `mergeInto` the account the demo is merged into (the market maker unless the test says). */
 export async function closeWith(
   page: Page,
   selection: ScenarioSelection,
   scenario: string,
-  blocker: RegExp | null
+  blocker: RegExp | null,
+  mergeInto: (session: CreatedSession) => string = (session) => session.accounts.mm
 ): Promise<{ session: CreatedSession; ops: HorizonOperation[] }> {
   await page.goto(`/?selection=${encodeSelection(selection)}`);
   await expect(page.getByRole("button", { name: scenario, pressed: true })).toBeVisible();
@@ -75,7 +81,7 @@ export async function closeWith(
     expect.objectContaining({
       type: "account_merge",
       account: session.demoPublic,
-      into: session.accounts.mm,
+      into: mergeInto(session),
     })
   );
   return { session, ops };

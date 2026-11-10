@@ -169,6 +169,7 @@ describe("create session", () => {
       mm: () => mm,
       cronSecret: () => CRON_SECRET,
       marketMakerBalance: async () => MM_FUNDED,
+      ensureExchangeAccount: async () => "exists",
       provisionDemo: async (source, demoPublic, startingBalance) => {
         if (source.publicKey() !== mm.publicKey()) throw new Error("not the market maker");
         funded.push(demoPublic);
@@ -406,6 +407,7 @@ describe("create session", () => {
 
   test("a funding the network rejected leaves no record and no index entry", async () => {
     const { deps, store } = createDeps({
+      ensureExchangeAccount: async () => "exists",
       provisionDemo: async () => {
         throw new TxSubmitError(
           "Transaction rejected: tx_insufficient_balance",
@@ -420,6 +422,7 @@ describe("create session", () => {
 
   test("a funding whose outcome is unknown keeps the record for the reaper", async () => {
     const { deps, store } = createDeps({
+      ensureExchangeAccount: async () => "exists",
       provisionDemo: async () => {
         throw new TxSubmitError("The network is taking longer than usual to confirm.", null);
       },
@@ -582,6 +585,7 @@ describe("scenario availability", () => {
         mm: () => issuer,
         cronSecret: () => CRON_SECRET,
         marketMakerBalance: async () => MM_FUNDED,
+        ensureExchangeAccount: async () => "exists",
         provisionDemo: async (_mm, key) => {
           funded.push(key);
         },
@@ -603,7 +607,7 @@ describe("scenario availability", () => {
   });
 
   test("GET /api/scenarios lists the unavailable scenarios with their reasons, uncached", async () => {
-    const res = handleScenarios({
+    const res = await handleScenarios({
       unavailable: () => new Map([["stale-offers", "Switched off on this deployment for now."]]),
     });
     expect(res.headers.get("cache-control")).toBe("no-store");
@@ -910,6 +914,7 @@ describe("demolish", () => {
       mm: () => mm,
       api: () => api,
       feeAccount: () => null,
+      mediatorKey: () => null,
       decrypt,
       runDemolish: async (opts: RunDemolishOptions) => {
         runs.push(opts);
@@ -1195,6 +1200,7 @@ describe("resolve", () => {
       operations: [],
       validUntil: null,
       closesAccount: false,
+      recordedBalance: null,
     };
     for (const overrides of [{ demolishPending: pending }, { demolishDone: true }]) {
       const store = memoryStore();
@@ -1507,6 +1513,7 @@ describe("cleanup", () => {
         operations: [],
         validUntil: null,
         closesAccount: true,
+        recordedBalance: null,
       },
     });
     const { deps, merges } = cleanupDeps(store);

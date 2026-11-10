@@ -12,7 +12,7 @@ import { runDemolishRound } from "@/lib/session-actions";
 import type { PlaygroundSession, SessionStore } from "@/lib/session-store";
 import { expectationFromSession } from "@/lib/verify";
 import { apiError, FakeSponsoredApi, hashOf, hex, MAX_TIME } from "./fee-bump-fixtures";
-import { memoryStore, newSessionData } from "./session-fixtures";
+import { memoryStore, newSessionData, NO_EXCHANGE_READS } from "./session-fixtures";
 
 // A sponsored close end to end inside the process: the real close engine, the real verifier held
 // to a session that selected the sponsored fee, the sponsor's envelope checked in `prepare`, and the
@@ -39,6 +39,7 @@ const MASTER_ONLY: DemolishChain = {
     signers: [{ key: demo.publicKey(), type: "ed25519_public_key", weight: 1 }],
     thresholds: { low: 0, med: 0, high: 0 },
   }),
+  ...NO_EXCHANGE_READS,
 };
 
 async function newSession(store: SessionStore, selection = SPONSORED): Promise<PlaygroundSession> {
@@ -72,6 +73,7 @@ function round(
         {
           demoKeypair,
           signingKeys: [],
+          mediatorKey: null,
           expected: expectationFromSession(session, sink, issuer, configured),
           apiUrl: "unused",
           apiKey: "unused",
