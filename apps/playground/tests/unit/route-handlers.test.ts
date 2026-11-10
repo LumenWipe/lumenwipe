@@ -32,6 +32,8 @@ import {
   handleDemolishRound,
   handleMess,
   handleResolve,
+  handleAllowances,
+  handleRevokeAllowance,
   handleScenarios,
   handleState,
   parseCreateBody,
@@ -46,6 +48,10 @@ import {
   type SessionStore,
 } from "@/lib/session-store";
 import { fakeClock, memoryStore, newSessionData, type FakeClock } from "./session-fixtures";
+import { revokeTx } from "./revoke-fixtures";
+import type { AllowanceApi } from "@/lib/allowances";
+import { XLM_SAC } from "@/lib/scenarios";
+import { Networks, Transaction, TransactionBuilder } from "@stellar/stellar-sdk";
 
 // Every key here is generated per run by Keypair.random(); nothing checksum-valid is committed.
 // The "encryption" is a reversible stand-in, so a test can tell which plaintexts a handler
@@ -1255,6 +1261,175 @@ describe("resolve", () => {
 });
 
 // ─── POST /api/session/[id]/cleanup ────────────────────────────────────────────
+
+describe("allowances", () => {
+  const ALLOWANCES: ScenarioSelection = {
+    scenarios: [{ id: "allowances", params: { spenders: 2 } }],
+  };
+  const first = Keypair.random().publicKey();
+  const second = Keypair.random().publicKey();
+  const RECORDED = [
+    { token: XLM_SAC, spender: first, liveUntilLedger: 9_000_000 },
+    { token: XLM_SAC, spender: second, liveUntilLedger: 5_200_000 },
+  ];
+  const API = () => ({ apiUrl: "https://api.example", apiKey: "test-key" });
+
+  interface ApiLog {
+    asked: unknown[];
+    submitted: string[];
+    listed: string[];
+  }
+
+  function allowanceDeps(
+    store: SessionStore,
+    log: ApiLog,
+    build: (owner: string, spender: string) => string = (owner, spender) =>
+      revokeTx({ owner, spender }).toEnvelope().toXDR("base64")
+  ) {
+    const api: AllowanceApi = {
+      getAllowances: async (address) => {
+        log.listed.push(address);
+        return {
+          allowances: [
+            // The API lists the second spender only (its list is best effort), and one the
+            // session never recorded, which is left out.
+            { token: XLM_SAC, spender: second, amount: "250000000" },
+            { token: XLM_SAC, spender: Keypair.random().publicKey(), amount: "1" },
+          ] as never,
+        };
+      },
+      revokeAllowance: async (params) => {
+        log.asked.push(params);
+        return { transaction: build(params.owner, params.spender) };
+      },
+      submit: async (signedXdr) => {
+        log.submitted.push(signedXdr);
+        return { hash: "0".repeat(64) };
+      },
+    };
+    return {
+      store,
+      api: API,
+      decrypt,
+      allowanceApi: () => api,
+      signerState: async (address: string) => ({
+        signers: [{ key: address, type: "ed25519_public_key", weight: 1 }],
+        thresholds: { low: 0, med: 0, high: 0 },
+      }),
+    };
+  }
+  const newLog = (): ApiLog => ({ asked: [], submitted: [], listed: [] });
+  const revoke = (id: string, body: unknown, deps: Parameters<typeof handleRevokeAllowance>[2]) =>
+    handleRevokeAllowance(
+      request(`/api/session/${id}/allowances/revoke`, {
+        body: typeof body === "string" ? body : JSON.stringify(body),
+      }),
+      id,
+      deps
+    );
+
+  test("the list is the session's record, each marked with whether the API lists it", async () => {
+    const store = memoryStore();
+    const seeded = await seed(store, { selection: ALLOWANCES, allowances: RECORDED });
+    const log = newLog();
+    const res = await handleAllowances(seeded.id, allowanceDeps(store, log));
+    expect(await outcome(res)).toEqual({
+      status: 200,
+      body: {
+        allowances: [
+          { index: 1, token: XLM_SAC, spender: first, listed: false, amount: null },
+          { index: 2, token: XLM_SAC, spender: second, listed: true, amount: "250000000" },
+        ],
+      },
+    });
+    expect(log.listed).toEqual([seeded.demo.publicKey()]);
+  });
+
+  test("a session that recorded no allowance asks the API for none", async () => {
+    const store = memoryStore();
+    const seeded = await seed(store);
+    const log = newLog();
+    const res = await handleAllowances(seeded.id, allowanceDeps(store, log));
+    expect(await outcome(res)).toEqual({ status: 200, body: { allowances: [] } });
+    expect(log.listed).toEqual([]);
+  });
+
+  test("a recorded spender is revoked with the demo key, under the session lock", async () => {
+    const store = memoryStore();
+    const seeded = await seed(store, { selection: ALLOWANCES, allowances: RECORDED });
+    const log = newLog();
+    const res = await revoke(seeded.id, { spender: second }, allowanceDeps(store, log));
+    const body = (await res.json()) as { spender: string; txHash: string };
+    expect(res.status).toBe(200);
+    expect(log.asked).toEqual([
+      { owner: seeded.demo.publicKey(), token: XLM_SAC, spender: second },
+    ]);
+    const signed = TransactionBuilder.fromXDR(log.submitted[0]!, Networks.TESTNET) as Transaction;
+    expect(signed.signatures).toHaveLength(1);
+    expect(
+      seeded.demo.verify(signed.hash(), Buffer.from(signed.signatures[0]!.signature.value))
+    ).toBe(true);
+    // The hash is the playground's own, from the envelope it signed.
+    expect(body).toEqual({ spender: second, txHash: Buffer.from(signed.hash()).toString("hex") });
+  });
+
+  test("a revoke while another action holds the lock is turned away", async () => {
+    const store = memoryStore();
+    const seeded = await seed(store, { selection: ALLOWANCES, allowances: RECORDED });
+    const lock = await store.acquireLock(seeded.id);
+    const log = newLog();
+    const res = await revoke(seeded.id, { spender: second }, allowanceDeps(store, log));
+    expect(await outcome(res)).toEqual({ status: 409, body: { error: "step_in_progress" } });
+    expect(log.asked).toEqual([]);
+    await store.releaseLock(lock!);
+  });
+
+  test("a spender the session did not record, or a malformed body, signs nothing", async () => {
+    const store = memoryStore();
+    const seeded = await seed(store, { selection: ALLOWANCES, allowances: RECORDED });
+    const log = newLog();
+    const deps = allowanceDeps(store, log);
+    const stranger = Keypair.random().publicKey();
+    for (const [body, error] of [
+      [{ spender: stranger }, "allowance_not_recorded"],
+      [{ spender: 7 }, "allowance_not_recorded"],
+      [{ spender: "G".repeat(57) }, "allowance_not_recorded"],
+      ["not json", "invalid_json"],
+    ] as const) {
+      const res = await revoke(seeded.id, body, deps);
+      expect(await outcome(res)).toEqual({ status: 400, body: { error } });
+    }
+    expect([log.asked, log.submitted]).toEqual([[], []]);
+  });
+
+  test("a revoke the API builds for another spender is refused and never sent", async () => {
+    const store = memoryStore();
+    const seeded = await seed(store, { selection: ALLOWANCES, allowances: RECORDED });
+    const log = newLog();
+    const swapped = allowanceDeps(store, log, (owner) =>
+      revokeTx({ owner, spender: Keypair.random().publicKey() }).toEnvelope().toXDR("base64")
+    );
+    const res = await revoke(seeded.id, { spender: second }, swapped);
+    expect(await outcome(res)).toEqual({ status: 422, body: { error: "revoke_refused" } });
+    expect(log.submitted).toEqual([]);
+    expect(errorCopy("revoke_refused")).toContain("nothing was signed");
+  });
+
+  test("without the API setting, nothing is read or signed", async () => {
+    const store = memoryStore();
+    const seeded = await seed(store, { selection: ALLOWANCES, allowances: RECORDED });
+    const log = newLog();
+    const deps = {
+      ...allowanceDeps(store, log),
+      api: () => ({ apiUrl: undefined, apiKey: undefined }),
+    };
+    expect(await outcome(await revoke(seeded.id, { spender: second }, deps))).toEqual(
+      NOT_CONFIGURED
+    );
+    expect(await outcome(await handleAllowances(seeded.id, deps))).toEqual(NOT_CONFIGURED);
+    expect([log.asked, log.listed]).toEqual([[], []]);
+  });
+});
 
 describe("cleanup", () => {
   const mm = Keypair.random();

@@ -4,7 +4,8 @@ import { decryptSecret } from "@/lib/crypto";
 import { sessionStore } from "@/lib/session-store";
 import { getPlaygroundIssuerKeypair, getPlaygroundMmKeypair } from "@/lib/accounts";
 import { runDemolish } from "@/lib/demolish";
-import { accountExists, loadNativeBalance } from "@/lib/horizon-submit";
+import { sdkAllowanceApi } from "@/lib/allowances";
+import { accountExists, loadNativeBalance, loadSignerState } from "@/lib/horizon-submit";
 import { callFriendbot, topUpMarketMaker, withAccountLock } from "@/lib/market-maker";
 import { buildSignSubmit, ensureStandingLiquidity } from "@/lib/mess-builders";
 import {
@@ -12,6 +13,7 @@ import {
   demolishRoundDeps,
   handleReap,
   resolveActionDeps,
+  revokeActionDeps,
 } from "@/lib/route-handlers";
 import { expectationFromSession } from "@/lib/verify";
 
@@ -32,15 +34,22 @@ export async function GET(req: NextRequest) {
         source: Parameters<typeof buildSignSubmit>[0],
         ops: Parameters<typeof buildSignSubmit>[1]
       ) => buildSignSubmit(source, ops);
+      const api = () => ({
+        apiUrl: process.env.LUMENWIPE_API_URL,
+        apiKey: process.env.LUMENWIPE_API_KEY,
+      });
       const round = demolishRoundDeps({
         mm: () => mm,
         issuer: () => issuer,
-        api: () => ({
-          apiUrl: process.env.LUMENWIPE_API_URL,
-          apiKey: process.env.LUMENWIPE_API_KEY,
-        }),
+        api,
         decrypt: decryptSecret,
         runDemolish,
+      });
+      const revoke = revokeActionDeps({
+        api,
+        decrypt: decryptSecret,
+        allowanceApi: sdkAllowanceApi,
+        signerState: loadSignerState,
       });
       const cleanup = cleanupActionDeps({
         mm: () => mm,
@@ -50,12 +59,13 @@ export async function GET(req: NextRequest) {
         merge,
         submit,
       });
-      if (!mm || !issuer || !round || !cleanup) return null;
+      if (!mm || !issuer || !round || !revoke || !cleanup) return null;
       return {
         store: sessionStore,
         now: Date.now,
         round,
         resolve: resolveActionDeps({ decrypt: decryptSecret, submit }),
+        revoke,
         cleanup,
         exists: accountExists,
         verifiable: (session) => {

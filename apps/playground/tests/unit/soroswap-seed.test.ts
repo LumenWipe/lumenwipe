@@ -47,6 +47,8 @@ const ctx = (): MessContext => ({
   helpers: new Map(),
   recordSigner: async () => {},
   recordClaimableBalances: async () => {},
+  allowances: [],
+  recordAllowance: async () => {},
 });
 
 const plan = resolvePlan({ scenarios: [{ id: "soroswap-lp", params: {} }] });

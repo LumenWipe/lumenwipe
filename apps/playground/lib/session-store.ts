@@ -27,7 +27,7 @@ export const SESSION_COUNTDOWN_SECONDS = 3600;
 export const SESSION_RECORD_TTL_SECONDS = 72 * 3600;
 
 /** Bumped whenever the stored shape changes; a session of any other version reads as expired. */
-export const SESSION_SCHEMA_VERSION = 7;
+export const SESSION_SCHEMA_VERSION = 8;
 
 /** Longer than any route's maxDuration, so a request the platform kills frees its session soon after. */
 export const SESSION_LOCK_TTL_MS = 150_000;
@@ -107,6 +107,18 @@ export interface RecordedSigner {
   encSecret: string | null;
 }
 
+/**
+ * An allowance the mess approved from the demo, recorded before its `approve` is sent: the token
+ * contract, the spender (a fresh public key no one holds the secret of) and the ledger it lives
+ * until. A revoke may zero only an allowance recorded here, with the spender taken from here and
+ * never from the API's list (lib/allowances.ts).
+ */
+export interface RecordedAllowance {
+  token: string;
+  spender: string;
+  liveUntilLedger: number;
+}
+
 export interface PlaygroundSession {
   schemaVersion: typeof SESSION_SCHEMA_VERSION;
   id: string;
@@ -135,6 +147,8 @@ export interface PlaygroundSession {
   helperAccounts: HelperAccount[];
   /** Recorded before the transaction that creates them is sent, one entry per attempt. */
   claimableBalances: RecordedClaimableBalance[];
+  /** The allowances the mess approved, in spender order: entry `i` is spender `i + 1`. */
+  allowances: RecordedAllowance[];
 }
 
 type FixedFields = "schemaVersion" | "id" | "createdAt";
@@ -206,6 +220,17 @@ function isRecordedClaimableBalance(value: unknown): value is RecordedClaimableB
   );
 }
 
+function isRecordedAllowance(value: unknown): value is RecordedAllowance {
+  return (
+    isRecord(value) &&
+    typeof value.token === "string" &&
+    typeof value.spender === "string" &&
+    typeof value.liveUntilLedger === "number" &&
+    Number.isInteger(value.liveUntilLedger) &&
+    value.liveUntilLedger > 0
+  );
+}
+
 function isDemolishLogEntry(value: unknown): value is DemolishLogEntry {
   return (
     isRecord(value) &&
@@ -248,7 +273,9 @@ export function isPlaygroundSession(value: unknown): value is PlaygroundSession 
     Array.isArray(value.helperAccounts) &&
     value.helperAccounts.every(isHelperAccount) &&
     Array.isArray(value.claimableBalances) &&
-    value.claimableBalances.every(isRecordedClaimableBalance)
+    value.claimableBalances.every(isRecordedClaimableBalance) &&
+    Array.isArray(value.allowances) &&
+    value.allowances.every(isRecordedAllowance)
   );
 }
 

@@ -27,7 +27,13 @@ import {
   type AssetCode,
   type OfferAsset,
 } from "./catalog";
-import { AQUARIUS_SEED, BLEND_SEED, SOROSWAP_SEED } from "./pinned";
+import {
+  ALLOWANCE_FEE_ESTIMATE_XLM,
+  ALLOWANCE_SEED,
+  AQUARIUS_SEED,
+  BLEND_SEED,
+  SOROSWAP_SEED,
+} from "./pinned";
 import {
   DISPOSITION_CHOICES,
   type AssetDisposition,
@@ -62,6 +68,8 @@ export const ORDER = {
   sponsorships: 60,
   /** Protocol positions, after every trustline and balance they are built from. */
   protocol: 70,
+  /** Allowances, one step per spender in order; nothing else depends on them. */
+  allowances: 80,
   signers: 90,
   /** Last: once the thresholds are raised the master key alone cannot sign another step. */
   multisig: 95,
@@ -1034,6 +1042,87 @@ const blendSupply: ScenarioDefinition = {
   },
 };
 
+/**
+ * One to three spenders approved to move the demo's XLM through XLM's asset contract, one `approve`
+ * per spender, the first until the longest expiry the network allows. Before the close the page
+ * lists them through the API's allowance endpoint and revokes each one the session recorded, with
+ * a transaction the API builds and both revoke checks accept; the close then runs as it would
+ * without them. A spender is a fresh public key whose secret no one keeps.
+ */
+const APPROVE_STEPS: readonly MessStepId[] = [
+  "APPROVE_ALLOWANCE_1",
+  "APPROVE_ALLOWANCE_2",
+  "APPROVE_ALLOWANCE_3",
+];
+
+const allowances: ScenarioDefinition = {
+  id: "allowances",
+  featureSet: "protocol",
+  label: "Token allowances",
+  description:
+    "Spenders approved to move the demo's XLM, one until the longest expiry the network allows. Before the close, the API lists them and each is revoked.",
+  params: {
+    spenders: { label: "Spenders", min: 1, max: ALLOWANCE_SEED.amountsXlm.length, default: 2 },
+  },
+  heldAssets: () => [],
+  requiresAnyOf: [],
+  conflicts: [],
+  build: ({ spenders }) => {
+    const count = spenders ?? 2;
+    const amounts = ALLOWANCE_SEED.amountsXlm.slice(0, count);
+    if (amounts.length !== count) return { ok: false, message: "Token allowances: no such count." };
+    const steps: OrderedStep[] = amounts.map((amountXlm, i) => {
+      const index = i + 1;
+      const id = APPROVE_STEPS[i];
+      if (!id) throw new Error(`No approve step for spender ${index}`);
+      const farExpiry = index === 1;
+      const nodeId = `allowance:${index}`;
+      return {
+        order: ORDER.allowances + i,
+        step: {
+          id,
+          label: farExpiry
+            ? `Approve spender ${index} for ${amountXlm} XLM, until the longest expiry allowed`
+            : `Approve spender ${index} for ${amountXlm} XLM`,
+          nodes: [{ id: nodeId, kind: "allowance", label: `Spender ${index}` }],
+          balances: [{ nodeId, balance: amountXlm }],
+          action: { kind: "approve_allowance", index, amountXlm, farExpiry },
+        },
+      };
+    });
+    return {
+      ok: true,
+      build: {
+        steps,
+        ephemeralAssets: [],
+        expectation: {
+          assets: [],
+          offers: 0,
+          dataEntries: 0,
+          signers: 0,
+          // Each revoke is a transaction of its own, sent before the close and checked by
+          // lib/verify-revoke.ts and the shared revoke anchor: the close itself gains nothing.
+          closeOperations: 0,
+          operationTypes: [],
+          dispositions: [],
+          arrivingAssets: [],
+          sponsoredEntries: [],
+          resolutions: [],
+        },
+        cost: {
+          // An approval moves no XLM: the fees of each approve and of its revoke.
+          xlm: Math.round(count * 2 * ALLOWANCE_FEE_ESTIMATE_XLM * 10) / 10,
+          classicTransactions: 0,
+          sorobanTransactions: count,
+          seconds: count * 2 * SOROBAN_STEP_SECONDS,
+          batchSize: 1,
+          subEntries: 0,
+        },
+      },
+    };
+  },
+};
+
 /** Every scenario, in the order a selection lists them. */
 export const SCENARIOS: readonly ScenarioDefinition[] = [
   lwdemoHolding,
@@ -1049,4 +1138,5 @@ export const SCENARIOS: readonly ScenarioDefinition[] = [
   soroswapLp,
   aquariusLp,
   blendSupply,
+  allowances,
 ];

@@ -31,6 +31,7 @@ export function newSessionData(): NewSessionData {
     transferRecipient: null,
     helperAccounts: [],
     claimableBalances: [],
+    allowances: [],
   };
 }
 

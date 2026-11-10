@@ -232,6 +232,30 @@ describe("schema version", () => {
     expect(await (await stored({ ...current(), schemaVersion: 6 })).loadSession(SID)).toBeNull();
   });
 
+  test("a version 7 session, saved before allowances were recorded, reads as expired", async () => {
+    const { allowances: _omitted, ...v7 } = { ...current(), schemaVersion: 7 };
+    expect(await (await stored(v7)).loadSession(SID)).toBeNull();
+    // Even with the field present: an older record is never read as the current shape.
+    expect(await (await stored({ ...current(), schemaVersion: 7 })).loadSession(SID)).toBeNull();
+  });
+
+  test("a session with recorded allowances loads with them; a malformed one does not", async () => {
+    const allowance = { token: "CTOKEN", spender: "GSPENDER", liveUntilLedger: 8_760_306 };
+    const withAllowances = { ...current(), allowances: [allowance] };
+    expect(await (await stored(withAllowances)).loadSession(SID)).toEqual(withAllowances);
+    for (const bad of [
+      { ...allowance, spender: undefined },
+      { ...allowance, token: 7 },
+      { ...allowance, liveUntilLedger: "8760306" },
+      { ...allowance, liveUntilLedger: 1.5 },
+      { ...allowance, liveUntilLedger: 0 },
+      "GSPENDER",
+    ]) {
+      expect(await (await stored({ ...current(), allowances: [bad] })).loadSession(SID)).toBeNull();
+    }
+    expect(await (await stored({ ...current(), allowances: null })).loadSession(SID)).toBeNull();
+  });
+
   test("a session with typed signers loads with them; a signer of another type does not", async () => {
     const signer = <T extends string>(type: T, encSecret: string | null) => ({
       type,

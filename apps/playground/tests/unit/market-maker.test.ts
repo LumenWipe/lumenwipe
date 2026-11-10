@@ -225,6 +225,8 @@ describe("setup step", () => {
       helpers: new Map(),
       recordSigner: async () => {},
       recordClaimableBalances: async () => {},
+      allowances: [],
+      recordAllowance: async () => {},
     };
     let posted: Transaction | null = null;
     const reads: string[] = [];

@@ -51,6 +51,8 @@ test.skipIf(!RUN_INTEGRATION)(
       helpers: new Map(),
       recordSigner: async () => {},
       recordClaimableBalances: async () => {},
+      allowances: [],
+      recordAllowance: async () => {},
     };
     for (const step of resolvePlan(selection).steps.filter((s) => s.id !== "SETUP")) {
       console.log(`${step.id}: ${await executeMessStep(step, ctx)}`);

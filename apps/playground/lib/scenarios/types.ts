@@ -29,6 +29,9 @@ export const MESS_STEP_IDS = [
   "SOROSWAP_DEPOSIT",
   "AQUARIUS_DEPOSIT",
   "BLEND_SUBMIT",
+  "APPROVE_ALLOWANCE_1",
+  "APPROVE_ALLOWANCE_2",
+  "APPROVE_ALLOWANCE_3",
 ] as const;
 
 export type MessStepId = (typeof MESS_STEP_IDS)[number];
@@ -77,7 +80,14 @@ export type StepAction =
   | { kind: "aquarius_deposit"; usdc: string; maxXlm: string }
   /** Supplies XLM to the pinned Blend pool as collateral and, in the borrow variant, borrows XLM
    *  against it, in one `submit`. `borrowXlm` is null when nothing is borrowed. */
-  | { kind: "blend_submit"; variant: BlendVariant; supplyXlm: string; borrowXlm: string | null };
+  | { kind: "blend_submit"; variant: BlendVariant; supplyXlm: string; borrowXlm: string | null }
+  /**
+   * Approves the session's `index`th spender (from 1) to move `amountXlm` of the demo's XLM through
+   * XLM's asset contract. `farExpiry` sets the allowance to live as long as the network allows,
+   * read live; otherwise it lives `ALLOWANCE_LIVE_LEDGERS`. The spender is a fresh public key the
+   * session records before the call is sent, and no one holds its secret.
+   */
+  | { kind: "approve_allowance"; index: number; amountXlm: string; farExpiry: boolean };
 
 /** supply: XLM supplied as collateral. supply_and_borrow: the same, with XLM borrowed against it. */
 export type BlendVariant = "supply" | "supply_and_borrow";
@@ -138,10 +148,17 @@ export interface PlannedResolution {
 
 export type StepActionKind = StepAction["kind"];
 
-export const SCENE_NODE_KINDS = ["trustline", "offer", "data", "signer", "position"] as const;
+export const SCENE_NODE_KINDS = [
+  "trustline",
+  "offer",
+  "data",
+  "signer",
+  "position",
+  "allowance",
+] as const;
 
 /** The kinds that are entries of the account itself, each holding a base reserve. A protocol
- *  position lives in a contract's storage instead. */
+ *  position or an allowance lives in a contract's storage instead. */
 export const SUB_ENTRY_NODE_KINDS: readonly SceneNodeKind[] = [
   "trustline",
   "offer",
@@ -267,7 +284,8 @@ export type ScenarioId =
   | "multisig"
   | "soroswap-lp"
   | "aquarius-lp"
-  | "blend-supply";
+  | "blend-supply"
+  | "allowances";
 
 export interface OrderedStep {
   /** Steps from every scenario are sorted by this key into one plan. */
