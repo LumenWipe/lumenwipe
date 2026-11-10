@@ -1,6 +1,6 @@
 {
   "name": "@lumenwipe/verify",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Reference verifier for LumenWipe close transactions, compiled from the web app's own trust anchor, with a conformance vector set.",
   "license": "Apache-2.0",
   "type": "module",
