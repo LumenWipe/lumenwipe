@@ -5,6 +5,7 @@ import ts from "typescript";
 import { Keypair, StrKey, hash } from "@stellar/stellar-sdk";
 import {
   buildSdkSnippet,
+  codeLiteral,
   SdkSnippetInputError,
   snippetInputFromExpectation,
   type SdkSnippetInput,
@@ -165,14 +166,16 @@ describe("the generated snippet", () => {
   test("a multi-signature close signs with each co-signer from its own variable until the weight is met", () => {
     const text = buildSdkSnippet(multisig);
     cosignerKeys.forEach((k, i) => {
-      expect(text).toContain(`// LUMENWIPE_COSIGNER_${i + 1}_SECRET signs for ${k.publicKey()}`);
-      expect(text).toContain(`  process.env.LUMENWIPE_COSIGNER_${i + 1}_SECRET,\n`);
+      expect(text).toContain(
+        `key: "${k.publicKey()}",\n    secret: process.env["LUMENWIPE_COSIGNER_${i + 1}_SECRET"],`
+      );
     });
     expect(text).toContain("const keys = [signer, ...cosigners];");
     expect(text).toContain("if (weight >= required || keyWeight === 0) continue;");
     expect(text).toContain("live = round.sourceAccount ?? (await client.getAccount(source));");
+    expect(text).toContain("if (keypair.publicKey() !== key) throw new Error(");
     expect(text).toContain(
-      `// Needs no signature: the pre-authorized transaction\n//   ${preAuth}\n`
+      "// The account's pre-authorized transaction signer needs no signature."
     );
     for (const secret of [...cosignerKeys.map((k) => k.secret()), preimage.toString("hex")]) {
       expect(text).not.toContain(secret);
@@ -184,7 +187,7 @@ describe("the generated snippet", () => {
   test("a hash(x) signer signs with its preimage from its own variable, after the keys", () => {
     const text = buildSdkSnippet(masterAndHashX);
     expect(text).toContain(`key: ${JSON.stringify(hashX)}`);
-    expect(text).toContain("preimage: process.env.LUMENWIPE_HASHX_PREIMAGE_1");
+    expect(text).toContain(`preimage: process.env["LUMENWIPE_HASHX_PREIMAGE_1"]`);
     const keys = text.indexOf("tx.sign(key);");
     const hashXSign = text.indexOf('tx.signHashX(Buffer.from(preimage, "hex"));');
     expect(keys).toBeGreaterThan(0);
@@ -234,6 +237,41 @@ describe("the generated snippet", () => {
       'plan.blockers.filter((b) => b.code !== "claimable_balance_forfeited")'
     );
     expect(buildSdkSnippet(plain)).toContain("const { blockers } = plan;");
+  });
+});
+
+describe("every value is escaped into the code", () => {
+  const HOSTILE = "x\"; process.exit(1); //</script>\u2028\u2029<!--'`${y}\\";
+
+  test("a hostile value stays one string literal, holds no raw unsafe character, and type-checks", () => {
+    const literal = codeLiteral(HOSTILE);
+    expect(literal).not.toMatch(/[<>/\u2028\u2029]/);
+    const source = ts.createSourceFile(
+      "hostile.ts",
+      `export const x = ${literal};\n`,
+      ts.ScriptTarget.ES2022
+    );
+    expect(source.statements).toHaveLength(1);
+    const [statement] = source.statements;
+    if (!statement || !ts.isVariableStatement(statement)) throw new Error("not a declaration");
+    const initializer = statement.declarationList.declarations[0]?.initializer;
+    expect(initializer && ts.isStringLiteral(initializer) ? initializer.text : null).toBe(HOSTILE);
+    expect(
+      diagnostics([`${buildSdkSnippet(plain)}export const hostile: string = ${literal};\n`])
+    ).toEqual([[]]);
+  });
+
+  test("a hostile memo or balance id never reaches the snippet", () => {
+    const hostile = [
+      close({
+        destination: { kind: "exchange", address: account(), memo: HOSTILE, memoType: "id" },
+      }),
+      close({ decisions: [{ kind: "forfeit", balanceId: HOSTILE }] }),
+      close({ decisions: [{ kind: "claim", balanceId: HOSTILE, addTrustline: null }] }),
+    ];
+    for (const c of hostile) {
+      expect(() => buildSdkSnippet({ network: "testnet", close: c })).toThrow(SdkSnippetInputError);
+    }
   });
 });
 
@@ -415,7 +453,9 @@ describe("a playground session's snippet", () => {
       cosigners.map((k) => ({ type: "ed25519_public_key", key: k.publicKey() }))
     );
     cosigners.forEach((k, i) => {
-      expect(text).toContain(`// LUMENWIPE_COSIGNER_${i + 1}_SECRET signs for ${k.publicKey()}`);
+      expect(text).toContain(
+        `key: "${k.publicKey()}",\n    secret: process.env["LUMENWIPE_COSIGNER_${i + 1}_SECRET"],`
+      );
     });
     const secrets = [
       ...cosigners.map((k) => k.secret()),
@@ -439,7 +479,7 @@ describe("a playground session's snippet", () => {
     const text = buildSdkSnippet(
       snippetInputFromExpectation(expectationFromSession(data, account(), account(), null))
     );
-    expect(text).toContain("preimage: process.env.LUMENWIPE_HASHX_PREIMAGE_1");
+    expect(text).toContain(`preimage: process.env["LUMENWIPE_HASHX_PREIMAGE_1"]`);
     expect(text).toContain(`key: ${JSON.stringify(key)}`);
     for (const value of [sessionPreimage.toString("hex"), data.recordedSigners[0]!.encSecret!]) {
       expect(text).not.toContain(value);

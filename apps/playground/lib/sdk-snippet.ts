@@ -157,7 +157,25 @@ function assetOf(canonicalAsset: string): SnippetAsset {
   return asset({ code, issuer });
 }
 
-const str = (value: string): string => JSON.stringify(value);
+const UNSAFE_CHAR_ESCAPES: Readonly<Record<string, string>> = {
+  "<": "\\u003C",
+  ">": "\\u003E",
+  "/": "\\u002F",
+  "\u2028": "\\u2028",
+  "\u2029": "\\u2029",
+};
+
+/** Escapes what `JSON.stringify` leaves raw but a script or a line break could be built from. */
+function escapeUnsafeChars(json: string): string {
+  return json.replace(/[<>/\u2028\u2029]/g, (c) => UNSAFE_CHAR_ESCAPES[c] ?? c);
+}
+
+/** A value as a string literal in the generated code: the only way a value reaches the text. */
+export function codeLiteral(value: string): string {
+  return escapeUnsafeChars(JSON.stringify(value));
+}
+
+const str = codeLiteral;
 const canonical = ({ code, issuer }: SnippetAsset): string => `${code}:${issuer}`;
 
 /** An object literal's field: a key (printed as is) and the code of its value. A key alone is a
@@ -314,7 +332,7 @@ function closeBody(close: SnippetClose): string[] {
               "",
               [
                 ["key", str(sg.key)],
-                ["preimage", `process.env.${preimageEnv[i]}`],
+                ["preimage", `process.env[${str(preimageEnv[i] ?? "")}]`],
               ],
               ","
             )
@@ -337,14 +355,29 @@ function closeBody(close: SnippetClose): string[] {
     ? [
         "",
         "// Each co-signer's secret comes from its own variable; it signs only while weight is short.",
-        ...cosigners.map((sg, i) => `// ${cosignerEnv[i]} signs for ${sg.key}`),
-        ...(preAuth.length > 0 ? ["// Needs no signature: the pre-authorized transaction"] : []),
-        ...preAuth.map((sg) => `//   ${sg.key}`),
+        ...(preAuth.length > 0
+          ? ["// The account's pre-authorized transaction signer needs no signature."]
+          : []),
         ...(cosigners.length > 0
           ? [
               "const cosigners = [",
-              ...cosignerEnv.map((name) => `  process.env.${name},`),
-              "].flatMap((secret) => (secret ? [Keypair.fromSecret(secret)] : []));",
+              ...cosigners.flatMap((sg, i) =>
+                objectLines(
+                  "  ",
+                  "",
+                  [
+                    ["key", str(sg.key)],
+                    ["secret", `process.env[${str(cosignerEnv[i] ?? "")}]`],
+                  ],
+                  ","
+                )
+              ),
+              "].flatMap(({ key, secret }) => {",
+              "  if (!secret) return [];",
+              "  const keypair = Keypair.fromSecret(secret);",
+              "  if (keypair.publicKey() !== key) throw new Error(`That secret does not sign for ${key}`);",
+              "  return [keypair];",
+              "});",
               "const keys = [signer, ...cosigners];",
             ]
           : ["const keys = [signer];"]),
