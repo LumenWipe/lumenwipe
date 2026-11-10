@@ -100,7 +100,7 @@ interface PlaygroundState {
     messPlan: MessStepDef[];
   }) => void;
   setCurrentMessIndex: (index: number) => void;
-  dockNodes: (nodes: SceneNode[], txHash: string) => void;
+  dockNodes: (nodes: SceneNode[], txHash: string | null) => void;
   updateNode: (id: string, patch: Partial<SceneNode>) => void;
   destroyNodes: (ids: string[], txHash: string) => void;
   addLog: (entry: Omit<LogEntry, "id" | "at">) => void;

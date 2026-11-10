@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import type { IntentOperation } from "@lumenwipe/sdk";
 import { blockerCopy, errorCopy } from "@/lib/error-copy";
@@ -293,6 +294,33 @@ describe("allowances are revoked before the close", () => {
     await rtl.screen.findByText(/demo complete/, undefined, { timeout: 5000 });
     expect(routes.count(`GET ${ALLOWANCES}`)).toBe(0);
   });
+});
+
+test("a mess step that sent nothing is logged without a transaction link", async () => {
+  const hashOf = (stepId: string): string | null =>
+    stepId === "SETUP" ? null : createHash("sha256").update(stepId).digest("hex");
+  routes.handlers.set(`/api/session/${SESSION_ID}/mess`, async () => {
+    const { stepId } = JSON.parse(routes.bodies[routes.bodies.length - 1]!) as { stepId: string };
+    return { status: 200, body: { stepId, txHash: hashOf(stepId) } };
+  });
+  await dirtyAccount();
+
+  const log = usePlaygroundStore.getState().log;
+  const setup = log.find((e) => e.label === getMessPlanForMode("light")[0]!.label);
+  expect(setup).toMatchObject({ txHash: null, kind: "info" });
+  for (const step of getMessPlanForMode("light").slice(1)) {
+    expect(log.find((e) => e.label === step.label)).toMatchObject({
+      txHash: hashOf(step.id),
+      kind: "mess",
+    });
+    expect(txLink(hashOf(step.id)!)).toHaveLength(1);
+  }
+  expect(rtl.screen.queryAllByRole("link").map((a) => a.getAttribute("href"))).toEqual(
+    getMessPlanForMode("light")
+      .slice(1)
+      .map((s) => EXPLORER_TX + hashOf(s.id))
+      .reverse()
+  );
 });
 
 describe("the demolish runs round by round", () => {

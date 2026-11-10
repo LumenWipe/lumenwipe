@@ -178,6 +178,11 @@ async function runAndCheck(selection: ScenarioSelection): Promise<void> {
       }
     );
     expect(res.status).toBe(200);
+    // Funded exactly, a setup with no issuers to create has nothing to send: it completes with no
+    // transaction. Every other step answers with the hash of the one it sent.
+    const { txHash } = (await res.json()) as { txHash: string | null };
+    const sendsNothing = step.action.kind === "setup" && plan.ephemeralAssets.length === 0;
+    expect(txHash === null).toBe(sendsNothing);
   }
 
   const session = (await store.loadSession(sessionId))!;
@@ -257,8 +262,13 @@ function assertConsistent({
   helpers: string[];
   allowances: RecordedAllowance[];
 }): void {
-  // Every plan step posted exactly one transaction, in plan order.
-  expect(posted.map((p) => p.stepId)).toEqual(plan.steps.map((s) => s.id));
+  // Every plan step posted exactly one transaction, in plan order, except a setup with no issuers
+  // to create; and no transaction is empty, which the network rejects (tx_missing_operation).
+  const sending = plan.steps.filter(
+    (s) => s.action.kind !== "setup" || s.action.ephemeralAssets.length > 0
+  );
+  expect(posted.map((p) => p.stepId)).toEqual(sending.map((s) => s.id));
+  for (const { tx } of posted) expect(tx.operations.length).toBeGreaterThan(0);
   const nodes = (kind: string): string[] =>
     plan.steps.flatMap((s) => s.nodes.filter((n) => n.kind === kind).map((n) => n.id));
 

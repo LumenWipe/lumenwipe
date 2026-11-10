@@ -119,7 +119,8 @@ export interface MessDeps extends PlaygroundKeys {
   store: SessionStore;
   encrypt: (secret: string) => string;
   decrypt: (payload: string) => string;
-  executeMessStep: (step: MessStepDef, ctx: MessContext) => Promise<string>;
+  /** The step's transaction hash, or null when it had nothing to send. */
+  executeMessStep: (step: MessStepDef, ctx: MessContext) => Promise<string | null>;
 }
 
 export interface DemolishRouteDeps extends PlaygroundKeys {

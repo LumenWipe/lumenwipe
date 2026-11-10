@@ -248,13 +248,17 @@ export function usePlaygroundExecution(): UsePlaygroundExecutionResult {
         s.setCurrentMessIndex(i);
         setProgressStatus(step.label);
 
-        const { txHash } = await api<{ txHash: string }>(`/session/${session.sessionId}/mess`, {
-          method: "POST",
-          body: JSON.stringify({ stepId: step.id }),
-        });
+        const { txHash } = await api<{ txHash: string | null }>(
+          `/session/${session.sessionId}/mess`,
+          {
+            method: "POST",
+            body: JSON.stringify({ stepId: step.id }),
+          }
+        );
 
         const after = usePlaygroundStore.getState();
-        after.addLog({ label: step.label, txHash, kind: "mess" });
+        // A null hash: the step had nothing to send, so its line is not shown as on-chain activity.
+        after.addLog({ label: step.label, txHash, kind: txHash === null ? "info" : "mess" });
         if (step.nodes.length > 0) {
           after.dockNodes(
             step.nodes.map((node) => buildSceneNode(node, nodeSeq.current++)),
