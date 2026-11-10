@@ -2,6 +2,7 @@ import { test, expect } from "bun:test";
 import {
   Account,
   Address,
+  Asset,
   Keypair,
   Memo,
   Networks,
@@ -11,8 +12,10 @@ import {
   xdr,
 } from "@stellar/stellar-sdk";
 import {
+  REVOKE_ALLOWANCE_VERIFICATION_ERROR_CODES,
   RevokeAllowanceVerificationError,
   verifyRevokeAllowanceTransaction,
+  type RevokeAllowanceVerificationErrorCode,
 } from "@/lib/stellar/verify-revoke-allowance";
 
 const OWNER_KP = Keypair.random();
@@ -84,9 +87,12 @@ function buildRevokeXdr(
     args?: xdr.ScVal[];
     auth?: AuthShape;
     contract?: string;
+    functionName?: string;
     txSource?: string;
+    opSource?: string;
     memo?: Memo;
     extraOp?: boolean;
+    payment?: boolean;
     fee?: string;
     timeout?: number;
   } = {}
@@ -96,14 +102,17 @@ function buildRevokeXdr(
   const hostFunction = xdr.HostFunction.hostFunctionTypeInvokeContract(
     new xdr.InvokeContractArgs({
       contractAddress: new Address(contract).toScAddress(),
-      functionName: "approve",
+      functionName: options.functionName ?? "approve",
       args,
     })
   );
-  const op = Operation.invokeHostFunction({
-    func: hostFunction,
-    auth: [authEntry(contract, args, options.auth ?? {})],
-  });
+  const op = options.payment
+    ? Operation.payment({ destination: OTHER_ACCOUNT, asset: Asset.native(), amount: "1" })
+    : Operation.invokeHostFunction({
+        func: hostFunction,
+        auth: [authEntry(contract, args, options.auth ?? {})],
+        ...(options.opSource ? { source: options.opSource } : {}),
+      });
   const raw = new TransactionBuilder(new Account(options.txSource ?? OWNER, "100"), {
     fee: options.fee ?? "100",
     networkPassphrase: Networks.TESTNET,
@@ -123,6 +132,48 @@ function expectation(over: Partial<{ owner: string; token: string; spender: stri
   return { owner: OWNER, token: TOKEN, spender: SPENDER, ...over };
 }
 
+/** A muxed account as a contract argument: an address form the anchor cannot pin to anything. */
+function muxedArg(): xdr.ScVal {
+  return xdr.ScVal.scvAddress(
+    xdr.ScAddress.scAddressTypeMuxedAccount(
+      new xdr.MuxedEd25519Account({
+        id: xdr.Uint64.fromString("7"),
+        ed25519: OWNER_KP.rawPublicKey(),
+      })
+    )
+  );
+}
+
+const seen = new Set<RevokeAllowanceVerificationErrorCode>();
+
+/** Runs the anchor and returns what it threw, asserting it is a coded revocation refusal. */
+function refusal(
+  xdrBase64: string,
+  over: Parameters<typeof expectation>[0] = {},
+  now?: number
+): RevokeAllowanceVerificationError {
+  let thrown: unknown = null;
+  try {
+    verifyRevokeAllowanceTransaction(xdrBase64, Networks.TESTNET, expectation(over), now);
+  } catch (error) {
+    thrown = error;
+  }
+  expect(thrown).toBeInstanceOf(RevokeAllowanceVerificationError);
+  const error = thrown as RevokeAllowanceVerificationError;
+  expect(error.name).toBe("RevokeAllowanceVerificationError");
+  seen.add(error.code);
+  return error;
+}
+
+function expectRefusal(
+  error: RevokeAllowanceVerificationError,
+  code: RevokeAllowanceVerificationErrorCode,
+  message: string
+): void {
+  expect(error.code).toBe(code);
+  expect(error.message).toBe(message);
+}
+
 test("verifyRevokeAllowanceTransaction › accepts a plain, well-formed revocation", () => {
   const xdrBase64 = buildRevokeXdr();
   expect(() =>
@@ -131,59 +182,129 @@ test("verifyRevokeAllowanceTransaction › accepts a plain, well-formed revocati
 });
 
 test("verifyRevokeAllowanceTransaction › rejects a transaction sourced from a different account", () => {
-  const xdrBase64 = buildRevokeXdr({ txSource: OTHER_ACCOUNT });
-  expect(() =>
-    verifyRevokeAllowanceTransaction(xdrBase64, Networks.TESTNET, expectation())
-  ).toThrow(RevokeAllowanceVerificationError);
+  expectRefusal(
+    refusal(buildRevokeXdr({ txSource: OTHER_ACCOUNT })),
+    "revoke_transaction_source_mismatch",
+    "This transaction is not sourced from the account being revoked for."
+  );
 });
 
+test("verifyRevokeAllowanceTransaction › rejects an operation acting as another account", () => {
+  expectRefusal(
+    refusal(buildRevokeXdr({ opSource: OTHER_ACCOUNT })),
+    "revoke_operation_source_mismatch",
+    "The operation does not act as the account being revoked for."
+  );
+});
+
+test("verifyRevokeAllowanceTransaction › rejects an operation that invokes no contract", () => {
+  expectRefusal(
+    refusal(buildRevokeXdr({ payment: true })),
+    "revoke_not_invocation",
+    "This transaction does not invoke a contract."
+  );
+});
+
+test("verifyRevokeAllowanceTransaction › rejects a call to a function other than approve", () => {
+  expectRefusal(
+    refusal(buildRevokeXdr({ functionName: "transfer" })),
+    "revoke_function_not_approve",
+    "This transaction does not call approve, so it is not a revocation."
+  );
+});
+
+const ARGS_MISMATCH =
+  "This transaction does not revoke the expected spender's allowance on this token.";
+
 test("verifyRevokeAllowanceTransaction › rejects a non-zero amount - that is a grant, not a revocation", () => {
-  const xdrBase64 = buildRevokeXdr({ args: approveArgs({ amount: BigInt(5) }) });
-  expect(() =>
-    verifyRevokeAllowanceTransaction(xdrBase64, Networks.TESTNET, expectation())
-  ).toThrow(/revoke the expected spender/);
+  expectRefusal(
+    refusal(buildRevokeXdr({ args: approveArgs({ amount: BigInt(5) }) })),
+    "revoke_approve_args_mismatch",
+    ARGS_MISMATCH
+  );
 });
 
 test("verifyRevokeAllowanceTransaction › rejects a spender other than the one being revoked", () => {
-  const xdrBase64 = buildRevokeXdr({ args: approveArgs({ spender: OTHER_CONTRACT }) });
-  expect(() =>
-    verifyRevokeAllowanceTransaction(xdrBase64, Networks.TESTNET, expectation())
-  ).toThrow(/revoke the expected spender/);
+  expectRefusal(
+    refusal(buildRevokeXdr({ args: approveArgs({ spender: OTHER_CONTRACT }) })),
+    "revoke_approve_args_mismatch",
+    ARGS_MISMATCH
+  );
+});
+
+test("verifyRevokeAllowanceTransaction › rejects an approve call with the wrong argument count", () => {
+  expectRefusal(
+    refusal(buildRevokeXdr({ args: approveArgs().slice(0, 3) })),
+    "revoke_approve_args_mismatch",
+    ARGS_MISMATCH
+  );
 });
 
 test("verifyRevokeAllowanceTransaction › rejects a call against a different token contract", () => {
-  const xdrBase64 = buildRevokeXdr({ contract: OTHER_CONTRACT });
-  expect(() =>
-    verifyRevokeAllowanceTransaction(xdrBase64, Networks.TESTNET, expectation())
-  ).toThrow(/expected token contract/);
+  expectRefusal(
+    refusal(buildRevokeXdr({ contract: OTHER_CONTRACT })),
+    "revoke_token_mismatch",
+    "This transaction does not touch the expected token contract."
+  );
 });
 
 test("verifyRevokeAllowanceTransaction › rejects an authorization entry that authorizes a nested call", () => {
-  const xdrBase64 = buildRevokeXdr({ auth: { nested: true } });
-  expect(() =>
-    verifyRevokeAllowanceTransaction(xdrBase64, Networks.TESTNET, expectation())
-  ).toThrow(/nested call/);
+  expectRefusal(
+    refusal(buildRevokeXdr({ auth: { nested: true } })),
+    "revoke_auth_nested",
+    "This transaction authorizes a nested call, which a plain revocation never needs."
+  );
 });
 
 test("verifyRevokeAllowanceTransaction › rejects an authorization entry under another party's credentials", () => {
-  const xdrBase64 = buildRevokeXdr({ auth: { addressCredentials: true } });
-  expect(() =>
-    verifyRevokeAllowanceTransaction(xdrBase64, Networks.TESTNET, expectation())
-  ).toThrow(/more than the account's own/);
+  expectRefusal(
+    refusal(buildRevokeXdr({ auth: { addressCredentials: true } })),
+    "revoke_auth_beyond_self",
+    "This transaction authorizes more than the account's own revocation."
+  );
+});
+
+test("verifyRevokeAllowanceTransaction › rejects an address form that cannot be verified", () => {
+  const args = [...approveArgs().slice(0, 3), muxedArg()];
+  expectRefusal(
+    refusal(buildRevokeXdr({ args })),
+    "revoke_address_unsupported",
+    "This transaction references an address form that cannot be verified."
+  );
+});
+
+test("verifyRevokeAllowanceTransaction › rejects a reference to an account other than the owner or spender", () => {
+  const args = [...approveArgs().slice(0, 3), new Address(OTHER_ACCOUNT).toScVal()];
+  expectRefusal(
+    refusal(buildRevokeXdr({ args })),
+    "revoke_foreign_account",
+    "This transaction references an account other than the one being revoked for."
+  );
+});
+
+test("verifyRevokeAllowanceTransaction › rejects a reference to a contract other than the token or spender", () => {
+  const args = [...approveArgs().slice(0, 3), new Address(OTHER_CONTRACT).toScVal()];
+  expectRefusal(
+    refusal(buildRevokeXdr({ args })),
+    "revoke_foreign_contract",
+    "This transaction references a contract other than the token or the spender."
+  );
 });
 
 test("verifyRevokeAllowanceTransaction › rejects a transaction carrying a memo - a revocation never needs one", () => {
-  const xdrBase64 = buildRevokeXdr({ memo: Memo.text("hi") });
-  expect(() =>
-    verifyRevokeAllowanceTransaction(xdrBase64, Networks.TESTNET, expectation())
-  ).toThrow(/carries a memo/);
+  expectRefusal(
+    refusal(buildRevokeXdr({ memo: Memo.text("hi") })),
+    "revoke_memo_present",
+    "This transaction carries a memo, which a revocation never needs."
+  );
 });
 
 test("verifyRevokeAllowanceTransaction › rejects more than one operation", () => {
-  const xdrBase64 = buildRevokeXdr({ extraOp: true });
-  expect(() =>
-    verifyRevokeAllowanceTransaction(xdrBase64, Networks.TESTNET, expectation())
-  ).toThrow(/exactly one/);
+  expectRefusal(
+    refusal(buildRevokeXdr({ extraOp: true })),
+    "revoke_operation_count",
+    "This transaction has 2 operations; a revocation has exactly one."
+  );
 });
 
 test("verifyRevokeAllowanceTransaction › accepts a plain account as the spender, not just a contract", () => {
@@ -201,22 +322,36 @@ test("verifyRevokeAllowanceTransaction › accepts a plain account as the spende
 });
 
 test("verifyRevokeAllowanceTransaction › rejects a fee higher than a revocation should ever need", () => {
-  const xdrBase64 = buildRevokeXdr({ fee: "20000000" });
-  expect(() =>
-    verifyRevokeAllowanceTransaction(xdrBase64, Networks.TESTNET, expectation())
-  ).toThrow(/fee is higher/);
+  expectRefusal(
+    refusal(buildRevokeXdr({ fee: "20000000" })),
+    "revoke_fee_above_cap",
+    "This transaction's fee is higher than a revocation should ever need."
+  );
 });
 
 test("verifyRevokeAllowanceTransaction › rejects a revocation that never expires or stays valid past fifteen minutes", () => {
-  const run = (timeout: number, now: number) =>
+  const now = Math.floor(Date.now() / 1000) + 1;
+  expectRefusal(
+    refusal(buildRevokeXdr({ timeout: 0 }), {}, now),
+    "revoke_expiry_missing",
+    "This transaction never expires, so it could be submitted long after you approved it."
+  );
+  expectRefusal(
+    refusal(buildRevokeXdr({ timeout: 3600 }), {}, now),
+    "revoke_expiry_too_far",
+    "This transaction stays valid for far longer than a revocation needs."
+  );
+  expect(() =>
     verifyRevokeAllowanceTransaction(
-      buildRevokeXdr({ timeout }),
+      buildRevokeXdr({ timeout: 300 }),
       Networks.TESTNET,
       expectation(),
       now
-    );
-  const now = Math.floor(Date.now() / 1000) + 1;
-  expect(() => run(0, now)).toThrow(/never expires/);
-  expect(() => run(3600, now)).toThrow(/far longer/);
-  expect(() => run(300, now)).not.toThrow();
+    )
+  ).not.toThrow();
+});
+
+// Declared last: bun runs a file's tests in order, so every refusal above has been recorded.
+test("verifyRevokeAllowanceTransaction › every refusal code is produced by a test above", () => {
+  expect([...seen].sort()).toEqual([...REVOKE_ALLOWANCE_VERIFICATION_ERROR_CODES].sort());
 });
