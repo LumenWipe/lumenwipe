@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Keypair } from "@stellar/stellar-sdk";
+import shippedJson from "@/config/exchange-registry.json";
 import {
   REGISTRY_WARN_DAYS,
   RegistryValidationError,
@@ -78,6 +79,13 @@ describe("parseRegistry", () => {
 
   test("the shipped registry passes", () => {
     expect(servedRegistry().entries.length).toBeGreaterThan(0);
+  });
+
+  // The web and @lumenwipe/verify bundle this file and ignore "network", so a testnet-only entry
+  // would be live on mainnet in the browser until they learn the field.
+  test("no shipped entry is network-scoped while the web side does not read the field", () => {
+    const scoped = (shippedJson.entries as Record<string, unknown>[]).filter((e) => "network" in e);
+    expect(scoped).toEqual([]);
   });
 });
 

@@ -1,4 +1,4 @@
-import { ApiProperty } from "@nestjs/swagger";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import type { RegistryEntry, ServedRegistry } from "@/lib/exchange-registry";
 
 // Documentation-only (see close/dto/close-requests.dto.ts's header comment for why).
@@ -24,6 +24,13 @@ export class RegistryEntryDto implements RegistryEntry {
     enum: ["text", "id", "hash"],
   })
   memoType!: "text" | "id" | "hash";
+
+  @ApiPropertyOptional({
+    description:
+      "Present only when the entry applies on testnet alone. Absent means it applies on every network.",
+    enum: ["testnet"],
+  })
+  network?: "testnet";
 }
 
 export class ServedRegistryDto implements ServedRegistry {

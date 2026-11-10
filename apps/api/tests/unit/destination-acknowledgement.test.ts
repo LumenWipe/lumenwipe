@@ -16,11 +16,11 @@ const KNOWN_EXCHANGE = "GB5CLRWUCBQ6DFK2LR5ZMWJ7QCVEB3XKMPTQUYCDIYB4DRZJBEW6M26D
 const UNKNOWN = Keypair.random().publicKey();
 
 test("the known-exchange fixture is actually in the registry", () => {
-  expect(lookupExchange(KNOWN_EXCHANGE)).not.toBeNull();
+  expect(lookupExchange(KNOWN_EXCHANGE, "mainnet")).not.toBeNull();
 });
 
 test("an unrecognized destination requires an acknowledgement", () => {
-  const points = deriveDestinationDecisionPoints(UNKNOWN);
+  const points = deriveDestinationDecisionPoints(UNKNOWN, "mainnet");
   expect(points).toHaveLength(1);
   expect(points[0]!.id).toBe(destinationDecisionId(UNKNOWN));
   expect(points[0]!.type).toBe("confirmation");
@@ -31,18 +31,18 @@ test("an unrecognized destination requires an acknowledgement", () => {
 // The whole bug being fixed is that absence of data was read as a safe default. A default here
 // would reintroduce it through the front door.
 test("the acknowledgement has no default and cannot be silently resolved", () => {
-  const [point] = deriveDestinationDecisionPoints(UNKNOWN);
+  const [point] = deriveDestinationDecisionPoints(UNKNOWN, "mainnet");
   expect(point!.default).toBe("");
   expect(point!.options.map((o) => o.id)).toEqual([DESTINATION_ACK_CHOICE]);
   expect(point!.options[0]!.recommended).toBeUndefined();
 });
 
 test("a recognized exchange destination needs no acknowledgement", () => {
-  expect(deriveDestinationDecisionPoints(KNOWN_EXCHANGE)).toEqual([]);
+  expect(deriveDestinationDecisionPoints(KNOWN_EXCHANGE, "mainnet")).toEqual([]);
 });
 
 test("a null destination produces no decision", () => {
-  expect(deriveDestinationDecisionPoints(null)).toEqual([]);
+  expect(deriveDestinationDecisionPoints(null, "mainnet")).toEqual([]);
 });
 
 test("the correct answer acknowledges the destination", () => {

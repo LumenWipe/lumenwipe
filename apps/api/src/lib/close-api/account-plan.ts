@@ -195,7 +195,7 @@ export async function buildAccountPlan(
     network,
     tokenContractsFromAnswers(decisions)
   );
-  const mediatorRequired = destination ? requiresMediatorForAddress(destination) : false;
+  const mediatorRequired = destination ? requiresMediatorForAddress(destination, network) : false;
   const issuancePromise = assessIssuance(source, network);
   const exitPreflightPromise = exitPreflightFor(
     accountState,
@@ -357,7 +357,7 @@ export async function buildAccountPlan(
   );
   const leaveContractById = new Map(leavePoints.map((dp) => [dp.id, String(dp.subject.contract)]));
   const decisionPoints = [
-    ...deriveDestinationDecisionPoints(destination),
+    ...deriveDestinationDecisionPoints(destination, network),
     ...deriveDefiPositionsDecisionPoints(source, needsDefiPositionsAck),
     ...deriveDecisionPoints(
       accountState,

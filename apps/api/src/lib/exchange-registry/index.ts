@@ -1,4 +1,5 @@
 import registryJson from "@/config/exchange-registry.json";
+import type { Network } from "@/config/networks";
 import { isValidGAddress } from "@/lib/utils/validation";
 
 /**
@@ -17,6 +18,8 @@ export interface RegistryEntry {
   requiresMediator: boolean;
   requiresMemo: boolean;
   memoType: "text" | "id" | "hash";
+  /** Present only on an entry scoped to testnet. Absent means the entry applies on every network. */
+  network?: "testnet";
 }
 
 export class RegistryValidationError extends Error {
@@ -72,6 +75,11 @@ function parseEntry(raw: unknown, index: number): RegistryEntry {
       `${where} (${name}) has unknown memoType "${String(memoType)}"`
     );
   }
+  if ("network" in raw && raw.network !== "testnet") {
+    throw new RegistryValidationError(
+      `${where} (${name}) has unknown network ${JSON.stringify(raw.network)}: only "testnet" may be set`
+    );
+  }
   return {
     address,
     name,
@@ -79,6 +87,7 @@ function parseEntry(raw: unknown, index: number): RegistryEntry {
     requiresMediator,
     requiresMemo,
     memoType: memoType as RegistryEntry["memoType"],
+    ...(raw.network === "testnet" ? { network: "testnet" as const } : {}),
   };
 }
 
@@ -110,9 +119,32 @@ export function parseRegistry(raw: unknown): LoadedRegistry {
   };
 }
 
+export interface RegistryLookups {
+  lookup(address: string, network: Network): RegistryEntry | null;
+  requiresMediator(address: string, network: Network): boolean;
+}
+
+export function registryLookups(entries: readonly RegistryEntry[]): RegistryLookups {
+  const indexFor = (network: Network): ReadonlyMap<string, RegistryEntry> =>
+    new Map(
+      entries
+        .filter((e) => e.network === undefined || e.network === network)
+        .map((e) => [e.address, e])
+    );
+  const byNetwork: Readonly<Record<Network, ReadonlyMap<string, RegistryEntry>>> = {
+    mainnet: indexFor("mainnet"),
+    testnet: indexFor("testnet"),
+  };
+  const lookup = (address: string, network: Network): RegistryEntry | null =>
+    byNetwork[network].get(address) ?? null;
+  return {
+    lookup,
+    requiresMediator: (address, network) => lookup(address, network)?.requiresMediator ?? false,
+  };
+}
+
 const registry = parseRegistry(registryJson);
-const entries = registry.entries;
-const byAddress = new Map(entries.map((e) => [e.address, e]));
+const shipped = registryLookups(registry.entries);
 
 /** The registry as served: the entries plus the freshness a consumer can judge them by. */
 export interface ServedRegistry {
@@ -125,13 +157,13 @@ export interface ServedRegistry {
   entries: RegistryEntry[];
 }
 
-export function servedRegistry(): ServedRegistry {
+export function servedRegistry(from: LoadedRegistry = registry): ServedRegistry {
   return {
-    version: registry.version,
-    lastVerified: registry.lastVerified,
-    validUntil: registry.validUntil,
-    source: registry.source,
-    entries,
+    version: from.version,
+    lastVerified: from.lastVerified,
+    validUntil: from.validUntil,
+    source: from.source,
+    entries: from.entries,
   };
 }
 
@@ -163,24 +195,28 @@ export function registryExpiryWarning(now: Date = new Date()): string | null {
   return `The exchange registry expires on ${registry.validUntil} (${days} days left): re-verify every entry against the exchange's own deposit docs and restamp lastVerified/validUntil (CONTRIBUTING section 9).`;
 }
 
-export function lookupExchange(address: string): RegistryEntry | null {
-  return byAddress.get(address) ?? null;
+export function lookupExchange(address: string, network: Network): RegistryEntry | null {
+  return shipped.lookup(address, network);
 }
 
+/** Listed on any network. Only for redacting logs, which never decide how a close is built. */
 export function isCexAddress(address: string): boolean {
-  return byAddress.has(address);
+  return shipped.lookup(address, "mainnet") !== null || shipped.lookup(address, "testnet") !== null;
 }
 
-export function requiresMediatorForAddress(address: string): boolean {
-  return byAddress.get(address)?.requiresMediator ?? false;
+export function requiresMediatorForAddress(address: string, network: Network): boolean {
+  return shipped.requiresMediator(address, network);
 }
 
-export function getMemoRequirement(address: string): {
+export function getMemoRequirement(
+  address: string,
+  network: Network
+): {
   requiresMemo: boolean;
   memoType: "text" | "id" | "hash" | null;
   exchangeName: string | null;
 } {
-  const entry = byAddress.get(address);
+  const entry = shipped.lookup(address, network);
   if (!entry) return { requiresMemo: false, memoType: null, exchangeName: null };
   return {
     requiresMemo: entry.requiresMemo,

@@ -323,7 +323,7 @@ export async function buildCloseTransactions(
   // A switched-off path refuses here, before any read or round: an exchange close must never
   // clean an account up for a forward that cannot follow, and a paused exit, conversion or fee
   // sponsor must not leave the close half done.
-  const needsMediator = requiresMediatorForAddress(destinationAddress);
+  const needsMediator = requiresMediatorForAddress(destinationAddress, network);
   const conversionProviders = Object.fromEntries(
     Object.entries(conversion.floors ?? {}).map(([contract, f]) => [contract, f.provider])
   );
@@ -765,7 +765,7 @@ export async function buildCloseTransactions(
   );
 
   // A listed exchange's memo type is the registry's; any other destination's is the caller's.
-  const exchange = lookupExchange(destinationAddress);
+  const exchange = lookupExchange(destinationAddress, network);
   const memoType = exchange?.memoType ?? (memo ? (requestedMemoType ?? "text") : null);
 
   // Every sponsorship is revocable here: an unaffordable one refused the build above.
