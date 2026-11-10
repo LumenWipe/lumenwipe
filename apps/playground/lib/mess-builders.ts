@@ -23,6 +23,7 @@ import {
   type NativeBalance,
 } from "./horizon-submit";
 import { seedContractCall, type ContractCall } from "./soroban-seed";
+import { blendBorrowFits, readBlendReserve, type BlendReserveState } from "./blend-utilization";
 import { formatStroops, networkStroops, parseStroops } from "./stroops";
 import { standingLiquidityOps, type HorizonBalance, type HorizonOffer } from "./standing-liquidity";
 import type { SignerType } from "./session-store";
@@ -32,6 +33,8 @@ import {
   TIME_GATE_SECONDS,
   SPONSORED_OFFER,
   AQUARIUS,
+  BLEND,
+  BLEND_REQUEST,
   PINNED_ASSETS,
   SOROSWAP,
   isPersistentAsset,
@@ -149,6 +152,8 @@ export interface BuildSignSubmitDeps {
   /** Makes one contract call as `source` and waits for it (lib/soroban-seed.ts). */
   contractCall?: (source: Keypair, call: ContractCall) => Promise<{ txHash: string }>;
   now?: () => number;
+  /** Reads the pinned Blend pool's XLM reserve (lib/blend-utilization.ts). */
+  blendReserve?: () => Promise<BlendReserveState>;
 }
 
 /** A strict-receive route: the XLM it spends and the assets it crosses on the way. */
@@ -165,6 +170,18 @@ export class LiquidityUnavailableError extends Error {
   constructor(readonly asset: PinnedAssetId) {
     super(`No testnet route sells ${asset} for XLM within the scenario's ceiling`);
     this.name = "LiquidityUnavailableError";
+  }
+}
+
+/**
+ * The pinned Blend pool is lending too much of its XLM to lend the borrow variant any more. Thrown
+ * before anything is signed for the step, and shown to the visitor in plain language
+ * (lib/error-copy.ts).
+ */
+export class BlendUtilizationError extends Error {
+  constructor() {
+    super("The testnet Blend pool's XLM utilization is at or over its cap");
+    this.name = "BlendUtilizationError";
   }
 }
 
@@ -338,6 +355,37 @@ export function aquariusDepositCall(
       xdr.ScVal.scvVec([scU128(networkStroops(usdc)), scU128(networkStroops(maxXlm))]),
       scU128(BigInt(1)),
     ],
+  };
+}
+
+/** One Blend `submit` request: `{ address, amount, request_type }`, a map in key order. */
+const blendRequest = (requestType: number, xlm: string): xdr.ScVal =>
+  xdr.ScVal.scvMap([
+    new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("address"), val: scAddress(BLEND.reserve) }),
+    new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("amount"), val: scI128(networkStroops(xlm)) }),
+    new xdr.ScMapEntry({
+      key: xdr.ScVal.scvSymbol("request_type"),
+      val: xdr.ScVal.scvU32(requestType),
+    }),
+  ]);
+
+/**
+ * The pool call that opens the Blend position: `submit(from, spender, to, requests)` with the demo
+ * on all three sides, supplying `supplyXlm` of XLM as collateral and, when `borrowXlm` is given,
+ * borrowing that much XLM against it in the same call.
+ */
+export function blendSubmitCall(
+  demoPublic: string,
+  supplyXlm: string,
+  borrowXlm: string | null
+): ContractCall {
+  const demo = scAddress(demoPublic);
+  const requests = [blendRequest(BLEND_REQUEST.supplyCollateral, supplyXlm)];
+  if (borrowXlm !== null) requests.push(blendRequest(BLEND_REQUEST.borrow, borrowXlm));
+  return {
+    contract: BLEND.pool,
+    function: "submit",
+    args: [demo, demo, demo, xdr.ScVal.scvVec(requests)],
   };
 }
 
@@ -529,6 +577,19 @@ export const MESS_EXECUTORS: { [K in StepActionKind]: Executor<K> } = {
     const contractCall = deps.contractCall ?? seedContractCall;
     const deposit = aquariusDepositCall(ctx.demo.publicKey(), action.usdc, action.maxXlm);
     return (await contractCall(ctx.demo, deposit)).txHash;
+  },
+  blend_submit: async (action, ctx, _submit, deps) => {
+    // The borrow is refused here, before any signature, when the pool cannot lend it.
+    if (action.borrowXlm !== null) {
+      const reserve = await (deps.blendReserve ?? readBlendReserve)();
+      const supply = networkStroops(action.supplyXlm);
+      if (!blendBorrowFits(reserve, supply, networkStroops(action.borrowXlm))) {
+        throw new BlendUtilizationError();
+      }
+    }
+    const contractCall = deps.contractCall ?? seedContractCall;
+    const call = blendSubmitCall(ctx.demo.publicKey(), action.supplyXlm, action.borrowXlm);
+    return (await contractCall(ctx.demo, call)).txHash;
   },
   // Every signer is recorded before the transaction that adds it is sent. The thresholds rise in
   // the same transaction, which the master key alone still authorizes: signatures are checked

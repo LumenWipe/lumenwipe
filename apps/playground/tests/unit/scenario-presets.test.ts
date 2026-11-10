@@ -24,12 +24,23 @@ describe("presets", () => {
   test("a feature set with no scenario here has no preset", () => {
     expect(presetSelection("api")).toBeNull();
     // The protocol set's scenarios, switched off, leave it with none.
-    expect(presetSelection("protocol", off("soroswap-lp", "aquarius-lp"))).toBeNull();
-    expect(ids(presetSelection("protocol", off("soroswap-lp"))!)).toEqual(["aquarius-lp"]);
+    expect(
+      presetSelection("protocol", off("soroswap-lp", "aquarius-lp", "blend-supply"))
+    ).toBeNull();
+    expect(ids(presetSelection("protocol", off("soroswap-lp", "blend-supply"))!)).toEqual([
+      "aquarius-lp",
+    ]);
   });
 
   test("the protocol preset is every protocol scenario testnet can run", () => {
-    expect(ids(presetSelection("protocol")!)).toEqual(["soroswap-lp", "aquarius-lp"]);
+    expect(ids(presetSelection("protocol")!)).toEqual([
+      "soroswap-lp",
+      "aquarius-lp",
+      "blend-supply",
+    ]);
+    // Each at its defaults: Blend supplies only, so the preset never depends on the pool lending.
+    const blend = presetSelection("protocol")!.scenarios.find((s) => s.id === "blend-supply");
+    expect(blend?.params).toEqual({ variant: 0 });
   });
 
   test("a preset leaves out what this deployment switched off", () => {

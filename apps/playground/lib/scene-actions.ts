@@ -1,5 +1,5 @@
 import type { IntentOperation } from "@lumenwipe/sdk";
-import { AQUARIUS, pinnedAssetOf, SOROSWAP } from "./scenarios";
+import { AQUARIUS, BLEND, BLEND_REQUEST, pinnedAssetOf, SOROSWAP } from "./scenarios";
 
 /** What a confirmed close operation does to the orbital scene. */
 export type SceneAction =
@@ -26,7 +26,30 @@ const trustlineNodeId = (asset: string): string =>
 const POSITION_NODE_BY_EXIT: ReadonlyMap<string, { fn: string; nodeId: string }> = new Map([
   [SOROSWAP.router, { fn: "remove_liquidity", nodeId: "lp:soroswap" }],
   [AQUARIUS.pool, { fn: "withdraw", nodeId: "lp:aquarius" }],
+  [BLEND.pool, { fn: "submit", nodeId: "lend:blend" }],
 ]);
+
+/**
+ * Whether a Blend `submit` only repays: the exit's first step when the demo borrowed, which leaves
+ * the collateral in place. The intent renders the requests as JSON (`args[3]`).
+ */
+function onlyRepays(args: readonly string[]): boolean {
+  try {
+    const requests: unknown = JSON.parse(args[3] ?? "");
+    return (
+      Array.isArray(requests) &&
+      requests.length > 0 &&
+      requests.every(
+        (r) =>
+          typeof r === "object" &&
+          r !== null &&
+          (r as { request_type?: unknown }).request_type === BLEND_REQUEST.repay
+      )
+    );
+  } catch {
+    return false;
+  }
+}
 
 const destroyIfLive = (live: readonly LiveNode[], nodeId: string): SceneAction | null =>
   live.some((n) => n.id === nodeId) ? { type: "destroy", nodeIds: [nodeId] } : null;
@@ -70,7 +93,10 @@ export const SCENE_HANDLERS: { [T in OperationType]: Handler<T> } = {
   revoke_sponsorship: noVisual,
   invoke_host_function: (op, live) => {
     const exit = POSITION_NODE_BY_EXIT.get(op.contract);
-    return exit && exit.fn === op.function ? destroyIfLive(live, exit.nodeId) : null;
+    if (!exit || exit.fn !== op.function) return null;
+    // A repay leaves the collateral, so the position stays; the withdrawal after it empties it.
+    if (op.contract === BLEND.pool && onlyRepays(op.args)) return pulseIfLive(live, exit.nodeId);
+    return destroyIfLive(live, exit.nodeId);
   },
   unknown: noVisual,
 };

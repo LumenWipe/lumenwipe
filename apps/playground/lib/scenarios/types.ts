@@ -28,6 +28,7 @@ export const MESS_STEP_IDS = [
   "BUY_CIRCLE_USDC",
   "SOROSWAP_DEPOSIT",
   "AQUARIUS_DEPOSIT",
+  "BLEND_SUBMIT",
 ] as const;
 
 export type MessStepId = (typeof MESS_STEP_IDS)[number];
@@ -73,7 +74,13 @@ export type StepAction =
   /** Pairs the demo's USDC with XLM in the pinned Soroswap pair, through the router. */
   | { kind: "soroswap_deposit"; usdc: string; maxXlm: string }
   /** Pairs the demo's USDC with XLM in the pinned Aquarius pool, through the router. */
-  | { kind: "aquarius_deposit"; usdc: string; maxXlm: string };
+  | { kind: "aquarius_deposit"; usdc: string; maxXlm: string }
+  /** Supplies XLM to the pinned Blend pool as collateral and, in the borrow variant, borrows XLM
+   *  against it, in one `submit`. `borrowXlm` is null when nothing is borrowed. */
+  | { kind: "blend_submit"; variant: BlendVariant; supplyXlm: string; borrowXlm: string | null };
+
+/** supply: XLM supplied as collateral. supply_and_borrow: the same, with XLM borrowed against it. */
+export type BlendVariant = "supply" | "supply_and_borrow";
 
 /**
  * two_of_three: two co-signers beside the master key, any two of the three sign. hash_x: the
@@ -259,7 +266,8 @@ export type ScenarioId =
   | "sponsored-reserves"
   | "multisig"
   | "soroswap-lp"
-  | "aquarius-lp";
+  | "aquarius-lp"
+  | "blend-supply";
 
 export interface OrderedStep {
   /** Steps from every scenario are sorted by this key into one plan. */

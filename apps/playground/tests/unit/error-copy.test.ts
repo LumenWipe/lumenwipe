@@ -11,6 +11,7 @@ const CODES = [
   "rate_limited",
   "tx_failed",
   "testnet_liquidity_unavailable",
+  "testnet_lending_unavailable",
   "demolish_failed",
   "demolish_outcome_unknown",
   "demolish_decision_unanswerable",

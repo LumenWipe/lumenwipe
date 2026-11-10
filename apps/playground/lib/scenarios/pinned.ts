@@ -97,6 +97,35 @@ export const AQUARIUS_SEED = {
   depositMaxXlm: "5",
 } as const;
 
+/**
+ * Blend V2 on testnet: the pool the registry vouches for (apps/api/src/config/
+ * contract-registry.json, `blend` / `pool`, code `a41fc53d…`), the official TestnetV2 pool.
+ * `reserve` is its reserve 0, XLM, the only asset the scenario supplies or borrows: collateral
+ * and liability factors 0.9, and no emissions on either of its token ids (0 and 1), so the exit
+ * claims nothing before it leaves. The pool is active (status 0) with up to eight positions and no
+ * minimum collateral.
+ */
+export const BLEND = {
+  pool: "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+  reserve: XLM_SAC,
+} as const;
+
+/** Blend's `submit` request types the scenario and its exit use (the pool's `RequestType`). */
+export const BLEND_REQUEST = {
+  supplyCollateral: 2,
+  withdrawCollateral: 3,
+  borrow: 4,
+  repay: 5,
+} as const;
+
+/** What the Blend scenario supplies, and borrows against it in its borrow variant. */
+export const BLEND_SEED = {
+  /** XLM supplied as collateral, locked until the exit withdraws it. */
+  supplyXlm: "20",
+  /** XLM borrowed against it, well inside the 0.9 factors; the exit repays it first. */
+  borrowXlm: "2",
+} as const;
+
 /** Protocol scenarios testnet cannot run, each with the reason, shown beside the ones it can. */
 export const TESTNET_UNAVAILABLE: readonly {
   featureSet: FeatureSetId;

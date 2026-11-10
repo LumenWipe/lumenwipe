@@ -31,6 +31,7 @@ import {
   type PlaygroundSession,
   type SessionStore,
 } from "@/lib/session-store";
+import { FakeBlendLedger } from "./blend-fixtures";
 import { FakeMultisigLedger } from "./multisig-fixtures";
 import { fakeClock, memoryStore, newSessionData, type FakeClock } from "./session-fixtures";
 
@@ -617,6 +618,53 @@ describe("an abandoned multi-signature session", () => {
       expect(outsideRound).toEqual([]);
       expect(await store.loadSession(session.id)).toBeNull();
       expectNoSecretLogged(secrets);
+    }
+  );
+});
+
+describe("an abandoned Blend session", () => {
+  test.each([
+    [1, "supply and borrow", [5, 3]],
+    [0, "supply", [3]],
+  ] as const)(
+    "variant %d, %s: the close leaves the pool through the same demolish path, then merges",
+    async (variant, _label, exits) => {
+      const store = memoryStore();
+      const demo = Keypair.random();
+      const session = await store.createSession({
+        ...newSessionData(),
+        demoPublic: demo.publicKey(),
+        encDemoSecret: encrypt(demo.secret()),
+        selection: { scenarios: [{ id: "blend-supply", params: { variant } }] },
+        completedMessSteps: ["SETUP", "BLEND_SUBMIT"],
+      });
+      const ledger = new FakeBlendLedger(demo.publicKey(), mm.publicKey(), variant === 1);
+      const net = network(demo);
+      const round = demolishRoundDeps({
+        mm: () => mm,
+        issuer: () => issuer,
+        api: () => ({ apiUrl: "http://localhost:3001", apiKey: "unused" }),
+        decrypt: (payload) => Buffer.from(payload.slice(ENC.length), "base64").toString("utf8"),
+        runDemolish: async (opts) => {
+          const result = await runCloseRound(ledger, ledger, opts, async () => {});
+          if (!ledger.open) net.live.delete(demo.publicKey());
+          return result;
+        },
+      })!;
+
+      const summary = await runReaper(reaper(store, net, { round }));
+
+      expect(counts(summary)).toEqual({ reaped: 1, kept: 0, young: 0, pruned: 0 });
+      // Every exit passed both of the playground's checks: the repay first, while the demo still
+      // owed, then the collateral's withdrawal, each in a transaction of its own, then the merge.
+      expect(ledger.exits).toEqual([...exits]);
+      expect(ledger.submitted).toEqual([
+        ...exits.map(() => ["invokeHostFunction"]),
+        ["accountMerge"],
+      ]);
+      expect(ledger.open).toBe(false);
+      expect(await store.loadSession(session.id)).toBeNull();
+      expectNoSecretLogged([demo.secret()]);
     }
   );
 });

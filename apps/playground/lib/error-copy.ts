@@ -17,6 +17,8 @@ const ERROR_COPY = new Map<string, string>(
     tx_failed: "A setup transaction did not go through on the test network. Please try again.",
     testnet_liquidity_unavailable:
       "The test network's exchange cannot sell the USDC this demo pairs in a pool right now, so nothing was signed for that step. Try again later, or start a demo without the protocol scenario.",
+    testnet_lending_unavailable:
+      "The test network's Blend pool has lent out nearly all of its XLM, so it cannot lend this demo any right now, and nothing was signed for that step. Try again later, or pick the supply-only Blend position.",
     demolish_failed: "The close did not finish. Resume to carry on from where it stopped.",
     demolish_outcome_unknown:
       "The last close transaction is not confirmed yet. Wait a moment, then resume to check it.",

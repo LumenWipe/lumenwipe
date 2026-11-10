@@ -36,8 +36,8 @@ const subsets = (count: number, from: number, size: number): number[][] =>
 
 /** Largest selections (eight scenarios at their maximum) that fit every rule and cap, and those
  *  the XLM cap refuses. Pinned so a cost change shows up here. */
-const FITTED_AT_MAX = 135;
-const OVER_XLM_AT_MAX = 100;
+const FITTED_AT_MAX = 141;
+const OVER_XLM_AT_MAX = 480;
 
 function messageOf(selection: ScenarioSelection, registry?: readonly ScenarioDefinition[]): string {
   const result = validateSelection(selection, { registry });
@@ -168,7 +168,7 @@ describe("the safety caps", () => {
     );
     // Leaving out a token holding leaves five stale offers without the tokens they trade, or
     // without any token at all, which is refused for that reason. The only cap any of them reaches
-    // is the XLM one, and only with a protocol pool beside the costliest classic scenarios.
+    // is the XLM one, and only with a protocol scenario beside the costliest classic ones.
     let fitted = 0;
     let overXlm = 0;
     for (const kept of subsets(atMax.length, 0, MAX_SCENARIOS)) {
@@ -177,7 +177,9 @@ describe("the safety caps", () => {
       if (result.ok) fitted++;
       else if (result.message.startsWith("This selection needs about")) {
         overXlm++;
-        expect(chosen.some((c) => c.id === "soroswap-lp" || c.id === "aquarius-lp")).toBe(true);
+        expect(
+          chosen.some((c) => ["soroswap-lp", "aquarius-lp", "blend-supply"].includes(c.id))
+        ).toBe(true);
         expect(result.message).toEndWith(`a demo can use at most ${MAX_SESSION_XLM}.`);
       } else expect(result.message).toStartWith("Stale DEX offers ");
     }
