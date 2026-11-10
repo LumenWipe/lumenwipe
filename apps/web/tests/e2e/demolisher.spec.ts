@@ -1,7 +1,12 @@
 import { test, expect, type Page } from "@playwright/test";
 import { Keypair } from "@stellar/stellar-sdk";
 import { confirmDestinationControl } from "./helpers/destination";
-import { enterSourceAddress, openTestnetHome, TESTNET_STEP_TIMEOUT } from "./helpers/flow";
+import {
+  enterSourceAddress,
+  openTestnetHome,
+  TESTNET_ANALYZE_TIMEOUT,
+  TESTNET_STEP_TIMEOUT,
+} from "./helpers/flow";
 
 const FRIENDBOT = "https://friendbot.stellar.org";
 
@@ -30,7 +35,7 @@ async function analyzeFreshAccountToDestinationStep(page: Page): Promise<string>
 
   // The destination step is present once assets are resolved.
   await expect(page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/)).toBeVisible({
-    timeout: 30_000,
+    timeout: TESTNET_ANALYZE_TIMEOUT,
   });
 
   return source.publicKey();

@@ -1,7 +1,13 @@
 import { test, expect, type Page } from "@playwright/test";
 import { Account, Keypair, Networks, Operation, TransactionBuilder } from "@stellar/stellar-sdk";
 import { confirmDestinationControl } from "./helpers/destination";
-import { enterSourceAddress, openTestnetHome, TESTNET_STEP_TIMEOUT } from "./helpers/flow";
+import {
+  enterSourceAddress,
+  openTestnetHome,
+  TESTNET_ANALYZE_TIMEOUT,
+  TESTNET_PLAN_TIMEOUT,
+  TESTNET_STEP_TIMEOUT,
+} from "./helpers/flow";
 
 // Regression coverage for issue #73: "Review the full plan" must land on the whole-plan review
 // gate (/review), not skip straight into /execute, and nothing may be persisted to a
@@ -101,11 +107,11 @@ async function reachReviewWithoutConfirming(
   const beginButton = page.getByRole("button", { name: /Review the full plan/i });
   // The destination field is on screen from the start; the button unlocks once every item is decided.
   await expect(page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/)).toBeVisible({
-    timeout: 30_000,
+    timeout: TESTNET_ANALYZE_TIMEOUT,
   });
   await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(destination);
   await confirmDestinationControl(page);
-  await expect(beginButton).toBeEnabled({ timeout: TESTNET_STEP_TIMEOUT });
+  await expect(beginButton).toBeEnabled({ timeout: TESTNET_PLAN_TIMEOUT });
   await beginButton.click();
 }
 
@@ -122,7 +128,7 @@ test("begin execution lands on the review gate, not directly on execute", async 
 
   await reachReviewWithoutConfirming(page, source, destination.publicKey());
 
-  await expect(page).toHaveURL(/\/testnet\/review/, { timeout: TESTNET_STEP_TIMEOUT });
+  await expect(page).toHaveURL(/\/testnet\/review/, { timeout: TESTNET_PLAN_TIMEOUT });
   await expect(page.getByRole("heading", { name: /Review the full plan/i })).toBeVisible({
     timeout: TESTNET_STEP_TIMEOUT,
   });
@@ -165,7 +171,7 @@ test("back to analyze preserves the entered destination without discarding it", 
   await submitOps(source, [Operation.manageData({ name: "lw-e2e-review-back", value: "1" })]);
 
   await reachReviewWithoutConfirming(page, source, destination.publicKey());
-  await expect(page).toHaveURL(/\/testnet\/review/, { timeout: TESTNET_STEP_TIMEOUT });
+  await expect(page).toHaveURL(/\/testnet\/review/, { timeout: TESTNET_PLAN_TIMEOUT });
 
   await page.getByRole("button", { name: /Back to analyze/i }).click();
 
@@ -173,7 +179,7 @@ test("back to analyze preserves the entered destination without discarding it", 
   // /analyze re-runs the account analysis on mount, so give it the same headroom the other
   // specs give the initial visit before asserting the pre-filled destination.
   const destinationInput = page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/);
-  await expect(destinationInput).toBeVisible({ timeout: 30_000 });
+  await expect(destinationInput).toBeVisible({ timeout: TESTNET_ANALYZE_TIMEOUT });
   await expect(destinationInput).toHaveValue(destination.publicKey());
 });
 
@@ -191,7 +197,7 @@ test("a reload on the review gate rebuilds the plan through analyze with the cho
   await waitUntilDataEntryIndexed(source.publicKey(), "lw-e2e-review-reload");
 
   await reachReviewWithoutConfirming(page, source, destination.publicKey());
-  await expect(page).toHaveURL(/\/testnet\/review/, { timeout: TESTNET_STEP_TIMEOUT });
+  await expect(page).toHaveURL(/\/testnet\/review/, { timeout: TESTNET_PLAN_TIMEOUT });
 
   await page.reload();
 
@@ -207,9 +213,9 @@ test("a reload on the review gate rebuilds the plan through analyze with the cho
   // The restored acknowledgement is for this very destination, so the plan can be reviewed again
   // without asking for it twice - and only through the review gate.
   const beginButton = page.getByRole("button", { name: /Review the full plan/i });
-  await expect(beginButton).toBeEnabled({ timeout: TESTNET_STEP_TIMEOUT });
+  await expect(beginButton).toBeEnabled({ timeout: TESTNET_PLAN_TIMEOUT });
   await beginButton.click();
-  await expect(page).toHaveURL(/\/testnet\/review/, { timeout: TESTNET_STEP_TIMEOUT });
+  await expect(page).toHaveURL(/\/testnet\/review/, { timeout: TESTNET_PLAN_TIMEOUT });
   await expect(page.getByRole("heading", { name: /Review the full plan/i })).toBeVisible({
     timeout: TESTNET_STEP_TIMEOUT,
   });
@@ -227,7 +233,7 @@ test("no resumable session is persisted while sitting on the review gate", async
   await submitOps(source, [Operation.manageData({ name: "lw-e2e-review-2", value: "1" })]);
 
   await reachReviewWithoutConfirming(page, source, destination.publicKey());
-  await expect(page).toHaveURL(/\/testnet\/review/, { timeout: TESTNET_STEP_TIMEOUT });
+  await expect(page).toHaveURL(/\/testnet\/review/, { timeout: TESTNET_PLAN_TIMEOUT });
 
   // Simulate closing the tab before confirming, then reopening at home - where the
   // resumable-session recovery banner actually renders (not on /analyze).

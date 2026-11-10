@@ -12,7 +12,9 @@ import {
 import {
   enterDestinationAndBegin,
   enterSourceAndAnalyze,
+  TESTNET_PLAN_TIMEOUT,
   TESTNET_STEP_TIMEOUT,
+  untilDoneWithOneRetry,
 } from "./helpers/flow";
 import { connectStubWallet, installWalletStub } from "./helpers/wallet-stub";
 
@@ -99,13 +101,23 @@ test("the step list, progress line and confirmed hash follow each transaction of
   await multiTransactionClose(page, owner);
 
   await page.getByRole("button", { name: /Sign & execute close/i }).click();
-  await wallet.waitForSignRequest(TESTNET_STEP_TIMEOUT);
+  await wallet.waitForSignRequest(TESTNET_PLAN_TIMEOUT);
   // The first request was answered when it arrived; the next one is left open.
   wallet.set({ sign: { kind: "never" } });
 
   const list = stepList(page);
   await expect(list.locator("li").first()).toContainText("Confirmed", { timeout: 60_000 });
-  await expect.poll(() => wallet.signRequests.length, { timeout: 60_000 }).toBe(2);
+  // The second round is built only now, through the API. A build the service refuses for the
+  // moment (a 503 while its data provider is throttled) stops the close with "temporarily
+  // unavailable" and a Retry, which re-reads the account and builds the round again.
+  const refusal = page.getByRole("alert").filter({ hasText: /temporarily unavailable/ });
+  await untilDoneWithOneRetry({
+    step: "second transaction's sign request",
+    done: () => wallet.signRequests.length === 2,
+    refusal,
+    retry: page.getByRole("button", { name: "Retry", exact: true }),
+    timeout: TESTNET_PLAN_TIMEOUT,
+  });
 
   await expect(
     page

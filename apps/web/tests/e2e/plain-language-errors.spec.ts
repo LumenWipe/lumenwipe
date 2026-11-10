@@ -17,6 +17,7 @@ import {
   enterSourceAndAnalyze,
   expectSigningPanel,
   openTestnetHome,
+  TESTNET_ANALYZE_TIMEOUT,
   TESTNET_STEP_TIMEOUT,
 } from "./helpers/flow";
 import { connectStubWallet, installWalletStub } from "./helpers/wallet-stub";
@@ -114,10 +115,12 @@ let source: Keypair;
 let destination: Keypair;
 
 test.beforeAll(async () => {
+  // Friendbot plus the wait for Horizon to index each account takes most of the 30 s default on
+  // a slow testnet morning, and the two accounts are independent, so they are funded together.
+  test.setTimeout(90_000);
   source = Keypair.random();
   destination = Keypair.random();
-  await fund(source.publicKey());
-  await fund(destination.publicKey());
+  await Promise.all([fund(source.publicKey()), fund(destination.publicKey())]);
 });
 
 test.describe("analyze", () => {
@@ -158,7 +161,7 @@ test.describe("review", () => {
     const begin = page.getByRole("button", { name: /Review the full plan/i });
     // The destination field is on screen from the start; the button unlocks once every item is decided.
     await expect(page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/)).toBeVisible({
-      timeout: TESTNET_STEP_TIMEOUT,
+      timeout: TESTNET_ANALYZE_TIMEOUT,
     });
     await page.getByPlaceholder(/G\.\.\. \(where to send your XLM\)/).fill(destination.publicKey());
     await page.getByRole("checkbox", { name: /wallet I control/i }).check();
