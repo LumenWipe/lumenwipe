@@ -8145,6 +8145,13 @@
               "id",
               "hash"
             ]
+          },
+          "network": {
+            "type": "string",
+            "description": "Present only when the entry applies on testnet alone. Absent means it applies on every network.",
+            "enum": [
+              "testnet"
+            ]
           }
         },
         "required": [

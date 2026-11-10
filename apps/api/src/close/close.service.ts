@@ -186,7 +186,7 @@ export class CloseService {
     const normalized = normalizeRequestMemo(body.memo);
     if (!("memo" in normalized)) fail(normalized.code, normalized.message, 422);
     const { memo } = normalized;
-    const exchange = this.registry.lookup(destination);
+    const exchange = this.registry.lookup(destination, network);
     const memoProblem =
       requestMemoTypeProblem(memo, requestedMemoType, exchange) ??
       requestMemoProblem(memo, memoRuleFor(exchange, false, requestedMemoType));

@@ -118,7 +118,7 @@ export class MediatorSigningService {
     if (!isValidGAddress(transfer.destination)) {
       fail("transaction_structure_not_allowed", "Transaction structure not allowed", 400);
     }
-    const exchange = this.registry.lookup(transfer.destination);
+    const exchange = this.registry.lookup(transfer.destination, network);
     const requiredOnChain = needsLedgerMemoRead(exchange, envelopeMemoSatisfiesAccountRule(tx.memo))
       ? await this.memoRequiredOnChain(transfer.destination, network)
       : false;
@@ -162,7 +162,7 @@ export class MediatorSigningService {
     const available = this.keys.keypair(network) !== null;
     const registryFresh = this.registry.isFresh(this.clock());
 
-    const exchange = this.registry.lookup(address);
+    const exchange = this.registry.lookup(address, network);
     if (exchange) {
       return {
         requiresMediator: exchange.requiresMediator,

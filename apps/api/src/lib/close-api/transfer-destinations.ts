@@ -187,7 +187,7 @@ export async function validateTransferDestinations(
       entries
         .filter(([asset, address]) => {
           if (address === sourceAddress) return false;
-          if (lookupExchange(address) !== null) return false;
+          if (lookupExchange(address, network) !== null) return false;
           return asset.split(":")[1] !== address;
         })
         .map(([, address]) => address)
@@ -222,8 +222,8 @@ export async function validateTransferDestinations(
           code: "destination_is_source",
           message: `The ${short} token balance cannot be sent to the account being closed. Choose a different account, or leave the balance on record.`,
         });
-      } else if (lookupExchange(destination) !== null) {
-        const exchange = lookupExchange(destination)!;
+      } else if (lookupExchange(destination, network) !== null) {
+        const exchange = lookupExchange(destination, network)!;
         problems.push({
           asset,
           destination,
@@ -263,7 +263,7 @@ export async function validateTransferDestinations(
     // memo, so a token payment to a deposit address is credited to nobody and cannot be
     // reversed. Absence from the registry proves nothing, but presence in it is proof enough to
     // refuse: this is the one case we can recognize with certainty.
-    const exchange = lookupExchange(destination);
+    const exchange = lookupExchange(destination, network);
     if (exchange !== null) {
       problems.push({
         asset,

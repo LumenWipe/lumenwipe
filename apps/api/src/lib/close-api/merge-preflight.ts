@@ -114,7 +114,7 @@ export async function assessMergePreflight(
 ): Promise<MergePreflightProblem[]> {
   const problems: MergePreflightProblem[] = [];
   const viaMediator =
-    destination !== null && lookupExchange(destination)?.requiresMediator === true;
+    destination !== null && lookupExchange(destination, network)?.requiresMediator === true;
 
   let latest: number;
   try {
@@ -148,7 +148,7 @@ export async function assessMergePreflight(
       message:
         "This address belongs to LumenWipe's fee sponsor and cannot be used as a destination. Choose a wallet you control.",
     });
-  } else if (lookupExchange(destination) === null) {
+  } else if (lookupExchange(destination, network) === null) {
     let exists: boolean;
     try {
       exists = await deps.accountExists(destination, network);

@@ -24,6 +24,7 @@ import {
 } from "@/lib/stellar/claim-reserve";
 import { StrKey } from "@stellar/stellar-sdk";
 import type { IssuanceSummary } from "@/lib/close-api/issuance-preflight";
+import type { Network } from "@/config/networks";
 import { lookupExchange } from "@/lib/exchange-registry";
 import { assetsArrivingFromExits } from "@/lib/close-api/exit-payouts";
 import {
@@ -62,8 +63,11 @@ export const DESTINATION_ACK_CHOICE = "i_control_this_address";
 // We cannot tell an exchange address from a personal one, so the only party who can resolve this
 // is the caller, who knows where the address came from. No default: like a claimable balance the
 // account cannot yet claim, this is never silently resolved.
-export function deriveDestinationDecisionPoints(destination: string | null): DecisionPoint[] {
-  if (!destination || lookupExchange(destination) !== null) return [];
+export function deriveDestinationDecisionPoints(
+  destination: string | null,
+  network: Network
+): DecisionPoint[] {
+  if (!destination || lookupExchange(destination, network) !== null) return [];
   return [
     {
       id: destinationDecisionId(destination),
