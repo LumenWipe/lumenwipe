@@ -438,20 +438,41 @@ function* customConfigs(): Generator<PlaygroundCustomConfig> {
   }
 }
 
-/** Every subset of the registry, each with every parameter at its minimum and then its maximum. */
+/** The scenarios at the given positions of the registry, each parameter at its minimum or maximum. */
+function selectionOf(mask: number, end: "min" | "max"): ScenarioSelection {
+  return {
+    scenarios: SCENARIOS.filter((_, i) => mask & (1 << i)).map((def) => ({
+      id: def.id,
+      params: Object.fromEntries(
+        Object.entries(def.params).map(([name, spec]) => [name, spec[end]])
+      ),
+    })),
+  };
+}
+
+const popcount = (mask: number): number => {
+  let n = 0;
+  for (let m = mask; m; m &= m - 1) n++;
+  return n;
+};
+
+/**
+ * Every accepted single scenario, pair and triple, and every largest accepted selection (one no
+ * other scenario can join), each with every parameter at its minimum and then its maximum. Only
+ * validation sweeps every subset; the cases actually run grow polynomially with the registry.
+ */
 function* registrySelections(): Generator<ScenarioSelection> {
-  for (let mask = 1; mask < 1 << SCENARIOS.length; mask++) {
-    const picked = SCENARIOS.filter((_, i) => mask & (1 << i));
-    for (const end of ["min", "max"] as const) {
-      const selection: ScenarioSelection = {
-        scenarios: picked.map((def) => ({
-          id: def.id,
-          params: Object.fromEntries(
-            Object.entries(def.params).map(([name, spec]) => [name, spec[end]])
-          ),
-        })),
-      };
-      if (validateSelection(selection).ok) yield selection;
+  const all = 1 << SCENARIOS.length;
+  for (const end of ["min", "max"] as const) {
+    const valid = new Uint8Array(all);
+    for (let mask = 1; mask < all; mask++) {
+      valid[mask] = validateSelection(selectionOf(mask, end)).ok ? 1 : 0;
+    }
+    for (let mask = 1; mask < all; mask++) {
+      if (!valid[mask]) continue;
+      const size = popcount(mask);
+      const largest = SCENARIOS.every((_, i) => mask & (1 << i) || !valid[mask | (1 << i)]);
+      if (size <= 3 || largest) yield selectionOf(mask, end);
     }
   }
 }
@@ -497,18 +518,14 @@ describe("the plan, the chain and the close expectation agree", () => {
     }
   });
 
-  test("every subset of the registry at its smallest and largest parameters", async () => {
+  test("every pair and triple of scenarios and every largest accepted selection, at their smallest and largest parameters", async () => {
     let cases = 0;
     for (const selection of registrySelections()) {
       await runAndCheck(selection);
       cases++;
     }
-    // Pinned so a change to the registry or its rules shows up here: 190 valid selections before
-    // the claimable-balance and sponsored-reserve scenarios, which fit beside most of them, 764
-    // before the multi-signature scenario, 1515 before the Soroswap pool, 2941 before the
-    // Aquarius pool, which shares the Soroswap pool's USDC purchase when both are picked, and 5520
-    // before the Blend position, whose borrow variant leaves less room beside the others, and 8364
-    // before the allowances, whose contract calls count toward the Soroban transaction cap.
-    expect(cases).toBe(15636);
+    // The accepted singles, pairs, triples and largest selections at both parameter extremes;
+    // pinned so a change to the registry or its rules shows up here.
+    expect(cases).toBe(3570);
   }, 240_000);
 });
