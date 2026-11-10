@@ -65,6 +65,9 @@ interface UsePlaygroundExecutionResult {
   progressStatus: string | null;
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
 function api<T>(path: string, init?: RequestInit): Promise<T> {
   return playgroundRequest<T>(fetch, path, init);
 }
@@ -278,6 +281,16 @@ export function usePlaygroundExecution(): UsePlaygroundExecutionResult {
       usePlaygroundStore.getState().bindOffers(state.accountState.openOffers);
 
       usePlaygroundStore.getState().setPhase("DIRTY");
+      // Best effort: without it the page only leaves out the code panel.
+      api<unknown>(`/session/${session.sessionId}/sdk-snippet`)
+        .then((body) => {
+          const now = usePlaygroundStore.getState();
+          const snippet = isRecord(body) ? body.snippet : null;
+          if (typeof snippet === "string" && now.sessionId === session.sessionId) {
+            now.setSdkSnippet(snippet);
+          }
+        })
+        .catch(() => {});
     } catch (err) {
       fail(err);
     } finally {

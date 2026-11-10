@@ -9,6 +9,7 @@ import { usePlaygroundExecution } from "@/hooks/usePlaygroundExecution";
 import OrbitalScene from "@/components/scene/OrbitalScene";
 import PlaygroundControls from "@/components/scene/PlaygroundControls";
 import TxLogPanel from "@/components/scene/TxLogPanel";
+import SdkSnippetPanel from "@/components/scene/SdkSnippetPanel";
 
 export default function PlaygroundClient() {
   const { start, demolish, resolve, progressStatus } = usePlaygroundExecution();
@@ -64,6 +65,8 @@ export default function PlaygroundClient() {
           <TxLogPanel />
         </div>
       </div>
+
+      <SdkSnippetPanel />
 
       {phase === "IDLE" && (
         <p className="mt-8 text-center text-sm text-white/50">

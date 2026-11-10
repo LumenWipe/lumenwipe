@@ -72,6 +72,8 @@ import {
 } from "./session-store";
 import { signingKeyOf, type SigningKey } from "./signing";
 import { expectationFromSession } from "./verify";
+import { PlaygroundVerificationError } from "./verify-error";
+import { buildSdkSnippet, SdkSnippetInputError, snippetInputFromExpectation } from "./sdk-snippet";
 
 // The playground's route handlers, with every side effect injected. Each app/api route file wires
 // the production dependencies and calls one of these, so the request parsing, status mapping and
@@ -169,6 +171,13 @@ export interface CredentialsDeps {
   store: SessionStore;
   rateLimit: RateLimit;
   decrypt: (payload: string) => string;
+}
+
+export interface SdkSnippetRouteDeps {
+  store: SessionStore;
+  /** The market maker's and the issuer's public keys, from configuration; null when either is
+   *  missing. */
+  publicAccounts: () => { sink: string; issuer: string } | null;
 }
 
 export interface StateRouteDeps {
@@ -879,6 +888,33 @@ export async function handleReap(req: NextRequest, deps: ReapRouteDeps): Promise
   } catch (err) {
     if (err instanceof PlaygroundStoreUnavailableError || err instanceof PlaygroundConfigError) {
       return notConfiguredResponse();
+    }
+    throw err;
+  }
+}
+
+/**
+ * The SDK code for the session's close, built from the same expectation its demolish answers from.
+ * Only public keys are passed in, and nothing from the session's encrypted fields reaches it.
+ */
+export async function handleSdkSnippet(
+  id: string,
+  deps: SdkSnippetRouteDeps
+): Promise<NextResponse> {
+  const session = await loadSessionOrErrorResponse(deps.store, id);
+  if (session instanceof NextResponse) return session;
+  const accounts = deps.publicAccounts();
+  if (!accounts) return notConfiguredResponse();
+  try {
+    const expected = expectationFromSession(session, accounts.sink, accounts.issuer, null);
+    return NextResponse.json(
+      { snippet: buildSdkSnippet(snippetInputFromExpectation(expected)) },
+      { headers: { "cache-control": "no-store" } }
+    );
+  } catch (err) {
+    if (err instanceof PlaygroundVerificationError || err instanceof SdkSnippetInputError) {
+      console.error("[playground] sdk snippet unavailable", { sessionId: session.id }, err.message);
+      return NextResponse.json({ error: "snippet_unavailable" }, { status: 500 });
     }
     throw err;
   }
