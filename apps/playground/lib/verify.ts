@@ -9,6 +9,7 @@ import {
 } from "@lumenwipe/verify";
 import type { CloseTransaction } from "@lumenwipe/sdk";
 import {
+  AQUARIUS,
   conversionFloorStroops,
   isPersistentAsset,
   MULTISIG_THRESHOLD,
@@ -247,9 +248,12 @@ export function expectationFromSession(
  * whose outcome was lost may still have landed, and an exit only ever pays the demo.
  */
 export function seededProtocols(steps: readonly MessStepDef[]): SeededProtocol[] {
-  return steps.some((s) => s.action.kind === "soroswap_deposit")
-    ? [{ protocol: "soroswap", variant: "lp" }]
-    : [];
+  const seeds = (kind: MessStepDef["action"]["kind"]): boolean =>
+    steps.some((s) => s.action.kind === kind);
+  return [
+    ...(seeds("soroswap_deposit") ? [{ protocol: "soroswap", variant: "lp" } as const] : []),
+    ...(seeds("aquarius_deposit") ? [{ protocol: "aquarius", variant: "lp" } as const] : []),
+  ];
 }
 
 type SorobanExitFields = Pick<
@@ -260,6 +264,7 @@ type SorobanExitFields = Pick<
   | "positionTokenContracts"
   | "protectedTokenContracts"
   | "ownTokensByContract"
+  | "shareTokenContracts"
 >;
 
 /**
@@ -274,6 +279,10 @@ type SorobanExitFields = Pick<
  *   function and none on the pair (the shared verifier lets the router move the LP share into the
  *   pair only when the pair has no exit function of its own); the pair's two tokens are what the
  *   withdrawal pays out.
+ * - Aquarius: the pool is both the call target and the position, with its one exit function; the
+ *   share token is never a call target. Its own tokens are the two it pays out and the share token the
+ *   withdrawal burns, which is also listed on its own as a share token, so an exit is refused
+ *   outright should the session ever hold it for value.
  */
 export function sorobanExitExpectations(expected: PlaygroundCloseExpectation): SorobanExitFields {
   const held = [
@@ -289,6 +298,7 @@ export function sorobanExitExpectations(expected: PlaygroundCloseExpectation): S
     positionTokenContracts: [],
     protectedTokenContracts: [...new Set(held)],
     ownTokensByContract: {},
+    shareTokenContracts: [],
   };
   for (const { protocol } of expected.sorobanSeeded) {
     if (protocol === "soroswap") {
@@ -297,8 +307,16 @@ export function sorobanExitExpectations(expected: PlaygroundCloseExpectation): S
       fields.exitFunctions[SOROSWAP.pair] = [];
       fields.positionTokenContracts.push(...SOROSWAP.tokens);
       fields.ownTokensByContract[SOROSWAP.pair] = [...SOROSWAP.tokens];
+    } else if (protocol === "aquarius") {
+      fields.exitContracts.push(AQUARIUS.pool);
+      fields.exitFunctions[AQUARIUS.pool] = ["withdraw"];
+      fields.positionTokenContracts.push(...AQUARIUS.tokens, AQUARIUS.shareToken);
+      fields.ownTokensByContract[AQUARIUS.pool] = [...AQUARIUS.tokens, AQUARIUS.shareToken];
+      fields.shareTokenContracts.push(AQUARIUS.shareToken);
     }
   }
+  // Both pools pay out the same two tokens; each is listed once, as the web lists them.
+  fields.positionTokenContracts = [...new Set(fields.positionTokenContracts)];
   return fields;
 }
 

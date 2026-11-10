@@ -30,6 +30,7 @@ import {
   type PlaygroundCloseExpectation,
 } from "@/lib/verify";
 import {
+  AQUARIUS,
   PINNED_ASSETS,
   resolvePlan,
   SOROSWAP,
@@ -465,5 +466,319 @@ describe("the shared expectation, from the selection and the pinned configuratio
       expect(shared.registryContracts).toContain(SOROSWAP.router);
       expect(shared.registryContracts).not.toContain(SOROSWAP.pair);
     }
+  });
+});
+
+describe("the Aquarius row", () => {
+  const POOL = AQUARIUS.pool;
+  const SHARE = AQUARIUS.shareToken;
+  const AQUARIUS_SEEDED: SorobanExpectation = {
+    demoPublic: demo,
+    seeded: [{ protocol: "aquarius", variant: "lp" }],
+  };
+  const u128 = (v: bigint): xdr.ScVal => nativeToScVal(v, { type: "u128" });
+  const floorsOf = (...floors: bigint[]): xdr.ScVal => xdr.ScVal.scvVec(floors.map(u128));
+
+  interface Withdrawal {
+    user?: string;
+    shares?: bigint;
+    floors?: xdr.ScVal;
+  }
+
+  /** `withdraw(user, share_amount, min_amounts)`, as apps/api/src/lib/defi-exits/aquarius.ts builds it. */
+  const withdrawArgs = ({
+    user = demo,
+    shares = BigInt(1000),
+    floors = floorsOf(BigInt(5), BigInt(7)),
+  }: Withdrawal = {}): xdr.ScVal[] => [address(user), u128(shares), floors];
+
+  /** The tree testnet returns for the exit: the pool call, and the demo's shares burned. */
+  const withdrawalAuth = (
+    sub: xdr.SorobanAuthorizedInvocation = invocation(SHARE, "burn", [
+      address(demo),
+      i128(BigInt(1000)),
+    ])
+  ): xdr.SorobanAuthorizationEntry =>
+    new xdr.SorobanAuthorizationEntry({
+      credentials: xdr.SorobanCredentials.sorobanCredentialsSourceAccount(),
+      rootInvocation: invocation(POOL, "withdraw", withdrawArgs(), [sub]),
+    });
+
+  const withdrawal = ({
+    contract = POOL,
+    fn = "withdraw",
+    args = withdrawArgs(),
+    auth = [withdrawalAuth()],
+  }: CallOpts = {}): Transaction =>
+    build(Operation.invokeContractFunction({ contract, function: fn, args, auth }));
+
+  const aquariusOutcome = (tx: Transaction): string => outcome(tx, AQUARIUS_SEEDED);
+
+  test("the row pins the pool as the call target and its share token as the only family", () => {
+    expect(PINNED_SOROBAN_PROTOCOLS.aquarius.entry).toEqual([POOL]);
+    expect(PINNED_SOROBAN_PROTOCOLS.aquarius.family).toEqual([SHARE]);
+    expect(Object.keys(PINNED_SOROBAN_PROTOCOLS.aquarius.functions)).toEqual(["withdraw"]);
+  });
+
+  test("a withdraw for the demo, with a positive floor per pool token, is accepted", () => {
+    expect(aquariusOutcome(withdrawal())).toBe("accepted");
+  });
+
+  test("a zero floor is refused, for either token", () => {
+    for (const floors of [floorsOf(BigInt(0), BigInt(7)), floorsOf(BigInt(5), BigInt(0))]) {
+      expect(aquariusOutcome(withdrawal({ args: withdrawArgs({ floors }) }))).toBe(
+        "soroban_min_out_not_positive"
+      );
+    }
+  });
+
+  test("a floor that is not a u128 is refused", () => {
+    const floors = xdr.ScVal.scvVec([i128(BigInt(5)), u128(BigInt(7))]);
+    expect(aquariusOutcome(withdrawal({ args: withdrawArgs({ floors }) }))).toBe(
+      "soroban_min_out_not_positive"
+    );
+  });
+
+  test("a floor list of any other length, or not a list at all, is refused", () => {
+    for (const floors of [
+      floorsOf(BigInt(5), BigInt(7), BigInt(9)),
+      floorsOf(BigInt(5)),
+      floorsOf(),
+      u128(BigInt(5)),
+    ]) {
+      expect(aquariusOutcome(withdrawal({ args: withdrawArgs({ floors }) }))).toBe(
+        "soroban_min_out_vec_invalid"
+      );
+    }
+  });
+
+  test("a share amount that is not a positive u128 is refused", () => {
+    expect(aquariusOutcome(withdrawal({ args: withdrawArgs({ shares: BigInt(0) }) }))).toBe(
+      "soroban_amount_not_positive"
+    );
+    const args = withdrawArgs();
+    args[1] = i128(BigInt(1000));
+    expect(aquariusOutcome(withdrawal({ args }))).toBe("soroban_amount_not_positive");
+  });
+
+  test("a user other than the demo is refused", () => {
+    for (const user of [stranger, POOL]) {
+      expect(aquariusOutcome(withdrawal({ args: withdrawArgs({ user }) }))).toBe(
+        "soroban_account_argument_mismatch"
+      );
+    }
+  });
+
+  test("a pool other than the pinned one is refused, as is a call to the share token", () => {
+    expect(aquariusOutcome(withdrawal({ contract: contractId() }))).toBe(
+      "soroban_contract_not_pinned"
+    );
+    expect(aquariusOutcome(withdrawal({ contract: SHARE }))).toBe("soroban_contract_not_pinned");
+    // The router seeds the position but is never an exit's call target.
+    expect(aquariusOutcome(withdrawal({ contract: AQUARIUS.router }))).toBe(
+      "soroban_contract_not_pinned"
+    );
+  });
+
+  test("a function other than withdraw is refused, the claim included", () => {
+    expect(aquariusOutcome(withdrawal({ fn: "claim", args: [address(demo)] }))).toBe(
+      "soroban_function_not_allowed"
+    );
+  });
+
+  test("arguments of another shape are refused", () => {
+    expect(aquariusOutcome(withdrawal({ args: withdrawArgs().slice(0, 2) }))).toBe(
+      "soroban_arguments_invalid"
+    );
+  });
+
+  test("a sub-invocation outside the pool and its share token is refused, at any depth", () => {
+    const drain = invocation(AQUARIUS.tokens[0], "transfer", [
+      address(demo),
+      address(stranger),
+      i128(BigInt(1)),
+    ]);
+    expect(aquariusOutcome(withdrawal({ auth: [withdrawalAuth(drain)] }))).toBe(
+      "soroban_auth_outside_family"
+    );
+    const nested = invocation(SHARE, "burn", [address(demo), i128(BigInt(1000))], [drain]);
+    expect(aquariusOutcome(withdrawal({ auth: [withdrawalAuth(nested)] }))).toBe(
+      "soroban_auth_outside_family"
+    );
+    // Soroswap's pair is another protocol's family.
+    const pair = invocation(SOROSWAP.pair, "transfer", [address(demo)]);
+    expect(aquariusOutcome(withdrawal({ auth: [withdrawalAuth(pair)] }))).toBe(
+      "soroban_auth_outside_family"
+    );
+  });
+
+  test("the pool is refused for a session that seeds only the other pool", () => {
+    expect(outcome(withdrawal())).toBe("soroban_protocol_not_seeded");
+    // And the other pool's exit is refused for a session that seeds only this one.
+    expect(aquariusOutcome(build(call()))).toBe("soroban_protocol_not_seeded");
+  });
+
+  describe("in front of the shared verifier", () => {
+    const sink = Keypair.random().publicKey();
+    const issuer = Keypair.random().publicKey();
+    const expectationFor = (...ids: ("soroswap-lp" | "aquarius-lp")[]) =>
+      expectationFromSession(
+        {
+          demoPublic: demo,
+          ephemeralIssuers: [],
+          recordedSigners: [],
+          selection: { scenarios: ids.map((id) => ({ id, params: {} })) },
+          transferRecipient: null,
+          helperAccounts: [],
+          claimableBalances: [],
+        },
+        sink,
+        issuer
+      );
+
+    function demolishOutcome(tx: Transaction, expected: PlaygroundCloseExpectation): string {
+      const close: CloseTransaction = {
+        id: "t1",
+        order: 0,
+        dependsOn: [],
+        xdr: tx.toXDR(),
+        networkPassphrase: Networks.TESTNET,
+        sourceSequence: "1",
+        validUntilLedger: 100,
+        covers: [],
+        intent: {
+          summary: "test fixture",
+          source: demo,
+          fee: tx.fee,
+          memo: null,
+          memoType: null,
+          guarantees: { mergeDestination: null, paymentsOnlyTo: [], minXlmFromConversions: null },
+          operations: [],
+        },
+      };
+      try {
+        verifyDemolishTransaction(close, expected);
+        return "accepted";
+      } catch (err) {
+        if (err instanceof SorobanVerificationError) return `soroban:${err.message}`;
+        if (err instanceof VerificationError) return `shared:${err.code}`;
+        throw err;
+      }
+    }
+
+    test("an Aquarius session's exit passes both checks, alone in its transaction", () => {
+      const expected = expectationFor("aquarius-lp");
+      expect(expected.sorobanSeeded).toEqual([{ protocol: "aquarius", variant: "lp" }]);
+      expect(demolishOutcome(withdrawal(), expected)).toBe("accepted");
+    });
+
+    test("with both pools seeded, each pool's exit passes both checks", () => {
+      const expected = expectationFor("soroswap-lp", "aquarius-lp");
+      expect(expected.sorobanSeeded).toEqual([
+        { protocol: "soroswap", variant: "lp" },
+        { protocol: "aquarius", variant: "lp" },
+      ]);
+      expect(demolishOutcome(withdrawal(), expected)).toBe("accepted");
+      expect(demolishOutcome(build(call()), expected)).toBe("accepted");
+    });
+
+    test("the exit is refused beside a merge, and for a Soroswap-only session", () => {
+      const merge = Operation.accountMerge({ destination: sink });
+      const tx = build(
+        Operation.invokeContractFunction({
+          contract: POOL,
+          function: "withdraw",
+          args: withdrawArgs(),
+          auth: [withdrawalAuth()],
+        }),
+        merge
+      );
+      expect(demolishOutcome(tx, expectationFor("aquarius-lp"))).toBe(
+        "soroban:soroban_call_not_alone"
+      );
+      expect(demolishOutcome(withdrawal(), expectationFor("soroswap-lp"))).toBe(
+        "soroban:soroban_protocol_not_seeded"
+      );
+    });
+  });
+});
+
+describe("the Aquarius shared expectation, from the selection and the pinned configuration only", () => {
+  const sink = Keypair.random().publicKey();
+  const issuer = Keypair.random().publicKey();
+  const CIRCLE = PINNED_ASSETS["circle-usdc"];
+  const shared = (...ids: ("soroswap-lp" | "aquarius-lp" | "lwdemo-holding")[]) =>
+    sharedExpectation(
+      expectationFromSession(
+        {
+          demoPublic: demo,
+          ephemeralIssuers: [],
+          recordedSigners: [],
+          selection: { scenarios: ids.map((id) => ({ id, params: {} })) },
+          transferRecipient: null,
+          helperAccounts: [],
+          claimableBalances: [],
+        },
+        sink,
+        issuer
+      )
+    );
+  const aquarius = shared("aquarius-lp");
+  const both = shared("soroswap-lp", "aquarius-lp");
+  const without = shared("lwdemo-holding");
+
+  test("the seeded protocols come from the plan's steps, never from what ran", () => {
+    const seeded = (...ids: ("soroswap-lp" | "aquarius-lp")[]) =>
+      seededProtocols(resolvePlan({ scenarios: ids.map((id) => ({ id, params: {} })) }).steps);
+    expect(seeded("aquarius-lp")).toEqual([{ protocol: "aquarius", variant: "lp" }]);
+    expect(seeded("soroswap-lp")).toEqual([{ protocol: "soroswap", variant: "lp" }]);
+    expect(seeded("soroswap-lp", "aquarius-lp")).toEqual([
+      { protocol: "soroswap", variant: "lp" },
+      { protocol: "aquarius", variant: "lp" },
+    ]);
+  });
+
+  test("exitContracts: the pool alone, never the router or the share token", () => {
+    expect(aquarius.exitContracts).toEqual([AQUARIUS.pool]);
+    expect(both.exitContracts).toEqual([SOROSWAP.router, SOROSWAP.pair, AQUARIUS.pool]);
+    expect(without.exitContracts).toEqual([]);
+  });
+
+  test("exitFunctions: the pool's withdraw, and nothing on the share token", () => {
+    expect(aquarius.exitFunctions).toEqual({ [AQUARIUS.pool]: ["withdraw"] });
+    expect(both.exitFunctions[AQUARIUS.pool]).toEqual(["withdraw"]);
+    expect(Object.keys(both.exitFunctions)).not.toContain(AQUARIUS.shareToken);
+  });
+
+  test("positionTokenContracts: the pool's two tokens and its share token, each once", () => {
+    expect(aquarius.positionTokenContracts).toEqual([
+      CIRCLE.contract,
+      XLM_SAC,
+      AQUARIUS.shareToken,
+    ]);
+    expect(both.positionTokenContracts).toEqual([CIRCLE.contract, XLM_SAC, AQUARIUS.shareToken]);
+  });
+
+  test("ownTokensByContract: the pool's tokens and its share token, keyed by the pool", () => {
+    expect(aquarius.ownTokensByContract).toEqual({
+      [AQUARIUS.pool]: [CIRCLE.contract, XLM_SAC, AQUARIUS.shareToken],
+    });
+    expect(both.ownTokensByContract).toEqual({
+      [SOROSWAP.pair]: [CIRCLE.contract, XLM_SAC],
+      [AQUARIUS.pool]: [CIRCLE.contract, XLM_SAC, AQUARIUS.shareToken],
+    });
+  });
+
+  test("shareTokenContracts: the share token, only when the selection seeds the pool", () => {
+    expect(aquarius.shareTokenContracts).toEqual([AQUARIUS.shareToken]);
+    expect(both.shareTokenContracts).toEqual([AQUARIUS.shareToken]);
+    expect(shared("soroswap-lp").shareTokenContracts).toEqual([]);
+    expect(without.shareTokenContracts).toEqual([]);
+  });
+
+  test("heldTokenContracts: XLM and the one USDC trustline both pools share", () => {
+    expect(aquarius.heldTokenContracts).toEqual([XLM_SAC, CIRCLE.contract]);
+    expect(both.heldTokenContracts).toEqual([XLM_SAC, CIRCLE.contract]);
+    expect(both.protectedTokenContracts).toEqual(both.heldTokenContracts);
   });
 });

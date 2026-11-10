@@ -21,6 +21,8 @@ import {
 } from "@/lib/mess-plan";
 import { handleCreateSession, handleMess } from "@/lib/route-handlers";
 import {
+  AQUARIUS,
+  AQUARIUS_SEED,
   JUNK_OFFERS,
   PINNED_ASSETS,
   SCENARIOS,
@@ -260,19 +262,33 @@ function assertConsistent({
           if (op.signer) signersAdded++;
           break;
         case "invokeHostFunction": {
-          // The one seeding call: the demo pairs the USDC it bought with XLM in the pinned pair,
-          // through the pinned router, and the LP share is paid to the demo itself.
+          // A seeding call: the demo pairs the USDC it bought with XLM in a pinned pool, through
+          // that protocol's pinned router, and the share is the demo's own.
           expect(source).toBe(demoPublic);
           if (op.func.type !== "hostFunctionTypeInvokeContract") throw new Error("not a call");
           const call = op.func.invokeContract;
           const args = call.args.map((a) => scValToNative(a) as unknown);
-          expect(Address.fromScAddress(call.contractAddress).toString()).toBe(SOROSWAP.router);
+          const contract = Address.fromScAddress(call.contractAddress).toString();
+          expect(trusted.has("circle-usdc")).toBe(true);
+          const stroops = (amount: string): bigint => BigInt(Number(amount) * 10_000_000);
+          if (contract === AQUARIUS.router) {
+            expect(call.functionName.toString()).toBe("deposit");
+            expect(args).toEqual([
+              demoPublic,
+              [...AQUARIUS.tokens],
+              Buffer.from(AQUARIUS.poolIndex, "hex"),
+              [stroops(AQUARIUS_SEED.usdc), stroops(AQUARIUS_SEED.depositMaxXlm)],
+              BigInt(1),
+            ]);
+            positions.push("lp:aquarius");
+            break;
+          }
+          expect(contract).toBe(SOROSWAP.router);
           expect(call.functionName.toString()).toBe("add_liquidity");
           expect(args.slice(0, 2)).toEqual([...SOROSWAP.tokens]);
-          expect(args[2]).toBe(BigInt(Number(SOROSWAP_SEED.usdc) * 10_000_000));
-          expect(args[3]).toBe(BigInt(Number(SOROSWAP_SEED.depositMaxXlm) * 10_000_000));
+          expect(args[2]).toBe(stroops(SOROSWAP_SEED.usdc));
+          expect(args[3]).toBe(stroops(SOROSWAP_SEED.depositMaxXlm));
           expect(args[6]).toBe(demoPublic);
-          expect(trusted.has("circle-usdc")).toBe(true);
           positions.push("lp:soroswap");
           break;
         }
@@ -416,7 +432,8 @@ describe("the plan, the chain and the close expectation agree", () => {
     }
     // Pinned so a change to the registry or its rules shows up here: 190 valid selections before
     // the claimable-balance and sponsored-reserve scenarios, which fit beside most of them, 764
-    // before the multi-signature scenario, and 1515 before the Soroswap pool.
-    expect(cases).toBe(2941);
+    // before the multi-signature scenario, 1515 before the Soroswap pool, and 2941 before the
+    // Aquarius pool, which shares the Soroswap pool's USDC purchase when both are picked.
+    expect(cases).toBe(5520);
   }, 120_000);
 });

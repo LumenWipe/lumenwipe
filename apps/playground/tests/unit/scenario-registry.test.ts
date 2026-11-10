@@ -2,16 +2,20 @@ import { describe, expect, test } from "bun:test";
 import { MESS_EXECUTORS } from "@/lib/mess-builders";
 import { PLAYGROUND_CLOSE_OPERATION_TYPES } from "@/lib/verify";
 import {
+  PURCHASE_OWNER,
+  purchaseBuild,
   SCENARIOS,
   SCENE_NODE_KINDS,
   SUB_ENTRY_NODE_KINDS,
+  withPinnedBalances,
   type ScenarioBuild,
   type ScenarioDefinition,
 } from "@/lib/scenarios";
 
 // Every scenario must be complete before it can ship: steps, a cost, a close expectation, an
 // executor for each step it declares, a scene node for each entry it creates, and only operation
-// types the playground verifier accepts.
+// types the playground verifier accepts. A scenario that spends a pinned asset is checked with the
+// shared purchase the resolver adds for it (lib/scenarios/prerequisites.ts), as it runs alone.
 
 const ALL_ASSETS = [
   "LWDEMO",
@@ -39,11 +43,42 @@ function paramCombos(def: ScenarioDefinition): Record<string, number>[] {
   return combos;
 }
 
-function builds(def: ScenarioDefinition): ScenarioBuild[] {
+/** What a scenario builds on its own, without the shared purchase. */
+function ownBuilds(def: ScenarioDefinition): ScenarioBuild[] {
   return paramCombos(def).map((params) => {
     const result = def.build(params, { heldAssets: ALL_ASSETS });
     if (!result.ok) throw new Error(`${def.id} ${JSON.stringify(params)}: ${result.message}`);
     return result.build;
+  });
+}
+
+/** A scenario's build with the shared purchase its steps need, as the resolver adds it. */
+function builds(def: ScenarioDefinition): ScenarioBuild[] {
+  return ownBuilds(def).map((own) => {
+    const shared = purchaseBuild(own.steps.map((o) => o.step));
+    if (!shared) return own;
+    const sum = (key: keyof ScenarioBuild["cost"]): number => own.cost[key] + shared.cost[key];
+    const ordered = [...own.steps, ...shared.steps].sort((a, b) => a.order - b.order);
+    const balanced = withPinnedBalances(ordered.map((o) => o.step));
+    return {
+      steps: ordered.map((o, i) => ({ order: o.order, step: balanced[i]! })),
+      ephemeralAssets: own.ephemeralAssets,
+      expectation: {
+        ...own.expectation,
+        closeOperations: own.expectation.closeOperations + shared.expectation.closeOperations,
+        operationTypes: [
+          ...new Set([...own.expectation.operationTypes, ...shared.expectation.operationTypes]),
+        ],
+      },
+      cost: {
+        xlm: sum("xlm"),
+        classicTransactions: sum("classicTransactions"),
+        sorobanTransactions: sum("sorobanTransactions"),
+        seconds: sum("seconds"),
+        batchSize: Math.max(own.cost.batchSize, shared.cost.batchSize),
+        subEntries: sum("subEntries"),
+      },
+    };
   });
 }
 
@@ -104,7 +139,7 @@ describe.each(SCENARIOS.map((def) => [def.id, def] as const))("%s", (_id, def) =
       expect(count("data")).toBe(expectation.dataEntries);
       expect(count("signer")).toBe(expectation.signers);
       // One position per seeding step, and its exit is a close transaction of its own.
-      expect(count("position")).toBe(actions("soroswap_deposit"));
+      expect(count("position")).toBe(actions("soroswap_deposit") + actions("aquarius_deposit"));
       if (count("position") > 0) expect(expectation.operationTypes).toContain("invokeHostFunction");
       // Only the account's own entries hold a reserve; a position lives in a contract.
       const subEntries = nodes.filter((n) => SUB_ENTRY_NODE_KINDS.includes(n.kind)).length;
@@ -120,12 +155,17 @@ describe.each(SCENARIOS.map((def) => [def.id, def] as const))("%s", (_id, def) =
 test("scenario ids and their step ids are unique across the registry", () => {
   expect(new Set(SCENARIOS.map((s) => s.id)).size).toBe(SCENARIOS.length);
   const owner = new Map<string, string>();
+  const claim = (stepId: string, by: string): void => {
+    expect(owner.get(stepId) ?? by).toBe(by);
+    owner.set(stepId, by);
+  };
+  // The shared purchase's steps belong to the resolver: no scenario declares one of them itself.
+  const spending = SCENARIOS.flatMap(ownBuilds).flatMap((b) => b.steps.map((o) => o.step));
+  for (const { step } of purchaseBuild(spending)?.steps ?? []) claim(step.id, PURCHASE_OWNER);
+  expect(owner.size).toBeGreaterThan(0);
   for (const def of SCENARIOS) {
-    for (const build of builds(def)) {
-      for (const { step } of build.steps) {
-        expect(owner.get(step.id) ?? def.id).toBe(def.id);
-        owner.set(step.id, def.id);
-      }
+    for (const build of ownBuilds(def)) {
+      for (const { step } of build.steps) claim(step.id, def.id);
     }
   }
 });

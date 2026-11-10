@@ -1,5 +1,5 @@
 import type { IntentOperation } from "@lumenwipe/sdk";
-import { pinnedAssetOf, SOROSWAP } from "./scenarios";
+import { AQUARIUS, pinnedAssetOf, SOROSWAP } from "./scenarios";
 
 /** What a confirmed close operation does to the orbital scene. */
 export type SceneAction =
@@ -25,6 +25,7 @@ const trustlineNodeId = (asset: string): string =>
 /** The position node each protocol's exit call empties, by the contract it calls. */
 const POSITION_NODE_BY_EXIT: ReadonlyMap<string, { fn: string; nodeId: string }> = new Map([
   [SOROSWAP.router, { fn: "remove_liquidity", nodeId: "lp:soroswap" }],
+  [AQUARIUS.pool, { fn: "withdraw", nodeId: "lp:aquarius" }],
 ]);
 
 const destroyIfLive = (live: readonly LiveNode[], nodeId: string): SceneAction | null =>

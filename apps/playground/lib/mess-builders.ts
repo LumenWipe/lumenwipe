@@ -11,8 +11,8 @@ import {
   TransactionBuilder,
   hash,
   nativeToScVal,
+  xdr,
   type Transaction,
-  type xdr,
 } from "@stellar/stellar-sdk";
 import {
   HORIZON_TESTNET_URL,
@@ -31,6 +31,7 @@ import {
   MULTISIG_THRESHOLD,
   TIME_GATE_SECONDS,
   SPONSORED_OFFER,
+  AQUARIUS,
   PINNED_ASSETS,
   SOROSWAP,
   isPersistentAsset,
@@ -313,6 +314,33 @@ export function soroswapDepositCall(
   };
 }
 
+const scU128 = (stroops: bigint): xdr.ScVal => nativeToScVal(stroops, { type: "u128" });
+
+/**
+ * The router call that pairs the demo's USDC with XLM in the pinned Aquarius pool:
+ * `deposit(user, tokens, pool_index, desired_amounts, min_shares)`, with the tokens and the
+ * amounts in the pool's own order. The pool takes all the USDC and only the XLM its price needs,
+ * or the other way round if the price moved, so the minimum share is one unit: this is the demo's
+ * own deposit, and the exit's floors are what protect what comes back.
+ */
+export function aquariusDepositCall(
+  demoPublic: string,
+  usdc: string,
+  maxXlm: string
+): ContractCall {
+  return {
+    contract: AQUARIUS.router,
+    function: "deposit",
+    args: [
+      scAddress(demoPublic),
+      xdr.ScVal.scvVec(AQUARIUS.tokens.map(scAddress)),
+      xdr.ScVal.scvBytes(Buffer.from(AQUARIUS.poolIndex, "hex")),
+      xdr.ScVal.scvVec([scU128(networkStroops(usdc)), scU128(networkStroops(maxXlm))]),
+      scU128(BigInt(1)),
+    ],
+  };
+}
+
 /** Posts or refills the market maker's standing offers; a no-op when they are all in place. */
 export async function ensureStandingLiquidity(mm: Keypair, issuerPublic: string): Promise<void> {
   const [account, offers] = await Promise.all([
@@ -495,6 +523,11 @@ export const MESS_EXECUTORS: { [K in StepActionKind]: Executor<K> } = {
     const contractCall = deps.contractCall ?? seedContractCall;
     const now = deps.now ?? Date.now;
     const deposit = soroswapDepositCall(ctx.demo.publicKey(), action.usdc, action.maxXlm, now());
+    return (await contractCall(ctx.demo, deposit)).txHash;
+  },
+  aquarius_deposit: async (action, ctx, _submit, deps) => {
+    const contractCall = deps.contractCall ?? seedContractCall;
+    const deposit = aquariusDepositCall(ctx.demo.publicKey(), action.usdc, action.maxXlm);
     return (await contractCall(ctx.demo, deposit)).txHash;
   },
   // Every signer is recorded before the transaction that adds it is sent. The thresholds rise in

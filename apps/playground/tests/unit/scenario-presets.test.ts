@@ -23,12 +23,13 @@ describe("presets", () => {
 
   test("a feature set with no scenario here has no preset", () => {
     expect(presetSelection("api")).toBeNull();
-    // The protocol set's only scenario, switched off, leaves it with none.
-    expect(presetSelection("protocol", off("soroswap-lp"))).toBeNull();
+    // The protocol set's scenarios, switched off, leave it with none.
+    expect(presetSelection("protocol", off("soroswap-lp", "aquarius-lp"))).toBeNull();
+    expect(ids(presetSelection("protocol", off("soroswap-lp"))!)).toEqual(["aquarius-lp"]);
   });
 
   test("the protocol preset is every protocol scenario testnet can run", () => {
-    expect(ids(presetSelection("protocol")!)).toEqual(["soroswap-lp"]);
+    expect(ids(presetSelection("protocol")!)).toEqual(["soroswap-lp", "aquarius-lp"]);
   });
 
   test("a preset leaves out what this deployment switched off", () => {
