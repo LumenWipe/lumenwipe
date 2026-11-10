@@ -32,6 +32,7 @@ export const MESS_STEP_IDS = [
   "APPROVE_ALLOWANCE_1",
   "APPROVE_ALLOWANCE_2",
   "APPROVE_ALLOWANCE_3",
+  "DRAIN_TO_FEE_FLOOR",
 ] as const;
 
 export type MessStepId = (typeof MESS_STEP_IDS)[number];
@@ -87,7 +88,12 @@ export type StepAction =
    * read live; otherwise it lives `ALLOWANCE_LIVE_LEDGERS`. The spender is a fresh public key the
    * session records before the call is sent, and no one holds its secret.
    */
-  | { kind: "approve_allowance"; index: number; amountXlm: string; farExpiry: boolean };
+  | { kind: "approve_allowance"; index: number; amountXlm: string; farExpiry: boolean }
+  /**
+   * Pays the market maker everything the demo holds above its reserve floor, read live, except
+   * less than the fee of a one-operation close transaction, so the close cannot pay its own fee.
+   */
+  | { kind: "drain_to_fee_floor" };
 
 /** supply: XLM supplied as collateral. supply_and_borrow: the same, with XLM borrowed against it. */
 export type BlendVariant = "supply" | "supply_and_borrow";
@@ -285,7 +291,8 @@ export type ScenarioId =
   | "soroswap-lp"
   | "aquarius-lp"
   | "blend-supply"
-  | "allowances";
+  | "allowances"
+  | "fee-bump";
 
 export interface OrderedStep {
   /** Steps from every scenario are sorted by this key into one plan. */

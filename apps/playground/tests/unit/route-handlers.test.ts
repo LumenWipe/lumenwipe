@@ -909,6 +909,7 @@ describe("demolish", () => {
       issuer: () => issuer,
       mm: () => mm,
       api: () => api,
+      feeAccount: () => null,
       decrypt,
       runDemolish: async (opts: RunDemolishOptions) => {
         runs.push(opts);

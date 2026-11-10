@@ -135,7 +135,8 @@ async function runVariant(variant: 0 | 1): Promise<void> {
       claimableBalances: [],
     },
     Keypair.random().publicKey(),
-    ctx.persistentIssuer.publicKey()
+    ctx.persistentIssuer.publicKey(),
+    null
   );
   const user = new Address(demo.publicKey()).toScVal();
   for (const step of steps) {

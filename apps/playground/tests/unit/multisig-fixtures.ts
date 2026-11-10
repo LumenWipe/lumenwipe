@@ -123,6 +123,10 @@ export class FakeMultisigLedger implements DemolishApi, DemolishChain {
     return { hash: txHash };
   }
 
+  async feeBumpSponsor(): Promise<{ transaction: string }> {
+    throw new Error("This ledger pays its own fees");
+  }
+
   async getTransaction(txHash: string): Promise<TransactionLookupResponse> {
     if (this.confirmed.has(txHash)) return { status: "confirmed", hash: txHash, ledger: 10 };
     const now = Math.floor(Date.now() / 1000);

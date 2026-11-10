@@ -71,8 +71,11 @@ export const ORDER = {
   /** Allowances, one step per spender in order; nothing else depends on them. */
   allowances: 80,
   signers: 90,
-  /** Last: once the thresholds are raised the master key alone cannot sign another step. */
+  /** Last but the drain, which never comes with it: once the thresholds are raised the master
+   *  key alone cannot sign another step. */
   multisig: 95,
+  /** After every step that spends: from here on the demo cannot pay a fee. */
+  drain: 99,
 } as const;
 
 /** The assets the demo opens a trustline to during the mess; the others arrive in the close or
@@ -1123,6 +1126,73 @@ const allowances: ScenarioDefinition = {
   },
 };
 
+/**
+ * The close the API's fee sponsor pays for: the last mess step leaves the demo less than one
+ * close fee above its reserve floor, so the API builds the close with its own fee at zero and the
+ * playground sends it to the sponsor, then checks the fee-bump envelope it returns
+ * (lib/verify-feebump.ts). The close must be one the sponsor pays for whatever the demo holds:
+ * no token (a stale offer needs one), since its return or transfer is a payment the sponsor
+ * refuses; no revoke, which it refuses too; and no contract call, which no sponsor pays. A
+ * multi-signature demo is left out as well, since its signers step must come after the drain.
+ */
+const feeBump: ScenarioDefinition = {
+  id: "fee-bump",
+  featureSet: "api",
+  label: "Sponsored fee",
+  description:
+    "The demo's spare XLM drained to less than one fee, so it cannot pay for its own close: the API's fee account pays through a fee-bump envelope.",
+  params: {},
+  heldAssets: () => [],
+  requiresAnyOf: ["data-entries", "forgotten-signer"],
+  conflicts: [
+    "lwdemo-holding",
+    "junk-airdrops",
+    "stablecoin-swaps",
+    "stale-offers",
+    "dispositions",
+    "claimable-balances",
+    "sponsored-reserves",
+    "multisig",
+    "soroswap-lp",
+    "aquarius-lp",
+    "blend-supply",
+    "allowances",
+  ],
+  build: () => ({
+    ok: true,
+    build: {
+      steps: [
+        {
+          order: ORDER.drain,
+          step: {
+            id: "DRAIN_TO_FEE_FLOOR",
+            label: "Drain the spare XLM to less than one close fee",
+            nodes: [],
+            balances: [],
+            action: { kind: "drain_to_fee_floor" },
+          },
+        },
+      ],
+      ephemeralAssets: [],
+      expectation: {
+        assets: [],
+        offers: 0,
+        dataEntries: 0,
+        signers: 0,
+        // The sponsor changes who pays the close, not what it does.
+        closeOperations: 0,
+        operationTypes: [],
+        dispositions: [],
+        arrivingAssets: [],
+        sponsoredEntries: [],
+        resolutions: [],
+      },
+      // The drain's own fee: what it sends goes back to the market maker.
+      cost: cost(1, 0, BASE_FEE_XLM, 0),
+    },
+  }),
+};
+
 /** Every scenario, in the order a selection lists them. */
 export const SCENARIOS: readonly ScenarioDefinition[] = [
   lwdemoHolding,
@@ -1139,4 +1209,5 @@ export const SCENARIOS: readonly ScenarioDefinition[] = [
   aquariusLp,
   blendSupply,
   allowances,
+  feeBump,
 ];

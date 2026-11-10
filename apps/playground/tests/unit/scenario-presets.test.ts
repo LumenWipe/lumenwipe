@@ -22,7 +22,14 @@ describe("presets", () => {
   });
 
   test("a feature set with no scenario here has no preset", () => {
-    expect(presetSelection("api")).toBeNull();
+    expect(presetSelection("api", off("fee-bump"))).toBeNull();
+    // A preset scenario's requirement is met by the first one this deployment can run.
+    expect(ids(presetSelection("api")!)).toEqual(["data-entries", "fee-bump"]);
+    expect(ids(presetSelection("api", off("data-entries"))!)).toEqual([
+      "forgotten-signer",
+      "fee-bump",
+    ]);
+    expect(presetSelection("api", off("data-entries", "forgotten-signer"))).toBeNull();
     // The protocol set's scenarios, switched off, leave it with none.
     expect(
       presetSelection("protocol", off("soroswap-lp", "aquarius-lp", "blend-supply", "allowances"))

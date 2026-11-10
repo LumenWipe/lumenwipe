@@ -1,4 +1,11 @@
 import { defineConfig, devices } from "@playwright/test";
+import { Keypair } from "@stellar/stellar-sdk";
+
+// The API's fee sponsor for this run only: generated here, so the workers and both servers share
+// it, given to the local API as its fee account, and funded by tests/e2e/serve.ts. The playground
+// is told only its public key.
+process.env.PLAYGROUND_E2E_FEE_SECRET ??= Keypair.random().secret();
+const feeAccount = Keypair.fromSecret(process.env.PLAYGROUND_E2E_FEE_SECRET);
 
 // Testnet only. The playground drives real testnet transactions (Friendbot, Horizon and the real
 // API's close loop), so this suite runs nightly and on manual dispatch, never per pull request.
@@ -30,6 +37,7 @@ export default defineConfig({
     {
       command: "bun run dev:api",
       cwd: "../..",
+      env: { FEE_ACCOUNT_SECRET_TESTNET: feeAccount.secret() },
       url: "http://localhost:3001/health",
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
@@ -37,6 +45,7 @@ export default defineConfig({
     {
       // Creates this run's testnet accounts, then starts `next dev` (see tests/e2e/serve.ts).
       command: "bun tests/e2e/serve.ts",
+      env: { PLAYGROUND_EXPECTED_FEE_ACCOUNT_TESTNET: feeAccount.publicKey() },
       url: "http://localhost:3002",
       reuseExistingServer: !process.env.CI,
       timeout: 180_000,

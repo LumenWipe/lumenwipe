@@ -169,7 +169,8 @@ describe("the safety caps", () => {
       `A demo can include at most ${MAX_SCENARIOS} scenarios.`
     );
     // Leaving out a token holding leaves five stale offers without the tokens they trade, or
-    // without any token at all, which is refused for that reason. The only cap any of them reaches
+    // without any token at all, which is refused for that reason, and the sponsored fee is refused
+    // beside anything but data entries and a forgotten signer. The only cap any of them reaches
     // is the XLM one, and only with a protocol scenario beside the costliest classic ones.
     let fitted = 0;
     let overXlm = 0;
@@ -183,6 +184,8 @@ describe("the safety caps", () => {
           chosen.some((c) => ["soroswap-lp", "aquarius-lp", "blend-supply"].includes(c.id))
         ).toBe(true);
         expect(result.message).toEndWith(`a demo can use at most ${MAX_SESSION_XLM}.`);
+      } else if (result.message.startsWith("Sponsored fee ")) {
+        expect(chosen.some((c) => c.id === "fee-bump")).toBe(true);
       } else expect(result.message).toStartWith("Stale DEX offers ");
     }
     expect({ fitted, overXlm }).toEqual({ fitted: FITTED_AT_MAX, overXlm: OVER_XLM_AT_MAX });

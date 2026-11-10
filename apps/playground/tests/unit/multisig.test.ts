@@ -126,6 +126,7 @@ async function closeAll(store: SessionStore, id: string, ledger: FakeMultisigLed
       issuer: () => issuer,
       mm: () => mm,
       api: () => ({ apiUrl: "http://localhost:3001", apiKey: "unused" }),
+      feeAccount: () => null,
       decrypt,
       runDemolish: (opts) => runCloseRound(ledger, ledger, opts, noSleep),
     });

@@ -118,9 +118,16 @@ describe.each(SCENARIOS.map((def) => [def.id, def] as const))("%s", (_id, def) =
       const { expectation } = build;
       // A position's exits are transactions of their own, so a scenario whose only entry is a
       // position (Blend's, which buys nothing) adds no operation to the merge. An allowance's
-      // revoke is sent before the close, so allowances add nothing to the close at all.
+      // revoke is sent before the close, so allowances add nothing to the close at all, and the
+      // drain only changes who pays the close's fee.
       const kinds = build.steps.flatMap(({ step }) => step.nodes).map((n) => n.kind);
       const allowances = kinds.filter((k) => k === "allowance").length;
+      if (build.steps.every(({ step }) => step.action.kind === "drain_to_fee_floor")) {
+        expect(kinds).toEqual([]);
+        expect(expectation.closeOperations).toBe(0);
+        expect(expectation.operationTypes).toEqual([]);
+        continue;
+      }
       if (allowances > 0) {
         expect(kinds.every((k) => k === "allowance")).toBe(true);
         expect(expectation.closeOperations).toBe(0);

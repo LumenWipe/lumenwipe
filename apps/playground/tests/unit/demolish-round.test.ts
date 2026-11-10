@@ -128,6 +128,10 @@ class FakeApi implements DemolishApi {
     return { hash };
   }
 
+  async feeBumpSponsor(): Promise<{ transaction: string }> {
+    throw new Error("This ledger pays its own fees");
+  }
+
   async getTransaction(hash: string): Promise<TransactionLookupResponse> {
     this.calls.lookup++;
     if (this.lookupSeesLanded && this.landed.has(hash)) {
@@ -182,7 +186,7 @@ function round(store: SessionStore, id: string, api: FakeApi) {
         {
           demoKeypair: demo,
           signingKeys: [],
-          expected: expectationFromSession(session, sink, lwdemoIssuer),
+          expected: expectationFromSession(session, sink, lwdemoIssuer, null),
           apiUrl: "unused",
           apiKey: "unused",
           hooks,
@@ -377,7 +381,8 @@ describe("a demolish round resumes from where a request died", () => {
                 ephemeralIssuers: [{ assetCode: "BONUS", publicKey: lwdemoIssuer, encSecret: "e" }],
               },
               sink,
-              lwdemoIssuer
+              lwdemoIssuer,
+              null
             ),
             apiUrl: "unused",
             apiKey: "unused",

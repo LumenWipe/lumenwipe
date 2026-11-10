@@ -3,6 +3,8 @@
 // synchronously, sidestepping the load-balanced Soroban RPC's stale-read /
 // bad-seq / no-account failure modes.
 
+import { networkStroops } from "./stroops";
+
 /** The single source for the playground's Horizon base URL - imported rather than repeated,
  *  so pointing the playground at a different Horizon is a one-line change. */
 export const HORIZON_TESTNET_URL = "https://horizon-testnet.stellar.org";
@@ -61,6 +63,76 @@ export async function loadNativeBalance(address: string): Promise<NativeBalance>
   const native = json.balances?.find((b) => b.asset_type === "native");
   if (typeof native?.balance !== "string") throw new Error("Horizon account has no XLM balance");
   return { balance: native.balance, sellingLiabilities: native.selling_liabilities ?? "0" };
+}
+
+/** What decides how much XLM an account can spend: its balance and its reserve, read live. */
+export interface ReserveState {
+  /** The native balance, in stroops. */
+  balanceStroops: bigint;
+  /** XLM its offers have committed, in stroops. */
+  sellingLiabilitiesStroops: bigint;
+  subentryCount: number;
+  numSponsoring: number;
+  numSponsored: number;
+  /** The latest ledger's base reserve, in stroops. */
+  baseReserveStroops: bigint;
+  /** The latest ledger's base fee per operation, in stroops. */
+  baseFeeStroops: bigint;
+}
+
+interface HorizonAccountReserve extends HorizonAccountBalances {
+  subentry_count?: unknown;
+  num_sponsoring?: unknown;
+  num_sponsored?: unknown;
+}
+
+interface HorizonLedgerPage {
+  _embedded?: { records?: { base_reserve_in_stroops?: unknown; base_fee_in_stroops?: unknown }[] };
+}
+
+const isStroopCount = (v: unknown): v is number =>
+  typeof v === "number" && Number.isSafeInteger(v) && v > 0;
+
+/** The account's balance and reserve inputs, and the latest ledger's base reserve and fee. */
+export async function loadReserveState(address: string): Promise<ReserveState> {
+  const [accountRes, ledgerRes] = await Promise.all([
+    readAccount(address),
+    fetch(`${HORIZON_TESTNET_URL}/ledgers?order=desc&limit=1`, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+      signal: AbortSignal.timeout(READ_TIMEOUT_MS),
+    }),
+  ]);
+  if (!accountRes.ok) throw new Error(`Horizon account fetch failed (${accountRes.status})`);
+  if (!ledgerRes.ok) throw new Error(`Horizon ledger fetch failed (${ledgerRes.status})`);
+  const account = (await accountRes.json()) as HorizonAccountReserve;
+  const ledger = ((await ledgerRes.json()) as HorizonLedgerPage)._embedded?.records?.[0];
+  const native = account.balances?.find((b) => b.asset_type === "native");
+  const subentryCount = account.subentry_count;
+  const numSponsoring = account.num_sponsoring ?? 0;
+  const numSponsored = account.num_sponsored ?? 0;
+  if (
+    typeof native?.balance !== "string" ||
+    !isCount(subentryCount) ||
+    !isCount(numSponsoring) ||
+    !isCount(numSponsored)
+  ) {
+    throw new Error("Horizon account has no readable reserve");
+  }
+  const reserve = ledger?.base_reserve_in_stroops;
+  const fee = ledger?.base_fee_in_stroops;
+  if (!isStroopCount(reserve) || !isStroopCount(fee)) {
+    throw new Error("Horizon ledger has no readable base reserve or fee");
+  }
+  return {
+    balanceStroops: networkStroops(native.balance),
+    sellingLiabilitiesStroops: networkStroops(native.selling_liabilities ?? "0"),
+    subentryCount,
+    numSponsoring,
+    numSponsored,
+    baseReserveStroops: BigInt(reserve),
+    baseFeeStroops: BigInt(fee),
+  };
 }
 
 /** An account's signers and per-category thresholds, as the ledger holds them now. */

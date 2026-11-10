@@ -104,7 +104,8 @@ function expectation(
       claimableBalances: [],
     },
     sink,
-    lwdemoIssuer
+    lwdemoIssuer,
+    null
   );
 }
 
@@ -138,7 +139,8 @@ function claimsExpectation(selection = CLAIMS_SELECTION): PlaygroundCloseExpecta
       ],
     },
     sink,
-    lwdemoIssuer
+    lwdemoIssuer,
+    null
   );
 }
 
@@ -247,7 +249,8 @@ function recipeExpectation(recipe: Recipe, recordedSigners: string[]): Playgroun
       claimableBalances: [],
     },
     session.sinkPublic,
-    session.lwdemoIssuer
+    session.lwdemoIssuer,
+    null
   );
 }
 
@@ -350,7 +353,8 @@ describe("expectationFromSession", () => {
         claimableBalances: [],
       },
       sink,
-      lwdemoIssuer
+      lwdemoIssuer,
+      null
     );
     recordedSigners.push(ed25519(Keypair.random().publicKey()));
     expect(expected.recordedSigners).toEqual([{ type: "ed25519_public_key", key: forgotten }]);
@@ -451,7 +455,8 @@ describe("a multi-signature session's signer removal round", () => {
         claimableBalances: [],
       },
       sink,
-      lwdemoIssuer
+      lwdemoIssuer,
+      null
     );
   const ALL = multisigExpectation([
     recorded.ed25519!,
@@ -774,7 +779,8 @@ describe("dispositions the session chose", () => {
         claimableBalances: [],
       },
       sink,
-      lwdemoIssuer
+      lwdemoIssuer,
+      null
     );
   const transfer = (destination: string, amount = "8", asset = LWGEM) =>
     Operation.payment({ destination, asset, amount });
@@ -812,7 +818,8 @@ describe("dispositions the session chose", () => {
           claimableBalances: [],
         },
         sink,
-        lwdemoIssuer
+        lwdemoIssuer,
+        null
       )
     ).toThrow("session_recipient_missing");
   });
@@ -897,7 +904,8 @@ describe("dispositions the session chose", () => {
           claimableBalances: [],
         },
         sink,
-        lwdemoIssuer
+        lwdemoIssuer,
+        null
       );
     // LWCOIN's 20 must not stand in for LWGEM's 8.
     expect(outcome(envelope([transfer(recipient, "8")]), both(2))).toBe("accepted");
@@ -956,7 +964,8 @@ describe("the API's real transactions for the dispositions recipes", () => {
         claimableBalances: [],
       },
       recipe.session.sinkPublic,
-      recipe.session.persistentIssuer
+      recipe.session.persistentIssuer,
+      null
     );
   }
 
@@ -1170,7 +1179,8 @@ describe("sponsorships the session recorded", () => {
           claimableBalances: [],
         },
         sink,
-        lwdemoIssuer
+        lwdemoIssuer,
+        null
       )
     ).toThrow("session_beneficiary_missing");
   });
@@ -1212,7 +1222,8 @@ describe("the API's real transactions for the claims and sponsoring recipes", ()
         }),
       },
       session.sinkPublic,
-      lwdemoIssuer
+      lwdemoIssuer,
+      null
     );
   }
   const recipe = (name: string): ClaimsRecipe => {

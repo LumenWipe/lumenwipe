@@ -117,7 +117,8 @@ test.skipIf(!RUN_INTEGRATION)(
         claimableBalances: [],
       },
       Keypair.random().publicKey(),
-      ctx.persistentIssuer.publicKey()
+      ctx.persistentIssuer.publicKey(),
+      null
     );
     const close: CloseTransaction = {
       id: "exit",
