@@ -31,8 +31,16 @@ export default defineConfig({
   // checkout instead of depending on a second terminal nobody documented.
   webServer: [
     {
-      command: "bun run dev:api",
-      cwd: "../..",
+      // The API package's own dev script, not the root `dev:api`: that goes through
+      // `bun run --filter`, whose rolling status display, under Playwright, repaints its whole
+      // window on every line once stdout is kept below.
+      command: "bun run dev",
+      cwd: "../api",
+      // The API's Nest logger writes one JSON line per event to stdout, which Playwright drops by
+      // default. In CI it is kept, prefixed [WebServer] in the nightly's log, so an upstream that
+      // throttles the run ("upstream read failed" with its target) is named rather than inferred
+      // from the 503 the page shows.
+      stdout: process.env.CI ? "pipe" : "ignore",
       url: "http://localhost:3001/health",
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,

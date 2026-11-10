@@ -23,7 +23,11 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   // Stops the run inside the nightly job's 90-minute limit, so a slow night ends as a failed run
   // with its report (which files the tracking issue) rather than a runner kill reported as
-  // cancelled. The per-test budgets sum to about 89 minutes; a healthy run takes far less.
+  // cancelled. The first nightly to run this suite (run 42844639885, 23 tests) is what this
+  // limit is for: six tests failed on a setup bug (tx_missing_operation, fixed in #879), each
+  // spent its 6-minute wait twice (about 72 minutes), and the run stopped here at 1.3 h with
+  // 4 passed and 13 not run. No full run has finished yet, so a healthy duration is still to be
+  // measured.
   globalTimeout: process.env.CI ? 80 * 60_000 : undefined,
   // The github reporter writes no report directory on its own, so it is paired with html to give
   // the nightly something to upload.
@@ -40,13 +44,19 @@ export default defineConfig({
   // The demolish goes through the real API, so both services start here.
   webServer: [
     {
-      command: "bun run dev:api",
-      cwd: "../..",
+      // The API package's own dev script, not the root `dev:api`: that goes through
+      // `bun run --filter`, whose rolling status display, under Playwright, repaints its whole
+      // window on every line once stdout is kept below.
+      command: "bun run dev",
+      cwd: "../api",
       env: {
         FEE_ACCOUNT_SECRET_TESTNET: feeAccount.secret(),
         MEDIATOR_SECRET_TESTNET: mediator.secret(),
         MEDIATOR_PUBLIC_TESTNET: mediator.publicKey(),
       },
+      // The API's Nest logger writes to stdout, which Playwright drops by default; kept in CI so
+      // a throttled upstream is named in the nightly's log (see apps/web/playwright.config.ts).
+      stdout: process.env.CI ? "pipe" : "ignore",
       url: "http://localhost:3001/health",
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
