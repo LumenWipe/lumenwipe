@@ -61,13 +61,16 @@ function expectation(
   );
 }
 
+/** One expiry for every close in this file, so a close rebuilt later has the same hash. */
+const MAX_TIME = Math.floor(Date.now() / 1000) + 300;
+
 /** The close the API builds for the session: the data entry's removal, then the merge. */
 function closeXdr(fee: string, destination = sink): string {
   return new TransactionBuilder(new Account(demo.publicKey(), "1"), {
     fee,
     networkPassphrase: PASSPHRASE,
   })
-    .setTimebounds(0, Math.floor(Date.now() / 1000) + 300)
+    .setTimebounds(0, MAX_TIME)
     .addOperation(Operation.manageData({ name: "promo_code", value: null }))
     .addOperation(Operation.accountMerge({ destination }))
     .build()
@@ -223,7 +226,7 @@ describe("the sponsor's envelope", () => {
       fee: "0",
       networkPassphrase: PASSPHRASE,
     })
-      .setTimebounds(0, Math.floor(Date.now() / 1000) + 300)
+      .setTimebounds(0, MAX_TIME)
       .addOperation(Operation.accountMerge({ destination: sink }))
       .build();
     single.sign(demo);
