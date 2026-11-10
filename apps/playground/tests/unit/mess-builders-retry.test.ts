@@ -227,6 +227,8 @@ describe("claimable balances are recorded before each attempt is sent", () => {
         events.push("record");
         recorded.push(balances);
       },
+      allowances: [],
+      recordAllowance: async () => {},
     };
   }
 

@@ -206,6 +206,7 @@ test("v1 draws from the six scenarios it shipped with, so a later scenario never
     "soroswap-lp",
     "aquarius-lp",
     "blend-supply",
+    "allowances",
   ]);
   for (let i = 0; i < 20_000; i++) {
     for (const { id } of generate(seedAt(i)).scenarios) expect(later).not.toContain(id);

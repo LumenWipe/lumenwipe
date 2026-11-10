@@ -21,6 +21,7 @@ import {
 } from "@/lib/mess-plan";
 import { handleCreateSession, handleMess } from "@/lib/route-handlers";
 import {
+  ALLOWANCE_SEED,
   AQUARIUS,
   AQUARIUS_SEED,
   BLEND,
@@ -31,12 +32,14 @@ import {
   SCENARIOS,
   SOROSWAP,
   SOROSWAP_SEED,
+  XLM_SAC,
   helperRoleOf,
   resolvePlan,
   validateSelection,
   type MessStepId,
   type ScenarioSelection,
 } from "@/lib/scenarios";
+import type { RecordedAllowance } from "@/lib/session-store";
 import { expectationFromSession, maxOperations } from "@/lib/verify";
 import { memoryStore } from "./session-fixtures";
 
@@ -47,6 +50,8 @@ import { memoryStore } from "./session-fixtures";
 // reversible stand-in.
 
 const ORIGIN = "http://localhost:3002";
+/** The ledger and entry TTL the allowance steps read, fixed instead of read from the RPC. */
+const LEDGER_TTL = { latestLedger: 1_000, maxEntryTtl: 3_110_400 };
 const encrypt = (plaintext: string): string => Buffer.from(plaintext, "utf8").toString("base64");
 const decrypt = (payload: string): string => Buffer.from(payload, "base64").toString("utf8");
 
@@ -128,6 +133,7 @@ async function runAndCheck(selection: ScenarioSelection): Promise<void> {
               bRate: BigInt(10) ** BigInt(12),
               dRate: BigInt(10) ** BigInt(12),
             }),
+            ledgerTtl: async () => LEDGER_TTL,
             // The contract call as the seeding would send it, captured instead.
             contractCall: async (source, call) => {
               const tx = new TransactionBuilder(new Account(source.publicKey(), "100"), {
@@ -156,6 +162,7 @@ async function runAndCheck(selection: ScenarioSelection): Promise<void> {
     issuers: session.ephemeralIssuers,
     recipient: session.transferRecipient?.publicKey ?? null,
     helpers: session.helperAccounts.map((h) => h.publicKey),
+    allowances: session.allowances,
   });
 
   // Every balance the mess created is recorded under the id its own signed transaction gives it.
@@ -196,6 +203,7 @@ function assertConsistent({
   issuers,
   recipient,
   helpers,
+  allowances,
 }: {
   plan: ReturnType<typeof resolvePlan>;
   demoPublic: string;
@@ -204,6 +212,7 @@ function assertConsistent({
   issuers: { assetCode: string; publicKey: string }[];
   recipient: string | null;
   helpers: string[];
+  allowances: RecordedAllowance[];
 }): void {
   // Every plan step posted exactly one transaction, in plan order.
   expect(posted.map((p) => p.stepId)).toEqual(plan.steps.map((s) => s.id));
@@ -221,6 +230,7 @@ function assertConsistent({
   let helperEntries = 0;
   let signersAdded = 0;
   const positions: string[] = [];
+  const approved: string[] = [];
 
   for (const { stepId, tx } of posted) {
     for (const op of tx.operations) {
@@ -306,6 +316,30 @@ function assertConsistent({
             positions.push("lend:blend");
             break;
           }
+          if (contract === XLM_SAC) {
+            // An approval on XLM's asset contract, to the spender the session recorded for it,
+            // living until the far expiry for the first spender and a week for the others.
+            const action = plan.steps.find((s) => s.id === stepId)?.action;
+            if (action?.kind !== "approve_allowance") throw new Error("not an approve step");
+            expect(call.functionName.toString()).toBe("approve");
+            const recorded = allowances[action.index - 1];
+            const liveUntil = action.farExpiry
+              ? LEDGER_TTL.latestLedger + LEDGER_TTL.maxEntryTtl - 1
+              : LEDGER_TTL.latestLedger + ALLOWANCE_SEED.liveLedgers;
+            expect(recorded).toEqual({
+              token: XLM_SAC,
+              spender: args[1] as string,
+              liveUntilLedger: liveUntil,
+            });
+            expect(args).toEqual([
+              demoPublic,
+              recorded?.spender,
+              stroops(action.amountXlm),
+              liveUntil,
+            ]);
+            approved.push(`allowance:${action.index}`);
+            break;
+          }
           expect(trusted.has("circle-usdc")).toBe(true);
           if (contract === AQUARIUS.router) {
             expect(call.functionName.toString()).toBe("deposit");
@@ -338,6 +372,9 @@ function assertConsistent({
   expect(offerNodes).toEqual(nodes("offer"));
   expect(signersAdded).toBe(nodes("signer").length);
   expect(positions).toEqual(nodes("position"));
+  // One recorded allowance per approval, and an allowance node for each.
+  expect(approved).toEqual(nodes("allowance"));
+  expect(allowances).toHaveLength(approved.length);
   // A seeded protocol is one the verifier admits an exit for, and only then.
   expect(expected.sorobanSeeded.length).toBe(positions.length);
   const fundRare = plan.steps.find((s) => s.id === "FUND_RARE");
@@ -401,20 +438,41 @@ function* customConfigs(): Generator<PlaygroundCustomConfig> {
   }
 }
 
-/** Every subset of the registry, each with every parameter at its minimum and then its maximum. */
+/** The scenarios at the given positions of the registry, each parameter at its minimum or maximum. */
+function selectionOf(mask: number, end: "min" | "max"): ScenarioSelection {
+  return {
+    scenarios: SCENARIOS.filter((_, i) => mask & (1 << i)).map((def) => ({
+      id: def.id,
+      params: Object.fromEntries(
+        Object.entries(def.params).map(([name, spec]) => [name, spec[end]])
+      ),
+    })),
+  };
+}
+
+const popcount = (mask: number): number => {
+  let n = 0;
+  for (let m = mask; m; m &= m - 1) n++;
+  return n;
+};
+
+/**
+ * Every accepted single scenario, pair and triple, and every largest accepted selection (one no
+ * other scenario can join), each with every parameter at its minimum and then its maximum. Only
+ * validation sweeps every subset; the cases actually run grow polynomially with the registry.
+ */
 function* registrySelections(): Generator<ScenarioSelection> {
-  for (let mask = 1; mask < 1 << SCENARIOS.length; mask++) {
-    const picked = SCENARIOS.filter((_, i) => mask & (1 << i));
-    for (const end of ["min", "max"] as const) {
-      const selection: ScenarioSelection = {
-        scenarios: picked.map((def) => ({
-          id: def.id,
-          params: Object.fromEntries(
-            Object.entries(def.params).map(([name, spec]) => [name, spec[end]])
-          ),
-        })),
-      };
-      if (validateSelection(selection).ok) yield selection;
+  const all = 1 << SCENARIOS.length;
+  for (const end of ["min", "max"] as const) {
+    const valid = new Uint8Array(all);
+    for (let mask = 1; mask < all; mask++) {
+      valid[mask] = validateSelection(selectionOf(mask, end)).ok ? 1 : 0;
+    }
+    for (let mask = 1; mask < all; mask++) {
+      if (!valid[mask]) continue;
+      const size = popcount(mask);
+      const largest = SCENARIOS.every((_, i) => mask & (1 << i) || !valid[mask | (1 << i)]);
+      if (size <= 3 || largest) yield selectionOf(mask, end);
     }
   }
 }
@@ -460,17 +518,14 @@ describe("the plan, the chain and the close expectation agree", () => {
     }
   });
 
-  test("every subset of the registry at its smallest and largest parameters", async () => {
+  test("every pair and triple of scenarios and every largest accepted selection, at their smallest and largest parameters", async () => {
     let cases = 0;
     for (const selection of registrySelections()) {
       await runAndCheck(selection);
       cases++;
     }
-    // Pinned so a change to the registry or its rules shows up here: 190 valid selections before
-    // the claimable-balance and sponsored-reserve scenarios, which fit beside most of them, 764
-    // before the multi-signature scenario, 1515 before the Soroswap pool, 2941 before the
-    // Aquarius pool, which shares the Soroswap pool's USDC purchase when both are picked, and 5520
-    // before the Blend position, whose borrow variant leaves less room beside the others.
-    expect(cases).toBe(8364);
+    // The accepted singles, pairs, triples and largest selections at both parameter extremes;
+    // pinned so a change to the registry or its rules shows up here.
+    expect(cases).toBe(3570);
   }, 240_000);
 });

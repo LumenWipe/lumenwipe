@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
+  ALLOWANCE_FEE_ESTIMATE_XLM,
+  BASE_RESERVE_XLM,
   MAX_BATCH_SIZE,
   MAX_ESTIMATED_SECONDS,
   MAX_SCENARIOS,
@@ -36,8 +38,8 @@ const subsets = (count: number, from: number, size: number): number[][] =>
 
 /** Largest selections (eight scenarios at their maximum) that fit every rule and cap, and those
  *  the XLM cap refuses. Pinned so a cost change shows up here. */
-const FITTED_AT_MAX = 141;
-const OVER_XLM_AT_MAX = 480;
+const FITTED_AT_MAX = 494;
+const OVER_XLM_AT_MAX = 1003;
 
 function messageOf(selection: ScenarioSelection, registry?: readonly ScenarioDefinition[]): string {
   const result = validateSelection(selection, { registry });
@@ -195,6 +197,29 @@ describe("the safety caps", () => {
         }
       }
     }
+  });
+
+  test("three allowances cost their approve and revoke fees and three contract transactions", () => {
+    const result = validateSelection(pick({ id: "allowances", params: { spenders: 3 } }));
+    if (!result.ok) throw new Error(result.message);
+    const alone = validateSelection(pick({ id: "forgotten-signer", params: {} }));
+    if (!alone.ok) throw new Error(alone.message);
+    // About 0.2 XLM in fees per transaction: three approves and three revokes. An approval moves
+    // no XLM, so nothing else is spent.
+    expect(result.plan.cost.sorobanTransactions).toBe(3);
+    expect(result.plan.cost.xlm).toBeCloseTo(2 * BASE_RESERVE_XLM + 6 * ALLOWANCE_FEE_ESTIMATE_XLM);
+    // Beside every other protocol scenario at its largest, they still fit every cap.
+    const everything = validateSelection(
+      pick(
+        { id: "allowances", params: { spenders: 3 } },
+        { id: "soroswap-lp", params: {} },
+        { id: "aquarius-lp", params: {} },
+        { id: "blend-supply", params: { variant: 1 } }
+      )
+    );
+    if (!everything.ok) throw new Error(everything.message);
+    expect(everything.plan.cost.sorobanTransactions).toBe(MAX_SOROBAN_TRANSACTIONS);
+    expect(everything.plan.cost.xlm).toBeLessThanOrEqual(MAX_SESSION_XLM);
   });
 
   for (const id of ["soroswap-lp", "aquarius-lp"] as const) {

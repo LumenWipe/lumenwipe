@@ -126,6 +126,25 @@ export const BLEND_SEED = {
   borrowXlm: "2",
 } as const;
 
+/**
+ * What the allowances scenario approves on XLM's asset contract (`XLM_SAC`), one amount per
+ * spender in order. The first spender's allowance lives as long as the network allows: the latest
+ * ledger plus the network's maximum entry TTL, less one, read live when the step runs. The others
+ * live `ALLOWANCE_LIVE_LEDGERS`. An approval moves nothing: the demo keeps its XLM.
+ */
+export const ALLOWANCE_SEED = {
+  amountsXlm: ["10", "25", "50"],
+  /** About a week of ledgers, far past a session and its reaper. */
+  liveLedgers: 120_960,
+} as const;
+
+/**
+ * What one `approve` call costs in fees, as an honest estimate rather than a ceiling: testnet
+ * charged 0.038 XLM for the farthest expiry on 2026-11-10, and a revoke costs less. The executor's
+ * own ceiling is `MAX_SOROBAN_FEE_STROOPS` (1 XLM).
+ */
+export const ALLOWANCE_FEE_ESTIMATE_XLM = 0.2;
+
 /** Protocol scenarios testnet cannot run, each with the reason, shown beside the ones it can. */
 export const TESTNET_UNAVAILABLE: readonly {
   featureSet: FeatureSetId;

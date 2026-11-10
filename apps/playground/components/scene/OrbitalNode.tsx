@@ -2,7 +2,15 @@
 
 import { useEffect } from "react";
 import { motion, useReducedMotion, useSpring, useTime, useTransform } from "motion/react";
-import { ArrowLeftRight, CircleDot, Database, Gem, KeyRound, Layers } from "lucide-react";
+import {
+  ArrowLeftRight,
+  CircleDot,
+  Database,
+  Gem,
+  HandCoins,
+  KeyRound,
+  Layers,
+} from "lucide-react";
 import type { SceneNode, SceneNodeKind } from "@/store/playground";
 
 const SCENE_HALF = 280;
@@ -13,6 +21,7 @@ const KIND_ICON: Record<SceneNodeKind, typeof Gem> = {
   data: Database,
   signer: KeyRound,
   position: Layers,
+  allowance: HandCoins,
   generic: CircleDot,
 };
 

@@ -117,10 +117,17 @@ describe.each(SCENARIOS.map((def) => [def.id, def] as const))("%s", (_id, def) =
     for (const build of builds(def)) {
       const { expectation } = build;
       // A position's exits are transactions of their own, so a scenario whose only entry is a
-      // position (Blend's, which buys nothing) adds no operation to the merge.
-      const positions = build.steps
-        .flatMap(({ step }) => step.nodes)
-        .filter((n) => n.kind === "position");
+      // position (Blend's, which buys nothing) adds no operation to the merge. An allowance's
+      // revoke is sent before the close, so allowances add nothing to the close at all.
+      const kinds = build.steps.flatMap(({ step }) => step.nodes).map((n) => n.kind);
+      const allowances = kinds.filter((k) => k === "allowance").length;
+      if (allowances > 0) {
+        expect(kinds.every((k) => k === "allowance")).toBe(true);
+        expect(expectation.closeOperations).toBe(0);
+        expect(expectation.operationTypes).toEqual([]);
+        continue;
+      }
+      const positions = kinds.filter((k) => k === "position");
       if (positions.length === 0 || build.steps.some(({ step }) => step.spendsPinned)) {
         expect(expectation.closeOperations).toBeGreaterThan(0);
       } else {
@@ -152,6 +159,8 @@ describe.each(SCENARIOS.map((def) => [def.id, def] as const))("%s", (_id, def) =
         actions("soroswap_deposit") + actions("aquarius_deposit") + actions("blend_submit")
       );
       if (count("position") > 0) expect(expectation.operationTypes).toContain("invokeHostFunction");
+      // One allowance per approve, each a contract call of its own.
+      expect(count("allowance")).toBe(actions("approve_allowance"));
       // Only the account's own entries hold a reserve; a position lives in a contract.
       const subEntries = nodes.filter((n) => SUB_ENTRY_NODE_KINDS.includes(n.kind)).length;
       expect(build.cost.subEntries).toBe(subEntries);

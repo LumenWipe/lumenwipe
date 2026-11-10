@@ -30,6 +30,12 @@ const ERROR_COPY = new Map<string, string>(
     resolution_unavailable: "This demo has no automatic fix for that blocker.",
     resolution_not_recorded: "The demo has not created what this fix acts on yet.",
     resolve_failed: "The fix did not go through on the test network. Please try again.",
+    allowances_read_failed:
+      "Could not read the demo's allowances through the LumenWipe API. Resume to try again.",
+    allowance_not_recorded: "This demo did not approve that spender, so it revokes nothing for it.",
+    revoke_refused:
+      "A revoke the LumenWipe API built did not pass the playground's checks, so nothing was signed.",
+    revoke_failed: "A revoke did not go through on the test network. Resume to try again.",
     demolish_started:
       "The close has already started for this demo. Start a new one to run the setup again.",
     state_read_failed: "Could not read the demo account from the test network. Please try again.",

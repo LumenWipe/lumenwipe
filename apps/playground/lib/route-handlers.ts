@@ -27,7 +27,8 @@ import {
 } from "./scenarios";
 import { isCronAuthorized, isCronSecretConfigured } from "./cron-auth";
 import { runReaper, type ReaperDeps } from "./reaper";
-import { TxSubmitError, type NativeBalance } from "./horizon-submit";
+import { TxSubmitError, type NativeBalance, type SignerState } from "./horizon-submit";
+import { recordedListed, revokeRecordedAllowance, type AllowanceApi } from "./allowances";
 import {
   AccountBusyError,
   MM_SESSION_FLOOR_XLM,
@@ -50,10 +51,13 @@ import {
   runDemolishRound,
   runMessStep,
   runResolve,
+  runRevokeAllowance,
+  readSessionAllowances,
   type CleanupDeps,
   type DemolishRoundDeps,
   type RecycleResult,
   type ResolveDeps,
+  type RevokeAllowanceDeps,
   type StateDeps,
 } from "./session-actions";
 import {
@@ -135,6 +139,16 @@ export interface ResolveRouteDeps {
   decrypt: (payload: string) => string;
   /** Signs and submits `ops` from `source`; returns the hash. */
   submit: (source: Keypair, ops: xdr.Operation[]) => Promise<string>;
+}
+
+export interface AllowancesRouteDeps {
+  store: SessionStore;
+  api: () => ApiConfig;
+  decrypt: (payload: string) => string;
+  /** The API's allowance list, revoke builder and submit for a configured API. */
+  allowanceApi: (apiUrl: string, apiKey: string) => AllowanceApi;
+  /** The demo's live signers and thresholds, read from Horizon. */
+  signerState: (address: string) => Promise<SignerState>;
 }
 
 export interface CredentialsDeps {
@@ -348,6 +362,7 @@ export async function handleCreateSession(
         encSecret: deps.encrypt(keypair.secret()),
       })),
       claimableBalances: [],
+      allowances: [],
     });
   } catch (err) {
     if (err instanceof PlaygroundConfigError || err instanceof PlaygroundStoreUnavailableError) {
@@ -417,7 +432,7 @@ export async function handleMess(
   if (!issuer || !mm) return notConfiguredResponse();
 
   const result = await runMessStep(deps.store, id, stepId, {
-    executeStep: (step, session, recordSigner, recordClaimableBalances) =>
+    executeStep: (step, session, recordSigner, recordClaimableBalances, recordAllowance) =>
       deps.executeMessStep(step, {
         demo: Keypair.fromSecret(deps.decrypt(session.encDemoSecret)),
         ephemeralIssuers: new Map(
@@ -442,6 +457,8 @@ export async function handleMess(
             encSecret: secret === null ? null : deps.encrypt(secret),
           }),
         recordClaimableBalances,
+        allowances: session.allowances,
+        recordAllowance,
       }),
   });
   return actionResponse(result);
@@ -528,6 +545,73 @@ export function resolveActionDeps(deps: Omit<ResolveRouteDeps, "store">): Resolv
       return deps.submit(source, ops);
     },
   };
+}
+
+/** The allowance list and revoke's dependencies, or null when the API setting is missing. */
+export function revokeActionDeps(
+  deps: Omit<AllowancesRouteDeps, "store">
+): RevokeAllowanceDeps | null {
+  const { apiUrl, apiKey } = deps.api();
+  if (!apiUrl || !apiKey) return null;
+  const api = deps.allowanceApi(apiUrl, apiKey);
+  return {
+    list: async (session) =>
+      recordedListed((await api.getAllowances(session.demoPublic)).allowances, session.allowances),
+    // The spender and every check's expectation come from the session as this request's lock
+    // read it.
+    revoke: (session, allowance) =>
+      revokeRecordedAllowance({
+        demo: Keypair.fromSecret(deps.decrypt(session.encDemoSecret)),
+        signingKeys: signingKeysOf(session, deps.decrypt),
+        recorded: session.allowances,
+        allowance,
+        api,
+        signerState: deps.signerState,
+      }),
+  };
+}
+
+/**
+ * The allowances the session recorded, each marked with whether the API's list for the demo shows
+ * it, and with its spender's position in the record (from 1), which names its scene node. Read
+ * only.
+ */
+export async function handleAllowances(
+  id: string,
+  deps: AllowancesRouteDeps
+): Promise<NextResponse> {
+  const session = await loadSessionOrErrorResponse(deps.store, id);
+  if (session instanceof NextResponse) return session;
+  const actions = revokeActionDeps(deps);
+  if (!actions) return notConfiguredResponse();
+  return actionResponse(await readSessionAllowances(session, actions));
+}
+
+/** A spender is a public key, 56 characters; anything longer is not read. */
+const MAX_SPENDER_LENGTH = 56;
+
+/**
+ * Revokes one allowance the session recorded, named by its spender, before the close: the API
+ * builds the revoke, both checks hold it to the session record, and the demo key signs it.
+ */
+export async function handleRevokeAllowance(
+  req: NextRequest,
+  id: string,
+  deps: AllowancesRouteDeps
+): Promise<NextResponse> {
+  let spender: unknown;
+  try {
+    const body: unknown = await req.json();
+    spender = isRecord(body) ? body.spender : undefined;
+  } catch {
+    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+  }
+  if (typeof spender !== "string" || spender.length === 0 || spender.length > MAX_SPENDER_LENGTH) {
+    return NextResponse.json({ error: "allowance_not_recorded" }, { status: 400 });
+  }
+  const actions = revokeActionDeps(deps);
+  if (!actions) return notConfiguredResponse();
+  return actionResponse(await runRevokeAllowance(deps.store, id, spender, actions));
 }
 
 /**

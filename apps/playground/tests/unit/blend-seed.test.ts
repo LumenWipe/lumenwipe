@@ -43,6 +43,8 @@ const ctx = (): MessContext => ({
   helpers: new Map(),
   recordSigner: async () => {},
   recordClaimableBalances: async () => {},
+  allowances: [],
+  recordAllowance: async () => {},
 });
 
 const selectionOf = (variant: 0 | 1) => ({

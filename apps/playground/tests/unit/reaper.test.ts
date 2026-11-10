@@ -23,7 +23,7 @@ import {
   handleCreateSession,
   handleReap,
 } from "@/lib/route-handlers";
-import type { MultisigVariant } from "@/lib/scenarios";
+import { XLM_SAC, type MultisigVariant } from "@/lib/scenarios";
 import { PlaygroundVerificationError } from "@/lib/verify";
 import {
   SESSION_RECORD_TTL_SECONDS,
@@ -137,6 +137,7 @@ function reaper(
       },
     },
     resolve: { resolve: async () => "hash" },
+    revoke: { revoke: async () => "hash" },
     cleanup,
     exists: async (publicKey) => {
       net.checked.push(publicKey);
@@ -189,6 +190,113 @@ function expectNoSecretLogged(secrets: string[]): void {
   expect(text).not.toContain(ENC);
   for (const secret of secrets) expect(text).not.toContain(secret);
 }
+
+describe("reaper: allowances", () => {
+  const ALLOWANCES = { scenarios: [{ id: "allowances" as const, params: { spenders: 2 } }] };
+  const recorded = () => [
+    { token: XLM_SAC, spender: Keypair.random().publicKey(), liveUntilLedger: 9_000_000 },
+    { token: XLM_SAC, spender: Keypair.random().publicKey(), liveUntilLedger: 5_200_000 },
+  ];
+
+  test("an abandoned session revokes every allowance it recorded before its close", async () => {
+    // The API's close plans no revoke: an allowance lives in the token contract, so it never
+    // blocks the merge (apps/api/src/close holds no allowance code), and only the reaper's own
+    // revokes, through the visitor's locked action, zero them.
+    const store = memoryStore();
+    const allowances = recorded();
+    const seeded = await seed(store, { selection: ALLOWANCES, allowances });
+    const net = network(seeded.demo, ...seeded.issuers);
+    const order: string[] = [];
+    const deps = reaper(store, net, {
+      revoke: {
+        revoke: async (session, allowance) => {
+          order.push(`revoke ${allowance.spender}`);
+          // The allowance and every check's expectation come from the session record.
+          expect(session.allowances).toEqual(allowances);
+          return "hash";
+        },
+      },
+    });
+    const round = deps.round.round;
+    deps.round = {
+      round: (session, hooks) => {
+        order.push("close");
+        return round(session, hooks);
+      },
+    };
+    expect(counts(await runReaper(deps))).toEqual({ reaped: 1, kept: 0, young: 0, pruned: 0 });
+    expect(order).toEqual([...allowances.map((a) => `revoke ${a.spender}`), "close"]);
+    expect(await store.loadSession(seeded.session.id)).toBeNull();
+    expectNoSecretLogged(seeded.secrets);
+  });
+
+  test("a revoke that fails keeps the session, with no close round, for the next run", async () => {
+    const store = memoryStore();
+    const seeded = await seed(store, { selection: ALLOWANCES, allowances: recorded() });
+    const net = network(seeded.demo, ...seeded.issuers);
+    const deps = reaper(store, net, {
+      revoke: {
+        revoke: async () => {
+          throw new Error("socket hang up");
+        },
+      },
+    });
+    expect(counts(await runReaper(deps))).toEqual({ reaped: 0, kept: 1, young: 0, pruned: 0 });
+    expect(net.rounds).toEqual([]);
+    expect(await store.loadSession(seeded.session.id)).not.toBeNull();
+    expect(logged.join("\n")).toContain("revoke_failed");
+  });
+
+  test("with a close transaction in flight the close settles it first, and revokes nothing", async () => {
+    const store = memoryStore();
+    const seeded = await seed(store, {
+      selection: ALLOWANCES,
+      allowances: recorded(),
+      demolishPending: {
+        txId: "t",
+        hash: "a".repeat(64),
+        summary: "Close",
+        operations: [],
+        validUntil: null,
+        closesAccount: true,
+      },
+    });
+    const net = network(seeded.demo, ...seeded.issuers);
+    const revoked: string[] = [];
+    const deps = reaper(store, net, {
+      revoke: {
+        revoke: async (_s, a) => {
+          revoked.push(a.spender);
+          return "hash";
+        },
+      },
+    });
+    await runReaper(deps);
+    expect(revoked).toEqual([]);
+    expect(net.rounds).toEqual([{ sessionId: seeded.session.id, pending: true }]);
+  });
+
+  test("a finished close revokes nothing: its demo key is never used again", async () => {
+    const store = memoryStore();
+    const seeded = await seed(store, {
+      selection: ALLOWANCES,
+      allowances: recorded(),
+      demolishDone: true,
+    });
+    const net = network(seeded.demo, ...seeded.issuers);
+    const revoked: string[] = [];
+    const deps = reaper(store, net, {
+      revoke: {
+        revoke: async (_s, a) => {
+          revoked.push(a.spender);
+          return "hash";
+        },
+      },
+    });
+    expect((await runReaper(deps)).reaped).toBe(1);
+    expect(revoked).toEqual([]);
+  });
+});
 
 describe("reaper", () => {
   test("an abandoned session past the threshold is closed, merged back and its record deleted", async () => {

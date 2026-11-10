@@ -163,6 +163,138 @@ async function dirtyAccount(): Promise<void> {
   expect(trustlineNode()?.status).toBe("docked");
 }
 
+describe("allowances are revoked before the close", () => {
+  const ALLOWANCES = `/api/session/${SESSION_ID}/allowances`;
+  const REVOKE = `/api/session/${SESSION_ID}/allowances/revoke`;
+  const spenders = ["GSPENDERONE", "GSPENDERTWO"];
+  const hashOf = (spender: string) => (spender === spenders[0] ? "d" : "e").repeat(64);
+
+  async function allowanceAccount(): Promise<void> {
+    const plan = resolvePlan({ scenarios: [{ id: "allowances", params: { spenders: 2 } }] });
+    routes.handlers.set("/api/session", async () => ({
+      status: 200,
+      body: {
+        sessionId: SESSION_ID,
+        demoPublic: "GDEMO",
+        expiresAt: Date.now() + 3_600_000,
+        messPlan: plan.steps,
+        accounts: { issuer: ISSUER, mm: "GSINK", lwdemoAsset: `LWDEMO:${ISSUER}`, ephemeral: [] },
+      },
+    }));
+    routes.handlers.set(ALLOWANCES, async () => ({
+      status: 200,
+      body: {
+        // The API's best-effort list missed the second: it is revoked all the same.
+        allowances: spenders.map((spender, i) => ({
+          index: i + 1,
+          token: "CXLM",
+          spender,
+          listed: i === 0,
+          amount: i === 0 ? "1" : null,
+        })),
+      },
+    }));
+    routes.handlers.set(REVOKE, async () => {
+      const { spender } = JSON.parse(routes.bodies[routes.bodies.length - 1]!) as {
+        spender: string;
+      };
+      return { status: 200, body: { spender, txHash: hashOf(spender) } };
+    });
+    rtl.render(<Harness />);
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: /Create & trash a demo account/ }));
+    await rtl.screen.findByRole("button", { name: /Demolish it here/ }, { timeout: 5000 });
+  }
+  const allowanceNodes = () =>
+    usePlaygroundStore
+      .getState()
+      .nodes.filter((n) => n.kind === "allowance")
+      .map((n) => [n.id, n.status, n.balance]);
+
+  test("each recorded allowance is revoked, shown and logged, then the close runs", async () => {
+    routes.handlers.set(ROUND, async () => ({
+      status: 200,
+      body: { done: true, confirmed: [MERGE], remainingSteps: 0 },
+    }));
+    await allowanceAccount();
+    expect(allowanceNodes()).toEqual([
+      ["allowance:1", "docked", "10"],
+      ["allowance:2", "docked", "25"],
+    ]);
+
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: /Demolish it here/ }));
+    await rtl.screen.findByText(/demo complete/, undefined, { timeout: 5000 });
+
+    const demolishCalls = routes.calls.slice(routes.calls.indexOf(`GET ${ALLOWANCES}`));
+    expect(demolishCalls.slice(0, 4)).toEqual([
+      `GET ${ALLOWANCES}`,
+      `POST ${REVOKE}`,
+      `POST ${REVOKE}`,
+      `POST ${ROUND}`,
+    ]);
+    expect(routes.bodies.slice(-2)).toEqual(spenders.map((spender) => JSON.stringify({ spender })));
+    for (const spender of spenders) expect(txLink(hashOf(spender))).toHaveLength(1);
+    expect(rtl.screen.getByText("Revoke spender 1's allowance")).toBeTruthy();
+    expect(
+      rtl.screen.getByText("The API lists 1 of the 2 allowances this demo approved")
+    ).toBeTruthy();
+    expect(allowanceNodes().map(([id, status]) => [id, status])).toEqual([
+      ["allowance:1", "destroyed"],
+      ["allowance:2", "destroyed"],
+    ]);
+  });
+
+  test("a refused revoke stops before the close, and the resume lists them again", async () => {
+    let refuse = true;
+    routes.handlers.set(ROUND, async () => ({
+      status: 200,
+      body: { done: true, confirmed: [MERGE], remainingSteps: 0 },
+    }));
+    await allowanceAccount();
+    const revoke = routes.handlers.get(REVOKE)!;
+    routes.handlers.set(REVOKE, async (method) =>
+      refuse ? { status: 422, body: { error: "revoke_refused" } } : revoke(method)
+    );
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: /Demolish it here/ }));
+    const alert = await rtl.screen.findByRole("alert", undefined, { timeout: 5000 });
+    expect(alert.textContent).toBe(errorCopy("revoke_refused"));
+    expect(routes.count(`POST ${ROUND}`)).toBe(0);
+
+    refuse = false;
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: /Resume the close/ }));
+    await rtl.screen.findByText(/demo complete/, undefined, { timeout: 5000 });
+    expect(routes.count(`GET ${ALLOWANCES}`)).toBe(2);
+    expect(routes.count(`POST ${ROUND}`)).toBe(1);
+  });
+
+  test("a close that fails after the revokes resumes without listing them again", async () => {
+    let rounds = 0;
+    routes.handlers.set(ROUND, async () => {
+      rounds++;
+      return rounds === 1
+        ? { status: 502, body: { error: "demolish_failed" } }
+        : { status: 200, body: { done: true, confirmed: [MERGE], remainingSteps: 0 } };
+    });
+    await allowanceAccount();
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: /Demolish it here/ }));
+    await rtl.screen.findByRole("button", { name: /Resume the close/ }, { timeout: 5000 });
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: /Resume the close/ }));
+    await rtl.screen.findByText(/demo complete/, undefined, { timeout: 5000 });
+    expect(routes.count(`GET ${ALLOWANCES}`)).toBe(1);
+    expect(routes.count(`POST ${REVOKE}`)).toBe(2);
+  });
+
+  test("a session with no allowance step never asks for the list", async () => {
+    routes.handlers.set(ROUND, async () => ({
+      status: 200,
+      body: { done: true, confirmed: [MERGE], remainingSteps: 0 },
+    }));
+    await dirtyAccount();
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: /Demolish it here/ }));
+    await rtl.screen.findByText(/demo complete/, undefined, { timeout: 5000 });
+    expect(routes.count(`GET ${ALLOWANCES}`)).toBe(0);
+  });
+});
+
 describe("the demolish runs round by round", () => {
   test("each round's confirmed transaction reaches the scene and the log as it returns", async () => {
     const second = deferred<{ status: number; body: unknown }>();
@@ -558,6 +690,14 @@ describe("the scenario picker", () => {
       expect(node.kind).toBe("generic");
       rtl.render(<OrbitalNode node={{ ...node, status: "docked" }} />);
       expect(rtl.screen.getByText("Vault")).toBeTruthy();
+    });
+
+    test("an allowance node keeps its kind and draws its label and amount", () => {
+      const node = buildSceneNode({ id: "allowance:1", kind: "allowance", label: "Spender 1" }, 0);
+      expect(node.kind).toBe("allowance");
+      rtl.render(<OrbitalNode node={{ ...node, status: "docked", balance: "10" }} />);
+      expect(rtl.screen.getByText("Spender 1")).toBeTruthy();
+      expect(rtl.screen.getByText("10")).toBeTruthy();
     });
 
     test("an offer node is bound to the chain offer that trades its pair", () => {

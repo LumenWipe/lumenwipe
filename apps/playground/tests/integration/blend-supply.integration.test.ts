@@ -91,6 +91,8 @@ async function runVariant(variant: 0 | 1): Promise<void> {
     helpers: new Map(),
     recordSigner: async () => {},
     recordClaimableBalances: async () => {},
+    allowances: [],
+    recordAllowance: async () => {},
   };
   for (const step of resolvePlan(selection).steps.filter((s) => s.id !== "SETUP")) {
     console.log(`${step.id} (variant ${variant}): ${await executeMessStep(step, ctx)}`);

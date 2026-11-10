@@ -1,5 +1,6 @@
 import "server-only";
 import { CloseOutcomeUnknownError, LumenWipeApiError, type AccountState } from "@lumenwipe/sdk";
+import { RevokeAllowanceVerificationError, VerificationError } from "@lumenwipe/verify";
 import { PlaygroundConfigError } from "./crypto";
 import {
   DemolishBlockedError,
@@ -7,7 +8,9 @@ import {
   type DemolishRoundHooks,
   type DemolishRoundResult,
 } from "./demolish";
+import type { ListedAllowance } from "./allowances";
 import { BlendUtilizationError, LiquidityUnavailableError } from "./mess-builders";
+import { RevokeVerificationError } from "./verify-revoke";
 import {
   resolvePlan,
   type HelperRole,
@@ -20,6 +23,7 @@ import {
   PlaygroundStoreUnavailableError,
   type DemolishLogEntry,
   type PlaygroundSession,
+  type RecordedAllowance,
   type RecordedClaimableBalance,
   type RecordedSigner,
   type SessionLock,
@@ -52,7 +56,8 @@ export interface MessStepDeps {
     step: MessStepDef,
     session: PlaygroundSession,
     recordSigner: (signer: RecordedSigner) => Promise<void>,
-    recordClaimableBalances: (balances: RecordedClaimableBalance[]) => Promise<void>
+    recordClaimableBalances: (balances: RecordedClaimableBalance[]) => Promise<void>,
+    recordAllowance: (index: number, allowance: RecordedAllowance) => Promise<void>
   ) => Promise<string>;
 }
 
@@ -141,7 +146,28 @@ export async function runMessStep(
       ): Promise<void> => {
         await store.updateSession(lock, () => ({ claimableBalances: balances }));
       };
-      const txHash = await deps.executeStep(step, session, recordSigner, recordClaimableBalances);
+      // Recorded before each approve is sent: spender `index` is entry `index - 1`, and a retry of
+      // the step replaces what its earlier attempt recorded for that spender.
+      const recordAllowance = async (
+        index: number,
+        allowance: RecordedAllowance
+      ): Promise<void> => {
+        await store.updateSession(lock, (current) => {
+          if (!Number.isInteger(index) || index < 1 || index > current.allowances.length + 1) {
+            throw new Error(`Allowance ${index} recorded out of order`);
+          }
+          const allowances = [...current.allowances];
+          allowances[index - 1] = allowance;
+          return { allowances };
+        });
+      };
+      const txHash = await deps.executeStep(
+        step,
+        session,
+        recordSigner,
+        recordClaimableBalances,
+        recordAllowance
+      );
       await store.updateSession(lock, (current) => ({
         completedMessSteps: [...current.completedMessSteps, stepId],
       }));
@@ -301,6 +327,64 @@ async function plannedResolutions(store: SessionStore, id: string): Promise<stri
   const session = await store.loadSession(id).catch(() => null);
   if (!session) return [];
   return resolvePlan(session.selection).expectation.resolutions.map((r) => r.blocker);
+}
+
+export interface RevokeAllowanceDeps {
+  /** Lists the demo's allowances through the API. */
+  list: (session: PlaygroundSession) => Promise<ListedAllowance[]>;
+  /** Revokes one recorded allowance once both checks accept the API's transaction; its hash. */
+  revoke: (session: PlaygroundSession, allowance: RecordedAllowance) => Promise<string>;
+}
+
+/** The session's recorded allowances beside the API's list; read only, so no lock is taken. */
+export async function readSessionAllowances(
+  session: PlaygroundSession,
+  deps: Pick<RevokeAllowanceDeps, "list">
+): Promise<ActionResult> {
+  if (session.allowances.length === 0) return { status: 200, body: { allowances: [] } };
+  try {
+    return { status: 200, body: { allowances: await deps.list(session) } };
+  } catch (err) {
+    if (isConfigError(err)) return NOT_CONFIGURED;
+    console.error("[playground] allowance list failed", { sessionId: session.id }, err);
+    return { status: 502, body: { error: "allowances_read_failed" } };
+  }
+}
+
+/**
+ * Revokes one allowance the session recorded, named by its spender, under the session lock: the
+ * API builds the revoke, both checks hold it to the record, and the demo key signs it. Refused
+ * for a spender the session did not record, and once the close has merged the demo or has a
+ * transaction in flight.
+ */
+export async function runRevokeAllowance(
+  store: SessionStore,
+  id: string,
+  spender: string,
+  deps: Pick<RevokeAllowanceDeps, "revoke">
+): Promise<ActionResult> {
+  try {
+    return await withSessionLock(store, id, async (session) => {
+      const allowance = session.allowances.find((a) => a.spender === spender);
+      if (!allowance) return { status: 400, body: { error: "allowance_not_recorded" } };
+      if (session.demolishDone || session.demolishPending !== null) {
+        return { status: 409, body: { error: "demolish_in_progress" } };
+      }
+      const txHash = await deps.revoke(session, allowance);
+      return { status: 200, body: { spender, txHash } };
+    });
+  } catch (err) {
+    if (isConfigError(err)) return NOT_CONFIGURED;
+    console.error("[playground] allowance revoke failed", { sessionId: id }, err);
+    // Refused by a check before anything was signed: asking again gets the same transaction.
+    const refused =
+      err instanceof RevokeVerificationError ||
+      err instanceof RevokeAllowanceVerificationError ||
+      err instanceof VerificationError;
+    return refused
+      ? { status: 422, body: { error: "revoke_refused" } }
+      : { status: 502, body: { error: "revoke_failed" } };
+  }
 }
 
 export interface ResolveDeps {

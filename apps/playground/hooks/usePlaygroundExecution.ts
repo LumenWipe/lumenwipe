@@ -49,6 +49,15 @@ export interface DemolishRoundResponse {
   remainingSteps: number | null;
 }
 
+/** A recorded allowance and whether the API lists it; `index` is its spender's position. */
+interface ListedAllowance {
+  index: number;
+  token: string;
+  spender: string;
+  listed: boolean;
+  amount: string | null;
+}
+
 interface UsePlaygroundExecutionResult {
   start: () => void;
   demolish: () => void;
@@ -78,6 +87,8 @@ const RING: Record<SceneNodeKind, { radius: number; durationSec: number }> = {
   offer: { radius: 240, durationSec: 56 },
   // A protocol position orbits outside the account's own entries: it lives in a contract.
   position: { radius: 265, durationSec: 64 },
+  // An allowance also lives in a contract, the token's: it shares the positions' ring.
+  allowance: { radius: 265, durationSec: 72 },
   // Shares the outer guide ring: OrbitalScene draws one ring per planned kind.
   generic: { radius: 240, durationSec: 48 },
 };
@@ -174,6 +185,8 @@ export function usePlaygroundExecution(): UsePlaygroundExecutionResult {
   const shown = useRef(new Set<string>());
   // The balance before the close started, kept across resumes for the completion summary.
   const preDemolishXlm = useRef<string | null>(null);
+  // Whether the session's allowances were revoked, so a resumed close does not list them again.
+  const allowancesRevoked = useRef(false);
 
   const fail = useCallback((err: unknown) => {
     const store = usePlaygroundStore.getState();
@@ -208,6 +221,7 @@ export function usePlaygroundExecution(): UsePlaygroundExecutionResult {
     nodeSeq.current = 0;
     shown.current = new Set();
     preDemolishXlm.current = null;
+    allowancesRevoked.current = false;
     const store = usePlaygroundStore.getState();
 
     try {
@@ -288,6 +302,39 @@ export function usePlaygroundExecution(): UsePlaygroundExecutionResult {
   }, []);
 
   /**
+   * Before the close: shows what the API's allowance list finds for the demo, then revokes every
+   * allowance the session recorded, one request per revoke. The list is best effort, so the record
+   * decides what is revoked. The server builds each revoke through the API and signs it only once
+   * both revoke checks accept it.
+   */
+  const revokeAllowances = useCallback(async (sessionId: string) => {
+    setProgressStatus("Reading the demo's allowances through the LumenWipe API...");
+    const { allowances } = await api<{ allowances: ListedAllowance[] }>(
+      `/session/${sessionId}/allowances`
+    );
+    const listed = allowances.filter((a) => a.listed).length;
+    usePlaygroundStore.getState().addLog({
+      label: `The API lists ${listed} of the ${allowances.length} allowance${allowances.length === 1 ? "" : "s"} this demo approved`,
+      txHash: null,
+      kind: "info",
+    });
+    for (const allowance of allowances) {
+      setProgressStatus(`Revoking spender ${allowance.index}'s allowance...`);
+      const { txHash } = await api<{ txHash: string }>(`/session/${sessionId}/allowances/revoke`, {
+        method: "POST",
+        body: JSON.stringify({ spender: allowance.spender }),
+      });
+      const store = usePlaygroundStore.getState();
+      store.destroyNodes([`allowance:${allowance.index}`], txHash);
+      store.addLog({
+        label: `Revoke spender ${allowance.index}'s allowance`,
+        txHash,
+        kind: "demolish",
+      });
+    }
+  }, []);
+
+  /**
    * Phase B: run the real close engine server-side one round per request, playing each confirmed
    * transaction as its round returns. Called again after an error, it resumes: the server carries
    * on from the account's live state and settles anything left in flight.
@@ -309,6 +356,12 @@ export function usePlaygroundExecution(): UsePlaygroundExecutionResult {
       store.setDemolishFailed(false);
       store.setLastError(null);
       store.setPhase("DEMOLISHING");
+
+      const seedsAllowances = store.messPlan.some((s) => s.action.kind === "approve_allowance");
+      if (seedsAllowances && !allowancesRevoked.current) {
+        await revokeAllowances(sessionId);
+        allowancesRevoked.current = true;
+      }
 
       let remainingSteps: number | null = null;
       for (let round = 0; ; round++) {
@@ -340,7 +393,7 @@ export function usePlaygroundExecution(): UsePlaygroundExecutionResult {
       setProgressStatus(null);
       running.current = false;
     }
-  }, [complete, fail, refreshState, showConfirmed]);
+  }, [complete, fail, refreshState, revokeAllowances, showConfirmed]);
 
   /** Runs the session's planned fix for a blocker, then resumes the close, which plans again. */
   const resolve = useCallback(

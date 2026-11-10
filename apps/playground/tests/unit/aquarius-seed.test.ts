@@ -44,6 +44,8 @@ const ctx = (): MessContext => ({
   helpers: new Map(),
   recordSigner: async () => {},
   recordClaimableBalances: async () => {},
+  allowances: [],
+  recordAllowance: async () => {},
 });
 
 const planOf = (...ids: ScenarioId[]) =>

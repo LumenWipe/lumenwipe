@@ -26,7 +26,8 @@ import { seedContractCall, type ContractCall } from "./soroban-seed";
 import { blendBorrowFits, readBlendReserve, type BlendReserveState } from "./blend-utilization";
 import { formatStroops, networkStroops, parseStroops } from "./stroops";
 import { standingLiquidityOps, type HorizonBalance, type HorizonOffer } from "./standing-liquidity";
-import type { SignerType } from "./session-store";
+import type { RecordedAllowance, SignerType } from "./session-store";
+import { readLedgerTtl, type LedgerTtl } from "./allowances";
 import {
   MULTISIG_SIGNER_WEIGHT,
   MULTISIG_THRESHOLD,
@@ -37,6 +38,8 @@ import {
   BLEND_REQUEST,
   PINNED_ASSETS,
   SOROSWAP,
+  ALLOWANCE_SEED,
+  XLM_SAC,
   isPersistentAsset,
   type AssetCode,
   type ClaimIntent,
@@ -77,6 +80,11 @@ export interface MessContext {
   /** Records the claimable balances a signed transaction creates, before it is sent. Each attempt
    *  replaces the last: only the transaction that lands creates balances. */
   recordClaimableBalances: (balances: ClaimableBalanceRecord[]) => Promise<void>;
+  /** The allowances the session has recorded so far, in spender order. */
+  allowances: readonly RecordedAllowance[];
+  /** Records spender `index`'s allowance (from 1) before its `approve` is sent, replacing what an
+   *  earlier attempt of the same step recorded for it. */
+  recordAllowance: (index: number, allowance: RecordedAllowance) => Promise<void>;
 }
 
 /**
@@ -154,6 +162,8 @@ export interface BuildSignSubmitDeps {
   now?: () => number;
   /** Reads the pinned Blend pool's XLM reserve (lib/blend-utilization.ts). */
   blendReserve?: () => Promise<BlendReserveState>;
+  /** Reads the latest ledger and the network's maximum entry TTL (lib/allowances.ts). */
+  ledgerTtl?: () => Promise<LedgerTtl>;
 }
 
 /** A strict-receive route: the XLM it spends and the assets it crosses on the way. */
@@ -389,6 +399,37 @@ export function blendSubmitCall(
   };
 }
 
+/** `approve(from, spender, amount, live_until_ledger)` on XLM's asset contract. */
+export function approveAllowanceCall(
+  demoPublic: string,
+  spender: string,
+  amountXlm: string,
+  liveUntilLedger: number
+): ContractCall {
+  return {
+    contract: XLM_SAC,
+    function: "approve",
+    args: [
+      scAddress(demoPublic),
+      scAddress(spender),
+      scI128(networkStroops(amountXlm)),
+      xdr.ScVal.scvU32(liveUntilLedger),
+    ],
+  };
+}
+
+/**
+ * The ledger an allowance lives until: the farthest the network accepts, the latest ledger plus
+ * its maximum entry TTL less one (the asset contract refuses anything later), or
+ * `ALLOWANCE_SEED.liveLedgers` past the latest. The ledger only moves on before the call applies,
+ * which moves the network's own bound further out.
+ */
+export function allowanceLiveUntil(ttl: LedgerTtl, farExpiry: boolean): number {
+  return farExpiry
+    ? ttl.latestLedger + ttl.maxEntryTtl - 1
+    : ttl.latestLedger + ALLOWANCE_SEED.liveLedgers;
+}
+
 /** Posts or refills the market maker's standing offers; a no-op when they are all in place. */
 export async function ensureStandingLiquidity(mm: Keypair, issuerPublic: string): Promise<void> {
   const [account, offers] = await Promise.all([
@@ -589,6 +630,23 @@ export const MESS_EXECUTORS: { [K in StepActionKind]: Executor<K> } = {
     }
     const contractCall = deps.contractCall ?? seedContractCall;
     const call = blendSubmitCall(ctx.demo.publicKey(), action.supplyXlm, action.borrowXlm);
+    return (await contractCall(ctx.demo, call)).txHash;
+  },
+  // The spender is recorded before the approve is sent, so a revoke can never meet an allowance the
+  // session does not know. A retry of the step reuses the spender an earlier attempt recorded,
+  // whose approve may have landed: approving it again only sets the same allowance.
+  approve_allowance: async (action, ctx, _submit, deps) => {
+    const ttl = await (deps.ledgerTtl ?? readLedgerTtl)();
+    const spender = ctx.allowances[action.index - 1]?.spender ?? Keypair.random().publicKey();
+    const liveUntilLedger = allowanceLiveUntil(ttl, action.farExpiry);
+    await ctx.recordAllowance(action.index, { token: XLM_SAC, spender, liveUntilLedger });
+    const contractCall = deps.contractCall ?? seedContractCall;
+    const call = approveAllowanceCall(
+      ctx.demo.publicKey(),
+      spender,
+      action.amountXlm,
+      liveUntilLedger
+    );
     return (await contractCall(ctx.demo, call)).txHash;
   },
   // Every signer is recorded before the transaction that adds it is sent. The thresholds rise in

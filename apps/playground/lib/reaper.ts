@@ -5,9 +5,11 @@ import {
   runCleanup,
   runDemolishRound,
   runResolve,
+  runRevokeAllowance,
   type CleanupDeps,
   type DemolishRoundDeps,
   type ResolveDeps,
+  type RevokeAllowanceDeps,
 } from "./session-actions";
 import type { PlaygroundSession, SessionStore } from "./session-store";
 
@@ -31,6 +33,8 @@ export interface ReaperDeps {
   now: () => number;
   round: DemolishRoundDeps;
   resolve: ResolveDeps;
+  /** Revokes one recorded allowance through the API, held to both revoke checks. */
+  revoke: Pick<RevokeAllowanceDeps, "revoke">;
   cleanup: CleanupDeps;
   /** Whether the account is on the network; false only when Horizon says it is not. */
   exists: (publicKey: string) => Promise<boolean>;
@@ -104,6 +108,30 @@ async function closeDemo(
   return false;
 }
 
+/**
+ * Revokes every allowance the session recorded, through the same locked action and the same two
+ * checks as the visitor's page, before the close: the API's close plans no revoke (an allowance
+ * lives in the token contract's storage, not on the account, so it never blocks the merge), so
+ * nothing else would. One the page already revoked is revoked again, which only sets zero again.
+ * Skipped once the close is in flight: the close comes first then, and the revokes are left.
+ */
+async function revokeRecorded(
+  session: PlaygroundSession,
+  deps: ReaperDeps,
+  deadline: number
+): Promise<boolean> {
+  if (session.demolishPending !== null) return true;
+  for (const { spender } of session.allowances) {
+    if (deps.now() >= deadline) return false;
+    const revoked = await runRevokeAllowance(deps.store, session.id, spender, deps.revoke);
+    if (revoked.status !== 200) {
+      log("allowance revoke failed", session, { error: revoked.body.error });
+      return false;
+    }
+  }
+  return true;
+}
+
 async function reapSession(
   session: PlaygroundSession,
   deps: ReaperDeps,
@@ -114,6 +142,7 @@ async function reapSession(
   // before anything else, and a demo that does not exist (never funded) needs no close.
   if (!session.demolishDone) {
     const needsClose = session.demolishPending !== null || (await deps.exists(session.demoPublic));
+    if (needsClose && !(await revokeRecorded(session, deps, deadline))) return "kept";
     if (needsClose && !(await closeDemo(session, deps, deadline))) return "kept";
   }
   const cleaned = await runCleanup(deps.store, session.id, deps.cleanup);
