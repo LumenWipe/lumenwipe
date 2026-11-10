@@ -47,7 +47,10 @@ import { assertSorobanTransaction, type SeededProtocol } from "./verify-soroban"
 //   the demo as its recipient; the shared verifier then holds it to the same protocol's exit
 //   contracts, functions and tokens, filled from the selection and lib/scenarios/pinned.ts (the
 //   way the web fills them from the account read the user reviewed), so both must pass. An exit
-//   is a transaction of its own, never beside the merge.
+//   is a transaction of its own, never beside the merge;
+// - a transaction may leave its own fee at zero only in a session that selected the sponsored fee
+//   with a fee account configured, and the envelope the API's sponsor wraps it in must then pass
+//   lib/verify-feebump.ts before it is sent.
 //
 // The shared verifier holds a transfer to a floor; the playground also holds a transfer and a
 // conversion to at most the amount the mess paid in, so the two together pin a transfer exactly.
@@ -156,6 +159,9 @@ export interface PlaygroundCloseExpectation {
   sponsoredEntries: PlaygroundSponsoredEntry[];
   /** The Soroban protocols the session's selection seeds; a call to any other is refused. */
   sorobanSeeded: SeededProtocol[];
+  /** The configured fee account, when the session selected the sponsored fee: only then may a
+   *  transaction leave its own fee at zero for the API's sponsor to pay. Null otherwise. */
+  sponsorFeeAccount: string | null;
 }
 
 /**
@@ -163,6 +169,8 @@ export interface PlaygroundCloseExpectation {
  * stored selection planned (lib/scenarios), the issuers and recipient it recorded, and the signers
  * it recorded. `persistentIssuer` is the playground's own issuer from its configuration (LWDEMO and
  * the disposition assets); every other asset must be one of the session's own ephemeral issuers.
+ * `feeAccount` is the configured fee account the API's sponsor pays from, or null when there is
+ * none; it is kept only for a session that selected the sponsored fee.
  */
 export function expectationFromSession(
   session: Pick<
@@ -176,7 +184,8 @@ export function expectationFromSession(
     | "claimableBalances"
   >,
   sinkPublic: string,
-  persistentIssuer: string
+  persistentIssuer: string,
+  feeAccount: string | null
 ): PlaygroundCloseExpectation {
   const plan = resolvePlan(session.selection);
   const planned = plan.expectation;
@@ -241,6 +250,9 @@ export function expectationFromSession(
     forfeits,
     sponsoredEntries,
     sorobanSeeded: seededProtocols(plan.steps),
+    sponsorFeeAccount: plan.steps.some((s) => s.action.kind === "drain_to_fee_floor")
+      ? feeAccount
+      : null,
   };
 }
 
@@ -581,12 +593,24 @@ export function verifyDemolishTransaction(
   tx: CloseTransaction,
   expected: PlaygroundCloseExpectation
 ): void {
-  // A playground close is signed and paid for by the demo account itself; the API never wraps it.
+  // The API never wraps a close itself: a sponsored one comes back with its own fee at zero, and
+  // only the playground sends it to the sponsor (lib/demolish.ts), once every rule holds.
   const parsed = TransactionBuilder.fromXdr(tx.xdr, Networks.TESTNET);
   if (!(parsed instanceof Transaction)) {
     throw new PlaygroundVerificationError("fee_bump_not_allowed");
   }
+  assertCloseRules(parsed, tx, expected);
+  if (parsed.fee === "0" && expected.sponsorFeeAccount === null) {
+    throw new PlaygroundVerificationError("zero_fee_not_sponsored");
+  }
+}
 
+/** Every rule a playground close is held to, whoever pays its fee. */
+function assertCloseRules(
+  parsed: Transaction,
+  tx: CloseTransaction,
+  expected: PlaygroundCloseExpectation
+): void {
   // Before the shared verifier, so this refusal does not depend on how it reads the operation.
   // CAP-33: only a cooperating new sponsor can take a claimable balance's reserve over.
   if (parsed.operations.some((op) => op.type === "revokeClaimableBalanceSponsorship")) {

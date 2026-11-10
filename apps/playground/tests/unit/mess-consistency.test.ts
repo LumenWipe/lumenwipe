@@ -13,6 +13,7 @@ import {
 } from "@stellar/stellar-sdk";
 import { executeMessStep } from "@/lib/mess-builders";
 import { contractCallOp } from "@/lib/soroban-seed";
+import { networkStroops } from "@/lib/stroops";
 import {
   maxOfferCount,
   selectionForMode,
@@ -134,6 +135,16 @@ async function runAndCheck(selection: ScenarioSelection): Promise<void> {
               dRate: BigInt(10) ** BigInt(12),
             }),
             ledgerTtl: async () => LEDGER_TTL,
+            // What the drain reads: the funding, with the plan's entries holding their reserves.
+            reserveState: async () => ({
+              balanceStroops: networkStroops(setupFunding(plan)),
+              sellingLiabilitiesStroops: BigInt(0),
+              subentryCount: plan.cost.subEntries,
+              numSponsoring: 0,
+              numSponsored: 0,
+              baseReserveStroops: BigInt(5_000_000),
+              baseFeeStroops: BigInt(100),
+            }),
             // The contract call as the seeding would send it, captured instead.
             contractCall: async (source, call) => {
               const tx = new TransactionBuilder(new Account(source.publicKey(), "100"), {
@@ -153,7 +164,7 @@ async function runAndCheck(selection: ScenarioSelection): Promise<void> {
   }
 
   const session = (await store.loadSession(sessionId))!;
-  const expected = expectationFromSession(session, mm.publicKey(), issuer.publicKey());
+  const expected = expectationFromSession(session, mm.publicKey(), issuer.publicKey(), null);
   assertConsistent({
     plan,
     demoPublic,
@@ -526,6 +537,6 @@ describe("the plan, the chain and the close expectation agree", () => {
     }
     // The accepted singles, pairs, triples and largest selections at both parameter extremes;
     // pinned so a change to the registry or its rules shows up here.
-    expect(cases).toBe(3570);
+    expect(cases).toBe(3576);
   }, 240_000);
 });

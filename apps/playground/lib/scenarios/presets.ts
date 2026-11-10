@@ -49,7 +49,8 @@ export const FULL_SELECTION: ScenarioSelection = {
 
 /**
  * A feature set's preset: the classic one is the standard recipe, any other is every available
- * scenario of its set at default settings. Null when nothing in the set can run here.
+ * scenario of its set at default settings, with the first available scenario each one requires.
+ * Null when nothing in the set can run here.
  */
 export function presetSelection(
   featureSet: FeatureSetId,
@@ -59,14 +60,28 @@ export function presetSelection(
   const base =
     featureSet === "classic"
       ? STANDARD_SELECTION.scenarios
-      : SCENARIOS.filter((s) => s.featureSet === featureSet).map((s) => ({
-          id: s.id,
-          params: {},
-        }));
+      : withRequirements(
+          SCENARIOS.filter((s) => s.featureSet === featureSet && !unavailable.has(s.id)),
+          unavailable
+        );
   const candidate = { scenarios: base.filter((c) => !unavailable.has(c.id)) };
   if (candidate.scenarios.length === 0) return null;
   const fitted = fitSelection(candidate, options);
   return validateSelection(fitted, options).ok ? fitted : null;
+}
+
+/** The scenarios at default settings, and the first available provider of each unmet requirement. */
+function withRequirements(
+  defs: readonly ScenarioDefinition[],
+  unavailable: ReadonlyMap<ScenarioId, string>
+): ScenarioChoice[] {
+  const ids = new Set<ScenarioId>(defs.map((d) => d.id));
+  for (const def of defs) {
+    if (def.requiresAnyOf.length === 0 || def.requiresAnyOf.some((r) => ids.has(r))) continue;
+    const provider = def.requiresAnyOf.find((r) => !unavailable.has(r));
+    if (provider) ids.add(provider);
+  }
+  return [...ids].map((id) => ({ id, params: {} }));
 }
 
 const definitionOf = (id: ScenarioId): ScenarioDefinition | undefined =>

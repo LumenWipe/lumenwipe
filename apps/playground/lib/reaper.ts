@@ -25,6 +25,9 @@ export const REAP_AFTER_MS = 2 * 3600 * 1000;
 export const MAX_ROUNDS_PER_SESSION = 12;
 /** Time the run spends on sessions, leaving the rest of the function's 300 s for the top-up. */
 export const SESSION_BUDGET_MS = 180_000;
+/** What the market maker sends a demo whose close fee the API did not sponsor, so the close can
+ *  pay its own: far above any close transaction's fee, and merged back with the demo. */
+export const DEMO_FEE_TOP_UP_XLM = "0.1";
 /** Longer than the route's maxDuration, so a duplicate delivery of the same run does nothing. */
 const REAPER_LEASE_TTL_MS = 330_000;
 
@@ -41,6 +44,8 @@ export interface ReaperDeps {
   /** Whether the session's close expectation can be built, so every transaction can be checked. */
   verifiable: (session: PlaygroundSession) => boolean;
   marketMakerBalance: () => Promise<NativeBalance>;
+  /** Pays `DEMO_FEE_TOP_UP_XLM` from the market maker to the demo. */
+  topUpDemo: (demoPublic: string) => Promise<unknown>;
   topUp: () => Promise<TopUpResult>;
   refillLiquidity: () => Promise<void>;
 }
@@ -78,6 +83,7 @@ async function closeDemo(
     return false;
   }
   const tried = new Set<string>();
+  let toppedUp = false;
   for (let round = 0; round < MAX_ROUNDS_PER_SESSION; round++) {
     if (deps.now() >= deadline) return false;
     const result = await runDemolishRound(deps.store, session.id, deps.round);
@@ -86,6 +92,17 @@ async function closeDemo(
       continue;
     }
     const error = result.body.error;
+    if (error === "demolish_fee_unsponsored" && !toppedUp) {
+      // Nothing was sent: once the demo can pay its own fee, the next round builds one it pays.
+      toppedUp = true;
+      try {
+        await deps.topUpDemo(session.demoPublic);
+      } catch (err) {
+        log("fee top-up failed", session, { error: err instanceof Error ? err.name : "unknown" });
+        return false;
+      }
+      continue;
+    }
     const resolvable = Array.isArray(result.body.resolvable)
       ? result.body.resolvable.filter((b): b is string => typeof b === "string" && !tried.has(b))
       : [];

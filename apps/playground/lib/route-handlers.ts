@@ -116,6 +116,8 @@ export interface MessDeps extends PlaygroundKeys {
 export interface DemolishRouteDeps extends PlaygroundKeys {
   store: SessionStore;
   api: () => ApiConfig;
+  /** The fee account the API's sponsor pays from, from this deployment's configuration. */
+  feeAccount: () => string | null;
   decrypt: (payload: string) => string;
   /** Runs one round of the close (lib/demolish.ts `runDemolish`). */
   runDemolish: (opts: RunDemolishOptions) => Promise<DemolishRoundResult>;
@@ -641,7 +643,12 @@ export function demolishRoundDeps(
       deps.runDemolish({
         demoKeypair: Keypair.fromSecret(deps.decrypt(session.encDemoSecret)),
         signingKeys: signingKeysOf(session, deps.decrypt),
-        expected: expectationFromSession(session, mm.publicKey(), issuer.publicKey()),
+        expected: expectationFromSession(
+          session,
+          mm.publicKey(),
+          issuer.publicKey(),
+          deps.feeAccount()
+        ),
         apiUrl,
         apiKey,
         hooks,

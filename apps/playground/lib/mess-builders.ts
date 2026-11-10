@@ -18,10 +18,13 @@ import {
   HORIZON_TESTNET_URL,
   loadHorizonAccount,
   loadNativeBalance,
+  loadReserveState,
   submitClassicViaHorizon,
   TxSubmitError,
   type NativeBalance,
+  type ReserveState,
 } from "./horizon-submit";
+import { CLOSE_FEE_PER_OPERATION_STROOPS } from "./fee-policy";
 import { seedContractCall, type ContractCall } from "./soroban-seed";
 import { blendBorrowFits, readBlendReserve, type BlendReserveState } from "./blend-utilization";
 import { formatStroops, networkStroops, parseStroops } from "./stroops";
@@ -164,6 +167,8 @@ export interface BuildSignSubmitDeps {
   blendReserve?: () => Promise<BlendReserveState>;
   /** Reads the latest ledger and the network's maximum entry TTL (lib/allowances.ts). */
   ledgerTtl?: () => Promise<LedgerTtl>;
+  /** Reads an account's balance and reserve, and the ledger's base reserve and fee. */
+  reserveState?: (address: string) => Promise<ReserveState>;
 }
 
 /** A strict-receive route: the XLM it spends and the assets it crosses on the way. */
@@ -195,12 +200,15 @@ export class BlendUtilizationError extends Error {
   }
 }
 
+/** `feePerOperation`: the bid per operation, in stroops, instead of twice the base fee per
+ *  operation for each operation. */
 export async function buildSignSubmit(
   sourceKeypair: Keypair,
   ops: xdr.Operation[],
   extraSigners: Keypair[] = [],
   deps: BuildSignSubmitDeps = {},
-  onSigned?: (tx: Transaction) => Promise<void>
+  onSigned?: (tx: Transaction) => Promise<void>,
+  feePerOperation?: bigint
 ): Promise<string> {
   const loadAccount = deps.loadAccount ?? loadHorizonAccount;
   const submit = deps.submit ?? submitClassicViaHorizon;
@@ -212,7 +220,7 @@ export async function buildSignSubmit(
     const account = new Account(sourceKeypair.publicKey(), live.sequenceNumber());
 
     const builder = new TransactionBuilder(account, {
-      fee: String(100 * Math.max(ops.length, 1) * 2),
+      fee: feePerOperation?.toString() ?? String(100 * Math.max(ops.length, 1) * 2),
       networkPassphrase: PASSPHRASE,
     }).setTimeout(TX_TIMEOUT_SECONDS);
     ops.forEach((op) => builder.addOperation(op));
@@ -482,6 +490,26 @@ export function retireRecipientOps(
   ];
 }
 
+/** What the account must keep when it pays a fee: two base reserves, one per entry it holds or
+ *  sponsors less those sponsored for it, and the XLM its offers are selling. */
+export function feeFloorStroops(state: ReserveState): bigint {
+  const entries = 2 + state.subentryCount + state.numSponsoring - state.numSponsored;
+  return BigInt(entries) * state.baseReserveStroops + state.sellingLiabilitiesStroops;
+}
+
+/** The fee of the smallest transaction a close can be: one operation at the API's bid. */
+export const SMALLEST_CLOSE_FEE_STROOPS = CLOSE_FEE_PER_OPERATION_STROOPS;
+
+/**
+ * What the drain pays the market maker: all the account holds above its fee floor, less the drain's
+ * own fee (bid at exactly the base fee, so it is charged exactly that), less what it keeps. It
+ * keeps one stroop under the smallest close fee, so no close transaction fits in what is left.
+ */
+export function drainAmountStroops(state: ReserveState): bigint {
+  const kept = SMALLEST_CLOSE_FEE_STROOPS - BigInt(1);
+  return state.balanceStroops - feeFloorStroops(state) - state.baseFeeStroops - kept;
+}
+
 type Submit = (
   source: Keypair,
   ops: xdr.Operation[],
@@ -648,6 +676,18 @@ export const MESS_EXECUTORS: { [K in StepActionKind]: Executor<K> } = {
       liveUntilLedger
     );
     return (await contractCall(ctx.demo, call)).txHash;
+  },
+  // Read live just before it is sent: every earlier step has changed the balance and the entries.
+  drain_to_fee_floor: async (_action, ctx, _submit, deps) => {
+    const state = await (deps.reserveState ?? loadReserveState)(ctx.demo.publicKey());
+    const amount = drainAmountStroops(state);
+    if (amount <= BigInt(0)) throw new Error("The demo holds nothing above its fee floor to drain");
+    const payment = Operation.payment({
+      destination: ctx.mmPublic,
+      asset: Asset.native(),
+      amount: formatStroops(amount),
+    });
+    return buildSignSubmit(ctx.demo, [payment], [], deps, undefined, state.baseFeeStroops);
   },
   // Every signer is recorded before the transaction that adds it is sent. The thresholds rise in
   // the same transaction, which the master key alone still authorizes: signatures are checked

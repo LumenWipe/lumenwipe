@@ -304,7 +304,8 @@ describe("in front of the shared verifier", () => {
         claimableBalances: [],
       },
       sink,
-      issuer
+      issuer,
+      null
     );
   }
 
@@ -405,7 +406,8 @@ describe("the shared expectation, from the selection and the pinned configuratio
         claimableBalances: [],
       },
       sink,
-      issuer
+      issuer,
+      null
     );
   const withPool = sharedExpectation(expectationFor("lwdemo-holding", "soroswap-lp"));
   const without = sharedExpectation(expectationFor("lwdemo-holding"));
@@ -635,7 +637,8 @@ describe("the Aquarius row", () => {
           claimableBalances: [],
         },
         sink,
-        issuer
+        issuer,
+        null
       );
 
     function demolishOutcome(tx: Transaction, expected: PlaygroundCloseExpectation): string {
@@ -722,7 +725,8 @@ describe("the Aquarius shared expectation, from the selection and the pinned con
           claimableBalances: [],
         },
         sink,
-        issuer
+        issuer,
+        null
       )
     );
   const aquarius = shared("aquarius-lp");
@@ -1021,7 +1025,8 @@ describe("the Blend row", () => {
           claimableBalances: [],
         },
         sink,
-        issuer
+        issuer,
+        null
       );
 
     function demolishOutcome(tx: Transaction, expected: PlaygroundCloseExpectation): string {
@@ -1129,7 +1134,8 @@ describe("the Blend shared expectation, from the selection and the pinned config
           claimableBalances: [],
         },
         sink,
-        issuer
+        issuer,
+        null
       )
     );
   const blendAs = (variant: 0 | 1) => ({ id: "blend-supply" as const, params: { variant } });

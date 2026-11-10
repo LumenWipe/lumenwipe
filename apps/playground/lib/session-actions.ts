@@ -5,6 +5,7 @@ import { PlaygroundConfigError } from "./crypto";
 import {
   DemolishBlockedError,
   DemolishDecisionUnanswerableError,
+  DemolishFeeUnsponsoredError,
   type DemolishRoundHooks,
   type DemolishRoundResult,
 } from "./demolish";
@@ -314,6 +315,11 @@ export async function runDemolishRound(
             .map((decisionId) => decisionId.slice(0, MAX_DECISION_ID_LENGTH)),
         },
       };
+    }
+    if (err instanceof DemolishFeeUnsponsoredError) {
+      // Nothing was sent. The API's code is logged, never returned.
+      console.warn("[playground] demolish fee not sponsored", { sessionId: id, code: err.code });
+      return { status: 502, body: { error: "demolish_fee_unsponsored" } };
     }
     console.error("[playground] demolish round failed", { sessionId: id }, err);
     const error =

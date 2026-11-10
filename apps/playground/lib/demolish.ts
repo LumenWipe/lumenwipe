@@ -1,7 +1,14 @@
 import "server-only";
-import { Keypair, Transaction, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
+import {
+  FeeBumpTransaction,
+  Keypair,
+  Transaction,
+  TransactionBuilder,
+  Networks,
+} from "@stellar/stellar-sdk";
 import {
   CloseDidNotConvergeError,
+  LumenWipeApiError,
   LumenWipeClient,
   runClose,
   submissionClosesAccount,
@@ -18,7 +25,12 @@ import {
 import { loadSignerState, type SignerState } from "./horizon-submit";
 import { logEntryOf, type DemolishLogEntry, type PendingDemolishTx } from "./session-store";
 import { requiredWeight, signForWeight, type SigningKey } from "./signing";
-import { verifyDemolishTransaction, type PlaygroundCloseExpectation } from "./verify";
+import {
+  PlaygroundVerificationError,
+  verifyDemolishTransaction,
+  type PlaygroundCloseExpectation,
+} from "./verify";
+import { assertSponsoredEnvelope } from "./verify-feebump";
 
 /** The calls a demolish round makes to the LumenWipe API; `LumenWipeClient` provides them. */
 export interface DemolishApi {
@@ -28,6 +40,8 @@ export interface DemolishApi {
   closeTransactions(body: CloseTransactionsRequest): Promise<TransactionsResponse>;
   submit(signedXdr: string): Promise<{ hash: string }>;
   getTransaction(hash: string): Promise<TransactionLookupResponse>;
+  /** Wraps a signed transaction whose own fee is zero in the API sponsor's fee-bump envelope. */
+  feeBumpSponsor(signedXdr: string): Promise<{ transaction: string }>;
 }
 
 /** How a round reads and records the session's demolish progress (lib/session-actions.ts). */
@@ -90,6 +104,18 @@ export class DemolishDecisionUnanswerableError extends Error {
   constructor(readonly decisionIds: string[]) {
     super("The close needs a decision the playground cannot make");
     this.name = "DemolishDecisionUnanswerableError";
+  }
+}
+
+/**
+ * The API did not pay a sponsored close's fee: its sponsor refused the signed transaction, or it
+ * built none for an account that cannot pay its own. Nothing was sent. `code` is the API's, for the
+ * log only.
+ */
+export class DemolishFeeUnsponsoredError extends Error {
+  constructor(readonly code: string) {
+    super("The close's fee was not sponsored");
+    this.name = "DemolishFeeUnsponsoredError";
   }
 }
 
@@ -202,24 +228,72 @@ export function buildDemolishDecisions(
   return { answers, unanswerable };
 }
 
+function parseEnvelope(xdr: string): Transaction | FeeBumpTransaction {
+  return TransactionBuilder.fromXdr(xdr, Networks.TESTNET);
+}
+
+/** A transaction the API built and the playground signs: never a fee-bump envelope. */
 function parseOwn(xdr: string): Transaction {
-  const parsed = TransactionBuilder.fromXdr(xdr, Networks.TESTNET);
+  const parsed = parseEnvelope(xdr);
   if (!(parsed instanceof Transaction)) {
     throw new Error("Unexpected fee-bump transaction from the API");
   }
   return parsed;
 }
 
+/** The transaction the playground signed, inside the sponsor's fee-bump envelope or on its own. */
+function innerOf(xdr: string): Transaction {
+  const parsed = parseEnvelope(xdr);
+  return parsed instanceof FeeBumpTransaction ? parsed.innerTransaction : parsed;
+}
+
+/** The hash of the envelope itself, over the testnet passphrase: a fee-bump's outer hash, which is
+ *  the one the network confirms, never its inner one. */
+export function envelopeHash(xdr: string): string {
+  return Buffer.from(parseEnvelope(xdr).hash()).toString("hex");
+}
+
 function closesAccount(xdr: string, demoPublic: string): boolean {
-  const parsed = parseOwn(xdr);
+  const parsed = innerOf(xdr);
   return parsed.operations.some(
     (op) => op.type === "accountMerge" && (op.source ?? parsed.source) === demoPublic
   );
 }
 
 function validUntil(xdr: string): number | null {
-  const maxTime = Number(parseOwn(xdr).timeBounds?.maxTime ?? 0);
+  const maxTime = Number(innerOf(xdr).timeBounds?.maxTime ?? 0);
   return maxTime > 0 ? maxTime : null;
+}
+
+/**
+ * The envelope a signed transaction is sent in: itself when it pays its own fee, or the API
+ * sponsor's fee-bump envelope around it, held to the session's configured fee account, to the
+ * transaction as approved (the engine has already checked `signedXdr` hashes to it) and to every
+ * signature on it. Only a fee of zero, which lib/verify.ts admits only for a sponsored session,
+ * goes to the sponsor.
+ */
+async function sponsoredIfUnpaid(
+  client: Pick<DemolishApi, "feeBumpSponsor">,
+  expected: PlaygroundCloseExpectation,
+  signedXdr: string
+): Promise<string> {
+  const signed = parseOwn(signedXdr);
+  if (signed.fee !== "0") return signedXdr;
+  const feeAccount = expected.sponsorFeeAccount;
+  if (feeAccount === null) throw new PlaygroundVerificationError("zero_fee_not_sponsored");
+  let envelope: string;
+  try {
+    envelope = (await client.feeBumpSponsor(signedXdr)).transaction;
+  } catch (err) {
+    if (err instanceof LumenWipeApiError) throw new DemolishFeeUnsponsoredError(err.code);
+    throw err;
+  }
+  assertSponsoredEnvelope(envelope, {
+    feeAccount,
+    approvedHash: envelopeHash(signedXdr),
+    signatureCount: signed.signatures.length,
+  });
+  return envelope;
 }
 
 function submissionOf(pending: PendingDemolishTx): UnresolvedSubmission {
@@ -234,7 +308,8 @@ function submissionOf(pending: PendingDemolishTx): UnresolvedSubmission {
  * Runs one round of the real close engine against the demo account: the production `apps/api`
  * close/transactions -> submit loop, with the playground supplying its verify (`@lumenwipe/verify`
  * held to the session record, see ./verify) and sign (custodial, with the decrypted demo secret)
- * instead of a browser wallet.
+ * instead of a browser wallet. A transaction left at a fee of zero goes to the API's fee sponsor
+ * after it is signed, and its fee-bump envelope is checked (./verify-feebump) before it is sent.
  *
  * One round per call keeps each request far inside its time limit, and the API is stateless, so the
  * next call carries on from live state. What it cannot see is a transaction already sent whose
@@ -286,11 +361,24 @@ export async function runCloseRound(
         }
         decisions = built.answers;
       }
-      const res = await client.closeTransactions({
-        source: demoPublic,
-        destination: sinkPublic,
-        decisions,
-      });
+      let res: TransactionsResponse;
+      try {
+        res = await client.closeTransactions({
+          source: demoPublic,
+          destination: sinkPublic,
+          decisions,
+        });
+      } catch (err) {
+        // A drained demo can only close sponsored: an API that will not sponsor it says it is short.
+        if (
+          opts.expected.sponsorFeeAccount !== null &&
+          err instanceof LumenWipeApiError &&
+          err.code === "close_fee_balance_short"
+        ) {
+          throw new DemolishFeeUnsponsoredError(err.code);
+        }
+        throw err;
+      }
       remaining = res.remaining;
       signers = await chain.signerState(demoPublic);
       return res;
@@ -298,6 +386,9 @@ export async function runCloseRound(
     verify: (tx: CloseTransaction) => {
       verifyDemolishTransaction(tx, opts.expected);
     },
+    // Pins each verified transaction's hash, so what is signed and handed to `prepare` is checked
+    // against it. A fee-bump envelope is never unwrapped here.
+    transactionHash: envelopeHash,
     requiredWeight: (tx) => requiredWeight(parseOwn(tx.xdr), liveSigners()),
     // Only the demo key and the session's own recorded signers ever sign. The engine compares the
     // weight returned here with `requiredWeight` and refuses to submit a transaction short of it.
@@ -314,12 +405,13 @@ export async function runCloseRound(
       signing = tx;
       return { xdr: parsed.toEnvelope().toXdr("base64"), weight };
     },
+    prepare: (_tx, xdr) => sponsoredIfUnpaid(client, opts.expected, xdr),
     submit: async (_tx, xdr) => {
       const res = await client.submit(xdr);
       return res.hash;
     },
     reconcile: {
-      hashOf: (xdr) => Buffer.from(parseOwn(xdr).hash()).toString("hex"),
+      hashOf: envelopeHash,
       closesAccount: (xdr) => closesAccount(xdr, demoPublic),
       validUntil,
       lookup: (hash) => client.getTransaction(hash),
@@ -385,6 +477,7 @@ export function runDemolish(opts: RunDemolishOptions): Promise<DemolishRoundResu
       closeTransactions: (body) => client.closeTransactions(body),
       submit: (signedXdr) => client.submit(signedXdr),
       getTransaction: (hash) => client.getTransaction(hash),
+      feeBumpSponsor: (signedXdr) => client.feeBumpSponsor(signedXdr),
     },
     { signerState: loadSignerState },
     opts

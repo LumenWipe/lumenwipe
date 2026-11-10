@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { Operation } from "@stellar/stellar-sdk";
+import { Asset, Operation } from "@stellar/stellar-sdk";
 import { decryptSecret } from "@/lib/crypto";
 import { sessionStore } from "@/lib/session-store";
 import { getPlaygroundIssuerKeypair, getPlaygroundMmKeypair } from "@/lib/accounts";
@@ -15,7 +15,9 @@ import {
   resolveActionDeps,
   revokeActionDeps,
 } from "@/lib/route-handlers";
+import { DEMO_FEE_TOP_UP_XLM } from "@/lib/reaper";
 import { expectationFromSession } from "@/lib/verify";
+import { expectedFeeAccount } from "@/lib/verify-feebump";
 
 // Hobby allows 300 s at most; the reaper spends 180 s of it on sessions (lib/reaper.ts).
 export const maxDuration = 300;
@@ -42,6 +44,7 @@ export async function GET(req: NextRequest) {
         mm: () => mm,
         issuer: () => issuer,
         api,
+        feeAccount: expectedFeeAccount,
         decrypt: decryptSecret,
         runDemolish,
       });
@@ -70,13 +73,28 @@ export async function GET(req: NextRequest) {
         exists: accountExists,
         verifiable: (session) => {
           try {
-            expectationFromSession(session, mm.publicKey(), issuer.publicKey());
+            expectationFromSession(
+              session,
+              mm.publicKey(),
+              issuer.publicKey(),
+              expectedFeeAccount()
+            );
             return true;
           } catch {
             return false;
           }
         },
         marketMakerBalance: () => loadNativeBalance(mm.publicKey()),
+        topUpDemo: (demoPublic) =>
+          withAccountLock(sessionStore, mm.publicKey(), () =>
+            buildSignSubmit(mm, [
+              Operation.payment({
+                destination: demoPublic,
+                asset: Asset.native(),
+                amount: DEMO_FEE_TOP_UP_XLM,
+              }),
+            ])
+          ),
         topUp: () =>
           topUpMarketMaker({
             store: sessionStore,

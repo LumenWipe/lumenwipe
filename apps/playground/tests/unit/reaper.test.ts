@@ -4,6 +4,7 @@ import { NextRequest } from "next/server";
 import { Keypair } from "@stellar/stellar-sdk";
 import {
   DemolishDecisionUnanswerableError,
+  DemolishFeeUnsponsoredError,
   runCloseRound,
   type DemolishRoundHooks,
 } from "@/lib/demolish";
@@ -150,6 +151,7 @@ function reaper(
       return "funded";
     },
     refillLiquidity: async () => {},
+    topUpDemo: async () => {},
     ...overrides,
   };
 }
@@ -455,6 +457,61 @@ describe("reaper", () => {
     }
   });
 
+  test("a close fee the API did not sponsor is paid by a top-up from the market maker, once", async () => {
+    for (const refusals of [1, 2]) {
+      const store = memoryStore();
+      const seeded = await seed(store);
+      const net = network(seeded.demo, ...seeded.issuers);
+      const merge = mergeRound(net);
+      const toppedUp: string[] = [];
+      let refused = 0;
+      const summary = await runReaper(
+        reaper(store, net, {
+          roundImpl: async (session, hooks) => {
+            if (refused < refusals) {
+              refused++;
+              throw new DemolishFeeUnsponsoredError("sponsorship_budget_exhausted");
+            }
+            return merge(session, hooks);
+          },
+          topUpDemo: async (demoPublic) => {
+            toppedUp.push(demoPublic);
+          },
+        })
+      );
+      expect(toppedUp).toEqual([seeded.demo.publicKey()]);
+      if (refusals === 1) {
+        expect(counts(summary)).toEqual({ reaped: 1, kept: 0, young: 0, pruned: 0 });
+        expect(net.rounds).toHaveLength(2);
+      } else {
+        // A second refusal after the top-up is not answered with another one in the same run.
+        expect(counts(summary)).toEqual({ reaped: 0, kept: 1, young: 0, pruned: 0 });
+        expect(net.rounds).toHaveLength(2);
+        expect(await store.loadSession(seeded.session.id)).not.toBeNull();
+      }
+      expectNoSecretLogged(seeded.secrets);
+    }
+  });
+
+  test("a failed top-up keeps the session for the next run", async () => {
+    const store = memoryStore();
+    const seeded = await seed(store);
+    const net = network(seeded.demo, ...seeded.issuers);
+    const summary = await runReaper(
+      reaper(store, net, {
+        roundImpl: async () => {
+          throw new DemolishFeeUnsponsoredError("fee_bump_not_configured");
+        },
+        topUpDemo: async () => {
+          throw new TxSubmitError("Transaction rejected: tx_bad_seq", "tx_bad_seq");
+        },
+      })
+    );
+    expect(counts(summary)).toEqual({ reaped: 0, kept: 1, young: 0, pruned: 0 });
+    expect(net.rounds).toHaveLength(1);
+    expect(net.merges).toEqual([]);
+  });
+
   test("a close that keeps going stops at the round cap", async () => {
     const store = memoryStore();
     const seeded = await seed(store);
@@ -692,6 +749,7 @@ describe("an abandoned multi-signature session", () => {
         mm: () => mm,
         issuer: () => issuer,
         api: () => ({ apiUrl: "http://localhost:3001", apiKey: "unused" }),
+        feeAccount: () => null,
         decrypt: (payload) => {
           if (!inRound) outsideRound.push(payload);
           return Buffer.from(payload.slice(ENC.length), "base64").toString("utf8");
@@ -752,6 +810,7 @@ describe("an abandoned Blend session", () => {
         mm: () => mm,
         issuer: () => issuer,
         api: () => ({ apiUrl: "http://localhost:3001", apiKey: "unused" }),
+        feeAccount: () => null,
         decrypt: (payload) => Buffer.from(payload.slice(ENC.length), "base64").toString("utf8"),
         runDemolish: async (opts) => {
           const result = await runCloseRound(ledger, ledger, opts, async () => {});

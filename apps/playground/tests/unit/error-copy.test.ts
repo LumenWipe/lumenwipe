@@ -14,6 +14,7 @@ const CODES = [
   "testnet_lending_unavailable",
   "demolish_failed",
   "demolish_outcome_unknown",
+  "demolish_fee_unsponsored",
   "demolish_decision_unanswerable",
   "demolish_blocked",
   "demolish_in_progress",
