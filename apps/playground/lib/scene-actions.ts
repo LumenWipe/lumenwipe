@@ -1,5 +1,5 @@
 import type { IntentOperation } from "@lumenwipe/sdk";
-import { AQUARIUS, BLEND, BLEND_REQUEST, pinnedAssetOf, SOROSWAP } from "./scenarios";
+import { AQUARIUS, BLEND, BLEND_REQUEST, PHOENIX, pinnedAssetOf, SOROSWAP } from "./scenarios";
 
 /** What a confirmed close operation does to the orbital scene. */
 export type SceneAction =
@@ -22,11 +22,13 @@ type Handler<T extends OperationType> = (
 const trustlineNodeId = (asset: string): string =>
   `tl:${pinnedAssetOf(asset) ?? asset.split(":")[0]}`;
 
-/** The position node each protocol's exit call empties, by the contract it calls. */
+/** The position node each protocol's exit calls act on, by the contract and function called. */
 const POSITION_NODE_BY_EXIT: ReadonlyMap<string, { fn: string; nodeId: string }> = new Map([
   [SOROSWAP.router, { fn: "remove_liquidity", nodeId: "lp:soroswap" }],
   [AQUARIUS.pool, { fn: "withdraw", nodeId: "lp:aquarius" }],
   [BLEND.pool, { fn: "submit", nodeId: "lend:blend" }],
+  [PHOENIX.pool, { fn: "withdraw_liquidity", nodeId: "lp:phoenix" }],
+  [PHOENIX.stake, { fn: "unbond", nodeId: "lp:phoenix" }],
 ]);
 
 /**
@@ -96,6 +98,8 @@ export const SCENE_HANDLERS: { [T in OperationType]: Handler<T> } = {
     if (!exit || exit.fn !== op.function) return null;
     // A repay leaves the collateral, so the position stays; the withdrawal after it empties it.
     if (op.contract === BLEND.pool && onlyRepays(op.args)) return pulseIfLive(live, exit.nodeId);
+    // An unbond only moves the shares back to the demo; the withdrawal after it empties the pool.
+    if (op.contract === PHOENIX.stake) return pulseIfLive(live, exit.nodeId);
     return destroyIfLive(live, exit.nodeId);
   },
   unknown: noVisual,

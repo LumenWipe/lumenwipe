@@ -35,6 +35,7 @@ import {
 import { FakeBlendLedger } from "./blend-fixtures";
 import { apiError, FakeSponsoredApi } from "./fee-bump-fixtures";
 import { FakeMultisigLedger } from "./multisig-fixtures";
+import { FakePhoenixLedger } from "./phoenix-fixtures";
 import { fakeClock, memoryStore, newSessionData, type FakeClock } from "./session-fixtures";
 
 const MULTISIG_VARIANTS: readonly MultisigVariant[] = ["two_of_three", "hash_x", "pre_auth"];
@@ -902,6 +903,69 @@ describe("an abandoned Blend session", () => {
         ...exits.map(() => ["invokeHostFunction"]),
         ["accountMerge"],
       ]);
+      expect(ledger.open).toBe(false);
+      expect(await store.loadSession(session.id)).toBeNull();
+      expectNoSecretLogged([demo.secret()]);
+    }
+  );
+});
+
+describe("an abandoned Phoenix session", () => {
+  test.each([
+    [
+      1,
+      "bonded",
+      ["SETUP", "PHOENIX_SWAP", "PHOENIX_PROVIDE", "PHOENIX_BOND"],
+      ["stake.unbond", "pool.withdraw_liquidity"],
+    ],
+    [0, "lp", ["SETUP", "PHOENIX_SWAP", "PHOENIX_PROVIDE"], ["pool.withdraw_liquidity"]],
+  ] as const)(
+    "variant %d, %s: the close leaves the pool through the same demolish path, then merges",
+    async (variant, _label, completed, exits) => {
+      const store = memoryStore();
+      const demo = Keypair.random();
+      const session = await store.createSession({
+        ...newSessionData(),
+        demoPublic: demo.publicKey(),
+        encDemoSecret: encrypt(demo.secret()),
+        selection: { scenarios: [{ id: "phoenix-lp", params: { variant } }] },
+        completedMessSteps: [...completed],
+      });
+      // Half the shares bonded in the bonded variant, the other half left plain.
+      const shares = BigInt(4_812_345);
+      const staked = variant === 1 ? shares / BigInt(2) : BigInt(0);
+      const ledger = new FakePhoenixLedger(
+        demo.publicKey(),
+        mm.publicKey(),
+        shares - staked,
+        staked
+      );
+      const net = network(demo);
+      const round = demolishRoundDeps({
+        mm: () => mm,
+        issuer: () => issuer,
+        api: () => ({ apiUrl: "http://localhost:3001", apiKey: "unused" }),
+        feeAccount: () => null,
+        decrypt: (payload) => Buffer.from(payload.slice(ENC.length), "base64").toString("utf8"),
+        runDemolish: async (opts) => {
+          const result = await runCloseRound(ledger, ledger, opts, async () => {});
+          if (!ledger.open) net.live.delete(demo.publicKey());
+          return result;
+        },
+      })!;
+
+      const summary = await runReaper(reaper(store, net, { round }));
+
+      expect(counts(summary)).toEqual({ reaped: 1, kept: 0, young: 0, pruned: 0 });
+      // Every exit passed both of the playground's checks: the unbond first, while a stake was
+      // left, then the withdrawal, each in a transaction of its own, then the merge.
+      expect(ledger.exits).toEqual([...exits]);
+      expect(ledger.submitted).toEqual([
+        ...exits.map(() => ["invokeHostFunction"]),
+        ["accountMerge"],
+      ]);
+      // The LWPHX the withdrawal paid back is left with the closed address, on every call.
+      expect(new Set(ledger.residueAnswers)).toEqual(new Set(["acknowledge_residue"]));
       expect(ledger.open).toBe(false);
       expect(await store.loadSession(session.id)).toBeNull();
       expectNoSecretLogged([demo.secret()]);

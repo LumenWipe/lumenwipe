@@ -29,6 +29,8 @@ import {
   BLEND_REQUEST,
   BLEND_SEED,
   JUNK_OFFERS,
+  PHOENIX,
+  PHOENIX_SEED,
   PINNED_ASSETS,
   SCENARIOS,
   SOROSWAP,
@@ -51,6 +53,12 @@ import { memoryStore } from "./session-fixtures";
 // reversible stand-in.
 
 const ORIGIN = "http://localhost:3002";
+/** What the Phoenix steps read, fixed instead of simulated: a quote inside the gate, the pool's
+ *  reserves, and the LWPHX and shares the demo then holds. */
+const PHOENIX_QUOTE = { askAmount: BigInt(4_700_000), spreadAmount: BigInt(33_000) };
+const PHOENIX_RESERVES = { reserveA: BigInt(675_000_000), reserveB: BigInt(710_000_000) };
+const PHOENIX_LWPHX = BigInt(4_700_000);
+const PHOENIX_SHARES = BigInt(4_812_345);
 /** The ledger and entry TTL the allowance steps read, fixed instead of read from the RPC. */
 const LEDGER_TTL = { latestLedger: 1_000, maxEntryTtl: 3_110_400 };
 const encrypt = (plaintext: string): string => Buffer.from(plaintext, "utf8").toString("base64");
@@ -135,6 +143,11 @@ async function runAndCheck(selection: ScenarioSelection): Promise<void> {
               dRate: BigInt(10) ** BigInt(12),
             }),
             ledgerTtl: async () => LEDGER_TTL,
+            phoenix: {
+              swapQuote: async () => PHOENIX_QUOTE,
+              reserves: async () => PHOENIX_RESERVES,
+              balance: async (token) => (token === PHOENIX.tokenA ? PHOENIX_LWPHX : PHOENIX_SHARES),
+            },
             // What the drain reads: the funding, with the plan's entries holding their reserves.
             reserveState: async () => ({
               balanceStroops: networkStroops(setupFunding(plan)),
@@ -325,6 +338,27 @@ function assertConsistent({
               ],
             ]);
             positions.push("lend:blend");
+            break;
+          }
+          if (contract === PHOENIX.pool || contract === PHOENIX.stake) {
+            // LWPHX bought from the pool itself, all of it paired back with XLM, and half the
+            // shares bonded when the plan bonds; nothing bought on the DEX for it.
+            const fn = call.functionName.toString();
+            if (stepId === "PHOENIX_SWAP") {
+              expect([contract, fn]).toEqual([PHOENIX.pool, "swap"]);
+              expect(args.slice(0, 3)).toEqual([
+                demoPublic,
+                PHOENIX.tokenB,
+                stroops(PHOENIX_SEED.swapXlm),
+              ]);
+            } else if (stepId === "PHOENIX_PROVIDE") {
+              expect([contract, fn]).toEqual([PHOENIX.pool, "provide_liquidity"]);
+              expect(args.slice(0, 2)).toEqual([demoPublic, PHOENIX_LWPHX]);
+              positions.push("lp:phoenix");
+            } else {
+              expect([stepId, contract, fn]).toEqual(["PHOENIX_BOND", PHOENIX.stake, "bond"]);
+              expect(args).toEqual([demoPublic, PHOENIX_SHARES / BigInt(2)]);
+            }
             break;
           }
           if (contract === XLM_SAC) {
@@ -537,6 +571,6 @@ describe("the plan, the chain and the close expectation agree", () => {
     }
     // The accepted singles, pairs, triples and largest selections at both parameter extremes;
     // pinned so a change to the registry or its rules shows up here.
-    expect(cases).toBe(3576);
+    expect(cases).toBe(6595);
   }, 240_000);
 });

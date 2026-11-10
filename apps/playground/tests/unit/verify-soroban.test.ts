@@ -33,6 +33,7 @@ import {
   AQUARIUS,
   BLEND,
   BLEND_REQUEST,
+  PHOENIX,
   PINNED_ASSETS,
   resolvePlan,
   SOROSWAP,
@@ -1180,5 +1181,396 @@ describe("the Blend shared expectation, from the selection and the pinned config
     expect(all.ownTokensByContract[BLEND.pool]).toEqual([XLM_SAC]);
     // XLM is already held; the pool adds no position token of its own.
     expect(all.positionTokenContracts).not.toContain(BLEND.pool);
+  });
+});
+
+describe("the Phoenix row", () => {
+  const POOL: string = PHOENIX.pool;
+  const STAKE: string = PHOENIX.stake;
+  const SHARE: string = PHOENIX.shareToken;
+  const seededAs = (variant: "lp" | "bonded"): SorobanExpectation => ({
+    demoPublic: demo,
+    seeded: [{ protocol: "phoenix", variant }],
+  });
+  const LP = seededAs("lp");
+  const BONDED = seededAs("bonded");
+
+  interface Withdrawal {
+    sender?: string;
+    shares?: xdr.ScVal;
+    minA?: xdr.ScVal;
+    minB?: xdr.ScVal;
+  }
+
+  /** `withdraw_liquidity(sender, share_amount, min_a, min_b, deadline)`, as
+   *  apps/api/src/lib/defi-exits/phoenix.ts builds it. */
+  const withdrawArgs = ({
+    sender = demo,
+    shares = i128(BigInt(1000)),
+    minA = i128(BigInt(5)),
+    minB = i128(BigInt(7)),
+  }: Withdrawal = {}): xdr.ScVal[] => [address(sender), shares, minA, minB, xdr.ScVal.scvVoid()];
+
+  /** `unbond(sender, stake_amount, stake_timestamp)`, as the same adapter builds it. */
+  const unbondArgs = (sender = demo, amount = i128(BigInt(500))): xdr.ScVal[] => [
+    address(sender),
+    amount,
+    nativeToScVal(BigInt(1_762_000_000), { type: "u64" }),
+  ];
+
+  /** The tree a withdrawal authorizes: the pool call, and the demo's shares moved into the pool. */
+  const shareIntoPool = (to = POOL): xdr.SorobanAuthorizedInvocation =>
+    invocation(SHARE, "transfer", [address(demo), address(to), i128(BigInt(1000))]);
+
+  const rooted = (
+    contract: string,
+    fn: string,
+    args: xdr.ScVal[],
+    subs: xdr.SorobanAuthorizedInvocation[]
+  ): xdr.SorobanAuthorizationEntry =>
+    new xdr.SorobanAuthorizationEntry({
+      credentials: xdr.SorobanCredentials.sorobanCredentialsSourceAccount(),
+      rootInvocation: invocation(contract, fn, args, subs),
+    });
+
+  const withdrawal = (
+    args: xdr.ScVal[] = withdrawArgs(),
+    subs: xdr.SorobanAuthorizedInvocation[] = [shareIntoPool()],
+    contract = POOL,
+    fn = "withdraw_liquidity"
+  ): Transaction =>
+    build(
+      Operation.invokeContractFunction({
+        contract,
+        function: fn,
+        args,
+        auth: [rooted(contract, fn, args, subs)],
+      })
+    );
+
+  /** The stake pays the shares back out of its own balance: the tree is the unbond alone. */
+  const unbond = (
+    args: xdr.ScVal[] = unbondArgs(),
+    contract = STAKE,
+    subs: xdr.SorobanAuthorizedInvocation[] = []
+  ): Transaction =>
+    build(
+      Operation.invokeContractFunction({
+        contract,
+        function: "unbond",
+        args,
+        auth: [rooted(contract, "unbond", args, subs)],
+      })
+    );
+
+  test("the row pins the pool and the stake, each function bound to its own contract", () => {
+    const row = PINNED_SOROBAN_PROTOCOLS.phoenix;
+    expect(row.entry).toEqual([POOL, STAKE]);
+    expect(row.family).toEqual([SHARE]);
+    expect(Object.keys(row.functions)).toEqual(["withdraw_liquidity", "unbond"]);
+    expect(row.functions.withdraw_liquidity?.on).toBe(POOL);
+    expect(row.functions.unbond?.on).toBe(STAKE);
+    expect(row.functions.unbond?.variants).toEqual(["bonded"]);
+  });
+
+  test("a withdrawal for the demo, with positive floors, is accepted for either variant", () => {
+    expect(outcome(withdrawal(), LP)).toBe("accepted");
+    expect(outcome(withdrawal(), BONDED)).toBe("accepted");
+  });
+
+  test("an unbond for the demo is accepted only when the selection bonded", () => {
+    expect(outcome(unbond(), BONDED)).toBe("accepted");
+    expect(outcome(unbond(), LP)).toBe("soroban_function_not_allowed");
+  });
+
+  test("a function the row does not pin is refused, on either contract", () => {
+    for (const fn of ["swap", "provide_liquidity", "withdraw_rewards", "update_config"]) {
+      expect(outcome(withdrawal(withdrawArgs(), [], POOL, fn), BONDED)).toBe(
+        "soroban_function_not_allowed"
+      );
+    }
+    for (const fn of ["bond", "withdraw_rewards"]) {
+      expect(outcome(withdrawal(unbondArgs(), [], STAKE, fn), BONDED)).toBe(
+        "soroban_function_not_allowed"
+      );
+    }
+  });
+
+  test("each function is refused on the other contract: unbond on the pool, withdrawal on the stake", () => {
+    expect(outcome(unbond(unbondArgs(), POOL), BONDED)).toBe("soroban_function_wrong_contract");
+    expect(outcome(withdrawal(withdrawArgs(), [], STAKE), BONDED)).toBe(
+      "soroban_function_wrong_contract"
+    );
+  });
+
+  test("a sender other than the demo is refused, for the withdrawal and the unbond", () => {
+    for (const other of [stranger, POOL, STAKE]) {
+      expect(outcome(withdrawal(withdrawArgs({ sender: other })), BONDED)).toBe(
+        "soroban_account_argument_mismatch"
+      );
+      expect(outcome(unbond(unbondArgs(other)), BONDED)).toBe("soroban_account_argument_mismatch");
+    }
+  });
+
+  test("a zero or negative floor is refused, on either side, as is one that is not an i128", () => {
+    for (const bad of [
+      i128(BigInt(0)),
+      i128(BigInt(-1)),
+      nativeToScVal(BigInt(5), { type: "u128" }),
+    ]) {
+      expect(outcome(withdrawal(withdrawArgs({ minA: bad })), LP)).toBe(
+        "soroban_min_out_not_positive"
+      );
+      expect(outcome(withdrawal(withdrawArgs({ minB: bad })), LP)).toBe(
+        "soroban_min_out_not_positive"
+      );
+    }
+    // One base unit is a floor.
+    expect(outcome(withdrawal(withdrawArgs({ minA: i128(BigInt(1)) })), LP)).toBe("accepted");
+  });
+
+  test("a share or stake amount that is not a positive i128 is refused", () => {
+    for (const bad of [
+      i128(BigInt(0)),
+      i128(BigInt(-5)),
+      nativeToScVal(BigInt(5), { type: "u128" }),
+    ]) {
+      expect(outcome(withdrawal(withdrawArgs({ shares: bad })), LP)).toBe(
+        "soroban_amount_not_positive"
+      );
+      expect(outcome(unbond(unbondArgs(demo, bad)), BONDED)).toBe("soroban_amount_not_positive");
+    }
+  });
+
+  test("arguments of another shape are refused", () => {
+    expect(outcome(withdrawal(withdrawArgs().slice(0, 4)), LP)).toBe("soroban_arguments_invalid");
+    expect(outcome(withdrawal([...withdrawArgs(), xdr.ScVal.scvVoid()]), LP)).toBe(
+      "soroban_arguments_invalid"
+    );
+    expect(outcome(unbond(unbondArgs().slice(0, 2)), BONDED)).toBe("soroban_arguments_invalid");
+  });
+
+  test("a pool other than the pinned one, or a call to a token, is refused", () => {
+    for (const contract of [contractId(), SHARE, PHOENIX.tokenA, XLM_SAC]) {
+      expect(outcome(withdrawal(withdrawArgs(), [], contract), LP)).toBe(
+        "soroban_contract_not_pinned"
+      );
+    }
+  });
+
+  test("a sub-invocation outside the pool, the stake and the share token is refused, at any depth", () => {
+    for (const token of [PHOENIX.tokenA, XLM_SAC]) {
+      const drain = invocation(token, "transfer", [
+        address(demo),
+        address(stranger),
+        i128(BigInt(1)),
+      ]);
+      expect(outcome(withdrawal(withdrawArgs(), [drain]), LP)).toBe("soroban_auth_outside_family");
+      expect(outcome(unbond(unbondArgs(), STAKE, [drain]), BONDED)).toBe(
+        "soroban_auth_outside_family"
+      );
+      const nested = invocation(SHARE, "transfer", [address(demo), address(POOL)], [drain]);
+      expect(outcome(withdrawal(withdrawArgs(), [nested]), LP)).toBe("soroban_auth_outside_family");
+    }
+  });
+
+  test("the pool and the stake are refused for a session that seeds another protocol only", () => {
+    expect(outcome(withdrawal())).toBe("soroban_protocol_not_seeded");
+    expect(outcome(unbond())).toBe("soroban_protocol_not_seeded");
+    expect(outcome(build(call()), BONDED)).toBe("soroban_protocol_not_seeded");
+  });
+
+  describe("in front of the shared verifier", () => {
+    const sink = Keypair.random().publicKey();
+    const issuer = Keypair.random().publicKey();
+    const expectationFor = (variant: 0 | 1) =>
+      expectationFromSession(
+        {
+          demoPublic: demo,
+          ephemeralIssuers: [],
+          recordedSigners: [],
+          selection: { scenarios: [{ id: "phoenix-lp", params: { variant } }] },
+          transferRecipient: null,
+          helperAccounts: [],
+          claimableBalances: [],
+        },
+        sink,
+        issuer,
+        null
+      );
+
+    function demolishOutcome(tx: Transaction, expected: PlaygroundCloseExpectation): string {
+      const close: CloseTransaction = {
+        id: "t1",
+        order: 0,
+        dependsOn: [],
+        xdr: tx.toXDR(),
+        networkPassphrase: Networks.TESTNET,
+        sourceSequence: "1",
+        validUntilLedger: 100,
+        covers: [],
+        intent: {
+          summary: "test fixture",
+          source: demo,
+          fee: tx.fee,
+          memo: null,
+          memoType: null,
+          guarantees: { mergeDestination: null, paymentsOnlyTo: [], minXlmFromConversions: null },
+          operations: [],
+        },
+      };
+      try {
+        verifyDemolishTransaction(close, expected);
+        return "accepted";
+      } catch (err) {
+        if (err instanceof SorobanVerificationError) return `soroban:${err.message}`;
+        if (err instanceof VerificationError) return `shared:${err.code}`;
+        throw err;
+      }
+    }
+
+    const sharedOutcome = (tx: Transaction, variant: 0 | 1): string => {
+      try {
+        verifyCloseTransaction({
+          unsignedXdr: tx.toXDR(),
+          network: "testnet",
+          expected: sharedExpectation(expectationFor(variant)),
+        });
+        return "accepted";
+      } catch (err) {
+        if (err instanceof VerificationError) return err.code;
+        throw err;
+      }
+    };
+
+    test("lp: the withdrawal passes both checks, alone in its transaction", () => {
+      const expected = expectationFor(0);
+      expect(expected.sorobanSeeded).toEqual([{ protocol: "phoenix", variant: "lp" }]);
+      expect(demolishOutcome(withdrawal(), expected)).toBe("accepted");
+    });
+
+    test("bonded: the unbond, then the withdrawal, each pass both checks", () => {
+      const expected = expectationFor(1);
+      expect(expected.sorobanSeeded).toEqual([{ protocol: "phoenix", variant: "bonded" }]);
+      expect(demolishOutcome(unbond(), expected)).toBe("accepted");
+      expect(demolishOutcome(withdrawal(), expected)).toBe("accepted");
+    });
+
+    test("an unbond is refused for an lp session, by both checks on their own", () => {
+      expect(demolishOutcome(unbond(), expectationFor(0))).toBe(
+        "soroban:soroban_function_not_allowed"
+      );
+      expect(sharedOutcome(unbond(), 0)).toBe("exit_function_not_allowed");
+      expect(sharedOutcome(unbond(), 1)).toBe("accepted");
+    });
+
+    test("a share moved anywhere but into the pool is refused by the shared verifier", () => {
+      // The stake is in the row's family, so the playground's module admits the tree; the shared
+      // verifier holds a token moved under an exit to the demo or the contract called.
+      const tx = withdrawal(withdrawArgs(), [shareIntoPool(STAKE)]);
+      expect(outcome(tx, LP)).toBe("accepted");
+      expect(demolishOutcome(tx, expectationFor(0))).toBe("shared:exit_token_recipient_mismatch");
+    });
+
+    test("a withdrawal for a stranger is refused before the shared verifier sees it", () => {
+      expect(
+        demolishOutcome(withdrawal(withdrawArgs({ sender: stranger })), expectationFor(1))
+      ).toBe("soroban:soroban_account_argument_mismatch");
+    });
+
+    test("the exit is refused beside a merge", () => {
+      const args = withdrawArgs();
+      const tx = build(
+        Operation.invokeContractFunction({
+          contract: POOL,
+          function: "withdraw_liquidity",
+          args,
+          auth: [rooted(POOL, "withdraw_liquidity", args, [shareIntoPool()])],
+        }),
+        Operation.accountMerge({ destination: sink })
+      );
+      expect(demolishOutcome(tx, expectationFor(0))).toBe("soroban:soroban_call_not_alone");
+    });
+  });
+});
+
+describe("the Phoenix shared expectation, from the selection and the pinned configuration only", () => {
+  const sink = Keypair.random().publicKey();
+  const issuer = Keypair.random().publicKey();
+  const shared = (...scenarios: ScenarioSelection["scenarios"]) =>
+    sharedExpectation(
+      expectationFromSession(
+        {
+          demoPublic: demo,
+          ephemeralIssuers: [],
+          recordedSigners: [],
+          selection: { scenarios },
+          transferRecipient: null,
+          helperAccounts: [],
+          claimableBalances: [],
+        },
+        sink,
+        issuer,
+        null
+      )
+    );
+  const phoenixAs = (variant: 0 | 1) => ({ id: "phoenix-lp" as const, params: { variant } });
+  const lp = shared(phoenixAs(0));
+  const bonded = shared(phoenixAs(1));
+  const without = shared({ id: "lwdemo-holding", params: {} });
+  const TOKENS = [PHOENIX.tokenA, XLM_SAC, PHOENIX.shareToken];
+
+  test("exitContracts: the pool and the stake, only when the selection seeds the pool", () => {
+    expect(lp.exitContracts).toEqual([PHOENIX.pool, PHOENIX.stake]);
+    expect(bonded.exitContracts).toEqual([PHOENIX.pool, PHOENIX.stake]);
+    expect(without.exitContracts).toEqual([]);
+  });
+
+  test("exitFunctions: the pool's withdrawal, and the stake's unbond only when it bonded", () => {
+    expect(lp.exitFunctions).toEqual({
+      [PHOENIX.pool]: ["withdraw_liquidity"],
+      [PHOENIX.stake]: [],
+    });
+    expect(bonded.exitFunctions).toEqual({
+      [PHOENIX.pool]: ["withdraw_liquidity"],
+      [PHOENIX.stake]: ["unbond"],
+    });
+  });
+
+  test("positionTokenContracts and ownTokensByContract: LWPHX, XLM and the share token", () => {
+    expect(lp.positionTokenContracts).toEqual(TOKENS);
+    expect(lp.ownTokensByContract).toEqual({ [PHOENIX.pool]: TOKENS });
+    expect(bonded.ownTokensByContract).toEqual({ [PHOENIX.pool]: TOKENS });
+  });
+
+  test("shareTokenContracts: the share token, which is never a held token", () => {
+    expect(lp.shareTokenContracts).toEqual([PHOENIX.shareToken]);
+    expect(without.shareTokenContracts).toEqual([]);
+    expect(lp.heldTokenContracts).not.toContain(PHOENIX.shareToken);
+    expect(lp.heldTokenContracts).toEqual([XLM_SAC]);
+  });
+
+  test("nothing is repaid, and the pool and the stake are the bundled registry's", () => {
+    expect(bonded.repayTokensByPool).toEqual({});
+    expect(lp.registryContracts).toContain(PHOENIX.pool);
+    expect(lp.registryContracts).toContain(PHOENIX.stake);
+  });
+
+  test("beside the other pools, each protocol keeps its own fields and XLM is listed once", () => {
+    const all = shared(
+      { id: "soroswap-lp", params: {} },
+      { id: "aquarius-lp", params: {} },
+      phoenixAs(1)
+    );
+    expect(all.exitContracts).toEqual([
+      SOROSWAP.router,
+      SOROSWAP.pair,
+      AQUARIUS.pool,
+      PHOENIX.pool,
+      PHOENIX.stake,
+    ]);
+    expect(all.positionTokenContracts.filter((t) => t === XLM_SAC)).toHaveLength(1);
+    expect(all.shareTokenContracts).toEqual([AQUARIUS.shareToken, PHOENIX.shareToken]);
+    expect(all.exitFunctions[PHOENIX.stake]).toEqual(["unbond"]);
   });
 });

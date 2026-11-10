@@ -14,6 +14,7 @@ import {
   conversionFloorStroops,
   isPersistentAsset,
   MULTISIG_THRESHOLD,
+  PHOENIX,
   PINNED_ASSETS,
   resolvePlan,
   SOROSWAP,
@@ -273,10 +274,15 @@ export function seededProtocols(steps: readonly MessStepDef[]): SeededProtocol[]
   const blend = steps.flatMap((s): SeededProtocol[] =>
     s.action.kind === "blend_submit" ? [{ protocol: "blend", variant: s.action.variant }] : []
   );
+  // The Phoenix position's too: an unbond is admitted only when the plan bonds.
+  const phoenix: SeededProtocol[] = seeds("phoenix_provide")
+    ? [{ protocol: "phoenix", variant: seeds("phoenix_bond") ? "bonded" : "lp" }]
+    : [];
   return [
     ...(seeds("soroswap_deposit") ? [{ protocol: "soroswap", variant: "lp" } as const] : []),
     ...(seeds("aquarius_deposit") ? [{ protocol: "aquarius", variant: "lp" } as const] : []),
     ...blend,
+    ...phoenix,
   ];
 }
 
@@ -312,6 +318,9 @@ type SorobanExitFields = Pick<
  *   the one reserve the scenario uses, is its own token. Only the borrow variant names XLM as a
  *   token the pool may be repaid in: the shared verifier lets a registry pool spend the demo's XLM
  *   for nothing else, so a supply-only session's exit can never move it.
+ * - Phoenix: the pool and its stake contract are the call targets, with the pool's withdrawal and,
+ *   only when the selection bonded, the stake's unbond. Its own tokens are the two it pays out and
+ *   the share token the withdrawal takes back, which is also listed on its own as a share token.
  */
 export function sorobanExitExpectations(expected: PlaygroundCloseExpectation): SorobanExitFields {
   const held = [
@@ -351,9 +360,17 @@ export function sorobanExitExpectations(expected: PlaygroundCloseExpectation): S
       if (seeded.variant === "supply_and_borrow") {
         fields.repayTokensByPool[BLEND.pool] = [BLEND.reserve];
       }
+    } else if (protocol === "phoenix") {
+      const tokens = [PHOENIX.tokenA, PHOENIX.tokenB, PHOENIX.shareToken];
+      fields.exitContracts.push(PHOENIX.pool, PHOENIX.stake);
+      fields.exitFunctions[PHOENIX.pool] = ["withdraw_liquidity"];
+      fields.exitFunctions[PHOENIX.stake] = seeded.variant === "bonded" ? ["unbond"] : [];
+      fields.positionTokenContracts.push(...tokens);
+      fields.ownTokensByContract[PHOENIX.pool] = tokens;
+      fields.shareTokenContracts.push(PHOENIX.shareToken);
     }
   }
-  // Both pools pay out the same two tokens; each is listed once, as the web lists them.
+  // Pools can pay out the same token (XLM); each is listed once, as the web lists them.
   fields.positionTokenContracts = [...new Set(fields.positionTokenContracts)];
   return fields;
 }

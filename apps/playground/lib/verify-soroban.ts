@@ -1,6 +1,14 @@
 import "server-only";
 import { Address, scValToNative, Transaction, xdr } from "@stellar/stellar-sdk";
-import { AQUARIUS, BLEND, BLEND_REQUEST, SOROSWAP, type BlendVariant } from "./scenarios";
+import {
+  AQUARIUS,
+  BLEND,
+  BLEND_REQUEST,
+  PHOENIX,
+  SOROSWAP,
+  type BlendVariant,
+  type PhoenixVariant,
+} from "./scenarios";
 
 // The structural check for a Soroban contract call in a playground close.
 //
@@ -14,7 +22,8 @@ import { AQUARIUS, BLEND, BLEND_REQUEST, SOROSWAP, type BlendVariant } from "./s
 //   upload a contract), and it acts as the demo;
 // - the contract is one the protocol's pinned row lets a call be made to, and the protocol is one
 //   the session's selection seeds;
-// - the function is in that protocol's allowlist, with exactly the arguments the protocol's exit
+// - the function is in that protocol's allowlist, made to the one contract it is bound to and only
+//   for a seeded variant its rule lists, with exactly the arguments the protocol's exit
 //   uses: every argument that names the account paid or acted for equals the demo, every
 //   minimum-out and every amount moved is greater than zero (a floor given as a list holds exactly
 //   one per pool token), the tokens named are exactly the pinned pool's, and a lending pool's
@@ -35,13 +44,14 @@ export class SorobanVerificationError extends Error {
   }
 }
 
-export type SorobanProtocol = "soroswap" | "aquarius" | "blend";
+export type SorobanProtocol = "soroswap" | "aquarius" | "blend" | "phoenix";
 
 /** A protocol the session's selection seeds on testnet, and the variant of its position. */
 export type SeededProtocol =
   | { protocol: "soroswap"; variant: "lp" }
   | { protocol: "aquarius"; variant: "lp" }
-  | { protocol: "blend"; variant: BlendVariant };
+  | { protocol: "blend"; variant: BlendVariant }
+  | { protocol: "phoenix"; variant: PhoenixVariant };
 
 /** What a session's Soroban calls may do: everything here comes from the session record. */
 export interface SorobanExpectation {
@@ -50,6 +60,10 @@ export interface SorobanExpectation {
 }
 
 interface FunctionRule {
+  /** The one contract this function may be called on. */
+  on: string;
+  /** The seeded variants this function is allowed for; null allows every variant. */
+  variants: readonly SeededProtocol["variant"][] | null;
   /** The exact argument count. */
   arity: number;
   /** Positions of arguments that name the account paid or acted for: each must be the demo. */
@@ -105,6 +119,13 @@ interface ProtocolPins {
  * to, requests)`, with the demo on all three sides: a collateral withdrawal (type 3), and before it
  * a repay (type 5) only when the selection borrowed. XLM's reserve has no emissions on either
  * token id, so no `claim` comes before it.
+ *
+ * Phoenix: the pinned pool and its stake contract, the only contracts a call may be made to, and
+ * the pool's share token, the only other one its authorization tree may reach. Its exit is the
+ * calls apps/api/src/lib/defi-exits/phoenix.ts builds: `withdraw_liquidity(sender, share_amount,
+ * min_a, min_b, deadline)` on the pool, which authorizes moving the demo's shares, and before it,
+ * only when the selection bonded, `unbond(sender, stake_amount, stake_timestamp)` on the stake,
+ * which the stake pays out of its own balance.
  */
 export const PINNED_SOROBAN_PROTOCOLS: Readonly<Record<SorobanProtocol, ProtocolPins>> = {
   soroswap: {
@@ -112,6 +133,8 @@ export const PINNED_SOROBAN_PROTOCOLS: Readonly<Record<SorobanProtocol, Protocol
     family: [SOROSWAP.pair],
     functions: {
       remove_liquidity: {
+        on: SOROSWAP.router,
+        variants: null,
         arity: 7,
         accountArgs: [5],
         amountType: "scvI128",
@@ -128,6 +151,8 @@ export const PINNED_SOROBAN_PROTOCOLS: Readonly<Record<SorobanProtocol, Protocol
     family: [AQUARIUS.shareToken],
     functions: {
       withdraw: {
+        on: AQUARIUS.pool,
+        variants: null,
         arity: 3,
         accountArgs: [0],
         amountType: "scvU128",
@@ -144,6 +169,8 @@ export const PINNED_SOROBAN_PROTOCOLS: Readonly<Record<SorobanProtocol, Protocol
     family: [BLEND.reserve],
     functions: {
       submit: {
+        on: BLEND.pool,
+        variants: null,
         arity: 4,
         accountArgs: [0, 1, 2],
         amountType: "scvI128",
@@ -159,6 +186,36 @@ export const PINNED_SOROBAN_PROTOCOLS: Readonly<Record<SorobanProtocol, Protocol
             supply_and_borrow: [BLEND_REQUEST.withdrawCollateral, BLEND_REQUEST.repay],
           },
         },
+      },
+    },
+  },
+  phoenix: {
+    entry: [PHOENIX.pool, PHOENIX.stake],
+    family: [PHOENIX.shareToken],
+    functions: {
+      withdraw_liquidity: {
+        on: PHOENIX.pool,
+        variants: null,
+        arity: 5,
+        accountArgs: [0],
+        amountType: "scvI128",
+        minOutArgs: [2, 3],
+        minOutVec: null,
+        positiveArgs: [1],
+        tokenArgs: null,
+        requests: null,
+      },
+      unbond: {
+        on: PHOENIX.stake,
+        variants: ["bonded"],
+        arity: 3,
+        accountArgs: [0],
+        amountType: "scvI128",
+        minOutArgs: [],
+        minOutVec: null,
+        positiveArgs: [1],
+        tokenArgs: null,
+        requests: null,
       },
     },
   },
@@ -248,6 +305,10 @@ export function assertSorobanTransaction(tx: Transaction, expected: SorobanExpec
     ? pins.functions[name]
     : undefined;
   if (!rule) throw new SorobanVerificationError("soroban_function_not_allowed");
+  if (rule.on !== contract) throw new SorobanVerificationError("soroban_function_wrong_contract");
+  if (rule.variants !== null && !rule.variants.includes(seeded.variant)) {
+    throw new SorobanVerificationError("soroban_function_not_allowed");
+  }
   const args = call.args;
   if (args.length !== rule.arity) throw new SorobanVerificationError("soroban_arguments_invalid");
   for (const i of rule.accountArgs) {

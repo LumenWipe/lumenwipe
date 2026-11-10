@@ -37,9 +37,10 @@ const subsets = (count: number, from: number, size: number): number[][] =>
       );
 
 /** Largest selections (eight scenarios at their maximum) that fit every rule and cap, and those
- *  the XLM cap refuses. Pinned so a cost change shows up here. */
-const FITTED_AT_MAX = 494;
-const OVER_XLM_AT_MAX = 1003;
+ *  the XLM cap and the contract-transaction cap refuse. Pinned so a cost change shows up here. */
+const FITTED_AT_MAX = 819;
+const OVER_XLM_AT_MAX = 2191;
+const OVER_SOROBAN_AT_MAX = 323;
 
 function messageOf(selection: ScenarioSelection, registry?: readonly ScenarioDefinition[]): string {
   const result = validateSelection(selection, { registry });
@@ -170,10 +171,12 @@ describe("the safety caps", () => {
     );
     // Leaving out a token holding leaves five stale offers without the tokens they trade, or
     // without any token at all, which is refused for that reason, and the sponsored fee is refused
-    // beside anything but data entries and a forgotten signer. The only cap any of them reaches
-    // is the XLM one, and only with a protocol scenario beside the costliest classic ones.
+    // beside anything but data entries and a forgotten signer. The XLM cap is reached only with a
+    // protocol scenario beside the costliest classic ones, and the contract-transaction cap only
+    // with the bonded Phoenix position beside three allowances and another protocol scenario.
     let fitted = 0;
     let overXlm = 0;
+    let overSoroban = 0;
     for (const kept of subsets(atMax.length, 0, MAX_SCENARIOS)) {
       const chosen = kept.map((i) => atMax[i]!);
       const result = validateSelection(pick(...chosen));
@@ -181,14 +184,25 @@ describe("the safety caps", () => {
       else if (result.message.startsWith("This selection needs about")) {
         overXlm++;
         expect(
-          chosen.some((c) => ["soroswap-lp", "aquarius-lp", "blend-supply"].includes(c.id))
+          chosen.some((c) =>
+            ["soroswap-lp", "aquarius-lp", "blend-supply", "phoenix-lp"].includes(c.id)
+          )
         ).toBe(true);
         expect(result.message).toEndWith(`a demo can use at most ${MAX_SESSION_XLM}.`);
+      } else if (result.message.startsWith("This selection needs ")) {
+        overSoroban++;
+        expect(chosen.some((c) => c.id === "phoenix-lp")).toBe(true);
+        expect(chosen.some((c) => c.id === "allowances")).toBe(true);
+        expect(result.message).toEndWith(`the limit is ${MAX_SOROBAN_TRANSACTIONS}.`);
       } else if (result.message.startsWith("Sponsored fee ")) {
         expect(chosen.some((c) => c.id === "fee-bump")).toBe(true);
       } else expect(result.message).toStartWith("Stale DEX offers ");
     }
-    expect({ fitted, overXlm }).toEqual({ fitted: FITTED_AT_MAX, overXlm: OVER_XLM_AT_MAX });
+    expect({ fitted, overXlm, overSoroban }).toEqual({
+      fitted: FITTED_AT_MAX,
+      overXlm: OVER_XLM_AT_MAX,
+      overSoroban: OVER_SOROBAN_AT_MAX,
+    });
   });
 
   test("every selection the validator accepts is funded within the XLM cap", () => {
@@ -225,7 +239,7 @@ describe("the safety caps", () => {
     expect(everything.plan.cost.xlm).toBeLessThanOrEqual(MAX_SESSION_XLM);
   });
 
-  for (const id of ["soroswap-lp", "aquarius-lp"] as const) {
+  for (const id of ["soroswap-lp", "aquarius-lp", "phoenix-lp"] as const) {
     test(`${id} fits beside any other scenario, and beside each classic preset`, () => {
       const pool = { id, params: {} };
       for (const def of SCENARIOS.filter((d) => d.id !== id)) {

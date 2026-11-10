@@ -27,6 +27,13 @@ import {
 import { CLOSE_FEE_PER_OPERATION_STROOPS } from "./fee-policy";
 import { seedContractCall, type ContractCall } from "./soroban-seed";
 import { blendBorrowFits, readBlendReserve, type BlendReserveState } from "./blend-utilization";
+import {
+  phoenixDepositXlm,
+  phoenixReads,
+  phoenixSwapFits,
+  phoenixSwapFloor,
+  type PhoenixReads,
+} from "./phoenix-pool";
 import { formatStroops, networkStroops, parseStroops } from "./stroops";
 import { standingLiquidityOps, type HorizonBalance, type HorizonOffer } from "./standing-liquidity";
 import type { RecordedAllowance, SignerType } from "./session-store";
@@ -39,6 +46,8 @@ import {
   AQUARIUS,
   BLEND,
   BLEND_REQUEST,
+  PHOENIX,
+  PHOENIX_SEED,
   PINNED_ASSETS,
   SOROSWAP,
   ALLOWANCE_SEED,
@@ -165,6 +174,8 @@ export interface BuildSignSubmitDeps {
   now?: () => number;
   /** Reads the pinned Blend pool's XLM reserve (lib/blend-utilization.ts). */
   blendReserve?: () => Promise<BlendReserveState>;
+  /** Reads the pinned Phoenix pool and its tokens (lib/phoenix-pool.ts). */
+  phoenix?: PhoenixReads;
   /** Reads the latest ledger and the network's maximum entry TTL (lib/allowances.ts). */
   ledgerTtl?: () => Promise<LedgerTtl>;
   /** Reads an account's balance and reserve, and the ledger's base reserve and fee. */
@@ -178,11 +189,12 @@ export interface BuyQuote {
 }
 
 /**
- * The testnet DEX cannot sell a pinned asset for what the scenario allows. Thrown before anything
- * is signed for the step, and shown to the visitor in plain language (lib/error-copy.ts).
+ * The testnet DEX cannot sell a pinned asset for what the scenario allows, or the pinned Phoenix
+ * pool cannot sell its LWPHX at a spread the scenario accepts. Thrown before anything is signed
+ * for the step, and shown to the visitor in plain language (lib/error-copy.ts).
  */
 export class LiquidityUnavailableError extends Error {
-  constructor(readonly asset: PinnedAssetId) {
+  constructor(readonly asset: PinnedAssetId | "phoenix-lwphx") {
     super(`No testnet route sells ${asset} for XLM within the scenario's ceiling`);
     this.name = "LiquidityUnavailableError";
   }
@@ -405,6 +417,73 @@ export function blendSubmitCall(
     function: "submit",
     args: [demo, demo, demo, xdr.ScVal.scvVec(requests)],
   };
+}
+
+const scI64 = (value: number): xdr.ScVal => nativeToScVal(BigInt(value), { type: "i64" });
+
+/**
+ * The pool call that buys the demo its LWPHX: `swap(sender, offer_asset, offer_amount,
+ * ask_asset_min_amount, max_spread_bps, deadline, max_allowed_fee_bps)`, offering XLM, with the
+ * floor the quote gives and the scenario's spread bound. An `Option` is its bare value when set
+ * and void when not.
+ */
+export function phoenixSwapCall(
+  demoPublic: string,
+  offerStroops: bigint,
+  minOut: bigint
+): ContractCall {
+  return {
+    contract: PHOENIX.pool,
+    function: "swap",
+    args: [
+      scAddress(demoPublic),
+      scAddress(PHOENIX.tokenB),
+      scI128(offerStroops),
+      scI128(minOut),
+      scI64(PHOENIX_SEED.maxSpreadBps),
+      xdr.ScVal.scvVoid(),
+      xdr.ScVal.scvVoid(),
+    ],
+  };
+}
+
+/**
+ * The pool call that opens the position: `provide_liquidity(sender, desired_a, min_a, desired_b,
+ * min_b, custom_slippage_bps, deadline)`, offering the LWPHX and the XLM given. The pool takes
+ * only what its ratio needs, so the minimums are one base unit: this is the demo's own deposit,
+ * and the exit's floors are what protect what comes back.
+ */
+export function phoenixProvideCall(demoPublic: string, lwphx: bigint, xlm: bigint): ContractCall {
+  return {
+    contract: PHOENIX.pool,
+    function: "provide_liquidity",
+    args: [
+      scAddress(demoPublic),
+      scI128(lwphx),
+      scI128(BigInt(1)),
+      scI128(xlm),
+      scI128(BigInt(1)),
+      scI64(PHOENIX_SEED.depositSlippageBps),
+      xdr.ScVal.scvVoid(),
+    ],
+  };
+}
+
+/** The stake call that bonds `shares` of the demo's pool shares: `bond(sender, tokens)`. */
+export function phoenixBondCall(demoPublic: string, shares: bigint): ContractCall {
+  return {
+    contract: PHOENIX.stake,
+    function: "bond",
+    args: [scAddress(demoPublic), scI128(shares)],
+  };
+}
+
+/**
+ * Exactly half, rounded down: the API's testnet position read does not see stakes yet (#870), so a
+ * demo with every share bonded would be merged with its stake left behind.
+ */
+export function phoenixBondShares(shares: bigint): bigint {
+  return shares / BigInt(2);
 }
 
 /** `approve(from, spender, amount, live_until_ledger)` on XLM's asset contract. */
@@ -659,6 +738,35 @@ export const MESS_EXECUTORS: { [K in StepActionKind]: Executor<K> } = {
     const contractCall = deps.contractCall ?? seedContractCall;
     const call = blendSubmitCall(ctx.demo.publicKey(), action.supplyXlm, action.borrowXlm);
     return (await contractCall(ctx.demo, call)).txHash;
+  },
+  // Every amount is read by simulation just before its call is built, and the swap is refused here,
+  // before any signature, when the pool cannot sell enough LWPHX at a small enough spread.
+  phoenix_swap: async (action, ctx, _submit, deps) => {
+    const reads = deps.phoenix ?? phoenixReads();
+    const offer = networkStroops(action.offerXlm);
+    const quote = await reads.swapQuote(offer);
+    if (!phoenixSwapFits(quote)) throw new LiquidityUnavailableError("phoenix-lwphx");
+    const contractCall = deps.contractCall ?? seedContractCall;
+    const call = phoenixSwapCall(ctx.demo.publicKey(), offer, phoenixSwapFloor(quote));
+    return (await contractCall(ctx.demo, call)).txHash;
+  },
+  phoenix_provide: async (action, ctx, _submit, deps) => {
+    const reads = deps.phoenix ?? phoenixReads();
+    const reserves = await reads.reserves();
+    const lwphx = await reads.balance(PHOENIX.tokenA, ctx.demo.publicKey());
+    if (lwphx <= BigInt(0)) throw new Error("The demo holds no LWPHX to pair");
+    const xlm = phoenixDepositXlm(lwphx, reserves, networkStroops(action.maxXlm));
+    const contractCall = deps.contractCall ?? seedContractCall;
+    const call = phoenixProvideCall(ctx.demo.publicKey(), lwphx, xlm);
+    return (await contractCall(ctx.demo, call)).txHash;
+  },
+  phoenix_bond: async (_action, ctx, _submit, deps) => {
+    const reads = deps.phoenix ?? phoenixReads();
+    const shares = await reads.balance(PHOENIX.shareToken, ctx.demo.publicKey());
+    const bond = phoenixBondShares(shares);
+    if (bond <= BigInt(0)) throw new Error("The demo holds too few pool shares to bond half");
+    const contractCall = deps.contractCall ?? seedContractCall;
+    return (await contractCall(ctx.demo, phoenixBondCall(ctx.demo.publicKey(), bond))).txHash;
   },
   // The spender is recorded before the approve is sent, so a revoke can never meet an allowance the
   // session does not know. A retry of the step reuses the spender an earlier attempt recorded,

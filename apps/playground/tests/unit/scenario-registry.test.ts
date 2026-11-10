@@ -161,9 +161,13 @@ describe.each(SCENARIOS.map((def) => [def.id, def] as const))("%s", (_id, def) =
       expect(count("offer")).toBe(expectation.offers);
       expect(count("data")).toBe(expectation.dataEntries);
       expect(count("signer")).toBe(expectation.signers);
-      // One position per seeding step, and its exit is a close transaction of its own.
+      // One position per deposit, and its exit is a close transaction of its own. Phoenix's swap
+      // and bond only lead to or change the position its deposit opens.
       expect(count("position")).toBe(
-        actions("soroswap_deposit") + actions("aquarius_deposit") + actions("blend_submit")
+        actions("soroswap_deposit") +
+          actions("aquarius_deposit") +
+          actions("blend_submit") +
+          actions("phoenix_provide")
       );
       if (count("position") > 0) expect(expectation.operationTypes).toContain("invokeHostFunction");
       // One allowance per approve, each a contract call of its own.
