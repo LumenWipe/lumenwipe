@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { randomBytes } from "node:crypto";
 import path from "node:path";
 import ts from "typescript";
-import { Keypair } from "@stellar/stellar-sdk";
+import { Keypair, StrKey, hash } from "@stellar/stellar-sdk";
 import {
   buildSdkSnippet,
   SdkSnippetInputError,
@@ -91,6 +91,7 @@ function close(overrides: Partial<SnippetClose> = {}): SnippetClose {
     source: account(),
     destination: { kind: "account", address: account() },
     decisions: [],
+    signers: [],
     sponsored: false,
     ...overrides,
   };
@@ -133,10 +134,44 @@ const withDecisions: SdkSnippetInput = {
   }),
 };
 
+const cosignerKeys = [Keypair.random(), Keypair.random()];
+const preimage = randomBytes(32);
+const hashX = StrKey.encodeSha256Hash(hash(preimage));
+const preAuth = StrKey.encodePreAuthTx(randomBytes(32));
+const multisig: SdkSnippetInput = {
+  network: "testnet",
+  close: close({
+    signers: [
+      ...cosignerKeys.map((k) => ({ type: "ed25519_public_key" as const, key: k.publicKey() })),
+      { type: "hash_x", key: hashX },
+      { type: "preauth_tx", key: preAuth },
+    ],
+  }),
+};
+
 describe("the generated snippet", () => {
   test("type-checks against the SDK and verifier public types, with no diagnostic", () => {
-    const snippets = [plain, exchange, withDecisions].map(buildSdkSnippet);
-    expect(diagnostics(snippets)).toEqual([[], [], []]);
+    const snippets = [plain, exchange, withDecisions, multisig].map(buildSdkSnippet);
+    expect(diagnostics(snippets)).toEqual([[], [], [], []]);
+  });
+
+  test("a multi-signature close signs with each co-signer from its own variable until the weight is met", () => {
+    const text = buildSdkSnippet(multisig);
+    cosignerKeys.forEach((k, i) => {
+      expect(text).toContain(`// LUMENWIPE_COSIGNER_${i + 1}_SECRET signs for ${k.publicKey()}`);
+      expect(text).toContain(`  process.env.LUMENWIPE_COSIGNER_${i + 1}_SECRET,\n`);
+    });
+    expect(text).toContain("const keys = [signer, ...cosigners];");
+    expect(text).toContain("if (weight >= required || keyWeight === 0) continue;");
+    expect(text).toContain("live = round.sourceAccount ?? (await client.getAccount(source));");
+    expect(text).toContain(
+      `// Not signed with a key here:\n//   hash(x) signer ${hashX}\n//   pre-authorized transaction ${preAuth}\n`
+    );
+    for (const secret of [...cosignerKeys.map((k) => k.secret()), preimage.toString("hex")]) {
+      expect(text).not.toContain(secret);
+    }
+    expect(text).not.toMatch(STRKEY_SECRET);
+    expect(buildSdkSnippet(plain)).not.toContain("LUMENWIPE_COSIGNER");
   });
 
   test("calls the client, then closePlan, then runClose with a verify and a sign hook", () => {
@@ -189,6 +224,10 @@ describe("the snippet input", () => {
     const cases: SdkSnippetInput[] = [
       { network: "testnet", close: close({ source: secret() }) },
       { network: "testnet", close: close({ destination: { kind: "account", address: secret() } }) },
+      {
+        network: "testnet",
+        close: close({ signers: [{ type: "ed25519_public_key", key: secret() }] }),
+      },
       {
         network: "testnet",
         close: close({
@@ -331,6 +370,39 @@ describe("a playground session's snippet", () => {
     ];
     for (const value of encrypted) expect(text).not.toContain(value);
     expect(text).not.toMatch(STRKEY_SECRET);
+  });
+
+  test("a multi-signature session names its recorded signers, compiles, and holds no signer secret", () => {
+    const cosigners = [Keypair.random(), Keypair.random()];
+    const data: NewSessionData = {
+      ...newSessionData(),
+      demoPublic: account(),
+      encDemoSecret: ENCRYPTED(),
+      selection: resolvePlan({ scenarios: [{ id: "multisig", params: { variant: 0 } }] }).selection,
+      recordedSigners: cosigners.map((k) => ({
+        type: "ed25519_public_key" as const,
+        key: k.publicKey(),
+        weight: 1,
+        encSecret: ENCRYPTED(),
+      })),
+    };
+    const input = snippetInputFromExpectation(
+      expectationFromSession(data, account(), account(), null)
+    );
+    const text = buildSdkSnippet(input);
+    expect(input.close.signers).toEqual(
+      cosigners.map((k) => ({ type: "ed25519_public_key", key: k.publicKey() }))
+    );
+    cosigners.forEach((k, i) => {
+      expect(text).toContain(`// LUMENWIPE_COSIGNER_${i + 1}_SECRET signs for ${k.publicKey()}`);
+    });
+    const secrets = [
+      ...cosigners.map((k) => k.secret()),
+      data.encDemoSecret,
+      ...data.recordedSigners.map((sg) => sg.encSecret!),
+    ];
+    for (const value of secrets) expect(text).not.toContain(value);
+    expect(diagnostics([text])).toEqual([[]]);
   });
 
   test("the route serves it for a stored session, and is not configured without the accounts", async () => {

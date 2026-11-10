@@ -18,11 +18,18 @@ export type SnippetDecision =
   | { kind: "claim"; balanceId: string; addTrustline: SnippetAsset | null }
   | { kind: "forfeit"; balanceId: string };
 
-/** One account's close, in public data only: every key is a `G...` address. */
+/** A signer the account holds besides its master key, by its public strkey. */
+export interface SnippetSigner {
+  type: "ed25519_public_key" | "hash_x" | "preauth_tx";
+  key: string;
+}
+
+/** One account's close, in public data only: every key is a public strkey. */
 export interface SnippetClose {
   source: string;
   destination: SnippetDestination;
   decisions: readonly SnippetDecision[];
+  signers: readonly SnippetSigner[];
   /** The API's fee sponsor pays the close's fees. */
   sponsored: boolean;
 }
@@ -107,6 +114,19 @@ function decision(value: SnippetDecision): SnippetDecision {
   }
 }
 
+function signer(value: SnippetSigner): SnippetSigner {
+  const { type, key } = value;
+  if (type === "ed25519_public_key") return { type, key: publicKey(key, "signer") };
+  if (type !== "hash_x" && type !== "preauth_tx") throw new SdkSnippetInputError("signer type");
+  try {
+    if (type === "hash_x") StrKey.decodeSha256Hash(key);
+    else StrKey.decodePreAuthTx(key);
+  } catch {
+    throw new SdkSnippetInputError("signer");
+  }
+  return { type, key };
+}
+
 /** The input rebuilt from validated fields only, so nothing the caller added can reach the text. */
 function validated(input: SdkSnippetInput): SdkSnippetInput {
   if (input.network !== "testnet" && input.network !== "mainnet") {
@@ -124,6 +144,7 @@ function validated(input: SdkSnippetInput): SdkSnippetInput {
       source: publicKey(close.source, "source"),
       destination,
       decisions: close.decisions.map(decision),
+      signers: close.signers.map(signer),
       sponsored: close.sponsored === true,
     },
   };
@@ -276,6 +297,69 @@ function closeBody(close: SnippetClose): string[] {
       : []),
   ];
   const prepareParam = close.sponsored ? "tx" : "_tx";
+  const multisig = close.signers.length > 0;
+  const cosigners = close.signers.filter((sg) => sg.type === "ed25519_public_key");
+  const cosignerEnv = cosigners.map((_, i) => `LUMENWIPE_COSIGNER_${i + 1}_SECRET`);
+  const unkeyed = close.signers.filter((sg) => sg.type !== "ed25519_public_key");
+  const keyLines = multisig
+    ? [
+        "",
+        "// Each co-signer's secret comes from its own variable; it signs only while weight is short.",
+        ...cosigners.map((sg, i) => `// ${cosignerEnv[i]} signs for ${sg.key}`),
+        ...(unkeyed.length > 0 ? ["// Not signed with a key here:"] : []),
+        ...unkeyed.map(
+          (sg) =>
+            `//   ${sg.type === "hash_x" ? "hash(x) signer" : "pre-authorized transaction"} ${sg.key}`
+        ),
+        ...(cosigners.length > 0
+          ? [
+              "const cosigners = [",
+              ...cosignerEnv.map((name) => `  process.env.${name},`),
+              "].flatMap((secret) => (secret ? [Keypair.fromSecret(secret)] : []));",
+              "const keys = [signer, ...cosigners];",
+            ]
+          : ["const keys = [signer];"]),
+        "// The signers and thresholds each round was built against.",
+        'let live: Pick<typeof account, "signers" | "thresholds"> = account;',
+      ]
+    : [];
+  const fetchLines = multisig
+    ? [
+        "  getTransactions: async ({ planHash }) => {",
+        ...objectLines("    ", "const round = await client.closeTransactions(", request, ");"),
+        "    live = round.sourceAccount ?? (await client.getAccount(source));",
+        "    return round;",
+        "  },",
+      ]
+    : [
+        "  getTransactions: ({ planHash }) =>",
+        ...objectLines("    ", "client.closeTransactions(", request, "),"),
+      ];
+  const signLines = multisig
+    ? [
+        "  requiredWeight: () => Math.max(1, live.thresholds.high),",
+        "  sign: async (_tx, xdr) => {",
+        "    const tx = parse(xdr);",
+        "    const required = Math.max(1, live.thresholds.high);",
+        "    let weight = 0;",
+        "    for (const key of keys) {",
+        "      const keyWeight = live.signers.find((s) => s.key === key.publicKey())?.weight ?? 0;",
+        "      if (weight >= required || keyWeight === 0) continue;",
+        "      tx.sign(key);",
+        "      weight += keyWeight;",
+        "    }",
+        "    return { xdr: tx.toXDR(), weight };",
+        "  },",
+      ]
+    : [
+        "  requiredWeight: () => account.thresholds.high,",
+        "  sign: async (_tx, xdr) => {",
+        "    const tx = parse(xdr);",
+        "    tx.sign(signer);",
+        "    const weight = account.signers.find((s) => s.key === signer.publicKey())?.weight ?? 0;",
+        "    return { xdr: tx.toXDR(), weight };",
+        "  },",
+      ];
 
   return [
     `const source = ${str(close.source)};`,
@@ -290,11 +374,11 @@ function closeBody(close: SnippetClose): string[] {
       ? `const blockers = plan.blockers.filter((b) => b.code !== ${str(FORFEITED_BLOCKER)});`
       : "const { blockers } = plan;",
     'if (blockers.length > 0) throw new Error(blockers.map((b) => b.message).join("; "));',
+    ...keyLines,
     "",
     "await runClose({",
     "  planHash: plan.planHash,",
-    "  getTransactions: ({ planHash }) =>",
-    ...objectLines("    ", "client.closeTransactions(", request, "),"),
+    ...fetchLines,
     "  verify: (tx) =>",
     "    verifyCloseTransaction({",
     "      unsignedXdr: tx.xdr,",
@@ -315,13 +399,7 @@ function closeBody(close: SnippetClose): string[] {
     "        tokenConversions: {},",
     "      },",
     "    }),",
-    "  requiredWeight: () => account.thresholds.high,",
-    "  sign: async (_tx, xdr) => {",
-    "    const tx = parse(xdr);",
-    "    tx.sign(signer);",
-    "    const weight = account.signers.find((s) => s.key === signer.publicKey())?.weight ?? 0;",
-    "    return { xdr: tx.toXDR(), weight };",
-    "  },",
+    ...signLines,
     ...(prepare.length > 0
       ? [`  prepare: async (${prepareParam}, xdr) => {`, ...prepare, "    return xdr;", "  },"]
       : []),
@@ -366,7 +444,7 @@ export function buildSdkSnippet(input: SdkSnippetInput): string {
 /**
  * A playground session's close as the snippet shows it, from the same expectation its demolish
  * answers every decision from (lib/demolish.ts): the destination, the memo of an exchange session,
- * and each asset's and claimable balance's answer.
+ * each asset's and claimable balance's answer, and the signers the session added.
  */
 export function snippetInputFromExpectation(expected: PlaygroundCloseExpectation): SdkSnippetInput {
   const { exchange } = expected;
@@ -398,6 +476,7 @@ export function snippetInputFromExpectation(expected: PlaygroundCloseExpectation
         ? { kind: "exchange", address: exchange.destination, memo: exchange.memo, memoType: "id" }
         : { kind: "account", address: expected.sinkPublic },
       decisions,
+      signers: expected.recordedSigners,
       sponsored: expected.sponsored,
     },
   };
