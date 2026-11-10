@@ -13,9 +13,11 @@ import {
   type AssetCode,
 } from "./catalog";
 import { CLOSE_GROUP_SECONDS, MESS_STEP_SECONDS, ORDER, SCENARIOS } from "./definitions";
+import { purchaseBuild, withPinnedBalances } from "./prerequisites";
 import type {
   MessStepDef,
   OrderedStep,
+  ScenarioBuild,
   ScenarioChoice,
   ScenarioCost,
   ScenarioDefinition,
@@ -207,10 +209,7 @@ export function validateSelection(
     batchSize: 1,
     subEntries: 0,
   };
-  for (const { def, params } of picked) {
-    const result = def.build(params, { heldAssets });
-    if (!result.ok) return fail(result.message);
-    const { build } = result;
+  const absorb = (build: ScenarioBuild): void => {
     ordered.push(...build.steps);
     ephemeralAssets.push(...build.ephemeralAssets);
     expectation.assets.push(...build.expectation.assets);
@@ -231,7 +230,15 @@ export function validateSelection(
     cost.seconds += build.cost.seconds;
     cost.batchSize = Math.max(cost.batchSize, build.cost.batchSize);
     cost.subEntries += build.cost.subEntries;
+  };
+  for (const { def, params } of picked) {
+    const result = def.build(params, { heldAssets });
+    if (!result.ok) return fail(result.message);
+    absorb(result.build);
   }
+  // What the scenarios spend of a pinned asset is bought once, for all of them together.
+  const purchases = purchaseBuild(ordered.map((o) => o.step));
+  if (purchases) absorb(purchases);
   // Removing the emptied trustlines is one more close step once there is any.
   if (expectation.assets.length > 0) cost.seconds += CLOSE_GROUP_SECONDS;
 
@@ -239,7 +246,7 @@ export function validateSelection(
   if (capped) return fail(capped);
 
   ordered.push(setupStep(ephemeralAssets, demoFundingXlm(cost)));
-  const steps = ordered.sort((a, b) => a.order - b.order).map((o) => o.step);
+  const steps = withPinnedBalances(ordered.sort((a, b) => a.order - b.order).map((o) => o.step));
   if (new Set(steps.map((s) => s.id)).size !== steps.length) {
     return fail("This combination of scenarios is not supported.");
   }

@@ -1,6 +1,6 @@
 import "server-only";
 import { Address, scValToNative, Transaction, xdr } from "@stellar/stellar-sdk";
-import { SOROSWAP } from "./scenarios";
+import { AQUARIUS, SOROSWAP } from "./scenarios";
 
 // The structural check for a Soroban contract call in a playground close.
 //
@@ -16,11 +16,12 @@ import { SOROSWAP } from "./scenarios";
 //   the session's selection seeds;
 // - the function is in that protocol's allowlist, with exactly the arguments the protocol's exit
 //   uses: every argument that names the account paid or acted for equals the demo, every
-//   minimum-out and every amount moved is greater than zero, and the tokens named are exactly the
-//   pinned pool's;
+//   minimum-out and every amount moved is greater than zero (a floor given as a list holds exactly
+//   one per pool token), and the tokens named are exactly the pinned pool's;
 // - every authorization entry is satisfied by the transaction's own signature (source-account
 //   credentials, never a separate address signature), and every invocation in its tree stays in
-//   the protocol's family: the contracts its row pins, the call targets and the pool or pair.
+//   the protocol's family: the contracts its row pins, the call targets and the pool, pair or
+//   share token.
 //
 // Every contract is a pinned public testnet instance (lib/scenarios/pinned.ts): a session never
 // creates one, so there is nothing per session to record beyond which protocols it seeded.
@@ -32,10 +33,11 @@ export class SorobanVerificationError extends Error {
   }
 }
 
-export type SorobanProtocol = "soroswap";
+export type SorobanProtocol = "soroswap" | "aquarius";
 
 /** A protocol the session's selection seeds on testnet, and the variant of its position. */
-export type SeededProtocol = { protocol: "soroswap"; variant: "lp" };
+export type SeededProtocol =
+  { protocol: "soroswap"; variant: "lp" } | { protocol: "aquarius"; variant: "lp" };
 
 /** What a session's Soroban calls may do: everything here comes from the session record. */
 export interface SorobanExpectation {
@@ -48,9 +50,13 @@ interface FunctionRule {
   arity: number;
   /** Positions of arguments that name the account paid or acted for: each must be the demo. */
   accountArgs: readonly number[];
-  /** Positions of minimum-out amounts: each must be an i128 greater than zero. */
+  /** The integer type every amount below must have: the protocol's own, never another. */
+  amountType: "scvI128" | "scvU128";
+  /** Positions of minimum-out amounts: each must be greater than zero. */
   minOutArgs: readonly number[];
-  /** Positions of the amount the call moves: each must be an i128 greater than zero. */
+  /** A minimum-out given as one list: exactly `length` amounts, each greater than zero. */
+  minOutVec: { at: number; length: number } | null;
+  /** Positions of the amount the call moves: each must be greater than zero. */
   positiveArgs: readonly number[];
   /** Positions that must name, between them, exactly these token contracts, each once. */
   tokenArgs: { at: readonly number[]; tokens: readonly string[] } | null;
@@ -72,6 +78,12 @@ interface ProtocolPins {
  * pair the scenario deposits in. Its exit is the call apps/api/src/lib/defi-exits/soroswap.ts
  * builds: `remove_liquidity(token_a, token_b, liquidity, amount_a_min, amount_b_min, to,
  * deadline)`, which authorizes moving the LP share from the demo into the pair, and nothing else.
+ *
+ * Aquarius: the Circle-USDC/XLM constant-product pool the scenario deposits in (its code is the
+ * registry's `aquarius` / `pool` constant-product entry) and its share token. Its exit is the call
+ * apps/api/src/lib/defi-exits/aquarius.ts builds: `withdraw(user, share_amount, min_amounts)`,
+ * made to the pool itself, which authorizes burning the demo's shares on the share token, and
+ * nothing else. The pool's AQUA emission rate is zero on testnet, so no `claim` comes before it.
  */
 export const PINNED_SOROBAN_PROTOCOLS: Readonly<Record<SorobanProtocol, ProtocolPins>> = {
   soroswap: {
@@ -81,9 +93,26 @@ export const PINNED_SOROBAN_PROTOCOLS: Readonly<Record<SorobanProtocol, Protocol
       remove_liquidity: {
         arity: 7,
         accountArgs: [5],
+        amountType: "scvI128",
         minOutArgs: [3, 4],
+        minOutVec: null,
         positiveArgs: [2],
         tokenArgs: { at: [0, 1], tokens: SOROSWAP.tokens },
+      },
+    },
+  },
+  aquarius: {
+    entry: [AQUARIUS.pool],
+    family: [AQUARIUS.shareToken],
+    functions: {
+      withdraw: {
+        arity: 3,
+        accountArgs: [0],
+        amountType: "scvU128",
+        minOutArgs: [],
+        minOutVec: { at: 2, length: AQUARIUS.tokens.length },
+        positiveArgs: [1],
+        tokenArgs: null,
       },
     },
   },
@@ -99,8 +128,8 @@ function protocolOf(contract: string): SorobanProtocol | null {
 const addressOf = (val: xdr.ScVal | undefined): string | null =>
   val?.type === "scvAddress" ? Address.fromScAddress(val.address).toString() : null;
 
-const isPositiveI128 = (val: xdr.ScVal | undefined): boolean =>
-  val?.type === "scvI128" && (scValToNative(val) as bigint) > BigInt(0);
+const isPositive = (val: xdr.ScVal | undefined, type: FunctionRule["amountType"]): boolean =>
+  val?.type === type && (scValToNative(val) as bigint) > BigInt(0);
 
 function assertAuthTree(
   invocation: xdr.SorobanAuthorizedInvocation,
@@ -151,11 +180,24 @@ export function assertSorobanTransaction(tx: Transaction, expected: SorobanExpec
     }
   }
   for (const i of rule.minOutArgs) {
-    if (!isPositiveI128(args[i]))
+    if (!isPositive(args[i], rule.amountType)) {
       throw new SorobanVerificationError("soroban_min_out_not_positive");
+    }
+  }
+  if (rule.minOutVec) {
+    const floors = args[rule.minOutVec.at];
+    const list = floors?.type === "scvVec" ? (floors.vec ?? []) : null;
+    if (list === null || list.length !== rule.minOutVec.length) {
+      throw new SorobanVerificationError("soroban_min_out_vec_invalid");
+    }
+    if (!list.every((floor) => isPositive(floor, rule.amountType))) {
+      throw new SorobanVerificationError("soroban_min_out_not_positive");
+    }
   }
   for (const i of rule.positiveArgs) {
-    if (!isPositiveI128(args[i])) throw new SorobanVerificationError("soroban_amount_not_positive");
+    if (!isPositive(args[i], rule.amountType)) {
+      throw new SorobanVerificationError("soroban_amount_not_positive");
+    }
   }
   if (rule.tokenArgs) {
     const named = rule.tokenArgs.at.map((i) => addressOf(args[i]));

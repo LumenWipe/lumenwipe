@@ -70,6 +70,33 @@ export const SOROSWAP_SEED = {
   depositMaxXlm: "5",
 } as const;
 
+/**
+ * Aquarius on testnet: the router the registry vouches for (apps/api/src/config/
+ * contract-registry.json, `aquarius` / `router`), and its Circle-USDC/XLM constant-product pool
+ * (30 bps), which the router lists under `pool_index` (`get_pools([USDC, XLM])`) and which runs
+ * the registry's constant-product pool code (`d691135a…`). The pool keeps its shares in a separate
+ * token contract, `shareToken` (`share_id`). `tokens` is the pool's own order (`get_tokens`): the
+ * order `deposit` takes its amounts in and `withdraw` pays out and takes its floors in.
+ */
+export const AQUARIUS = {
+  router: "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+  pool: "CAYBMZYJCOMMOHOGOGBK7ANIKF3JPZAL4D7SWAPVPHC4WBMOUT5DJN5B",
+  poolIndex: "9ac7a9cde23ac2ada11105eeaa42e43c2ea8332ca0aa8f41f58d7160274d718e",
+  shareToken: "CDEUHPEUQAQNLCHFVBX3ZOSIR2FUWD2COYTSHUPQPJWK2BCLLQCW66FY",
+  tokens: [PINNED_ASSETS["circle-usdc"].contract, XLM_SAC],
+} as const;
+
+/** What the Aquarius scenario buys and pairs. The pool prices USDC near 2.1 XLM and the DEX near
+ *  1.3, so each ceiling leaves room for the market to move without a large loss. */
+export const AQUARIUS_SEED = {
+  /** USDC bought on the DEX, all of which goes into the pool. */
+  usdc: "2",
+  /** The most XLM the purchase may spend. */
+  buyMaxXlm: "4",
+  /** The most XLM the deposit may pair with the USDC; the pool takes only what its price needs. */
+  depositMaxXlm: "5",
+} as const;
+
 /** Protocol scenarios testnet cannot run, each with the reason, shown beside the ones it can. */
 export const TESTNET_UNAVAILABLE: readonly {
   featureSet: FeatureSetId;

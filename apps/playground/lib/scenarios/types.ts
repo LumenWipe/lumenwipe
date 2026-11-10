@@ -27,6 +27,7 @@ export const MESS_STEP_IDS = [
   "TRUST_CIRCLE_USDC",
   "BUY_CIRCLE_USDC",
   "SOROSWAP_DEPOSIT",
+  "AQUARIUS_DEPOSIT",
 ] as const;
 
 export type MessStepId = (typeof MESS_STEP_IDS)[number];
@@ -70,7 +71,9 @@ export type StepAction =
   /** Buys `amount` of a pinned asset with at most `maxXlm`, after a quote shows a route for it. */
   | { kind: "pinned_buy"; asset: PinnedAssetId; amount: string; maxXlm: string }
   /** Pairs the demo's USDC with XLM in the pinned Soroswap pair, through the router. */
-  | { kind: "soroswap_deposit"; usdc: string; maxXlm: string };
+  | { kind: "soroswap_deposit"; usdc: string; maxXlm: string }
+  /** Pairs the demo's USDC with XLM in the pinned Aquarius pool, through the router. */
+  | { kind: "aquarius_deposit"; usdc: string; maxXlm: string };
 
 /**
  * two_of_three: two co-signers beside the master key, any two of the three sign. hash_x: the
@@ -157,6 +160,20 @@ export interface MessStepDef {
   /** Already-docked nodes whose balance this step sets. */
   balances: { nodeId: string; balance: string }[];
   action: StepAction;
+  /**
+   * The pinned asset this step spends, and the most XLM its purchase may cost. The plan buys it
+   * once for every step that spends it (lib/scenarios/prerequisites.ts), so two scenarios that
+   * pair the same asset share one trustline and one purchase; the trustline's balance after this
+   * step is set by the resolver, which knows what the steps before it spent.
+   */
+  spendsPinned?: PinnedPurchase;
+}
+
+/** An amount of a pinned asset a step spends, bought for it for at most `maxXlm`. */
+export interface PinnedPurchase {
+  asset: PinnedAssetId;
+  amount: string;
+  maxXlm: string;
 }
 
 /** Operation types a close can contain, named as `@stellar/stellar-sdk` names them. */
@@ -241,7 +258,8 @@ export type ScenarioId =
   | "claimable-balances"
   | "sponsored-reserves"
   | "multisig"
-  | "soroswap-lp";
+  | "soroswap-lp"
+  | "aquarius-lp";
 
 export interface OrderedStep {
   /** Steps from every scenario are sorted by this key into one plan. */

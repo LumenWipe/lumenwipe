@@ -36,8 +36,8 @@ const subsets = (count: number, from: number, size: number): number[][] =>
 
 /** Largest selections (eight scenarios at their maximum) that fit every rule and cap, and those
  *  the XLM cap refuses. Pinned so a cost change shows up here. */
-const FITTED_AT_MAX = 63;
-const OVER_XLM_AT_MAX = 17;
+const FITTED_AT_MAX = 135;
+const OVER_XLM_AT_MAX = 100;
 
 function messageOf(selection: ScenarioSelection, registry?: readonly ScenarioDefinition[]): string {
   const result = validateSelection(selection, { registry });
@@ -168,8 +168,7 @@ describe("the safety caps", () => {
     );
     // Leaving out a token holding leaves five stale offers without the tokens they trade, or
     // without any token at all, which is refused for that reason. The only cap any of them reaches
-    // is the XLM one, and only with the Soroswap pool beside seven of the costliest classic
-    // scenarios.
+    // is the XLM one, and only with a protocol pool beside the costliest classic scenarios.
     let fitted = 0;
     let overXlm = 0;
     for (const kept of subsets(atMax.length, 0, MAX_SCENARIOS)) {
@@ -178,7 +177,7 @@ describe("the safety caps", () => {
       if (result.ok) fitted++;
       else if (result.message.startsWith("This selection needs about")) {
         overXlm++;
-        expect(chosen.map((c) => c.id)).toContain("soroswap-lp");
+        expect(chosen.some((c) => c.id === "soroswap-lp" || c.id === "aquarius-lp")).toBe(true);
         expect(result.message).toEndWith(`a demo can use at most ${MAX_SESSION_XLM}.`);
       } else expect(result.message).toStartWith("Stale DEX offers ");
     }
@@ -196,19 +195,34 @@ describe("the safety caps", () => {
     }
   });
 
-  test("the Soroswap pool fits beside any other scenario, and beside each classic preset", () => {
-    const soroswap = { id: "soroswap-lp" as const, params: {} };
-    for (const def of SCENARIOS.filter((d) => d.id !== "soroswap-lp")) {
-      const result = validateSelection(pick(soroswap, at(def, "max")));
-      // Only a scenario that needs another beside it may refuse the pair, and for that reason.
-      if (!result.ok) {
-        expect(def.requiresAnyOf.length).toBeGreaterThan(0);
-        expect(result.message).toContain("needs one of these as well");
+  for (const id of ["soroswap-lp", "aquarius-lp"] as const) {
+    test(`${id} fits beside any other scenario, and beside each classic preset`, () => {
+      const pool = { id, params: {} };
+      for (const def of SCENARIOS.filter((d) => d.id !== id)) {
+        const result = validateSelection(pick(pool, at(def, "max")));
+        // Only a scenario that needs another beside it may refuse the pair, and for that reason.
+        if (!result.ok) {
+          expect(def.requiresAnyOf.length).toBeGreaterThan(0);
+          expect(result.message).toContain("needs one of these as well");
+        }
       }
-    }
-    for (const preset of [STANDARD_SELECTION, FULL_SELECTION]) {
-      expect(validateSelection(pick(soroswap, ...preset.scenarios)).ok).toBe(true);
-    }
+      for (const preset of [STANDARD_SELECTION, FULL_SELECTION]) {
+        expect(validateSelection(pick(pool, ...preset.scenarios)).ok).toBe(true);
+      }
+    });
+  }
+
+  test("both pools fit beside the standard preset, and are refused beside the full one for XLM", () => {
+    const pools = [
+      { id: "soroswap-lp" as const, params: {} },
+      { id: "aquarius-lp" as const, params: {} },
+    ];
+    const standard = validateSelection(pick(...pools, ...STANDARD_SELECTION.scenarios));
+    if (!standard.ok) throw new Error(standard.message);
+    expect(standard.plan.cost.xlm).toBeLessThanOrEqual(MAX_SESSION_XLM);
+    expect(messageOf(pick(...pools, ...FULL_SELECTION.scenarios))).toStartWith(
+      "This selection needs about"
+    );
   });
 });
 

@@ -6,7 +6,7 @@ import {
   type SceneAction,
 } from "@/lib/scene-actions";
 import type { IntentOperation } from "@lumenwipe/sdk";
-import { PINNED_ASSETS, SOROSWAP } from "@/lib/scenarios";
+import { AQUARIUS, PINNED_ASSETS, SOROSWAP } from "@/lib/scenarios";
 
 const SOURCE = "GDEMO";
 const live = (...ids: string[]): LiveNode[] => ids.map((id) => ({ id }));
@@ -194,5 +194,22 @@ describe("the Soroswap position and its pinned asset", () => {
       type: "destroy",
       nodeIds: ["tl:USDC"],
     });
+  });
+});
+
+describe("the Aquarius position", () => {
+  const scene = live("tl:circle-usdc", "lp:soroswap", "lp:aquarius");
+
+  test("the withdraw on the pool empties the pool's node, and nothing else does", () => {
+    const exit = { ...SAMPLES.invoke_host_function, contract: AQUARIUS.pool };
+    expect(operationToSceneAction({ ...exit, function: "withdraw" }, scene)).toEqual({
+      type: "destroy",
+      nodeIds: ["lp:aquarius"],
+    });
+    expect(operationToSceneAction({ ...exit, function: "claim" }, scene)).toBeNull();
+    const share = { ...exit, contract: AQUARIUS.shareToken, function: "withdraw" };
+    expect(operationToSceneAction(share, scene)).toBeNull();
+    const router = { ...exit, contract: AQUARIUS.router, function: "withdraw" };
+    expect(operationToSceneAction(router, scene)).toBeNull();
   });
 });

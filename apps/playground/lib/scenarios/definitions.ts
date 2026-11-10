@@ -27,7 +27,7 @@ import {
   type AssetCode,
   type OfferAsset,
 } from "./catalog";
-import { PINNED_ASSETS, SOROSWAP_SEED } from "./pinned";
+import { AQUARIUS_SEED, SOROSWAP_SEED } from "./pinned";
 import {
   DISPOSITION_CHOICES,
   type AssetDisposition,
@@ -42,6 +42,8 @@ import {
   type SceneNodeSpec,
   type ScenarioCost,
   type ScenarioDefinition,
+  type ScenarioId,
+  type StepAction,
 } from "./types";
 
 export const MESS_STEP_SECONDS = 5;
@@ -833,107 +835,112 @@ const SOROBAN_FEE_CAP_XLM = 1;
 /** A Soroban step simulates, sends and waits for its ledger: slower than a classic one. */
 const SOROBAN_STEP_SECONDS = 10;
 
-const CIRCLE_USDC = PINNED_ASSETS["circle-usdc"];
-const circleUsdcNode = "tl:circle-usdc";
-
-const soroswapLp: ScenarioDefinition = {
-  id: "soroswap-lp",
-  featureSet: "protocol",
-  label: "Soroswap liquidity",
-  description:
-    "Circle's test USDC bought on the DEX and paired with XLM in a real Soroswap pool. The close withdraws it before the merge.",
-  params: {},
-  heldAssets: () => [],
-  requiresAnyOf: [],
-  conflicts: [],
-  build: () => {
-    const steps: OrderedStep[] = [
-      {
-        order: ORDER.trust + 9,
-        step: {
-          id: "TRUST_CIRCLE_USDC",
-          label: `Open ${CIRCLE_USDC.label} trustline`,
-          nodes: [{ id: circleUsdcNode, kind: "trustline", label: CIRCLE_USDC.label }],
-          balances: [],
-          action: {
-            kind: "pinned_trust",
-            asset: "circle-usdc",
-            amount: SOROSWAP_SEED.usdc,
-            maxXlm: SOROSWAP_SEED.buyMaxXlm,
-          },
-        },
-      },
-      {
-        order: ORDER.fund + 9,
-        step: {
-          id: "BUY_CIRCLE_USDC",
-          label: `Buy ${SOROSWAP_SEED.usdc} ${CIRCLE_USDC.label} with XLM on the DEX`,
-          nodes: [],
-          balances: [{ nodeId: circleUsdcNode, balance: SOROSWAP_SEED.usdc }],
-          action: {
-            kind: "pinned_buy",
-            asset: "circle-usdc",
-            amount: SOROSWAP_SEED.usdc,
-            maxXlm: SOROSWAP_SEED.buyMaxXlm,
-          },
-        },
-      },
-      {
-        order: ORDER.protocol,
-        step: {
-          id: "SOROSWAP_DEPOSIT",
-          label: "Add USDC and XLM to the Soroswap pool",
-          nodes: [{ id: "lp:soroswap", kind: "position", label: "Soroswap USDC/XLM" }],
-          balances: [{ nodeId: circleUsdcNode, balance: "0" }],
-          action: {
-            kind: "soroswap_deposit",
-            usdc: SOROSWAP_SEED.usdc,
-            maxXlm: SOROSWAP_SEED.depositMaxXlm,
-          },
-        },
-      },
-    ];
-    return {
+/**
+ * A scenario that pairs Circle's USDC with XLM in a pinned pool: one seeding call, which spends the
+ * USDC the plan buys for it (lib/scenarios/prerequisites.ts adds the trustline and the purchase,
+ * once for every pool selected), and one exit, a close transaction of its own.
+ */
+function poolScenario(spec: {
+  id: ScenarioId;
+  label: string;
+  description: string;
+  stepId: MessStepId;
+  stepLabel: string;
+  node: { id: string; label: string };
+  action: StepAction;
+  seed: { usdc: string; buyMaxXlm: string; depositMaxXlm: string };
+}): ScenarioDefinition {
+  return {
+    id: spec.id,
+    featureSet: "protocol",
+    label: spec.label,
+    description: spec.description,
+    params: {},
+    heldAssets: () => [],
+    requiresAnyOf: [],
+    conflicts: [],
+    build: () => ({
       ok: true,
       build: {
-        steps,
+        steps: [
+          {
+            order: ORDER.protocol,
+            step: {
+              id: spec.stepId,
+              label: spec.stepLabel,
+              nodes: [{ id: spec.node.id, kind: "position", label: spec.node.label }],
+              balances: [],
+              action: spec.action,
+              spendsPinned: {
+                asset: "circle-usdc",
+                amount: spec.seed.usdc,
+                maxXlm: spec.seed.buyMaxXlm,
+              },
+            },
+          },
+        ],
         ephemeralAssets: [],
         expectation: {
-          // The pinned asset is not a playground code: the verifier adds it from the plan's steps.
           assets: [],
           offers: 0,
           dataEntries: 0,
           signers: 0,
-          // The USDC the exit pays back returns to its issuer, then its trustline goes.
-          closeOperations: 2,
-          operationTypes: ["payment", "changeTrust", "invokeHostFunction"],
+          // The exit is a transaction of its own; the USDC it pays back is closed with the
+          // trustline the shared purchase opened.
+          closeOperations: 0,
+          operationTypes: ["invokeHostFunction"],
           dispositions: [],
           arrivingAssets: [],
           sponsoredEntries: [],
           resolutions: [],
         },
         cost: {
-          // The trustline's reserve, the purchase, the XLM the deposit locks until the exit pays it
-          // back, and the fee ceiling of the deposit and of the exit.
-          xlm:
-            BASE_RESERVE_XLM +
-            Number(SOROSWAP_SEED.buyMaxXlm) +
-            Number(SOROSWAP_SEED.depositMaxXlm) +
-            2 * SOROBAN_FEE_CAP_XLM,
-          classicTransactions: 2,
+          // The XLM the deposit locks until the exit pays it back, and the fee ceiling of the
+          // deposit and of the exit. The trustline's reserve and the purchase are the shared
+          // purchase's.
+          xlm: Number(spec.seed.depositMaxXlm) + 2 * SOROBAN_FEE_CAP_XLM,
+          classicTransactions: 0,
           sorobanTransactions: 1,
-          seconds:
-            2 * MESS_STEP_SECONDS +
-            SOROBAN_STEP_SECONDS +
-            CLOSE_GROUP_SECONDS +
-            SOROBAN_STEP_SECONDS,
+          seconds: SOROBAN_STEP_SECONDS + CLOSE_GROUP_SECONDS + SOROBAN_STEP_SECONDS,
           batchSize: 1,
-          subEntries: 1,
+          subEntries: 0,
         },
       },
-    };
+    }),
+  };
+}
+
+const soroswapLp = poolScenario({
+  id: "soroswap-lp",
+  label: "Soroswap liquidity",
+  description:
+    "Circle's test USDC bought on the DEX and paired with XLM in a real Soroswap pool. The close withdraws it before the merge.",
+  stepId: "SOROSWAP_DEPOSIT",
+  stepLabel: "Add USDC and XLM to the Soroswap pool",
+  node: { id: "lp:soroswap", label: "Soroswap USDC/XLM" },
+  action: {
+    kind: "soroswap_deposit",
+    usdc: SOROSWAP_SEED.usdc,
+    maxXlm: SOROSWAP_SEED.depositMaxXlm,
   },
-};
+  seed: SOROSWAP_SEED,
+});
+
+const aquariusLp = poolScenario({
+  id: "aquarius-lp",
+  label: "Aquarius liquidity",
+  description:
+    "Circle's test USDC bought on the DEX and paired with XLM in a real Aquarius pool. The close withdraws it before the merge.",
+  stepId: "AQUARIUS_DEPOSIT",
+  stepLabel: "Add USDC and XLM to the Aquarius pool",
+  node: { id: "lp:aquarius", label: "Aquarius USDC/XLM" },
+  action: {
+    kind: "aquarius_deposit",
+    usdc: AQUARIUS_SEED.usdc,
+    maxXlm: AQUARIUS_SEED.depositMaxXlm,
+  },
+  seed: AQUARIUS_SEED,
+});
 
 /** Every scenario, in the order a selection lists them. */
 export const SCENARIOS: readonly ScenarioDefinition[] = [
@@ -948,4 +955,5 @@ export const SCENARIOS: readonly ScenarioDefinition[] = [
   sponsoredReserves,
   multisig,
   soroswapLp,
+  aquariusLp,
 ];
