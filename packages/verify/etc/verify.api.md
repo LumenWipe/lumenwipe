@@ -144,6 +144,24 @@ export type Network = "mainnet" | "testnet";
 export function requiresMediator(address: string): boolean;
 
 // @public
+export interface RevokeAllowanceExpectation {
+    owner: string;
+    spender: string;
+    token: string;
+}
+
+// @public
+export class RevokeAllowanceVerificationError extends Error {
+    constructor(code: RevokeAllowanceVerificationErrorCode, message: string);
+    readonly code: RevokeAllowanceVerificationErrorCode;
+}
+
+// Warning: (ae-forgotten-export) The symbol "REVOKE_ALLOWANCE_VERIFICATION_ERROR_CODES" needs to be exported by the entry point index.d.ts
+//
+// @public
+export type RevokeAllowanceVerificationErrorCode = (typeof REVOKE_ALLOWANCE_VERIFICATION_ERROR_CODES)[number];
+
+// @public
 export interface ServedRegistry {
     entries: ExchangeRegistryEntry[];
     lastVerified: string;
@@ -186,5 +204,8 @@ export interface VerifyCloseInput {
 
 // @public
 export function verifyCloseTransaction(input: VerifyCloseInput): void;
+
+// @public
+export function verifyRevokeAllowanceTransaction(unsignedXdr: string, networkPassphrase: string, expected: RevokeAllowanceExpectation, nowSeconds?: number): void;
 
 ```

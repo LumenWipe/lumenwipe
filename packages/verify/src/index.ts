@@ -1,6 +1,7 @@
 /**
  * `@lumenwipe/verify`: the verifier the LumenWipe web app runs before every signature, compiled
- * from the web's own modules rather than copied. There is one implementation; this file only
+ * from the web's own modules rather than copied, together with the web's trust anchor for an
+ * allowance revocation. There is one implementation; this file only
  * gives it explicit, documented types. `tests/types.test.ts` pins every type below to the web
  * signature in both directions, so a change on either side fails the build.
  *
@@ -15,11 +16,16 @@ import type {
 import { verifyCloseTransaction as webVerifyCloseTransaction } from "../../../apps/web/lib/stellar/verify";
 import { exitExpectations as webExitExpectations } from "../../../apps/web/lib/stellar/exit-expectations";
 import { mediatorAllowedFor } from "../../../apps/web/lib/exchange-registry";
+import { verifyRevokeAllowanceTransaction as webVerifyRevokeAllowanceTransaction } from "../../../apps/web/lib/stellar/verify-revoke-allowance";
 
 export {
   VerificationError,
   type VerificationErrorCode,
 } from "../../../apps/web/lib/stellar/verification-error";
+export {
+  RevokeAllowanceVerificationError,
+  type RevokeAllowanceVerificationErrorCode,
+} from "../../../apps/web/lib/stellar/verify-revoke-allowance";
 export type { AccountSigner, AccountState, AccountThresholds, ExchangeRegistryEntry };
 
 /** The Stellar network a transaction is verified for. Selects the network passphrase the XDR is
@@ -224,4 +230,50 @@ export function exitExpectations(
  */
 export function requiresMediator(address: string): boolean {
   return mediatorAllowedFor(address);
+}
+
+/**
+ * What the screen showed the user before they approved an allowance revocation: the allowance
+ * the revocation must zero, and nothing else. Every value is one the integrator already displayed,
+ * never one read from the transaction under verification.
+ */
+export interface RevokeAllowanceExpectation {
+  /** The account whose allowance is revoked. The transaction and its one operation must be
+   *  sourced from it, and it is the only account the call may authorize. */
+  owner: string;
+  /** The token contract (`C...`) `approve` is called on. */
+  token: string;
+  /** The spender whose allowance goes to zero: a contract (`C...`) or, less often, an account
+   *  (`G...`). */
+  spender: string;
+}
+
+/**
+ * Decodes an API-built, unsigned allowance revocation and asserts it is exactly
+ * `approve(owner, spender, 0, expiration)` on `token`: one operation, sourced from `owner`, no
+ * memo, a fee of at most 10,000,000 stroops, valid for at most 900 seconds after `nowSeconds`,
+ * authorized only by the owner's own source account with no nested call, and naming no other
+ * account or contract. Returns only when the transaction may be signed.
+ *
+ * What it guarantees is that the signed transaction does what the screen said, so an API cannot
+ * swap the token or the spender between what was shown and what is signed. It does not judge
+ * whether the shown allowance is worth revoking.
+ *
+ * Throws {@link RevokeAllowanceVerificationError} with a stable `code` on any mismatch, or
+ * {@link VerificationError} when the envelope cannot be decoded at all (for example a text memo
+ * that is not valid UTF-8). Synchronous and offline: it reads no network and no page state, and
+ * keeps no state between calls. Run it once per transaction, immediately before the signature.
+ *
+ * @param unsignedXdr - The unsigned transaction envelope as returned by the API, base64.
+ * @param networkPassphrase - The passphrase of the network the revocation runs on.
+ * @param expected - The allowance the screen showed.
+ * @param nowSeconds - The current Unix time in seconds; defaults to the system clock.
+ */
+export function verifyRevokeAllowanceTransaction(
+  unsignedXdr: string,
+  networkPassphrase: string,
+  expected: RevokeAllowanceExpectation,
+  nowSeconds?: number
+): void {
+  webVerifyRevokeAllowanceTransaction(unsignedXdr, networkPassphrase, expected, nowSeconds);
 }

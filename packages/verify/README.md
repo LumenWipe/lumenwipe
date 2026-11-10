@@ -10,6 +10,11 @@ It is not a port. The bundle is compiled from the web's own
 conformance vector set (`vectors/close-v1.json`) runs against this package and against the web
 verifier in CI.
 
+It also ships the web's trust anchor for an allowance revocation,
+`verifyRevokeAllowanceTransaction`, compiled from
+[`verify-revoke-allowance.ts`](https://github.com/LumenWipe/lumenwipe/blob/main/apps/web/lib/stellar/verify-revoke-allowance.ts)
+with its own vector set (`vectors/revoke-allowance-v1.json`).
+
 ## Install
 
 ```bash
@@ -121,6 +126,34 @@ Without a snapshot:
 `verifyCloseTransaction` also reads the system clock for the transaction's expiry: a transaction
 valid for more than 900 seconds from now is refused.
 
+## Revoking an allowance
+
+`verifyRevokeAllowanceTransaction` checks an API-built revocation before the signature: exactly
+one `approve(owner, spender, 0, expiration)` on the token, sourced from the owner, with no memo,
+a fee of at most 10,000,000 stroops, valid for at most 900 seconds, authorized only by the
+owner's own source account and naming no other account or contract. Pass the allowance your
+screen showed, never values read from the transaction:
+
+```ts
+import {
+  RevokeAllowanceVerificationError,
+  verifyRevokeAllowanceTransaction,
+} from "@lumenwipe/verify";
+import { Networks } from "@stellar/stellar-sdk";
+
+try {
+  verifyRevokeAllowanceTransaction(unsignedXdr, Networks.PUBLIC, { owner, token, spender });
+} catch (error) {
+  if (error instanceof RevokeAllowanceVerificationError) console.error(error.code);
+  throw error;
+}
+```
+
+It throws `RevokeAllowanceVerificationError` with a stable `code`
+(`RevokeAllowanceVerificationErrorCode`), or `VerificationError` when the envelope cannot be
+decoded at all. The optional fourth argument is the current Unix time in seconds; it defaults to
+the system clock.
+
 ## Conformance vectors
 
 `vectors/close-v1.json` (schema 1) lists accepted and rejected transactions with the full
@@ -132,6 +165,11 @@ this one:
 ```ts
 import vectors from "@lumenwipe/verify/vectors/close-v1.json" with { type: "json" };
 ```
+
+`vectors/revoke-allowance-v1.json` (schema 1) does the same for
+`verifyRevokeAllowanceTransaction`: each vector gives the envelope, the network passphrase, the
+expectation and `nowSeconds` to pass as the fourth argument, and for a rejection the error
+`class`, `code` and exact `message`.
 
 ## License
 

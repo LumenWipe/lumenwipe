@@ -18,7 +18,8 @@
         "default": "./dist/index.cjs"
       }
     },
-    "./vectors/close-v1.json": "./vectors/close-v1.json"
+    "./vectors/close-v1.json": "./vectors/close-v1.json",
+    "./vectors/revoke-allowance-v1.json": "./vectors/revoke-allowance-v1.json"
   },
   "files": [
     "dist",

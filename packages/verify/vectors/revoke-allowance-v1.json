@@ -1,0 +1,437 @@
+{
+  "schema": 1,
+  "name": "revoke-allowance-v1",
+  "description": "Conformance vectors for verifyRevokeAllowanceTransaction. Call the verifier with input.unsignedXdr, input.networkPassphrase, input.expected and nowSeconds, and expect it to return (accept) or to throw an error of exactly error.class with exactly error.code and error.message (reject). A RevokeAllowanceVerificationError is a revocation check; a VerificationError is a transaction the decoder refused first. The code is the stable reason to branch on; the message is the current English wording. Each reject is one named mutation of the transaction of the accept named in base. Every key is public.",
+  "generator": "packages/verify/scripts/revoke-vectors.ts",
+  "vectors": [
+    {
+      "name": "revoke-contract-spender",
+      "verdict": "accept",
+      "description": "approve(owner, spender, 0, 0) on the token, sourced from the owner, valid for five minutes, with the owner's own source-account authorization and no memo. The spender is a contract.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAAGQAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAEAAAAAAAAAGAAAAAAAAAABtmQUQA9whUT13XMNUXw8zIk19d5lCgRxNz87dkzA5dgAAAAHYXBwcm92ZQAAAAAEAAAAEgAAAAAAAAAAXhJ82k9AwQ6xP5SPlGruAT5HLa2SHYxVJBkbPjIV9usAAAASAAAAATiT8wcJ/e4h6qzJWsey0/0/TNR/ylzrUsnNTvB76MlYAAAACgAAAAAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAEAAAAAAAAAAAAAAAG2ZBRAD3CFRPXdcw1RfDzMiTX13mUKBHE3Pzt2TMDl2AAAAAdhcHByb3ZlAAAAAAQAAAASAAAAAAAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAABIAAAABOJPzBwn97iHqrMlax7LT/T9M1H/KXOtSyc1O8HvoyVgAAAAKAAAAAAAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAAAAAAAAAAAA",
+        "networkPassphrase": "Test SDF Network ; September 2015",
+        "expected": {
+          "owner": "GBPBE7G2J5AMCDVRH6KI7FDK5YAT4RZNVWJB3DCVEQMRWPRSCX3OXSU5",
+          "token": "CC3GIFCAB5YIKRHV3VZQ2UL4HTGISNPV3ZSQUBDRG47TW5SMYDS5RNST",
+          "spender": "CA4JH4YHBH664IPKVTEVVR5S2P6T6TGUP7FFZ22SZHGU54D35DEVQ4T2"
+        }
+      }
+    },
+    {
+      "name": "revoke-account-spender",
+      "verdict": "accept",
+      "description": "The same revocation for a spender that is a plain account rather than a contract.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAAGQAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAEAAAAAAAAAGAAAAAAAAAABtmQUQA9whUT13XMNUXw8zIk19d5lCgRxNz87dkzA5dgAAAAHYXBwcm92ZQAAAAAEAAAAEgAAAAAAAAAAXhJ82k9AwQ6xP5SPlGruAT5HLa2SHYxVJBkbPjIV9usAAAASAAAAAAAAAAB2hSXuoTqaDDdmKoPQpIxEjXENsTnfLuGGM+ZSb0qnNgAAAAoAAAAAAAAAAAAAAAAAAAAAAAAAAwAAAAAAAAABAAAAAAAAAAAAAAABtmQUQA9whUT13XMNUXw8zIk19d5lCgRxNz87dkzA5dgAAAAHYXBwcm92ZQAAAAAEAAAAEgAAAAAAAAAAXhJ82k9AwQ6xP5SPlGruAT5HLa2SHYxVJBkbPjIV9usAAAASAAAAAAAAAAB2hSXuoTqaDDdmKoPQpIxEjXENsTnfLuGGM+ZSb0qnNgAAAAoAAAAAAAAAAAAAAAAAAAAAAAAAAwAAAAAAAAAAAAAAAAAAAAA=",
+        "networkPassphrase": "Test SDF Network ; September 2015",
+        "expected": {
+          "owner": "GBPBE7G2J5AMCDVRH6KI7FDK5YAT4RZNVWJB3DCVEQMRWPRSCX3OXSU5",
+          "token": "CC3GIFCAB5YIKRHV3VZQ2UL4HTGISNPV3ZSQUBDRG47TW5SMYDS5RNST",
+          "spender": "GB3IKJPOUE5JUDBXMYVIHUFERRCI24INWE456LXBQYZ6MUTPJKTTN3NO"
+        }
+      }
+    },
+    {
+      "name": "never-expires",
+      "verdict": "reject",
+      "base": "revoke-contract-spender",
+      "mutation": "Sets maxTime to 0: no upper time bound.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAAGQAAAABAAAAAQAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAGAAAAAAAAAABtmQUQA9whUT13XMNUXw8zIk19d5lCgRxNz87dkzA5dgAAAAHYXBwcm92ZQAAAAAEAAAAEgAAAAAAAAAAXhJ82k9AwQ6xP5SPlGruAT5HLa2SHYxVJBkbPjIV9usAAAASAAAAATiT8wcJ/e4h6qzJWsey0/0/TNR/ylzrUsnNTvB76MlYAAAACgAAAAAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAEAAAAAAAAAAAAAAAG2ZBRAD3CFRPXdcw1RfDzMiTX13mUKBHE3Pzt2TMDl2AAAAAdhcHByb3ZlAAAAAAQAAAASAAAAAAAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAABIAAAABOJPzBwn97iHqrMlax7LT/T9M1H/KXOtSyc1O8HvoyVgAAAAKAAAAAAAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAAAAAAAAAAAA",
+        "networkPassphrase": "Test SDF Network ; September 2015",
+        "expected": {
+          "owner": "GBPBE7G2J5AMCDVRH6KI7FDK5YAT4RZNVWJB3DCVEQMRWPRSCX3OXSU5",
+          "token": "CC3GIFCAB5YIKRHV3VZQ2UL4HTGISNPV3ZSQUBDRG47TW5SMYDS5RNST",
+          "spender": "CA4JH4YHBH664IPKVTEVVR5S2P6T6TGUP7FFZ22SZHGU54D35DEVQ4T2"
+        }
+      },
+      "error": {
+        "class": "RevokeAllowanceVerificationError",
+        "code": "revoke_expiry_missing",
+        "message": "This transaction never expires, so it could be submitted long after you approved it."
+      }
+    },
+    {
+      "name": "valid-past-fifteen-minutes",
+      "verdict": "reject",
+      "base": "revoke-contract-spender",
+      "mutation": "Sets maxTime to one hour after nowSeconds, past the 900-second window.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAAGQAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5o8QAAAAAAAAAAEAAAAAAAAAGAAAAAAAAAABtmQUQA9whUT13XMNUXw8zIk19d5lCgRxNz87dkzA5dgAAAAHYXBwcm92ZQAAAAAEAAAAEgAAAAAAAAAAXhJ82k9AwQ6xP5SPlGruAT5HLa2SHYxVJBkbPjIV9usAAAASAAAAATiT8wcJ/e4h6qzJWsey0/0/TNR/ylzrUsnNTvB76MlYAAAACgAAAAAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAEAAAAAAAAAAAAAAAG2ZBRAD3CFRPXdcw1RfDzMiTX13mUKBHE3Pzt2TMDl2AAAAAdhcHByb3ZlAAAAAAQAAAASAAAAAAAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAABIAAAABOJPzBwn97iHqrMlax7LT/T9M1H/KXOtSyc1O8HvoyVgAAAAKAAAAAAAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAAAAAAAAAAAA",
+        "networkPassphrase": "Test SDF Network ; September 2015",
+        "expected": {
+          "owner": "GBPBE7G2J5AMCDVRH6KI7FDK5YAT4RZNVWJB3DCVEQMRWPRSCX3OXSU5",
+          "token": "CC3GIFCAB5YIKRHV3VZQ2UL4HTGISNPV3ZSQUBDRG47TW5SMYDS5RNST",
+          "spender": "CA4JH4YHBH664IPKVTEVVR5S2P6T6TGUP7FFZ22SZHGU54D35DEVQ4T2"
+        }
+      },
+      "error": {
+        "class": "RevokeAllowanceVerificationError",
+        "code": "revoke_expiry_too_far",
+        "message": "This transaction stays valid for far longer than a revocation needs."
+      }
+    },
+    {
+      "name": "transaction-source-not-owner",
+      "verdict": "reject",
+      "base": "revoke-contract-spender",
+      "mutation": "Sources the transaction from another account.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAADyeNmt0vz0Pkos9CGTZ0++MrEGySLqXpsMEnatcJwdTgAAAGQAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAEAAAAAAAAAGAAAAAAAAAABtmQUQA9whUT13XMNUXw8zIk19d5lCgRxNz87dkzA5dgAAAAHYXBwcm92ZQAAAAAEAAAAEgAAAAAAAAAAXhJ82k9AwQ6xP5SPlGruAT5HLa2SHYxVJBkbPjIV9usAAAASAAAAATiT8wcJ/e4h6qzJWsey0/0/TNR/ylzrUsnNTvB76MlYAAAACgAAAAAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAEAAAAAAAAAAAAAAAG2ZBRAD3CFRPXdcw1RfDzMiTX13mUKBHE3Pzt2TMDl2AAAAAdhcHByb3ZlAAAAAAQAAAASAAAAAAAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAABIAAAABOJPzBwn97iHqrMlax7LT/T9M1H/KXOtSyc1O8HvoyVgAAAAKAAAAAAAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAAAAAAAAAAAA",
+        "networkPassphrase": "Test SDF Network ; September 2015",
+        "expected": {
+          "owner": "GBPBE7G2J5AMCDVRH6KI7FDK5YAT4RZNVWJB3DCVEQMRWPRSCX3OXSU5",
+          "token": "CC3GIFCAB5YIKRHV3VZQ2UL4HTGISNPV3ZSQUBDRG47TW5SMYDS5RNST",
+          "spender": "CA4JH4YHBH664IPKVTEVVR5S2P6T6TGUP7FFZ22SZHGU54D35DEVQ4T2"
+        }
+      },
+      "error": {
+        "class": "RevokeAllowanceVerificationError",
+        "code": "revoke_transaction_source_mismatch",
+        "message": "This transaction is not sourced from the account being revoked for."
+      }
+    },
+    {
+      "name": "carries-memo",
+      "verdict": "reject",
+      "base": "revoke-contract-spender",
+      "mutation": "Adds the text memo \"hi\".",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAAGQAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAQAAAAJoaQAAAAAAAQAAAAAAAAAYAAAAAAAAAAG2ZBRAD3CFRPXdcw1RfDzMiTX13mUKBHE3Pzt2TMDl2AAAAAdhcHByb3ZlAAAAAAQAAAASAAAAAAAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAABIAAAABOJPzBwn97iHqrMlax7LT/T9M1H/KXOtSyc1O8HvoyVgAAAAKAAAAAAAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAQAAAAAAAAAAAAAAAbZkFEAPcIVE9d1zDVF8PMyJNfXeZQoEcTc/O3ZMwOXYAAAAB2FwcHJvdmUAAAAABAAAABIAAAAAAAAAAF4SfNpPQMEOsT+Uj5Rq7gE+Ry2tkh2MVSQZGz4yFfbrAAAAEgAAAAE4k/MHCf3uIeqsyVrHstP9P0zUf8pc61LJzU7we+jJWAAAAAoAAAAAAAAAAAAAAAAAAAAAAAAAAwAAAAAAAAAAAAAAAAAAAAA=",
+        "networkPassphrase": "Test SDF Network ; September 2015",
+        "expected": {
+          "owner": "GBPBE7G2J5AMCDVRH6KI7FDK5YAT4RZNVWJB3DCVEQMRWPRSCX3OXSU5",
+          "token": "CC3GIFCAB5YIKRHV3VZQ2UL4HTGISNPV3ZSQUBDRG47TW5SMYDS5RNST",
+          "spender": "CA4JH4YHBH664IPKVTEVVR5S2P6T6TGUP7FFZ22SZHGU54D35DEVQ4T2"
+        }
+      },
+      "error": {
+        "class": "RevokeAllowanceVerificationError",
+        "code": "revoke_memo_present",
+        "message": "This transaction carries a memo, which a revocation never needs."
+      }
+    },
+    {
+      "name": "memo-not-valid-text",
+      "verdict": "reject",
+      "base": "revoke-contract-spender",
+      "mutation": "Adds a text memo whose bytes are not valid UTF-8, which the decoder refuses before any revocation check.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAAGQAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAQAAAAL//gAAAAAAAQAAAAAAAAAYAAAAAAAAAAG2ZBRAD3CFRPXdcw1RfDzMiTX13mUKBHE3Pzt2TMDl2AAAAAdhcHByb3ZlAAAAAAQAAAASAAAAAAAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAABIAAAABOJPzBwn97iHqrMlax7LT/T9M1H/KXOtSyc1O8HvoyVgAAAAKAAAAAAAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAQAAAAAAAAAAAAAAAbZkFEAPcIVE9d1zDVF8PMyJNfXeZQoEcTc/O3ZMwOXYAAAAB2FwcHJvdmUAAAAABAAAABIAAAAAAAAAAF4SfNpPQMEOsT+Uj5Rq7gE+Ry2tkh2MVSQZGz4yFfbrAAAAEgAAAAE4k/MHCf3uIeqsyVrHstP9P0zUf8pc61LJzU7we+jJWAAAAAoAAAAAAAAAAAAAAAAAAAAAAAAAAwAAAAAAAAAAAAAAAAAAAAA=",
+        "networkPassphrase": "Test SDF Network ; September 2015",
+        "expected": {
+          "owner": "GBPBE7G2J5AMCDVRH6KI7FDK5YAT4RZNVWJB3DCVEQMRWPRSCX3OXSU5",
+          "token": "CC3GIFCAB5YIKRHV3VZQ2UL4HTGISNPV3ZSQUBDRG47TW5SMYDS5RNST",
+          "spender": "CA4JH4YHBH664IPKVTEVVR5S2P6T6TGUP7FFZ22SZHGU54D35DEVQ4T2"
+        }
+      },
+      "error": {
+        "class": "VerificationError",
+        "code": "memo_invalid_text",
+        "message": "The transaction carries a memo that is not valid text."
+      }
+    },
+    {
+      "name": "fee-above-cap",
+      "verdict": "reject",
+      "base": "revoke-contract-spender",
+      "mutation": "Raises the fee to 10,000,001 stroops, one above the 1 XLM cap.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wCYloEAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAEAAAAAAAAAGAAAAAAAAAABtmQUQA9whUT13XMNUXw8zIk19d5lCgRxNz87dkzA5dgAAAAHYXBwcm92ZQAAAAAEAAAAEgAAAAAAAAAAXhJ82k9AwQ6xP5SPlGruAT5HLa2SHYxVJBkbPjIV9usAAAASAAAAATiT8wcJ/e4h6qzJWsey0/0/TNR/ylzrUsnNTvB76MlYAAAACgAAAAAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAEAAAAAAAAAAAAAAAG2ZBRAD3CFRPXdcw1RfDzMiTX13mUKBHE3Pzt2TMDl2AAAAAdhcHByb3ZlAAAAAAQAAAASAAAAAAAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAABIAAAABOJPzBwn97iHqrMlax7LT/T9M1H/KXOtSyc1O8HvoyVgAAAAKAAAAAAAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAAAAAAAAAAAA",
+        "networkPassphrase": "Test SDF Network ; September 2015",
+        "expected": {
+          "owner": "GBPBE7G2J5AMCDVRH6KI7FDK5YAT4RZNVWJB3DCVEQMRWPRSCX3OXSU5",
+          "token": "CC3GIFCAB5YIKRHV3VZQ2UL4HTGISNPV3ZSQUBDRG47TW5SMYDS5RNST",
+          "spender": "CA4JH4YHBH664IPKVTEVVR5S2P6T6TGUP7FFZ22SZHGU54D35DEVQ4T2"
+        }
+      },
+      "error": {
+        "class": "RevokeAllowanceVerificationError",
+        "code": "revoke_fee_above_cap",
+        "message": "This transaction's fee is higher than a revocation should ever need."
+      }
+    },
+    {
+      "name": "two-operations",
+      "verdict": "reject",
+      "base": "revoke-contract-spender",
+      "mutation": "Repeats the approve call as a second operation.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAAMgAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAIAAAAAAAAAGAAAAAAAAAABtmQUQA9whUT13XMNUXw8zIk19d5lCgRxNz87dkzA5dgAAAAHYXBwcm92ZQAAAAAEAAAAEgAAAAAAAAAAXhJ82k9AwQ6xP5SPlGruAT5HLa2SHYxVJBkbPjIV9usAAAASAAAAATiT8wcJ/e4h6qzJWsey0/0/TNR/ylzrUsnNTvB76MlYAAAACgAAAAAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAEAAAAAAAAAAAAAAAG2ZBRAD3CFRPXdcw1RfDzMiTX13mUKBHE3Pzt2TMDl2AAAAAdhcHByb3ZlAAAAAAQAAAASAAAAAAAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAABIAAAABOJPzBwn97iHqrMlax7LT/T9M1H/KXOtSyc1O8HvoyVgAAAAKAAAAAAAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAAAAAAAAAAAYAAAAAAAAAAG2ZBRAD3CFRPXdcw1RfDzMiTX13mUKBHE3Pzt2TMDl2AAAAAdhcHByb3ZlAAAAAAQAAAASAAAAAAAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAABIAAAABOJPzBwn97iHqrMlax7LT/T9M1H/KXOtSyc1O8HvoyVgAAAAKAAAAAAAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAQAAAAAAAAAAAAAAAbZkFEAPcIVE9d1zDVF8PMyJNfXeZQoEcTc/O3ZMwOXYAAAAB2FwcHJvdmUAAAAABAAAABIAAAAAAAAAAF4SfNpPQMEOsT+Uj5Rq7gE+Ry2tkh2MVSQZGz4yFfbrAAAAEgAAAAE4k/MHCf3uIeqsyVrHstP9P0zUf8pc61LJzU7we+jJWAAAAAoAAAAAAAAAAAAAAAAAAAAAAAAAAwAAAAAAAAAAAAAAAAAAAAA=",
+        "networkPassphrase": "Test SDF Network ; September 2015",
+        "expected": {
+          "owner": "GBPBE7G2J5AMCDVRH6KI7FDK5YAT4RZNVWJB3DCVEQMRWPRSCX3OXSU5",
+          "token": "CC3GIFCAB5YIKRHV3VZQ2UL4HTGISNPV3ZSQUBDRG47TW5SMYDS5RNST",
+          "spender": "CA4JH4YHBH664IPKVTEVVR5S2P6T6TGUP7FFZ22SZHGU54D35DEVQ4T2"
+        }
+      },
+      "error": {
+        "class": "RevokeAllowanceVerificationError",
+        "code": "revoke_operation_count",
+        "message": "This transaction has 2 operations; a revocation has exactly one."
+      }
+    },
+    {
+      "name": "operation-source-not-owner",
+      "verdict": "reject",
+      "base": "revoke-contract-spender",
+      "mutation": "Gives the operation another account as its source.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAAGQAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAEAAAABAAAAAPJ42a3S/PQ+Siz0IZNnT74ysQbJIupemwwSdq1wnB1OAAAAGAAAAAAAAAABtmQUQA9whUT13XMNUXw8zIk19d5lCgRxNz87dkzA5dgAAAAHYXBwcm92ZQAAAAAEAAAAEgAAAAAAAAAAXhJ82k9AwQ6xP5SPlGruAT5HLa2SHYxVJBkbPjIV9usAAAASAAAAATiT8wcJ/e4h6qzJWsey0/0/TNR/ylzrUsnNTvB76MlYAAAACgAAAAAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAEAAAAAAAAAAAAAAAG2ZBRAD3CFRPXdcw1RfDzMiTX13mUKBHE3Pzt2TMDl2AAAAAdhcHByb3ZlAAAAAAQAAAASAAAAAAAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAABIAAAABOJPzBwn97iHqrMlax7LT/T9M1H/KXOtSyc1O8HvoyVgAAAAKAAAAAAAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAAAAAAAAAAAA",
+        "networkPassphrase": "Test SDF Network ; September 2015",
+        "expected": {
+          "owner": "GBPBE7G2J5AMCDVRH6KI7FDK5YAT4RZNVWJB3DCVEQMRWPRSCX3OXSU5",
+          "token": "CC3GIFCAB5YIKRHV3VZQ2UL4HTGISNPV3ZSQUBDRG47TW5SMYDS5RNST",
+          "spender": "CA4JH4YHBH664IPKVTEVVR5S2P6T6TGUP7FFZ22SZHGU54D35DEVQ4T2"
+        }
+      },
+      "error": {
+        "class": "RevokeAllowanceVerificationError",
+        "code": "revoke_operation_source_mismatch",
+        "message": "The operation does not act as the account being revoked for."
+      }
+    },
+    {
+      "name": "not-a-contract-call",
+      "verdict": "reject",
+      "base": "revoke-contract-spender",
+      "mutation": "Replaces the contract call with a 1 XLM payment to another account.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAAGQAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAEAAAAAAAAAAQAAAADyeNmt0vz0Pkos9CGTZ0++MrEGySLqXpsMEnatcJwdTgAAAAAAAAAAAJiWgAAAAAAAAAAA",
+        "networkPassphrase": "Test SDF Network ; September 2015",
+        "expected": {
+          "owner": "GBPBE7G2J5AMCDVRH6KI7FDK5YAT4RZNVWJB3DCVEQMRWPRSCX3OXSU5",
+          "token": "CC3GIFCAB5YIKRHV3VZQ2UL4HTGISNPV3ZSQUBDRG47TW5SMYDS5RNST",
+          "spender": "CA4JH4YHBH664IPKVTEVVR5S2P6T6TGUP7FFZ22SZHGU54D35DEVQ4T2"
+        }
+      },
+      "error": {
+        "class": "RevokeAllowanceVerificationError",
+        "code": "revoke_not_invocation",
+        "message": "This transaction does not invoke a contract."
+      }
+    },
+    {
+      "name": "other-token",
+      "verdict": "reject",
+      "base": "revoke-contract-spender",
+      "mutation": "Calls approve on another contract instead of the token.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAAGQAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAEAAAAAAAAAGAAAAAAAAAABNIn1GlSUnd3c9gQqLo91CGrV3aAehmIPmRFjvaRexV4AAAAHYXBwcm92ZQAAAAAEAAAAEgAAAAAAAAAAXhJ82k9AwQ6xP5SPlGruAT5HLa2SHYxVJBkbPjIV9usAAAASAAAAATiT8wcJ/e4h6qzJWsey0/0/TNR/ylzrUsnNTvB76MlYAAAACgAAAAAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAEAAAAAAAAAAAAAAAE0ifUaVJSd3dz2BCouj3UIatXdoB6GYg+ZEWO9pF7FXgAAAAdhcHByb3ZlAAAAAAQAAAASAAAAAAAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAABIAAAABOJPzBwn97iHqrMlax7LT/T9M1H/KXOtSyc1O8HvoyVgAAAAKAAAAAAAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAAAAAAAAAAAA",
+        "networkPassphrase": "Test SDF Network ; September 2015",
+        "expected": {
+          "owner": "GBPBE7G2J5AMCDVRH6KI7FDK5YAT4RZNVWJB3DCVEQMRWPRSCX3OXSU5",
+          "token": "CC3GIFCAB5YIKRHV3VZQ2UL4HTGISNPV3ZSQUBDRG47TW5SMYDS5RNST",
+          "spender": "CA4JH4YHBH664IPKVTEVVR5S2P6T6TGUP7FFZ22SZHGU54D35DEVQ4T2"
+        }
+      },
+      "error": {
+        "class": "RevokeAllowanceVerificationError",
+        "code": "revoke_token_mismatch",
+        "message": "This transaction does not touch the expected token contract."
+      }
+    },
+    {
+      "name": "calls-transfer",
+      "verdict": "reject",
+      "base": "revoke-contract-spender",
+      "mutation": "Calls transfer instead of approve, with the same arguments.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAAGQAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAEAAAAAAAAAGAAAAAAAAAABtmQUQA9whUT13XMNUXw8zIk19d5lCgRxNz87dkzA5dgAAAAIdHJhbnNmZXIAAAAEAAAAEgAAAAAAAAAAXhJ82k9AwQ6xP5SPlGruAT5HLa2SHYxVJBkbPjIV9usAAAASAAAAATiT8wcJ/e4h6qzJWsey0/0/TNR/ylzrUsnNTvB76MlYAAAACgAAAAAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAEAAAAAAAAAAAAAAAG2ZBRAD3CFRPXdcw1RfDzMiTX13mUKBHE3Pzt2TMDl2AAAAAh0cmFuc2ZlcgAAAAQAAAASAAAAAAAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAABIAAAABOJPzBwn97iHqrMlax7LT/T9M1H/KXOtSyc1O8HvoyVgAAAAKAAAAAAAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAAAAAAAAAAAA",
+        "networkPassphrase": "Test SDF Network ; September 2015",
+        "expected": {
+          "owner": "GBPBE7G2J5AMCDVRH6KI7FDK5YAT4RZNVWJB3DCVEQMRWPRSCX3OXSU5",
+          "token": "CC3GIFCAB5YIKRHV3VZQ2UL4HTGISNPV3ZSQUBDRG47TW5SMYDS5RNST",
+          "spender": "CA4JH4YHBH664IPKVTEVVR5S2P6T6TGUP7FFZ22SZHGU54D35DEVQ4T2"
+        }
+      },
+      "error": {
+        "class": "RevokeAllowanceVerificationError",
+        "code": "revoke_function_not_approve",
+        "message": "This transaction does not call approve, so it is not a revocation."
+      }
+    },
+    {
+      "name": "non-zero-amount",
+      "verdict": "reject",
+      "base": "revoke-contract-spender",
+      "mutation": "Approves 5 instead of 0: a grant, not a revocation.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAAGQAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAEAAAAAAAAAGAAAAAAAAAABtmQUQA9whUT13XMNUXw8zIk19d5lCgRxNz87dkzA5dgAAAAHYXBwcm92ZQAAAAAEAAAAEgAAAAAAAAAAXhJ82k9AwQ6xP5SPlGruAT5HLa2SHYxVJBkbPjIV9usAAAASAAAAATiT8wcJ/e4h6qzJWsey0/0/TNR/ylzrUsnNTvB76MlYAAAACgAAAAAAAAAAAAAAAAAAAAUAAAADAAAAAAAAAAEAAAAAAAAAAAAAAAG2ZBRAD3CFRPXdcw1RfDzMiTX13mUKBHE3Pzt2TMDl2AAAAAdhcHByb3ZlAAAAAAQAAAASAAAAAAAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAABIAAAABOJPzBwn97iHqrMlax7LT/T9M1H/KXOtSyc1O8HvoyVgAAAAKAAAAAAAAAAAAAAAAAAAABQAAAAMAAAAAAAAAAAAAAAAAAAAA",
+        "networkPassphrase": "Test SDF Network ; September 2015",
+        "expected": {
+          "owner": "GBPBE7G2J5AMCDVRH6KI7FDK5YAT4RZNVWJB3DCVEQMRWPRSCX3OXSU5",
+          "token": "CC3GIFCAB5YIKRHV3VZQ2UL4HTGISNPV3ZSQUBDRG47TW5SMYDS5RNST",
+          "spender": "CA4JH4YHBH664IPKVTEVVR5S2P6T6TGUP7FFZ22SZHGU54D35DEVQ4T2"
+        }
+      },
+      "error": {
+        "class": "RevokeAllowanceVerificationError",
+        "code": "revoke_approve_args_mismatch",
+        "message": "This transaction does not revoke the expected spender's allowance on this token."
+      }
+    },
+    {
+      "name": "other-spender",
+      "verdict": "reject",
+      "base": "revoke-contract-spender",
+      "mutation": "Revokes another contract's allowance instead of the spender's.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAAGQAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAEAAAAAAAAAGAAAAAAAAAABtmQUQA9whUT13XMNUXw8zIk19d5lCgRxNz87dkzA5dgAAAAHYXBwcm92ZQAAAAAEAAAAEgAAAAAAAAAAXhJ82k9AwQ6xP5SPlGruAT5HLa2SHYxVJBkbPjIV9usAAAASAAAAATSJ9RpUlJ3d3PYEKi6PdQhq1d2gHoZiD5kRY72kXsVeAAAACgAAAAAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAEAAAAAAAAAAAAAAAG2ZBRAD3CFRPXdcw1RfDzMiTX13mUKBHE3Pzt2TMDl2AAAAAdhcHByb3ZlAAAAAAQAAAASAAAAAAAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAABIAAAABNIn1GlSUnd3c9gQqLo91CGrV3aAehmIPmRFjvaRexV4AAAAKAAAAAAAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAAAAAAAAAAAA",
+        "networkPassphrase": "Test SDF Network ; September 2015",
+        "expected": {
+          "owner": "GBPBE7G2J5AMCDVRH6KI7FDK5YAT4RZNVWJB3DCVEQMRWPRSCX3OXSU5",
+          "token": "CC3GIFCAB5YIKRHV3VZQ2UL4HTGISNPV3ZSQUBDRG47TW5SMYDS5RNST",
+          "spender": "CA4JH4YHBH664IPKVTEVVR5S2P6T6TGUP7FFZ22SZHGU54D35DEVQ4T2"
+        }
+      },
+      "error": {
+        "class": "RevokeAllowanceVerificationError",
+        "code": "revoke_approve_args_mismatch",
+        "message": "This transaction does not revoke the expected spender's allowance on this token."
+      }
+    },
+    {
+      "name": "three-arguments",
+      "verdict": "reject",
+      "base": "revoke-contract-spender",
+      "mutation": "Drops approve's expiration ledger argument.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAAGQAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAEAAAAAAAAAGAAAAAAAAAABtmQUQA9whUT13XMNUXw8zIk19d5lCgRxNz87dkzA5dgAAAAHYXBwcm92ZQAAAAADAAAAEgAAAAAAAAAAXhJ82k9AwQ6xP5SPlGruAT5HLa2SHYxVJBkbPjIV9usAAAASAAAAATiT8wcJ/e4h6qzJWsey0/0/TNR/ylzrUsnNTvB76MlYAAAACgAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAABtmQUQA9whUT13XMNUXw8zIk19d5lCgRxNz87dkzA5dgAAAAHYXBwcm92ZQAAAAADAAAAEgAAAAAAAAAAXhJ82k9AwQ6xP5SPlGruAT5HLa2SHYxVJBkbPjIV9usAAAASAAAAATiT8wcJ/e4h6qzJWsey0/0/TNR/ylzrUsnNTvB76MlYAAAACgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+        "networkPassphrase": "Test SDF Network ; September 2015",
+        "expected": {
+          "owner": "GBPBE7G2J5AMCDVRH6KI7FDK5YAT4RZNVWJB3DCVEQMRWPRSCX3OXSU5",
+          "token": "CC3GIFCAB5YIKRHV3VZQ2UL4HTGISNPV3ZSQUBDRG47TW5SMYDS5RNST",
+          "spender": "CA4JH4YHBH664IPKVTEVVR5S2P6T6TGUP7FFZ22SZHGU54D35DEVQ4T2"
+        }
+      },
+      "error": {
+        "class": "RevokeAllowanceVerificationError",
+        "code": "revoke_approve_args_mismatch",
+        "message": "This transaction does not revoke the expected spender's allowance on this token."
+      }
+    },
+    {
+      "name": "address-credentials",
+      "verdict": "reject",
+      "base": "revoke-contract-spender",
+      "mutation": "Authorizes the call under address credentials instead of the source account's own.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAAGQAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAEAAAAAAAAAGAAAAAAAAAABtmQUQA9whUT13XMNUXw8zIk19d5lCgRxNz87dkzA5dgAAAAHYXBwcm92ZQAAAAAEAAAAEgAAAAAAAAAAXhJ82k9AwQ6xP5SPlGruAT5HLa2SHYxVJBkbPjIV9usAAAASAAAAATiT8wcJ/e4h6qzJWsey0/0/TNR/ylzrUsnNTvB76MlYAAAACgAAAAAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAEAAAABAAAAAAAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAAAAAAAABAAAAAQAAAAEAAAAAAAAAAbZkFEAPcIVE9d1zDVF8PMyJNfXeZQoEcTc/O3ZMwOXYAAAAB2FwcHJvdmUAAAAABAAAABIAAAAAAAAAAF4SfNpPQMEOsT+Uj5Rq7gE+Ry2tkh2MVSQZGz4yFfbrAAAAEgAAAAE4k/MHCf3uIeqsyVrHstP9P0zUf8pc61LJzU7we+jJWAAAAAoAAAAAAAAAAAAAAAAAAAAAAAAAAwAAAAAAAAAAAAAAAAAAAAA=",
+        "networkPassphrase": "Test SDF Network ; September 2015",
+        "expected": {
+          "owner": "GBPBE7G2J5AMCDVRH6KI7FDK5YAT4RZNVWJB3DCVEQMRWPRSCX3OXSU5",
+          "token": "CC3GIFCAB5YIKRHV3VZQ2UL4HTGISNPV3ZSQUBDRG47TW5SMYDS5RNST",
+          "spender": "CA4JH4YHBH664IPKVTEVVR5S2P6T6TGUP7FFZ22SZHGU54D35DEVQ4T2"
+        }
+      },
+      "error": {
+        "class": "RevokeAllowanceVerificationError",
+        "code": "revoke_auth_beyond_self",
+        "message": "This transaction authorizes more than the account's own revocation."
+      }
+    },
+    {
+      "name": "nested-authorization",
+      "verdict": "reject",
+      "base": "revoke-contract-spender",
+      "mutation": "Adds a nested approve on another contract under the authorized call.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAAGQAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAEAAAAAAAAAGAAAAAAAAAABtmQUQA9whUT13XMNUXw8zIk19d5lCgRxNz87dkzA5dgAAAAHYXBwcm92ZQAAAAAEAAAAEgAAAAAAAAAAXhJ82k9AwQ6xP5SPlGruAT5HLa2SHYxVJBkbPjIV9usAAAASAAAAATiT8wcJ/e4h6qzJWsey0/0/TNR/ylzrUsnNTvB76MlYAAAACgAAAAAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAEAAAAAAAAAAAAAAAG2ZBRAD3CFRPXdcw1RfDzMiTX13mUKBHE3Pzt2TMDl2AAAAAdhcHByb3ZlAAAAAAQAAAASAAAAAAAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAABIAAAABOJPzBwn97iHqrMlax7LT/T9M1H/KXOtSyc1O8HvoyVgAAAAKAAAAAAAAAAAAAAAAAAAAAAAAAAMAAAAAAAAAAQAAAAAAAAABNIn1GlSUnd3c9gQqLo91CGrV3aAehmIPmRFjvaRexV4AAAAHYXBwcm92ZQAAAAAAAAAAAAAAAAAAAAAA",
+        "networkPassphrase": "Test SDF Network ; September 2015",
+        "expected": {
+          "owner": "GBPBE7G2J5AMCDVRH6KI7FDK5YAT4RZNVWJB3DCVEQMRWPRSCX3OXSU5",
+          "token": "CC3GIFCAB5YIKRHV3VZQ2UL4HTGISNPV3ZSQUBDRG47TW5SMYDS5RNST",
+          "spender": "CA4JH4YHBH664IPKVTEVVR5S2P6T6TGUP7FFZ22SZHGU54D35DEVQ4T2"
+        }
+      },
+      "error": {
+        "class": "RevokeAllowanceVerificationError",
+        "code": "revoke_auth_nested",
+        "message": "This transaction authorizes a nested call, which a plain revocation never needs."
+      }
+    },
+    {
+      "name": "muxed-address-argument",
+      "verdict": "reject",
+      "base": "revoke-contract-spender",
+      "mutation": "Replaces the expiration ledger argument with a muxed account.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAAGQAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAEAAAAAAAAAGAAAAAAAAAABtmQUQA9whUT13XMNUXw8zIk19d5lCgRxNz87dkzA5dgAAAAHYXBwcm92ZQAAAAAEAAAAEgAAAAAAAAAAXhJ82k9AwQ6xP5SPlGruAT5HLa2SHYxVJBkbPjIV9usAAAASAAAAATiT8wcJ/e4h6qzJWsey0/0/TNR/ylzrUsnNTvB76MlYAAAACgAAAAAAAAAAAAAAAAAAAAAAAAASAAAAAgAAAAAAAAAHXhJ82k9AwQ6xP5SPlGruAT5HLa2SHYxVJBkbPjIV9usAAAABAAAAAAAAAAAAAAABtmQUQA9whUT13XMNUXw8zIk19d5lCgRxNz87dkzA5dgAAAAHYXBwcm92ZQAAAAAEAAAAEgAAAAAAAAAAXhJ82k9AwQ6xP5SPlGruAT5HLa2SHYxVJBkbPjIV9usAAAASAAAAATiT8wcJ/e4h6qzJWsey0/0/TNR/ylzrUsnNTvB76MlYAAAACgAAAAAAAAAAAAAAAAAAAAAAAAASAAAAAgAAAAAAAAAHXhJ82k9AwQ6xP5SPlGruAT5HLa2SHYxVJBkbPjIV9usAAAAAAAAAAAAAAAA=",
+        "networkPassphrase": "Test SDF Network ; September 2015",
+        "expected": {
+          "owner": "GBPBE7G2J5AMCDVRH6KI7FDK5YAT4RZNVWJB3DCVEQMRWPRSCX3OXSU5",
+          "token": "CC3GIFCAB5YIKRHV3VZQ2UL4HTGISNPV3ZSQUBDRG47TW5SMYDS5RNST",
+          "spender": "CA4JH4YHBH664IPKVTEVVR5S2P6T6TGUP7FFZ22SZHGU54D35DEVQ4T2"
+        }
+      },
+      "error": {
+        "class": "RevokeAllowanceVerificationError",
+        "code": "revoke_address_unsupported",
+        "message": "This transaction references an address form that cannot be verified."
+      }
+    },
+    {
+      "name": "foreign-account-argument",
+      "verdict": "reject",
+      "base": "revoke-contract-spender",
+      "mutation": "Replaces the expiration ledger argument with another account.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAAGQAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAEAAAAAAAAAGAAAAAAAAAABtmQUQA9whUT13XMNUXw8zIk19d5lCgRxNz87dkzA5dgAAAAHYXBwcm92ZQAAAAAEAAAAEgAAAAAAAAAAXhJ82k9AwQ6xP5SPlGruAT5HLa2SHYxVJBkbPjIV9usAAAASAAAAATiT8wcJ/e4h6qzJWsey0/0/TNR/ylzrUsnNTvB76MlYAAAACgAAAAAAAAAAAAAAAAAAAAAAAAASAAAAAAAAAADyeNmt0vz0Pkos9CGTZ0++MrEGySLqXpsMEnatcJwdTgAAAAEAAAAAAAAAAAAAAAG2ZBRAD3CFRPXdcw1RfDzMiTX13mUKBHE3Pzt2TMDl2AAAAAdhcHByb3ZlAAAAAAQAAAASAAAAAAAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAABIAAAABOJPzBwn97iHqrMlax7LT/T9M1H/KXOtSyc1O8HvoyVgAAAAKAAAAAAAAAAAAAAAAAAAAAAAAABIAAAAAAAAAAPJ42a3S/PQ+Siz0IZNnT74ysQbJIupemwwSdq1wnB1OAAAAAAAAAAAAAAAA",
+        "networkPassphrase": "Test SDF Network ; September 2015",
+        "expected": {
+          "owner": "GBPBE7G2J5AMCDVRH6KI7FDK5YAT4RZNVWJB3DCVEQMRWPRSCX3OXSU5",
+          "token": "CC3GIFCAB5YIKRHV3VZQ2UL4HTGISNPV3ZSQUBDRG47TW5SMYDS5RNST",
+          "spender": "CA4JH4YHBH664IPKVTEVVR5S2P6T6TGUP7FFZ22SZHGU54D35DEVQ4T2"
+        }
+      },
+      "error": {
+        "class": "RevokeAllowanceVerificationError",
+        "code": "revoke_foreign_account",
+        "message": "This transaction references an account other than the one being revoked for."
+      }
+    },
+    {
+      "name": "foreign-contract-argument",
+      "verdict": "reject",
+      "base": "revoke-contract-spender",
+      "mutation": "Replaces the expiration ledger argument with another contract.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABeEnzaT0DBDrE/lI+Uau4BPkctrZIdjFUkGRs+MhX26wAAAGQAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAEAAAAAAAAAGAAAAAAAAAABtmQUQA9whUT13XMNUXw8zIk19d5lCgRxNz87dkzA5dgAAAAHYXBwcm92ZQAAAAAEAAAAEgAAAAAAAAAAXhJ82k9AwQ6xP5SPlGruAT5HLa2SHYxVJBkbPjIV9usAAAASAAAAATiT8wcJ/e4h6qzJWsey0/0/TNR/ylzrUsnNTvB76MlYAAAACgAAAAAAAAAAAAAAAAAAAAAAAAASAAAAATSJ9RpUlJ3d3PYEKi6PdQhq1d2gHoZiD5kRY72kXsVeAAAAAQAAAAAAAAAAAAAAAbZkFEAPcIVE9d1zDVF8PMyJNfXeZQoEcTc/O3ZMwOXYAAAAB2FwcHJvdmUAAAAABAAAABIAAAAAAAAAAF4SfNpPQMEOsT+Uj5Rq7gE+Ry2tkh2MVSQZGz4yFfbrAAAAEgAAAAE4k/MHCf3uIeqsyVrHstP9P0zUf8pc61LJzU7we+jJWAAAAAoAAAAAAAAAAAAAAAAAAAAAAAAAEgAAAAE0ifUaVJSd3dz2BCouj3UIatXdoB6GYg+ZEWO9pF7FXgAAAAAAAAAAAAAAAA==",
+        "networkPassphrase": "Test SDF Network ; September 2015",
+        "expected": {
+          "owner": "GBPBE7G2J5AMCDVRH6KI7FDK5YAT4RZNVWJB3DCVEQMRWPRSCX3OXSU5",
+          "token": "CC3GIFCAB5YIKRHV3VZQ2UL4HTGISNPV3ZSQUBDRG47TW5SMYDS5RNST",
+          "spender": "CA4JH4YHBH664IPKVTEVVR5S2P6T6TGUP7FFZ22SZHGU54D35DEVQ4T2"
+        }
+      },
+      "error": {
+        "class": "RevokeAllowanceVerificationError",
+        "code": "revoke_foreign_contract",
+        "message": "This transaction references a contract other than the token or the spender."
+      }
+    }
+  ]
+}

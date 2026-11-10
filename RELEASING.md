@@ -320,7 +320,8 @@ checks for both packages; the verifier has no `SDK_VERSION` and no docs pin, so 
 not apply to it.
 
 It has no source of its own. tsup compiles the web's `apps/web/lib/stellar/verify.ts`,
-`exit-expectations.ts` and `verification-error.ts` with everything they import, including the
+`exit-expectations.ts`, `verification-error.ts` and `verify-revoke-allowance.ts` with everything
+they import, including the
 registries (`apps/api/src/config/exchange-registry.json`, `contract-registry.json` and
 `apps/web/config/xbull-asset-map.json`). So a release is due whenever any of that changes, even
 when nothing under `packages/verify` did:
@@ -333,6 +334,9 @@ when nothing under `packages/verify` did:
 - every change to what `verify()` accepts or how it words a refusal, which also changes
   `vectors/close-v1.json` (the web's `verify-conformance.test.ts` fails until the vectors are
   regenerated with `bun run --filter '@lumenwipe/verify' vectors`);
+- every change to what the allowance-revocation anchor accepts, the code it gives a refusal or
+  how it words one, which changes `vectors/revoke-allowance-v1.json` (the web's
+  `verify-revoke-allowance-conformance.test.ts` fails until the same command regenerates it);
 - every change to the package's public types (`packages/verify/etc/verify.api.md`);
 - a new exact `@stellar/stellar-sdk` peer. The weekly Renovate PR bumps it in every workspace at
   once, including `packages/verify/package.json`'s `peerDependencies`; integrators must install
@@ -351,7 +355,7 @@ any of these without changing the `## [Unreleased]` section:
 - every file tsup compiles into the bundle. The script asks Bun's bundler for the inputs of
   `packages/verify/src/index.ts` on the PR's head, resolving apps/web's `@/` and `@registry/`
   aliases the way tsup does, so a newly imported web module is watched as soon as the import
-  lands. Today that is `packages/verify/src/index.ts`, the three modules above,
+  lands. Today that is `packages/verify/src/index.ts`, the four modules above,
   `apps/web/lib/stellar/hex.ts` and `intent/{invocation,serialize}.ts`,
   `apps/web/lib/exchange-registry/{index,merge}.ts`, `apps/web/lib/contract-registry/index.ts`,
   `apps/web/lib/utils/amounts.ts`, `apps/web/config/{constants,networks}.ts` and the three
@@ -405,7 +409,7 @@ failure, and `npm view` answering "not found" counts as never published only whi
 and does steps 3 to 7 with `[Unreleased]: .../compare/verify-v0.1.0...HEAD` and
 `[0.1.0]: .../tree/verify-v0.1.0`.
 
-The tarball ships `dist`, `vectors/close-v1.json`, `README.md`, `CHANGELOG.md` and `LICENSE`, a
+The tarball ships `dist`, `vectors/close-v1.json`, `vectors/revoke-allowance-v1.json`, `README.md`, `CHANGELOG.md` and `LICENSE`, a
 copy of the root `LICENSE` that a test keeps identical.
 
 ## Why `@lumenwipe/types` stays private

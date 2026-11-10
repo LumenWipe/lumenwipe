@@ -7,6 +7,21 @@ release is cut.
 
 ## [Unreleased]
 
+### Added
+
+- `verifyRevokeAllowanceTransaction(unsignedXdr, networkPassphrase, expected, nowSeconds?)`,
+  compiled from the web's allowance-revocation trust anchor, with the documented input type
+  `RevokeAllowanceExpectation` (`owner`, `token`, `spender`).
+- `RevokeAllowanceVerificationError`, whose `name` is `"RevokeAllowanceVerificationError"` and
+  whose `code` is one stable `RevokeAllowanceVerificationErrorCode` per refusal reason. Branch on
+  the code: the message is English wording and may change. An envelope that cannot be decoded is
+  refused with `VerificationError` and its existing code.
+- `vectors/revoke-allowance-v1.json`, exported as `@lumenwipe/verify/vectors/revoke-allowance-v1.json`:
+  two accepted revocations (a contract and an account spender) and a rejected mutation for every
+  refusal code, plus one envelope the decoder refuses.
+
+The bundled exchange and contract registries are unchanged.
+
 ## [0.2.0] - 2026-11-08
 
 ### Added
