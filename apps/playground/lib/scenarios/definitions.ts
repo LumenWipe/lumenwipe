@@ -27,10 +27,11 @@ import {
   type AssetCode,
   type OfferAsset,
 } from "./catalog";
-import { AQUARIUS_SEED, SOROSWAP_SEED } from "./pinned";
+import { AQUARIUS_SEED, BLEND_SEED, SOROSWAP_SEED } from "./pinned";
 import {
   DISPOSITION_CHOICES,
   type AssetDisposition,
+  type BlendVariant,
   type ClaimableBalanceSpec,
   type SponsorshipVariant,
   type CloseOperationType,
@@ -942,6 +943,97 @@ const aquariusLp = poolScenario({
   seed: AQUARIUS_SEED,
 });
 
+const BLEND_VARIANTS: readonly BlendVariant[] = ["supply", "supply_and_borrow"];
+
+/**
+ * XLM supplied to the pinned Blend pool as collateral in one `submit`, and in the borrow variant
+ * XLM borrowed against it in the same call. The close leaves the pool through the API's Blend
+ * exit, one `submit` per step: the repay first when there is a debt, then the collateral's
+ * withdrawal, each a transaction of its own. The pool lends XLM only below its utilization cap,
+ * which the borrow variant's executor reads before anything is signed.
+ */
+const blendSupply: ScenarioDefinition = {
+  id: "blend-supply",
+  featureSet: "protocol",
+  label: "Blend lending",
+  description:
+    "XLM supplied as collateral to a real Blend pool, optionally with XLM borrowed against it. The close repays any debt, then withdraws the collateral, before the merge.",
+  params: {
+    variant: {
+      label: "Position",
+      min: 0,
+      max: BLEND_VARIANTS.length - 1,
+      default: 0,
+      choices: ["Supply XLM as collateral", "Supply XLM and borrow XLM against it"],
+    },
+  },
+  heldAssets: () => [],
+  requiresAnyOf: [],
+  conflicts: [],
+  build: ({ variant: index }) => {
+    const variant = BLEND_VARIANTS[index ?? 0];
+    if (!variant) return { ok: false, message: "Blend lending has no such variant." };
+    const borrows = variant === "supply_and_borrow";
+    // The seeding call, then one exit transaction per step: a repay when there is a debt, and the
+    // collateral's withdrawal.
+    const exits = borrows ? 2 : 1;
+    return {
+      ok: true,
+      build: {
+        steps: [
+          {
+            order: ORDER.protocol,
+            step: {
+              id: "BLEND_SUBMIT",
+              label: borrows
+                ? `Supply ${BLEND_SEED.supplyXlm} XLM to Blend and borrow ${BLEND_SEED.borrowXlm} XLM against it`
+                : `Supply ${BLEND_SEED.supplyXlm} XLM to Blend as collateral`,
+              nodes: [
+                {
+                  id: "lend:blend",
+                  kind: "position",
+                  label: borrows ? "Blend XLM collateral and debt" : "Blend XLM collateral",
+                },
+              ],
+              balances: [],
+              action: {
+                kind: "blend_submit",
+                variant,
+                supplyXlm: BLEND_SEED.supplyXlm,
+                borrowXlm: borrows ? BLEND_SEED.borrowXlm : null,
+              },
+            },
+          },
+        ],
+        ephemeralAssets: [],
+        expectation: {
+          assets: [],
+          offers: 0,
+          dataEntries: 0,
+          signers: 0,
+          // Each exit is a transaction of its own, and a position holds no entry on the account.
+          closeOperations: 0,
+          operationTypes: ["invokeHostFunction"],
+          dispositions: [],
+          arrivingAssets: [],
+          sponsoredEntries: [],
+          resolutions: [],
+        },
+        cost: {
+          // The XLM the collateral locks until the exit withdraws it, and the fee ceiling of the
+          // seeding call and of each exit. A borrow is paid out to the demo and repaid from it.
+          xlm: Number(BLEND_SEED.supplyXlm) + (1 + exits) * SOROBAN_FEE_CAP_XLM,
+          classicTransactions: 0,
+          sorobanTransactions: 1,
+          seconds: SOROBAN_STEP_SECONDS + CLOSE_GROUP_SECONDS + exits * SOROBAN_STEP_SECONDS,
+          batchSize: 1,
+          subEntries: 0,
+        },
+      },
+    };
+  },
+};
+
 /** Every scenario, in the order a selection lists them. */
 export const SCENARIOS: readonly ScenarioDefinition[] = [
   lwdemoHolding,
@@ -956,4 +1048,5 @@ export const SCENARIOS: readonly ScenarioDefinition[] = [
   multisig,
   soroswapLp,
   aquariusLp,
+  blendSupply,
 ];

@@ -13,7 +13,7 @@ import {
   nativeToScVal,
   xdr,
 } from "@stellar/stellar-sdk";
-import { VerificationError } from "@lumenwipe/verify";
+import { VerificationError, verifyCloseTransaction } from "@lumenwipe/verify";
 import type { CloseTransaction } from "@lumenwipe/sdk";
 import {
   assertSorobanTransaction,
@@ -31,6 +31,8 @@ import {
 } from "@/lib/verify";
 import {
   AQUARIUS,
+  BLEND,
+  BLEND_REQUEST,
   PINNED_ASSETS,
   resolvePlan,
   SOROSWAP,
@@ -780,5 +782,397 @@ describe("the Aquarius shared expectation, from the selection and the pinned con
     expect(aquarius.heldTokenContracts).toEqual([XLM_SAC, CIRCLE.contract]);
     expect(both.heldTokenContracts).toEqual([XLM_SAC, CIRCLE.contract]);
     expect(both.protectedTokenContracts).toEqual(both.heldTokenContracts);
+  });
+});
+
+describe("the Blend row", () => {
+  const POOL = BLEND.pool;
+  type Variant = "supply" | "supply_and_borrow";
+  const seededAs = (variant: Variant): SorobanExpectation => ({
+    demoPublic: demo,
+    seeded: [{ protocol: "blend", variant }],
+  });
+  const SUPPLY = seededAs("supply");
+  const BORROW = seededAs("supply_and_borrow");
+
+  interface Request {
+    address?: xdr.ScVal;
+    amount?: xdr.ScVal;
+    type?: xdr.ScVal;
+  }
+
+  /** One request as the pool reads it: `{ address, amount, request_type }`, in key order. */
+  const request = ({
+    address: reserve = address(XLM_SAC),
+    amount = i128(BigInt(200_000_000)),
+    type = xdr.ScVal.scvU32(BLEND_REQUEST.withdrawCollateral),
+  }: Request = {}): xdr.ScVal =>
+    xdr.ScVal.scvMap([
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("address"), val: reserve }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("amount"), val: amount }),
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("request_type"), val: type }),
+    ]);
+  const ofType = (type: number): xdr.ScVal => request({ type: xdr.ScVal.scvU32(type) });
+
+  /** `submit(from, spender, to, requests)`, as apps/api/src/lib/defi-exits/blend.ts builds it. */
+  const submitArgs = (requests: xdr.ScVal[] = [request()], parties = [demo, demo, demo]) => [
+    ...parties.map(address),
+    xdr.ScVal.scvVec(requests),
+  ];
+
+  /** The tree testnet returns: the submit alone for a withdrawal, plus the XLM moved for a repay. */
+  const submitAuth = (
+    args: xdr.ScVal[],
+    subs: xdr.SorobanAuthorizedInvocation[] = []
+  ): xdr.SorobanAuthorizationEntry =>
+    new xdr.SorobanAuthorizationEntry({
+      credentials: xdr.SorobanCredentials.sorobanCredentialsSourceAccount(),
+      rootInvocation: invocation(POOL, "submit", args, subs),
+    });
+
+  const repayTransfer = (to: string = POOL): xdr.SorobanAuthorizedInvocation =>
+    invocation(XLM_SAC, "transfer", [address(demo), address(to), i128(BigInt(20_020_000))]);
+
+  const submit = (
+    args: xdr.ScVal[] = submitArgs(),
+    subs: xdr.SorobanAuthorizedInvocation[] = [],
+    contract: string = POOL
+  ): Transaction =>
+    build(
+      Operation.invokeContractFunction({
+        contract,
+        function: "submit",
+        args,
+        auth: [submitAuth(args, subs)],
+      })
+    );
+  const withdrawal = (): Transaction => submit();
+  const repay = (): Transaction =>
+    submit(submitArgs([ofType(BLEND_REQUEST.repay)]), [repayTransfer()]);
+
+  test("the row pins the pool as the call target and XLM as the only family", () => {
+    expect(PINNED_SOROBAN_PROTOCOLS.blend.entry).toEqual([POOL]);
+    expect(PINNED_SOROBAN_PROTOCOLS.blend.family).toEqual([XLM_SAC]);
+    expect(Object.keys(PINNED_SOROBAN_PROTOCOLS.blend.functions)).toEqual(["submit"]);
+  });
+
+  test("a collateral withdrawal for the demo is accepted for either variant", () => {
+    expect(outcome(withdrawal(), SUPPLY)).toBe("accepted");
+    expect(outcome(withdrawal(), BORROW)).toBe("accepted");
+  });
+
+  test("a repay is accepted only when the selection borrowed", () => {
+    expect(outcome(repay(), BORROW)).toBe("accepted");
+    expect(outcome(repay(), SUPPLY)).toBe("soroban_request_type_not_allowed");
+    // Beside a withdrawal in one submit, too.
+    const both = submitArgs([
+      ofType(BLEND_REQUEST.repay),
+      ofType(BLEND_REQUEST.withdrawCollateral),
+    ]);
+    expect(outcome(submit(both, [repayTransfer()]), BORROW)).toBe("accepted");
+    expect(outcome(submit(both, [repayTransfer()]), SUPPLY)).toBe(
+      "soroban_request_type_not_allowed"
+    );
+  });
+
+  test("a supply, plain withdrawal, collateral or borrow request is refused for either variant", () => {
+    for (const type of [0, 1, 2, 4, 6, 99]) {
+      for (const seeded of [SUPPLY, BORROW]) {
+        expect(outcome(submit(submitArgs([ofType(type)])), seeded)).toBe(
+          "soroban_request_type_not_allowed"
+        );
+      }
+    }
+    // One bad request among good ones is enough.
+    const mixed = submitArgs([
+      ofType(BLEND_REQUEST.withdrawCollateral),
+      ofType(BLEND_REQUEST.borrow),
+    ]);
+    expect(outcome(submit(mixed), BORROW)).toBe("soroban_request_type_not_allowed");
+  });
+
+  test("a request type that is not a u32 is refused", () => {
+    const wide = request({
+      type: nativeToScVal(BLEND_REQUEST.withdrawCollateral, { type: "u64" }),
+    });
+    expect(outcome(submit(submitArgs([wide])), SUPPLY)).toBe("soroban_request_type_not_allowed");
+  });
+
+  test("a request for any reserve but the pinned XLM is refused", () => {
+    for (const other of [PINNED_ASSETS["circle-usdc"].contract, contractId()]) {
+      const foreign = request({ address: address(other) });
+      expect(outcome(submit(submitArgs([foreign])), BORROW)).toBe(
+        "soroban_request_reserve_not_pinned"
+      );
+    }
+    expect(outcome(submit(submitArgs([request({ address: address(demo) })])), BORROW)).toBe(
+      "soroban_request_reserve_not_pinned"
+    );
+  });
+
+  test("an amount that is not a positive i128 is refused", () => {
+    for (const amount of [
+      i128(BigInt(0)),
+      i128(BigInt(-1)),
+      nativeToScVal(BigInt(5), { type: "u128" }),
+    ]) {
+      expect(outcome(submit(submitArgs([request({ amount })])), SUPPLY)).toBe(
+        "soroban_amount_not_positive"
+      );
+    }
+    expect(outcome(submit(submitArgs([request({ amount: i128(BigInt(1)) })])), SUPPLY)).toBe(
+      "accepted"
+    );
+  });
+
+  test("an empty request list, or one that is not a list of requests, is refused", () => {
+    expect(outcome(submit(submitArgs([])), BORROW)).toBe("soroban_requests_invalid");
+    const notList = [...submitArgs().slice(0, 3), request()];
+    expect(outcome(submit(notList), BORROW)).toBe("soroban_requests_invalid");
+    expect(outcome(submit(submitArgs([i128(BigInt(1))])), BORROW)).toBe("soroban_requests_invalid");
+    // A request with a key missing, an extra one, or its keys out of order.
+    const entry = (key: string, val: xdr.ScVal) =>
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol(key), val });
+    const shapes = [
+      [entry("address", address(XLM_SAC)), entry("amount", i128(BigInt(5)))],
+      [
+        entry("address", address(XLM_SAC)),
+        entry("amount", i128(BigInt(5))),
+        entry("request_type", xdr.ScVal.scvU32(3)),
+        entry("to", address(stranger)),
+      ],
+      [
+        entry("amount", i128(BigInt(5))),
+        entry("address", address(XLM_SAC)),
+        entry("request_type", xdr.ScVal.scvU32(3)),
+      ],
+    ];
+    for (const shape of shapes) {
+      expect(outcome(submit(submitArgs([xdr.ScVal.scvMap(shape)])), BORROW)).toBe(
+        "soroban_requests_invalid"
+      );
+    }
+  });
+
+  test("any of the three parties other than the demo is refused", () => {
+    for (const i of [0, 1, 2]) {
+      const parties = [demo, demo, demo];
+      parties[i] = stranger;
+      expect(outcome(submit(submitArgs([request()], parties)), BORROW)).toBe(
+        "soroban_account_argument_mismatch"
+      );
+    }
+  });
+
+  test("arguments of another shape are refused", () => {
+    expect(outcome(submit(submitArgs().slice(0, 3)), SUPPLY)).toBe("soroban_arguments_invalid");
+    expect(outcome(submit([...submitArgs(), i128(BigInt(1))]), SUPPLY)).toBe(
+      "soroban_arguments_invalid"
+    );
+  });
+
+  test("a pool other than the pinned one, or a call to XLM itself, is refused", () => {
+    expect(outcome(submit(submitArgs(), [], contractId()), SUPPLY)).toBe(
+      "soroban_contract_not_pinned"
+    );
+    expect(outcome(submit(submitArgs(), [], XLM_SAC), SUPPLY)).toBe("soroban_contract_not_pinned");
+    const claim = build(
+      Operation.invokeContractFunction({
+        contract: POOL,
+        function: "claim",
+        args: [address(demo), xdr.ScVal.scvVec([xdr.ScVal.scvU32(1)]), address(demo)],
+        auth: [],
+      })
+    );
+    expect(outcome(claim, BORROW)).toBe("soroban_function_not_allowed");
+  });
+
+  test("a sub-invocation outside the pool and XLM is refused, at any depth", () => {
+    const drain = invocation(PINNED_ASSETS["circle-usdc"].contract, "transfer", [
+      address(demo),
+      address(stranger),
+      i128(BigInt(1)),
+    ]);
+    const args = submitArgs([ofType(BLEND_REQUEST.repay)]);
+    expect(outcome(submit(args, [drain]), BORROW)).toBe("soroban_auth_outside_family");
+    const nested = invocation(XLM_SAC, "transfer", [address(demo), address(POOL)], [drain]);
+    expect(outcome(submit(args, [nested]), BORROW)).toBe("soroban_auth_outside_family");
+    const otherPool = invocation(AQUARIUS.pool, "withdraw", [address(demo)]);
+    expect(outcome(submit(args, [otherPool]), BORROW)).toBe("soroban_auth_outside_family");
+  });
+
+  test("the pool is refused for a session that seeds another protocol only", () => {
+    expect(outcome(withdrawal())).toBe("soroban_protocol_not_seeded");
+    expect(outcome(build(call()), BORROW)).toBe("soroban_protocol_not_seeded");
+  });
+
+  describe("in front of the shared verifier", () => {
+    const sink = Keypair.random().publicKey();
+    const issuer = Keypair.random().publicKey();
+    const expectationFor = (variant: 0 | 1) =>
+      expectationFromSession(
+        {
+          demoPublic: demo,
+          ephemeralIssuers: [],
+          recordedSigners: [],
+          selection: { scenarios: [{ id: "blend-supply", params: { variant } }] },
+          transferRecipient: null,
+          helperAccounts: [],
+          claimableBalances: [],
+        },
+        sink,
+        issuer
+      );
+
+    function demolishOutcome(tx: Transaction, expected: PlaygroundCloseExpectation): string {
+      const close: CloseTransaction = {
+        id: "t1",
+        order: 0,
+        dependsOn: [],
+        xdr: tx.toXDR(),
+        networkPassphrase: Networks.TESTNET,
+        sourceSequence: "1",
+        validUntilLedger: 100,
+        covers: [],
+        intent: {
+          summary: "test fixture",
+          source: demo,
+          fee: tx.fee,
+          memo: null,
+          memoType: null,
+          guarantees: { mergeDestination: null, paymentsOnlyTo: [], minXlmFromConversions: null },
+          operations: [],
+        },
+      };
+      try {
+        verifyDemolishTransaction(close, expected);
+        return "accepted";
+      } catch (err) {
+        if (err instanceof SorobanVerificationError) return `soroban:${err.message}`;
+        if (err instanceof VerificationError) return `shared:${err.code}`;
+        throw err;
+      }
+    }
+
+    test("supply: the collateral's withdrawal passes both checks", () => {
+      const expected = expectationFor(0);
+      expect(expected.sorobanSeeded).toEqual([{ protocol: "blend", variant: "supply" }]);
+      expect(demolishOutcome(withdrawal(), expected)).toBe("accepted");
+    });
+
+    test("supply and borrow: the repay, then the withdrawal, each pass both checks", () => {
+      const expected = expectationFor(1);
+      expect(expected.sorobanSeeded).toEqual([{ protocol: "blend", variant: "supply_and_borrow" }]);
+      expect(demolishOutcome(repay(), expected)).toBe("accepted");
+      expect(demolishOutcome(withdrawal(), expected)).toBe("accepted");
+    });
+
+    test("a repay is refused for a supply-only session, by both checks on their own", () => {
+      expect(demolishOutcome(repay(), expectationFor(0))).toBe(
+        "soroban:soroban_request_type_not_allowed"
+      );
+      // The shared verifier alone: with no repay token for the pool, the XLM the repay moves is a
+      // spend it refuses.
+      const sharedOutcome = (variant: 0 | 1): string => {
+        try {
+          verifyCloseTransaction({
+            unsignedXdr: repay().toXDR(),
+            network: "testnet",
+            expected: sharedExpectation(expectationFor(variant)),
+          });
+          return "accepted";
+        } catch (err) {
+          if (err instanceof VerificationError) return err.code;
+          throw err;
+        }
+      };
+      expect(sharedOutcome(0)).toBe("exit_spend_not_repay");
+      expect(sharedOutcome(1)).toBe("accepted");
+    });
+
+    test("a repay that pays XLM to anyone but the pool is refused", () => {
+      const args = submitArgs([ofType(BLEND_REQUEST.repay)]);
+      expect(demolishOutcome(submit(args, [repayTransfer(stranger)]), expectationFor(1))).toBe(
+        "shared:invocation_foreign_account"
+      );
+    });
+
+    test("the exit is refused beside a merge", () => {
+      const args = submitArgs();
+      const tx = build(
+        Operation.invokeContractFunction({
+          contract: POOL,
+          function: "submit",
+          args,
+          auth: [submitAuth(args)],
+        }),
+        Operation.accountMerge({ destination: sink })
+      );
+      expect(demolishOutcome(tx, expectationFor(0))).toBe("soroban:soroban_call_not_alone");
+    });
+  });
+});
+
+describe("the Blend shared expectation, from the selection and the pinned configuration only", () => {
+  const sink = Keypair.random().publicKey();
+  const issuer = Keypair.random().publicKey();
+  const shared = (...scenarios: ScenarioSelection["scenarios"]) =>
+    sharedExpectation(
+      expectationFromSession(
+        {
+          demoPublic: demo,
+          ephemeralIssuers: [],
+          recordedSigners: [],
+          selection: { scenarios },
+          transferRecipient: null,
+          helperAccounts: [],
+          claimableBalances: [],
+        },
+        sink,
+        issuer
+      )
+    );
+  const blendAs = (variant: 0 | 1) => ({ id: "blend-supply" as const, params: { variant } });
+  const supply = shared(blendAs(0));
+  const borrow = shared(blendAs(1));
+  const without = shared({ id: "lwdemo-holding", params: {} });
+
+  test("exitContracts: the pool alone, only when the selection seeds it", () => {
+    expect(supply.exitContracts).toEqual([BLEND.pool]);
+    expect(borrow.exitContracts).toEqual([BLEND.pool]);
+    expect(without.exitContracts).toEqual([]);
+  });
+
+  test("exitFunctions: the pool's submit", () => {
+    expect(supply.exitFunctions).toEqual({ [BLEND.pool]: ["submit"] });
+    expect(borrow.exitFunctions).toEqual({ [BLEND.pool]: ["submit"] });
+  });
+
+  test("ownTokensByContract: XLM, keyed by the pool", () => {
+    expect(supply.ownTokensByContract).toEqual({ [BLEND.pool]: [XLM_SAC] });
+    expect(borrow.ownTokensByContract).toEqual({ [BLEND.pool]: [XLM_SAC] });
+  });
+
+  test("repayTokensByPool: XLM for the pool, only when the selection borrowed", () => {
+    expect(borrow.repayTokensByPool).toEqual({ [BLEND.pool]: [XLM_SAC] });
+    expect(supply.repayTokensByPool).toEqual({});
+    expect(without.repayTokensByPool).toEqual({});
+  });
+
+  test("the pool is one the bundled registry names, so a repay is held to repayTokensByPool", () => {
+    expect(supply.registryContracts).toContain(BLEND.pool);
+  });
+
+  test("beside the pools, each protocol keeps its own fields", () => {
+    const all = shared(
+      { id: "soroswap-lp", params: {} },
+      { id: "aquarius-lp", params: {} },
+      blendAs(1)
+    );
+    expect(all.exitContracts).toEqual([SOROSWAP.router, SOROSWAP.pair, AQUARIUS.pool, BLEND.pool]);
+    expect(all.repayTokensByPool).toEqual({ [BLEND.pool]: [XLM_SAC] });
+    expect(all.ownTokensByContract[BLEND.pool]).toEqual([XLM_SAC]);
+    // XLM is already held; the pool adds no position token of its own.
+    expect(all.positionTokenContracts).not.toContain(BLEND.pool);
   });
 });

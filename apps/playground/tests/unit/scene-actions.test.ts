@@ -6,7 +6,7 @@ import {
   type SceneAction,
 } from "@/lib/scene-actions";
 import type { IntentOperation } from "@lumenwipe/sdk";
-import { AQUARIUS, PINNED_ASSETS, SOROSWAP } from "@/lib/scenarios";
+import { AQUARIUS, BLEND, PINNED_ASSETS, SOROSWAP, XLM_SAC } from "@/lib/scenarios";
 
 const SOURCE = "GDEMO";
 const live = (...ids: string[]): LiveNode[] => ids.map((id) => ({ id }));
@@ -211,5 +211,54 @@ describe("the Aquarius position", () => {
     expect(operationToSceneAction(share, scene)).toBeNull();
     const router = { ...exit, contract: AQUARIUS.router, function: "withdraw" };
     expect(operationToSceneAction(router, scene)).toBeNull();
+  });
+});
+
+describe("the Blend position", () => {
+  const scene = live("lend:blend", "lp:aquarius");
+  // The intent renders a submit's requests as JSON, as apps/api/src/lib/stellar/intent does.
+  const submit = (...types: number[]) => ({
+    ...SAMPLES.invoke_host_function,
+    contract: BLEND.pool,
+    function: "submit",
+    args: [
+      SOURCE,
+      SOURCE,
+      SOURCE,
+      JSON.stringify(
+        types.map((t) => ({ address: XLM_SAC, amount: "200000000", request_type: t }))
+      ),
+    ],
+  });
+
+  test("the collateral's withdrawal empties the pool's node", () => {
+    expect(operationToSceneAction(submit(3), scene)).toEqual({
+      type: "destroy",
+      nodeIds: ["lend:blend"],
+    });
+  });
+
+  test("a repay before it leaves the node in place, with a pulse", () => {
+    expect(operationToSceneAction(submit(5), scene)).toEqual({
+      type: "pulse",
+      nodeId: "lend:blend",
+    });
+    // A repay beside the withdrawal still empties it.
+    expect(operationToSceneAction(submit(5, 3), scene)).toEqual({
+      type: "destroy",
+      nodeIds: ["lend:blend"],
+    });
+  });
+
+  test("another function, another contract, or no node in the scene changes nothing", () => {
+    expect(operationToSceneAction({ ...submit(3), function: "claim" }, scene)).toBeNull();
+    expect(operationToSceneAction({ ...submit(3), contract: XLM_SAC }, scene)).toBeNull();
+    expect(operationToSceneAction(submit(3), live("lp:aquarius"))).toBeNull();
+    // Unreadable requests are not a repay: the node goes, as for any other exit on the pool.
+    const garbled = { ...submit(3), args: [SOURCE, SOURCE, SOURCE, "not json"] };
+    expect(operationToSceneAction(garbled, scene)).toEqual({
+      type: "destroy",
+      nodeIds: ["lend:blend"],
+    });
   });
 });

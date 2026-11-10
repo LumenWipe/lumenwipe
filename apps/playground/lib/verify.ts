@@ -10,6 +10,7 @@ import {
 import type { CloseTransaction } from "@lumenwipe/sdk";
 import {
   AQUARIUS,
+  BLEND,
   conversionFloorStroops,
   isPersistentAsset,
   MULTISIG_THRESHOLD,
@@ -250,9 +251,14 @@ export function expectationFromSession(
 export function seededProtocols(steps: readonly MessStepDef[]): SeededProtocol[] {
   const seeds = (kind: MessStepDef["action"]["kind"]): boolean =>
     steps.some((s) => s.action.kind === kind);
+  // The Blend position's variant is the selection's: a repay is admitted only when it borrowed.
+  const blend = steps.flatMap((s): SeededProtocol[] =>
+    s.action.kind === "blend_submit" ? [{ protocol: "blend", variant: s.action.variant }] : []
+  );
   return [
     ...(seeds("soroswap_deposit") ? [{ protocol: "soroswap", variant: "lp" } as const] : []),
     ...(seeds("aquarius_deposit") ? [{ protocol: "aquarius", variant: "lp" } as const] : []),
+    ...blend,
   ];
 }
 
@@ -264,6 +270,7 @@ type SorobanExitFields = Pick<
   | "positionTokenContracts"
   | "protectedTokenContracts"
   | "ownTokensByContract"
+  | "repayTokensByPool"
   | "shareTokenContracts"
 >;
 
@@ -283,6 +290,10 @@ type SorobanExitFields = Pick<
  *   share token is never a call target. Its own tokens are the two it pays out and the share token the
  *   withdrawal burns, which is also listed on its own as a share token, so an exit is refused
  *   outright should the session ever hold it for value.
+ * - Blend: the pool is both the call target and the position, with its one exit function; XLM,
+ *   the one reserve the scenario uses, is its own token. Only the borrow variant names XLM as a
+ *   token the pool may be repaid in: the shared verifier lets a registry pool spend the demo's XLM
+ *   for nothing else, so a supply-only session's exit can never move it.
  */
 export function sorobanExitExpectations(expected: PlaygroundCloseExpectation): SorobanExitFields {
   const held = [
@@ -298,9 +309,11 @@ export function sorobanExitExpectations(expected: PlaygroundCloseExpectation): S
     positionTokenContracts: [],
     protectedTokenContracts: [...new Set(held)],
     ownTokensByContract: {},
+    repayTokensByPool: {},
     shareTokenContracts: [],
   };
-  for (const { protocol } of expected.sorobanSeeded) {
+  for (const seeded of expected.sorobanSeeded) {
+    const { protocol } = seeded;
     if (protocol === "soroswap") {
       fields.exitContracts.push(SOROSWAP.router, SOROSWAP.pair);
       fields.exitFunctions[SOROSWAP.router] = ["remove_liquidity"];
@@ -313,6 +326,13 @@ export function sorobanExitExpectations(expected: PlaygroundCloseExpectation): S
       fields.positionTokenContracts.push(...AQUARIUS.tokens, AQUARIUS.shareToken);
       fields.ownTokensByContract[AQUARIUS.pool] = [...AQUARIUS.tokens, AQUARIUS.shareToken];
       fields.shareTokenContracts.push(AQUARIUS.shareToken);
+    } else if (protocol === "blend") {
+      fields.exitContracts.push(BLEND.pool);
+      fields.exitFunctions[BLEND.pool] = ["submit"];
+      fields.ownTokensByContract[BLEND.pool] = [BLEND.reserve];
+      if (seeded.variant === "supply_and_borrow") {
+        fields.repayTokensByPool[BLEND.pool] = [BLEND.reserve];
+      }
     }
   }
   // Both pools pay out the same two tokens; each is listed once, as the web lists them.

@@ -23,6 +23,9 @@ import { handleCreateSession, handleMess } from "@/lib/route-handlers";
 import {
   AQUARIUS,
   AQUARIUS_SEED,
+  BLEND,
+  BLEND_REQUEST,
+  BLEND_SEED,
   JUNK_OFFERS,
   PINNED_ASSETS,
   SCENARIOS,
@@ -117,6 +120,14 @@ async function runAndCheck(selection: ScenarioSelection): Promise<void> {
             },
             sleep: async () => {},
             quoteBuy: async () => ({ sourceAmount: "2.6", path: [] }),
+            // A Blend pool with room to lend: half its XLM borrowed.
+            blendReserve: async () => ({
+              maxUtil: BigInt(9_500_000),
+              bSupply: BigInt(2) * BigInt(10) ** BigInt(15),
+              dSupply: BigInt(10) ** BigInt(15),
+              bRate: BigInt(10) ** BigInt(12),
+              dRate: BigInt(10) ** BigInt(12),
+            }),
             // The contract call as the seeding would send it, captured instead.
             contractCall: async (source, call) => {
               const tx = new TransactionBuilder(new Account(source.publicKey(), "100"), {
@@ -269,8 +280,33 @@ function assertConsistent({
           const call = op.func.invokeContract;
           const args = call.args.map((a) => scValToNative(a) as unknown);
           const contract = Address.fromScAddress(call.contractAddress).toString();
-          expect(trusted.has("circle-usdc")).toBe(true);
           const stroops = (amount: string): bigint => BigInt(Number(amount) * 10_000_000);
+          if (contract === BLEND.pool) {
+            // XLM supplied as collateral, and borrowed against it when the plan says so; the
+            // demo on every side, and nothing bought for it.
+            const action = plan.steps.find((s) => s.id === stepId)?.action;
+            if (action?.kind !== "blend_submit") throw new Error("not the Blend step");
+            expect(call.functionName.toString()).toBe("submit");
+            const request = (type: number, xlm: string) => ({
+              address: BLEND.reserve,
+              amount: stroops(xlm),
+              request_type: type,
+            });
+            expect(args).toEqual([
+              demoPublic,
+              demoPublic,
+              demoPublic,
+              [
+                request(BLEND_REQUEST.supplyCollateral, BLEND_SEED.supplyXlm),
+                ...(action.variant === "supply_and_borrow"
+                  ? [request(BLEND_REQUEST.borrow, BLEND_SEED.borrowXlm)]
+                  : []),
+              ],
+            ]);
+            positions.push("lend:blend");
+            break;
+          }
+          expect(trusted.has("circle-usdc")).toBe(true);
           if (contract === AQUARIUS.router) {
             expect(call.functionName.toString()).toBe("deposit");
             expect(args).toEqual([
@@ -432,8 +468,9 @@ describe("the plan, the chain and the close expectation agree", () => {
     }
     // Pinned so a change to the registry or its rules shows up here: 190 valid selections before
     // the claimable-balance and sponsored-reserve scenarios, which fit beside most of them, 764
-    // before the multi-signature scenario, 1515 before the Soroswap pool, and 2941 before the
-    // Aquarius pool, which shares the Soroswap pool's USDC purchase when both are picked.
-    expect(cases).toBe(5520);
-  }, 120_000);
+    // before the multi-signature scenario, 1515 before the Soroswap pool, 2941 before the
+    // Aquarius pool, which shares the Soroswap pool's USDC purchase when both are picked, and 5520
+    // before the Blend position, whose borrow variant leaves less room beside the others.
+    expect(cases).toBe(8364);
+  }, 240_000);
 });

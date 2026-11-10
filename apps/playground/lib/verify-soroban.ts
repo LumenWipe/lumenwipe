@@ -1,6 +1,6 @@
 import "server-only";
 import { Address, scValToNative, Transaction, xdr } from "@stellar/stellar-sdk";
-import { AQUARIUS, SOROSWAP } from "./scenarios";
+import { AQUARIUS, BLEND, BLEND_REQUEST, SOROSWAP, type BlendVariant } from "./scenarios";
 
 // The structural check for a Soroban contract call in a playground close.
 //
@@ -17,7 +17,9 @@ import { AQUARIUS, SOROSWAP } from "./scenarios";
 // - the function is in that protocol's allowlist, with exactly the arguments the protocol's exit
 //   uses: every argument that names the account paid or acted for equals the demo, every
 //   minimum-out and every amount moved is greater than zero (a floor given as a list holds exactly
-//   one per pool token), and the tokens named are exactly the pinned pool's;
+//   one per pool token), the tokens named are exactly the pinned pool's, and a lending pool's
+//   requests are a non-empty list naming only the pinned reserve, each moving a positive amount,
+//   of only the request types the seeded variant's exit needs;
 // - every authorization entry is satisfied by the transaction's own signature (source-account
 //   credentials, never a separate address signature), and every invocation in its tree stays in
 //   the protocol's family: the contracts its row pins, the call targets and the pool, pair or
@@ -33,11 +35,13 @@ export class SorobanVerificationError extends Error {
   }
 }
 
-export type SorobanProtocol = "soroswap" | "aquarius";
+export type SorobanProtocol = "soroswap" | "aquarius" | "blend";
 
 /** A protocol the session's selection seeds on testnet, and the variant of its position. */
 export type SeededProtocol =
-  { protocol: "soroswap"; variant: "lp" } | { protocol: "aquarius"; variant: "lp" };
+  | { protocol: "soroswap"; variant: "lp" }
+  | { protocol: "aquarius"; variant: "lp" }
+  | { protocol: "blend"; variant: BlendVariant };
 
 /** What a session's Soroban calls may do: everything here comes from the session record. */
 export interface SorobanExpectation {
@@ -60,6 +64,16 @@ interface FunctionRule {
   positiveArgs: readonly number[];
   /** Positions that must name, between them, exactly these token contracts, each once. */
   tokenArgs: { at: readonly number[]; tokens: readonly string[] } | null;
+  /**
+   * A list of lending requests `{ address, amount, request_type }`: not empty, every address the
+   * pinned `reserve`, every amount greater than zero, and every type one the seeded variant's exit
+   * uses (`types`, by variant; a variant not listed allows none).
+   */
+  requests: {
+    at: number;
+    reserve: string;
+    types: Readonly<Partial<Record<SeededProtocol["variant"], readonly number[]>>>;
+  } | null;
 }
 
 interface ProtocolPins {
@@ -84,6 +98,13 @@ interface ProtocolPins {
  * apps/api/src/lib/defi-exits/aquarius.ts builds: `withdraw(user, share_amount, min_amounts)`,
  * made to the pool itself, which authorizes burning the demo's shares on the share token, and
  * nothing else. The pool's AQUA emission rate is zero on testnet, so no `claim` comes before it.
+ *
+ * Blend: the pinned pool, the only contract a call may be made to, and XLM's contract, the only
+ * other one its authorization tree may reach (the repay moves the demo's XLM into the pool). Its
+ * exit is the call apps/api/src/lib/defi-exits/blend.ts builds per step, `submit(from, spender,
+ * to, requests)`, with the demo on all three sides: a collateral withdrawal (type 3), and before it
+ * a repay (type 5) only when the selection borrowed. XLM's reserve has no emissions on either
+ * token id, so no `claim` comes before it.
  */
 export const PINNED_SOROBAN_PROTOCOLS: Readonly<Record<SorobanProtocol, ProtocolPins>> = {
   soroswap: {
@@ -98,6 +119,7 @@ export const PINNED_SOROBAN_PROTOCOLS: Readonly<Record<SorobanProtocol, Protocol
         minOutVec: null,
         positiveArgs: [2],
         tokenArgs: { at: [0, 1], tokens: SOROSWAP.tokens },
+        requests: null,
       },
     },
   },
@@ -113,6 +135,30 @@ export const PINNED_SOROBAN_PROTOCOLS: Readonly<Record<SorobanProtocol, Protocol
         minOutVec: { at: 2, length: AQUARIUS.tokens.length },
         positiveArgs: [1],
         tokenArgs: null,
+        requests: null,
+      },
+    },
+  },
+  blend: {
+    entry: [BLEND.pool],
+    family: [BLEND.reserve],
+    functions: {
+      submit: {
+        arity: 4,
+        accountArgs: [0, 1, 2],
+        amountType: "scvI128",
+        minOutArgs: [],
+        minOutVec: null,
+        positiveArgs: [],
+        tokenArgs: null,
+        requests: {
+          at: 3,
+          reserve: BLEND.reserve,
+          types: {
+            supply: [BLEND_REQUEST.withdrawCollateral],
+            supply_and_borrow: [BLEND_REQUEST.withdrawCollateral, BLEND_REQUEST.repay],
+          },
+        },
       },
     },
   },
@@ -130,6 +176,37 @@ const addressOf = (val: xdr.ScVal | undefined): string | null =>
 
 const isPositive = (val: xdr.ScVal | undefined, type: FunctionRule["amountType"]): boolean =>
   val?.type === type && (scValToNative(val) as bigint) > BigInt(0);
+
+const REQUEST_KEYS = ["address", "amount", "request_type"];
+
+/** Throws unless `val` is a non-empty list of requests the rule and the seeded variant allow. */
+function assertRequests(
+  val: xdr.ScVal | undefined,
+  rule: NonNullable<FunctionRule["requests"]>,
+  variant: SeededProtocol["variant"],
+  amountType: FunctionRule["amountType"]
+): void {
+  const list = val?.type === "scvVec" ? (val.vec ?? []) : [];
+  if (list.length === 0) throw new SorobanVerificationError("soroban_requests_invalid");
+  const allowed = rule.types[variant] ?? [];
+  for (const request of list) {
+    const entries = request.type === "scvMap" ? (request.map ?? []) : [];
+    const keys = entries.map((e) => (e.key.type === "scvSymbol" ? e.key.sym.toString() : null));
+    if (keys.length !== REQUEST_KEYS.length || !keys.every((k, i) => k === REQUEST_KEYS[i])) {
+      throw new SorobanVerificationError("soroban_requests_invalid");
+    }
+    const [address, amount, type] = entries.map((e) => e.val);
+    if (addressOf(address) !== rule.reserve) {
+      throw new SorobanVerificationError("soroban_request_reserve_not_pinned");
+    }
+    if (!isPositive(amount, amountType)) {
+      throw new SorobanVerificationError("soroban_amount_not_positive");
+    }
+    if (type?.type !== "scvU32" || !allowed.includes(type.u32)) {
+      throw new SorobanVerificationError("soroban_request_type_not_allowed");
+    }
+  }
+}
 
 function assertAuthTree(
   invocation: xdr.SorobanAuthorizedInvocation,
@@ -162,9 +239,8 @@ export function assertSorobanTransaction(tx: Transaction, expected: SorobanExpec
 
   const protocol = protocolOf(contract);
   if (!protocol) throw new SorobanVerificationError("soroban_contract_not_pinned");
-  if (!expected.seeded.some((s) => s.protocol === protocol)) {
-    throw new SorobanVerificationError("soroban_protocol_not_seeded");
-  }
+  const seeded = expected.seeded.find((s) => s.protocol === protocol);
+  if (!seeded) throw new SorobanVerificationError("soroban_protocol_not_seeded");
   const pins = PINNED_SOROBAN_PROTOCOLS[protocol];
 
   const name = call.functionName.toString();
@@ -209,6 +285,10 @@ export function assertSorobanTransaction(tx: Transaction, expected: SorobanExpec
     ) {
       throw new SorobanVerificationError("soroban_token_not_pinned");
     }
+  }
+
+  if (rule.requests) {
+    assertRequests(args[rule.requests.at], rule.requests, seeded.variant, rule.amountType);
   }
 
   const family = new Set([...pins.entry, ...pins.family]);

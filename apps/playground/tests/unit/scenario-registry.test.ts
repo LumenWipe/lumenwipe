@@ -116,7 +116,16 @@ describe.each(SCENARIOS.map((def) => [def.id, def] as const))("%s", (_id, def) =
   test("declares a close expectation the playground verifier allows", () => {
     for (const build of builds(def)) {
       const { expectation } = build;
-      expect(expectation.closeOperations).toBeGreaterThan(0);
+      // A position's exits are transactions of their own, so a scenario whose only entry is a
+      // position (Blend's, which buys nothing) adds no operation to the merge.
+      const positions = build.steps
+        .flatMap(({ step }) => step.nodes)
+        .filter((n) => n.kind === "position");
+      if (positions.length === 0 || build.steps.some(({ step }) => step.spendsPinned)) {
+        expect(expectation.closeOperations).toBeGreaterThan(0);
+      } else {
+        expect(expectation.closeOperations).toBe(0);
+      }
       expect(expectation.operationTypes.length).toBeGreaterThan(0);
       for (const type of expectation.operationTypes) {
         expect(PLAYGROUND_CLOSE_OPERATION_TYPES).toContain(type);
@@ -139,7 +148,9 @@ describe.each(SCENARIOS.map((def) => [def.id, def] as const))("%s", (_id, def) =
       expect(count("data")).toBe(expectation.dataEntries);
       expect(count("signer")).toBe(expectation.signers);
       // One position per seeding step, and its exit is a close transaction of its own.
-      expect(count("position")).toBe(actions("soroswap_deposit") + actions("aquarius_deposit"));
+      expect(count("position")).toBe(
+        actions("soroswap_deposit") + actions("aquarius_deposit") + actions("blend_submit")
+      );
       if (count("position") > 0) expect(expectation.operationTypes).toContain("invokeHostFunction");
       // Only the account's own entries hold a reserve; a position lives in a contract.
       const subEntries = nodes.filter((n) => SUB_ENTRY_NODE_KINDS.includes(n.kind)).length;
