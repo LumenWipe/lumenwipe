@@ -212,8 +212,20 @@ export class BlendUtilizationError extends Error {
   }
 }
 
-/** `feePerOperation`: the bid per operation, in stroops, instead of twice the base fee per
- *  operation for each operation. */
+/**
+ * A transaction was about to be built with no operations. The network rejects one
+ * (`tx_missing_operation`), so it is refused here, before any account is read or anything signed.
+ */
+export class EmptyTransactionError extends Error {
+  constructor(readonly source: string) {
+    super(`Refusing to submit a transaction with no operations from ${source}`);
+    this.name = "EmptyTransactionError";
+  }
+}
+
+/** Every classic transaction the playground signs is built here, so none can carry zero
+ *  operations. `feePerOperation`: the bid per operation, in stroops, instead of twice the base fee
+ *  per operation for each operation. */
 export async function buildSignSubmit(
   sourceKeypair: Keypair,
   ops: xdr.Operation[],
@@ -222,6 +234,7 @@ export async function buildSignSubmit(
   onSigned?: (tx: Transaction) => Promise<void>,
   feePerOperation?: bigint
 ): Promise<string> {
+  if (ops.length === 0) throw new EmptyTransactionError(sourceKeypair.publicKey());
   const loadAccount = deps.loadAccount ?? loadHorizonAccount;
   const submit = deps.submit ?? submitClassicViaHorizon;
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
@@ -232,7 +245,7 @@ export async function buildSignSubmit(
     const account = new Account(sourceKeypair.publicKey(), live.sequenceNumber());
 
     const builder = new TransactionBuilder(account, {
-      fee: feePerOperation?.toString() ?? String(100 * Math.max(ops.length, 1) * 2),
+      fee: feePerOperation?.toString() ?? String(100 * ops.length * 2),
       networkPassphrase: PASSPHRASE,
     }).setTimeout(TX_TIMEOUT_SECONDS);
     ops.forEach((op) => builder.addOperation(op));
@@ -596,22 +609,28 @@ type Submit = (
   onSigned?: (tx: Transaction) => Promise<void>
 ) => Promise<string>;
 
+/** A step's transaction hash, or null for a setup step that had nothing to send: only the setup
+ *  step's work depends on the selection and on what the account holds. */
+type StepOutcome<K extends StepActionKind> = K extends "setup" ? string | null : string;
+
 type Executor<K extends StepActionKind> = (
   action: Extract<StepAction, { kind: K }>,
   ctx: MessContext,
   submit: Submit,
   deps: BuildSignSubmitDeps
-) => Promise<string>;
+) => Promise<StepOutcome<K>>;
 
 /** One executor per step action kind in the scenario registry. */
 export const MESS_EXECUTORS: { [K in StepActionKind]: Executor<K> } = {
   // Anything the demo holds beyond what the market maker funded it with goes back to it, read from
-  // the account rather than assumed.
+  // the account rather than assumed. The market maker funds exactly `fundingXlm`, so a selection
+  // with no ephemeral issuers usually leaves nothing to send: the step then completes with no
+  // transaction (null) instead of submitting an empty one.
   setup: async (action, ctx, submit, deps) => {
     const read = deps.loadNativeBalance ?? loadNativeBalance;
     const { balance } = await read(ctx.demo.publicKey());
     const excess = networkStroops(balance) - networkStroops(action.fundingXlm);
-    return submit(ctx.demo, [
+    const ops = [
       ...action.ephemeralAssets.map((code) =>
         Operation.createAccount({
           destination: ephemeralIssuer(code, ctx).publicKey(),
@@ -627,7 +646,8 @@ export const MESS_EXECUTORS: { [K in StepActionKind]: Executor<K> } = {
             }),
           ]
         : []),
-    ]);
+    ];
+    return ops.length > 0 ? submit(ctx.demo, ops) : null;
   },
   change_trust: (action, ctx, submit) =>
     submit(ctx.demo, [Operation.changeTrust({ asset: resolveAsset(action.asset, ctx) })]),
@@ -977,17 +997,18 @@ function runAction<K extends StepActionKind>(
   ctx: MessContext,
   submit: Submit,
   deps: BuildSignSubmitDeps
-): Promise<string> {
+): Promise<StepOutcome<K>> {
   const executor: Executor<K> = MESS_EXECUTORS[action.kind];
   return executor(action, ctx, submit, deps);
 }
 
-/** `deps` reaches every submission, so a test can capture the signed transactions instead of sending them. */
+/** `deps` reaches every submission, so a test can capture the signed transactions instead of sending
+ *  them. Resolves to the step's transaction hash, or null when the step had nothing to send. */
 export function executeMessStep(
   step: MessStepDef,
   ctx: MessContext,
   deps: BuildSignSubmitDeps = {}
-): Promise<string> {
+): Promise<string | null> {
   const submit: Submit = (source, ops, extraSigners = [], onSigned) =>
     buildSignSubmit(source, ops, extraSigners, deps, onSigned);
   return runAction(step.action, ctx, submit, deps);

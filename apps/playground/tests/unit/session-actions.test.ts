@@ -459,6 +459,18 @@ test("the lock is released after a failed step, so a retry can run", async () =>
   expect(outcome(retried)).toBe("ok");
 });
 
+test("a step that had nothing to send is recorded as done and answers with no hash", async () => {
+  const store = memoryStore();
+  const session = await store.createSession({
+    ...signerSessionData(),
+    completedMessSteps: [],
+  });
+  const result = await runMessStep(store, session.id, "SETUP", { executeStep: async () => null });
+  expect(result).toEqual({ status: 200, body: { stepId: "SETUP", txHash: null } });
+  const stored = await store.loadSession(session.id);
+  expect(stored?.completedMessSteps).toEqual(["SETUP"]);
+});
+
 const signer = (key: string): RecordedSigner => ({
   type: "ed25519_public_key",
   key,

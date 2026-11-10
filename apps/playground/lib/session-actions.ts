@@ -53,14 +53,16 @@ const MAX_REPORTED_DECISIONS = 10;
 const MAX_DECISION_ID_LENGTH = 200;
 
 export interface MessStepDeps {
-  /** `recordSigner` persists a signer the step is about to add, before its transaction is sent. */
+  /** `recordSigner` persists a signer the step is about to add, before its transaction is sent.
+   *  Resolves to the step's transaction hash, or null when the step had nothing to send: the step
+   *  is still recorded as done, and the response carries a null hash. */
   executeStep: (
     step: MessStepDef,
     session: PlaygroundSession,
     recordSigner: (signer: RecordedSigner) => Promise<void>,
     recordClaimableBalances: (balances: RecordedClaimableBalance[]) => Promise<void>,
     recordAllowance: (index: number, allowance: RecordedAllowance) => Promise<void>
-  ) => Promise<string>;
+  ) => Promise<string | null>;
 }
 
 export interface DemolishRoundDeps {

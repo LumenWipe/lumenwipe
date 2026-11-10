@@ -10,12 +10,13 @@ import {
   addForgottenSigner,
   loadAccountWithRetry,
   buildSignSubmit,
+  EmptyTransactionError,
   executeMessStep,
   TxSubmitError,
   type ClaimableBalanceRecord,
   type MessContext,
 } from "@/lib/mess-builders";
-import type { MessStepDef } from "@/lib/scenarios";
+import { resolvePlan, type MessStepDef, type ScenarioSelection } from "@/lib/scenarios";
 
 const ADDR = "GBOYVOCQNI34T7IO6RPNE6RZCVD7WNTFJZJUEX64RSQF6IJT5NFDRGMN";
 const notFound = (addr: string) => new Error(`Account not found: ${addr}`);
@@ -144,6 +145,104 @@ test("buildSignSubmit gives up after the retry budget and rethrows", async () =>
     })
   ).rejects.toBeInstanceOf(TxSubmitError);
   expect(submits).toBe(5);
+});
+
+test("buildSignSubmit refuses a transaction with no operations before reading or signing anything", async () => {
+  const kp = Keypair.random();
+  let reads = 0;
+  let submits = 0;
+  const signed: Transaction[] = [];
+
+  const attempt = buildSignSubmit(
+    kp,
+    [],
+    [],
+    {
+      loadAccount: async () => {
+        reads++;
+        return { sequenceNumber: () => "100" };
+      },
+      submit: async () => {
+        submits++;
+        return { txHash: "never" };
+      },
+      sleep: async () => {},
+    },
+    async (tx) => void signed.push(tx)
+  );
+  await expect(attempt).rejects.toBeInstanceOf(EmptyTransactionError);
+  await expect(attempt).rejects.toThrow(
+    `Refusing to submit a transaction with no operations from ${kp.publicKey()}`
+  );
+  expect([reads, submits, signed.length]).toEqual([0, 0, 0]);
+});
+
+describe("the setup step sends only what it has to do", () => {
+  const demo = Keypair.random();
+  const mm = Keypair.random().publicKey();
+  const usdc = Keypair.random();
+  const setupOf = (selection: ScenarioSelection): MessStepDef => {
+    const step = resolvePlan(selection).steps[0];
+    if (step?.action.kind !== "setup") throw new Error("a plan that does not start with setup");
+    return step;
+  };
+  const fundingOf = (step: MessStepDef): string =>
+    step.action.kind === "setup" ? step.action.fundingXlm : "";
+  const ctx: MessContext = {
+    demo,
+    ephemeralIssuers: new Map([["USDC", usdc]]),
+    persistentIssuer: Keypair.random(),
+    mmPublic: mm,
+    transferRecipient: null,
+    helpers: new Map(),
+    recordSigner: async () => {},
+    recordClaimableBalances: async () => {},
+    allowances: [],
+    recordAllowance: async () => {},
+  };
+  /** Runs the step against a demo holding `balance`, capturing what it would send. */
+  async function run(step: MessStepDef, balance: string) {
+    const sent: Transaction[] = [];
+    const outcome = await executeMessStep(step, ctx, {
+      loadAccount: async () => ({ sequenceNumber: () => "100" }),
+      loadNativeBalance: async () => ({ balance, sellingLiabilities: "0" }),
+      submit: async (signedXdr) => {
+        const tx = TransactionBuilder.fromXDR(signedXdr, Networks.TESTNET);
+        if (!(tx instanceof Transaction)) throw new Error("expected a transaction");
+        sent.push(tx);
+        return { txHash: "setup" };
+      },
+      sleep: async () => {},
+    });
+    return { outcome, sent };
+  }
+  const signerOnly: ScenarioSelection = { scenarios: [{ id: "forgotten-signer", params: {} }] };
+
+  test("with no ephemeral issuers and exactly its funding, it sends no transaction", async () => {
+    const step = setupOf(signerOnly);
+    expect(step.action).toMatchObject({ kind: "setup", ephemeralAssets: [] });
+    const { outcome, sent } = await run(step, fundingOf(step));
+    expect(sent).toEqual([]);
+    expect(outcome).toBeNull();
+  });
+
+  test("with no ephemeral issuers, it still returns XLM the demo holds over its funding", async () => {
+    const step = setupOf(signerOnly);
+    const over = (Number(fundingOf(step)) + 2.5).toFixed(7);
+    const { outcome, sent } = await run(step, over);
+    expect(outcome).toBe("setup");
+    expect(sent.map((tx) => tx.operations)).toEqual([
+      [expect.objectContaining({ type: "payment", destination: mm, amount: "2.5000000" })],
+    ]);
+  });
+
+  test("with an ephemeral issuer and exactly its funding, it creates only the issuer", async () => {
+    const step = setupOf({ scenarios: [{ id: "stablecoin-swaps", params: { tokens: 1 } }] });
+    const { outcome, sent } = await run(step, fundingOf(step));
+    expect(outcome).toBe("setup");
+    expect(sent.map((tx) => tx.operations.map((op) => op.type))).toEqual([["createAccount"]]);
+    expect(sent[0]!.operations[0]).toMatchObject({ destination: usdc.publicKey() });
+  });
 });
 
 test("addForgottenSigner records the signer before sending the transaction that adds it", async () => {
