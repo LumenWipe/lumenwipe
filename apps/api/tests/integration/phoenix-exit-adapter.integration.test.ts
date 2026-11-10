@@ -5,6 +5,7 @@ import { test, expect } from "bun:test";
 import { Horizon, Keypair, Transaction, TransactionBuilder } from "@stellar/stellar-sdk";
 import type { PhoenixLpPosition } from "@lumenwipe/types";
 import { EXIT_POSITION_GONE, phoenixExitAdapter, runExitAdapter } from "@/lib/defi-exits";
+import { detectDefiPositionsViaDirectRead } from "@/lib/defi-positions/testnet-direct-read";
 import { getRpcServer } from "@/lib/stellar/rpc";
 import { submitAndWait } from "@/lib/stellar/submit";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
@@ -99,4 +100,76 @@ test.skipIf(!RUN_INTEGRATION || FORK_PR_WITHOUT_SECRETS)(
     throw new Error("phoenix position did not close within 4 rounds");
   },
   120_000
+);
+
+test.skipIf(!RUN_INTEGRATION || FORK_PR_WITHOUT_SECRETS)(
+  "a Phoenix account that bonded every share is detected by its stake and closes through unbond, then withdraw",
+  async () => {
+    const tokenAdminSecret = process.env.PHOENIX_TESTNET_TOKEN_ADMIN_SECRET;
+    if (!tokenAdminSecret) {
+      throw new Error("PHOENIX_TESTNET_TOKEN_ADMIN_SECRET is required for this test");
+    }
+    const tokenAdmin = Keypair.fromSecret(tokenAdminSecret);
+    const account = Keypair.random();
+    await fund(account.publicKey());
+
+    await mintPhoenixTokenA(tokenAdmin, account.publicKey(), DEPOSIT);
+    await providePhoenixLiquidity(account, DEPOSIT, DEPOSIT);
+    const detectPhoenix = async () => {
+      const read = await detectDefiPositionsViaDirectRead(account.publicKey(), "testnet");
+      expect(read.unrecognizedPositions.filter((u) => u.protocol === "phoenix")).toEqual([]);
+      return read.positions.filter((p) => p.protocol === "phoenix");
+    };
+    const [lp] = await detectPhoenix();
+    if (lp?.positionType !== "lp") throw new Error("expected the provided liquidity as LP shares");
+    await bondPhoenixShares(account, BigInt(lp.shareAmount));
+
+    const horizon = new Horizon.Server(HORIZON_URL);
+    const rpc = getRpcServer("testnet");
+    const adapter = phoenixExitAdapter();
+    const calls: string[] = [];
+    for (let round = 0; round < 4; round++) {
+      const positions = await detectPhoenix();
+      if (round === 0) {
+        expect(positions.map((p) => p.positionType)).toEqual(["stake"]);
+        expect(positions[0]).toMatchObject({
+          contractAddress: PHOENIX_POOL,
+          stakedAmount: lp.shareAmount,
+          shareToken: lp.shareToken,
+        });
+      }
+      const position = positions[0];
+      if (!position) break;
+      const live = await horizon.loadAccount(account.publicKey());
+      const result = await runExitAdapter(
+        adapter,
+        position,
+        {
+          network: "testnet",
+          account: account.publicKey(),
+          sequence: live.sequenceNumber(),
+          tokenBalances: {},
+          sorobanTokenBalances: {},
+          now: new Date(),
+          slippageBps: 50,
+        },
+        { rpc }
+      );
+      expect(result.blockers).toEqual([]);
+      if (!result.next) throw new Error("expected a built step");
+      calls.push(result.next.intent.function);
+
+      const tx = TransactionBuilder.fromXDR(
+        result.next.simulation.txXdr,
+        NETWORK_PASSPHRASES.testnet
+      );
+      if (!(tx instanceof Transaction))
+        throw new Error("expected a plain transaction, not a fee bump");
+      tx.sign(account);
+      await submitAndWait(tx.toXDR(), "testnet");
+    }
+    expect(calls).toEqual(["unbond", "withdraw_liquidity"]);
+    expect(await detectPhoenix()).toEqual([]);
+  },
+  300_000
 );

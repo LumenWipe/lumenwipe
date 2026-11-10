@@ -237,7 +237,7 @@ describe("completing LP positions from the ledger", () => {
     ).toEqual([phoenix]);
   });
 
-  test("a Phoenix stake position is left as reported: unbonding names no share token", async () => {
+  test("a Phoenix stake gains its pool's share token, read once with the pool's LP position", async () => {
     const stake: PhoenixStakePosition = {
       protocol: "phoenix",
       positionType: "stake",
@@ -246,20 +246,32 @@ describe("completing LP positions from the ledger", () => {
       stakedAtEpoch: "1",
       usdValue: null,
     };
-    let reads = 0;
+    const inner = deps([
+      contractInstanceEntry(PHX_POOL, PHX_POOL_HASH),
+      phoenixConfig(PHX_POOL, addr(PHX_SHARE)),
+    ]);
+    const sizes: number[] = [];
     const counting: CompletePositionsDeps = {
+      ...inner,
       rpc: {
-        getLedgerEntries: async () => {
-          reads++;
-          return { latestLedger: 1, entries: [] };
+        getLedgerEntries: async (...keys) => {
+          sizes.push(keys.length);
+          return inner.rpc.getLedgerEntries(...keys);
         },
       },
-      resolveWasmHash: registry,
     };
+    const out = await completePositionsFromLedger(result([phoenix, stake]), "mainnet", counting);
+    expect(out.positions).toEqual([
+      { ...phoenix, shareToken: PHX_SHARE },
+      { ...stake, shareToken: PHX_SHARE },
+    ]);
+    expect(sizes).toEqual([2]);
+
+    const done = { ...stake, shareToken: PHX_SHARE };
     expect(
-      (await completePositionsFromLedger(result([stake]), "mainnet", counting)).positions
-    ).toEqual([stake]);
-    expect(reads).toBe(0);
+      (await completePositionsFromLedger(result([done]), "mainnet", counting)).positions
+    ).toEqual([done]);
+    expect(sizes).toEqual([2]);
   });
 
   test("a position already complete is not read again; one that cannot be read stays as reported", async () => {

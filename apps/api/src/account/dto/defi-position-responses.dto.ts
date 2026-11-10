@@ -196,6 +196,9 @@ export class PhoenixStakePositionDto extends DefiPositionBaseDto implements Phoe
 
   @ApiProperty({ description: "Unix seconds; unbonding needs the original stake's timestamp." })
   stakedAtEpoch!: string;
+
+  @ApiPropertyOptional({ description: "The pool's separate LP share token contract." })
+  shareToken?: string;
 }
 
 export class FxdaoCdpPositionDto extends DefiPositionBaseDto implements FxdaoCdpPosition {

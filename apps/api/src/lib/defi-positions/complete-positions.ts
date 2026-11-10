@@ -5,6 +5,7 @@ import type {
   DefiPositionsResult,
   Network,
   PhoenixLpPosition,
+  PhoenixStakePosition,
   SoroswapLpPosition,
 } from "@lumenwipe/types";
 import { Logger } from "@nestjs/common";
@@ -19,7 +20,7 @@ import { contractAddressOf, contractDataKey, instanceOfEntry } from "@/lib/stell
 /**
  * Fills in what a position indexer does not carry but the exit path needs from the position
  * itself: an Aquarius pool's tokens, share token, and code type, a Soroswap pair's tokens, and a
- * Phoenix pool's share token.
+ * Phoenix pool's share token, on its LP and stake positions alike.
  *
  * The web anchor lets an exit name a token contract only if it is a held asset's Stellar Asset
  * Contract or one of the position's own tokens (or its share token, which a withdrawal burns
@@ -155,7 +156,7 @@ function phoenixFields(
   config: xdr.LedgerEntryData | undefined,
   network: Network,
   deps: CompletePositionsDeps
-): Pick<PhoenixLpPosition, "shareToken"> {
+): Pick<PhoenixLpPosition | PhoenixStakePosition, "shareToken"> {
   const code = known(instance, network, deps);
   if (!code || code.protocol !== "phoenix" || code.kind !== "pool" || !config) return {};
   const shareToken = phoenixShareToken(config);
@@ -172,7 +173,7 @@ function incomplete(position: DefiPosition): boolean {
   if (position.protocol === "soroswap" && position.positionType === "lp") {
     return !position.tokens;
   }
-  if (position.protocol === "phoenix" && position.positionType === "lp") {
+  if (position.protocol === "phoenix") {
     return !position.shareToken;
   }
   return false;
@@ -183,7 +184,7 @@ export function defaultCompletePositionsDeps(network: Network): CompletePosition
 }
 
 /**
- * The result with every incomplete Aquarius, Soroswap and Phoenix LP position completed from its
+ * The result with every incomplete Aquarius, Soroswap and Phoenix position completed from its
  * contract's instance where that could be read. Never throws.
  */
 export async function completePositionsFromLedger(
@@ -256,7 +257,7 @@ export async function completePositionsFromLedger(
       if (position.protocol === "soroswap" && position.positionType === "lp") {
         return { ...position, ...soroswapFields(instance, network, deps) };
       }
-      if (position.protocol === "phoenix" && position.positionType === "lp") {
+      if (position.protocol === "phoenix") {
         const config = configs.get(position.contractAddress);
         return { ...position, ...phoenixFields(instance, config, network, deps) };
       }

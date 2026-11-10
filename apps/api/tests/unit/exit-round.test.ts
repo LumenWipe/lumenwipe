@@ -20,8 +20,25 @@ import {
   ExitRoundBlockedError,
   preflightExitTargets,
 } from "@/lib/defi-exits/exit-round";
+import { runExitAdapter } from "@/lib/defi-exits/run-exit";
+import {
+  createContractRegistryLookup,
+  validateContractRegistry,
+  type ContractRegistryEntry,
+} from "@/lib/contract-registry";
+import {
+  detectDefiPositionsViaDirectRead,
+  type DirectReadDeps,
+} from "@/lib/defi-positions/testnet-direct-read";
 import { fakeExitRpc } from "./fixtures/fake-exit-adapter";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import {
+  PHX_POOL_HASH,
+  PHX_STAKE_HASH,
+  POOL as POOL_PHX,
+  STAKE_CONTRACT,
+  fakePhoenixRpc,
+} from "./fixtures/fake-phoenix-pool";
 
 const SOURCE = Keypair.random().publicKey();
 const POOL = "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF";
@@ -151,6 +168,20 @@ const xbullAt = (contract: string): DefiPosition =>
   }) as unknown as DefiPosition;
 
 const rpc = fakeExitRpc({ liveWasmHash: null, liveBalance: "0" });
+
+function phoenixEntry(over: Partial<ContractRegistryEntry>): ContractRegistryEntry {
+  return {
+    network: "testnet",
+    protocol: "phoenix",
+    kind: "pool",
+    address: POOL_PHX,
+    wasmHash: PHX_POOL_HASH,
+    version: "v1",
+    label: "test",
+    verifiedLive: true,
+    ...over,
+  };
+}
 
 describe("buildExitRound", () => {
   test("no positions, no round", async () => {
@@ -443,5 +474,52 @@ describe("preflightExitTargets", () => {
       },
     });
     expect(sequence!).toBe("100");
+  });
+});
+
+describe("buildExitRound on a Phoenix account that bonded every share", () => {
+  const known = createContractRegistryLookup(
+    validateContractRegistry({
+      version: "test",
+      lastVerified: "2026-09-01",
+      validUntil: "2026-12-01",
+      source: "exit round test",
+      entries: [
+        phoenixEntry({}),
+        phoenixEntry({ address: STAKE_CONTRACT, wasmHash: PHX_STAKE_HASH, kind: "stake" }),
+      ],
+    })
+  );
+
+  test("the stake-only read builds an unbond, so no merge comes before it", async () => {
+    const ledger = fakePhoenixRpc({
+      account: SOURCE,
+      shares: 0n,
+      stakes: [{ amount: 40_000_000n, timestamp: 1_700_000_000n }],
+    });
+    const read = await detectDefiPositionsViaDirectRead(SOURCE, "testnet", {
+      rpc: ledger as unknown as NonNullable<DirectReadDeps["rpc"]>,
+      registryEntries: [
+        phoenixEntry({}),
+        phoenixEntry({ address: STAKE_CONTRACT, wasmHash: PHX_STAKE_HASH, kind: "stake" }),
+      ],
+    });
+    expect(read.positions.map((p) => p.positionType)).toEqual(["stake"]);
+
+    const round = await buildExitRound(account(read.positions), "testnet", "100", 1000, {
+      rpc: ledger,
+      runExitAdapter: (adapter, position, ctx, deps) =>
+        runExitAdapter(adapter, position, ctx, {
+          ...deps,
+          resolveWasmHash: known.resolveWasmHash,
+          isRegistryFresh: () => true,
+        }),
+    });
+    if (!round) throw new Error("a staked account must get an exit round before any merge");
+    const op = round.transaction.intent.operations[0]!;
+    if (op.type !== "invoke_host_function") throw new Error("expected an invocation intent");
+    expect(op.contract).toBe(STAKE_CONTRACT);
+    expect(op.function).toBe("unbond");
+    expect(round.transaction.coversTargets).toEqual([POOL_PHX]);
   });
 });

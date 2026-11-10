@@ -25,7 +25,8 @@
  *    see readAquariusRouterPools. Concentrated-liquidity pools (tick-range positions, no share
  *    token) are not read here.
  *  - Phoenix: a registered pool's `CONFIG` names its `share_token`, a separate SEP-41 contract,
- *    and the account's LP shares are that token's `Balance(Address)`. Stakes are not read here.
+ *    and its `stake_contract`. The account's LP shares are that token's `Balance(Address)`, and
+ *    its stakes the stake contract's `BondingInfo`, read together; see readPhoenixPosition.
  *
  * ScVal key encoding: a soroban-sdk `#[contracttype]` enum's tuple variant with fields
  * `Variant(A)` encodes as `ScVec[Symbol("Variant"), A]`, and `Variant((A, B))` (a single field
@@ -49,12 +50,20 @@ import type {
   AquariusPoolType,
   FxdaoCdpPosition,
   Network,
+  PhoenixLpPosition,
+  PhoenixStakePosition,
   SoroswapLpPosition,
   UnrecognizedDefiPosition,
 } from "@lumenwipe/types";
 import { contractDataEntry, instanceOfEntry } from "@/lib/stellar/contract-data";
 import { fxdaoCurrencyContract, fxdaoDenominations } from "@/lib/defi-exits/fxdao";
-import { phoenixConfigKey, phoenixShareToken } from "@/lib/defi-exits/phoenix";
+import {
+  bondingInfoKey,
+  phoenixConfigKey,
+  phoenixShareToken,
+  phoenixStakeContract,
+  stakesFrom,
+} from "@/lib/defi-exits/phoenix";
 
 type RpcServer = ReturnType<typeof getRpcServer>;
 
@@ -859,39 +868,95 @@ async function readAquariusRouterPools(
   return positions;
 }
 
-// ─── Phoenix LP shares (Soroswap and Aquarius enumerate theirs above) ──────────
+// ─── Phoenix LP shares and stakes ──────────────────────────────────────────────
 
 /**
  * A Phoenix pool is not its own share token: its `CONFIG` names `share_token`, a separate SEP-41
- * contract, and the account's shares are that token's `Balance(Address)`. Read in that order,
- * and the share token rides on the position, so the exit's verifier knows it from the pool
- * itself rather than from a token-balance indexer.
+ * contract, and `stake_contract`, where bonded shares live. Both of the account's entries are read
+ * in one call: shares bonded in full leave a zero share balance, so the stake is the only trace of
+ * the position. Each stake is reported on the pool with the share token, so the exit groups it
+ * with the LP and its verifier knows the token the withdrawal returns.
  */
-async function readPhoenixLpShares(
+async function readPhoenixPosition(
   rpc: LedgerReader,
   entry: ContractRegistryEntry,
-  address: string
-): Promise<DefiPosition | null> {
+  address: string,
+  verifiedStakes: ReadonlySet<string>,
+  unrecognized: UnrecognizedDefiPosition[]
+): Promise<DefiPosition[]> {
   const configKey = phoenixConfigKey(entry.address);
   const config = (await batchRead(rpc, [configKey])).get(configKey.toXdr("base64"));
   const shareToken = config ? phoenixShareToken(config) : null;
-  if (!shareToken) return null;
+  if (!config || !shareToken) return [];
+  const stakeContract = phoenixStakeContract(config);
 
   const balanceKey = contractDataKey(shareToken, variantVal("Balance", addressVal(address)));
-  const results = await batchRead(rpc, [balanceKey]);
+  const bondingKey = stakeContract ? bondingInfoKey(stakeContract, address) : null;
+  const results = await batchRead(rpc, bondingKey ? [balanceKey, bondingKey] : [balanceKey]);
+
+  const positions: DefiPosition[] = [];
   const native = contractDataScVal(results.get(balanceKey.toXdr("base64")));
   const shareAmount = typeof native === "bigint" ? native : null;
-  if (shareAmount === null || shareAmount <= 0n) return null;
+  if (shareAmount !== null && shareAmount > 0n) {
+    const lp: PhoenixLpPosition = {
+      protocol: "phoenix",
+      positionType: "lp",
+      contractAddress: entry.address,
+      wasmHash: entry.wasmHash ?? undefined,
+      shareAmount: shareAmount.toString(),
+      shareToken,
+      usdValue: null,
+    };
+    positions.push(lp);
+  }
 
-  return {
-    protocol: "phoenix",
-    positionType: "lp",
-    contractAddress: entry.address,
-    wasmHash: entry.wasmHash ?? undefined,
-    shareAmount: shareAmount.toString(),
-    shareToken,
-    usdValue: null,
-  };
+  if (!stakeContract || !bondingKey) {
+    unrecognized.push({
+      protocol: "phoenix",
+      rawType: "stake-contract-unknown",
+      reason: `pool ${entry.address} names share token ${shareToken} but no stake contract, so its stakes cannot be read`,
+    });
+    return positions;
+  }
+  const bonding = results.get(bondingKey.toXdr("base64"));
+  if (!bonding) return positions;
+  if (!verifiedStakes.has(stakeContract)) {
+    unrecognized.push({
+      protocol: "phoenix",
+      rawType: "stake-contract-unregistered",
+      reason: `pool ${entry.address} names stake contract ${stakeContract}, which holds an entry for this account but is not a verified registry stake contract on ${entry.network}`,
+    });
+    return positions;
+  }
+  let stakes: ReturnType<typeof stakesFrom>;
+  try {
+    stakes = stakesFrom(contractDataEntry(bonding).val);
+  } catch {
+    stakes = null;
+  }
+  if (stakes === null) {
+    unrecognized.push({
+      protocol: "phoenix",
+      rawType: "bonding-info-unreadable",
+      reason: `stake contract ${stakeContract} holds an entry for this account that could not be decoded`,
+    });
+    return positions;
+  }
+  for (const stake of stakes) {
+    if (stake.amount <= 0n) continue;
+    const position: PhoenixStakePosition = {
+      protocol: "phoenix",
+      positionType: "stake",
+      contractAddress: entry.address,
+      wasmHash: entry.wasmHash ?? undefined,
+      stakedAmount: stake.amount.toString(),
+      stakedAtEpoch: stake.timestamp.toString(),
+      shareToken,
+      usdValue: null,
+    };
+    positions.push(position);
+  }
+  return positions;
 }
 
 // ─── FxDAO vault ───────────────────────────────────────────────────────────────
@@ -953,7 +1018,8 @@ async function readEntry(
   entry: ContractRegistryEntry,
   instance: xdr.LedgerEntryData | undefined,
   entries: ContractRegistryEntry[],
-  address: string
+  address: string,
+  verifiedStakes: ReadonlySet<string>
 ): Promise<EntryOutcome> {
   const positions: DefiPosition[] = [];
   const unrecognized: UnrecognizedDefiPosition[] = [];
@@ -976,8 +1042,9 @@ async function readEntry(
   } else if (entry.protocol === "fxdao" && entry.kind === "vault") {
     positions.push(...(await readFxdaoVaults(rpc, entry, instance, address)));
   } else if (entry.protocol === "phoenix" && entry.kind === "pool") {
-    const lp = await readPhoenixLpShares(rpc, entry, address);
-    if (lp) positions.push(lp);
+    positions.push(
+      ...(await readPhoenixPosition(rpc, entry, address, verifiedStakes, unrecognized))
+    );
   }
   return { positions, unrecognized };
 }
@@ -1024,10 +1091,22 @@ export async function detectDefiPositionsViaDirectRead(
   // happened to return first.
   const instanceKeys = probed.map((entry) => instanceKey(entry.address));
   const instances = await batchReadChunked(rpc, instanceKeys);
+  const instanceOf = (i: number): xdr.LedgerEntryData | undefined =>
+    instances.get(instanceKeys[i]!.toXdr("base64"));
+  const verifiedStakes = new Set(
+    probed
+      .filter(
+        (entry, i) =>
+          entry.network === network &&
+          entry.protocol === "phoenix" &&
+          entry.kind === "stake" &&
+          entry.wasmHash !== null &&
+          liveWasmHashOf(instanceOf(i)) === entry.wasmHash
+      )
+      .map((entry) => entry.address)
+  );
   const outcomes = await Promise.all(
-    probed.map((entry, i) =>
-      readEntry(rpc, entry, instances.get(instanceKeys[i]!.toXdr("base64")), entries, address)
-    )
+    probed.map((entry, i) => readEntry(rpc, entry, instanceOf(i), entries, address, verifiedStakes))
   );
   const positions = outcomes.flatMap((o) => o.positions);
   const unrecognized = outcomes.flatMap((o) => o.unrecognized);
