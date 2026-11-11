@@ -63,8 +63,9 @@ test("the standard recipe closes the demo account into the market maker", async 
   await demolish.click();
   const hashes = confirmedHashes(await (await firstRound).json());
   expect(hashes.length).toBeGreaterThan(0);
+  // The log links a transaction only after the scene has played each of its operations.
   for (const hash of hashes) {
-    await expect(page.locator(`a[href$="/tx/${hash}"]`)).toHaveCount(1);
+    await expect(page.locator(`a[href$="/tx/${hash}"]`)).toHaveCount(1, { timeout: 60_000 });
   }
   await expect(page.getByText("demo complete. The account was merged away")).toBeVisible({
     timeout: 3 * 60_000,
