@@ -320,6 +320,17 @@ describe("blend exit adapter", () => {
     expect(nan.status).toBe("unreadable");
   });
 
+  test("a reserve the oracle cannot price blocks only the account that holds it", async () => {
+    const unheld = await run({ ...SUPPLY_ONLY, unpriced: [XLM] });
+    expect(unheld.result.blockers).toEqual([]);
+    expect(unheld.result.next?.step.kind).toBe("withdraw");
+    expect(unheld.deps.oracleCalls).toEqual([[USDC]]);
+
+    const held = await run({ ...SUPPLY_ONLY, unpriced: [USDC] });
+    expect(held.result.next).toBeNull();
+    expect(held.result.blockers.map((b) => b.code)).toEqual(["blend_pool_unreadable"]);
+  });
+
   test("a position that vanished since detection blocks rather than planning nothing", async () => {
     const { result } = await run({});
     expect(result.next).toBeNull();

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { Version } from "@blend-capital/blend-sdk";
-import { Keypair } from "@stellar/stellar-sdk";
+import { Asset, Keypair, Networks } from "@stellar/stellar-sdk";
 import { blendExitAdapter, defaultBlendDeps } from "@/lib/defi-exits/blend";
 import { entriesForProtocol } from "@/lib/contract-registry";
 import { harnessContext } from "../unit/fixtures/exit-adapter-harness";
@@ -13,32 +13,17 @@ const RUN_INTEGRATION = !!process.env.LUMENWIPE_RUN_INTEGRATION;
 
 const pool = entriesForProtocol("testnet", "blend").find((e) => e.kind === "pool");
 
-/**
- * The testnet oracle is a third party's and can list a reserve it no longer prices, which fails
- * every SDK pool read. That says nothing about this code, so these tests stop there and say so;
- * the same read failing any other way still fails them.
- */
-async function testnetOraclePricesEveryReserve(address: string): Promise<boolean> {
-  const loaded = await defaultBlendDeps.loadPool("testnet", address, Version.V2);
-  try {
-    await loaded.loadOracle();
-    return true;
-  } catch (error) {
-    if (!String(error).includes("Unable to decode oracle price result")) throw error;
-    console.warn("the Blend testnet oracle has a reserve with no price; the SDK read was not run");
-    return false;
-  }
-}
+const XLM_SAC = Asset.native().contractId(Networks.TESTNET);
 
 test.skipIf(!RUN_INTEGRATION)(
-  "the registry's Blend testnet pool loads through the SDK with priced reserves",
+  "the registry's Blend testnet pool loads through the SDK and its oracle prices the XLM reserve",
   async () => {
     if (!pool) throw new Error("registry has no Blend testnet pool");
-    if (!(await testnetOraclePricesEveryReserve(pool.address))) return;
     const loaded = await defaultBlendDeps.loadPool("testnet", pool.address, Version.V2);
     expect(loaded.version).toBe(Version.V2);
-    expect(loaded.reserves.size).toBeGreaterThan(0);
-    const oracle = await loaded.loadOracle();
+    expect(loaded.reserves.has(XLM_SAC)).toBe(true);
+    const oracle = await defaultBlendDeps.loadOracle("testnet", loaded.metadata.oracle, [XLM_SAC]);
+    expect(oracle.getPrice(XLM_SAC)).toBeGreaterThan(0n);
     const user = await loaded.loadUser(Keypair.random().publicKey());
     const estimate = defaultBlendDeps.estimate(loaded, oracle, user.positions);
     expect(Number.isFinite(estimate.totalEffectiveCollateral)).toBe(true);
@@ -79,7 +64,6 @@ test.skipIf(!RUN_INTEGRATION)(
   "an account with nothing in the pool reads clean and plans a 'position gone' blocker",
   async () => {
     if (!pool) throw new Error("registry has no Blend testnet pool");
-    if (!(await testnetOraclePricesEveryReserve(pool.address))) return;
     const adapter = blendExitAdapter();
     const ctx = harnessContext({ tokenBalances: {} });
     const code = { version: pool.version, kind: pool.kind };

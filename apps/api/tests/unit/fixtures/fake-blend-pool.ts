@@ -24,6 +24,7 @@ export const XLM = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
 export const BACKSTOP = "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA";
 export const BACKSTOP_TOKEN = "CA5UTUUPHYL5K22UBRUVC37EARZUGYOSGK3IKIXG2JLCC5ZZLI4BDWDM";
 export const BLND = "CB22KRA3YZVCNCQI64JQ5WE7UY2VAV7WFLK6A2JN3HEX56T2EDAFO7QF";
+export const ORACLE = "CAZOKR2Y5E2OSWSIBRVZMJ47RUTQPIGVWSAQ2UISGAVC46XKPGDG5PKI";
 
 const PRICE: Record<string, number> = { [USDC]: 1, [XLM]: 0.1 };
 const DECIMALS = 7;
@@ -54,6 +55,8 @@ export interface FakePoolState {
     /** BLND accrued to the deposit, base units. */
     emissions?: bigint;
   };
+  /** Reserves the oracle has no price for; asking it to price one throws, as the SDK does. */
+  unpriced?: string[];
 }
 
 const INDEX: Record<string, number> = { [USDC]: 0, [XLM]: 1 };
@@ -69,9 +72,8 @@ export function fakePool(state: FakePoolState = {}): BlendPoolView {
   ]);
   return {
     version: state.version ?? Version.V2,
-    metadata: { backstop: BACKSTOP },
+    metadata: { backstop: BACKSTOP, oracle: ORACLE },
     reserves,
-    loadOracle: async () => ({}) as PoolOracle,
     loadUser: async () => ({
       positions: new Positions(
         toMap(state.liabilities),
@@ -106,15 +108,23 @@ export function fakeEstimate(
 
 export function fakeBlendDeps(
   state: FakePoolState = {}
-): BlendDeps & { loadCalls: string[]; backstopCalls: string[] } {
+): BlendDeps & { loadCalls: string[]; backstopCalls: string[]; oracleCalls: string[][] } {
   const loadCalls: string[] = [];
   const backstopCalls: string[] = [];
+  const oracleCalls: string[][] = [];
   return {
     loadCalls,
     backstopCalls,
+    oracleCalls,
     async loadPool(_network, poolId, version) {
       loadCalls.push(`${poolId}@${version}`);
       return fakePool(state);
+    },
+    async loadOracle(_network, _oracleId, assetIds) {
+      oracleCalls.push(assetIds);
+      const missing = assetIds.find((id) => state.unpriced?.includes(id));
+      if (missing) throw new Error(`Unable to decode oracle price result for ${missing}`);
+      return {} as PoolOracle;
     },
     estimate: fakeEstimate,
     emissions(): BlendEmissionsView {
