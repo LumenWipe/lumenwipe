@@ -22,27 +22,35 @@ jobs:
   e2e:
     name: close flow against testnet
     runs-on: ubuntu-latest
+    outputs:
+      suite: ${{ steps.suite.outcome }}
     # Run 42844639885 took 31.2 minutes for 69 tests on two workers, including `retries: 2`
     # spent on 3 failed and 5 flaky tests, so 90 leaves room for a much slower night. A kill
     # here is reported as a plain failure with no artifact, which is indistinguishable from the
     # close path actually breaking.
     timeout-minutes: 90
+    # Chromium, its system libraries and fonts come in the image, so a run never depends on the
+    # Ubuntu package mirrors, which failed every install on 2026-11-11.
+    container:
+      image: mcr.microsoft.com/playwright:v1.65.0-noble@sha256:6e3fb709361521eb27161606e6da6d2674e5e89fa16516cb37d6fdd91372273d
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: "1.4.4"
+      # setup-bun extracts a zip and the image has no unzip; its Node installs Bun instead.
+      - run: npm install -g bun@1.4.4
 
       - run: bun install --frozen-lockfile
 
+      # A no-op while the image matches the locked Playwright; after a lockfile-only bump it
+      # downloads the newer Chromium from Playwright's CDN, still without apt.
       - name: Install Playwright browser
-        run: bunx playwright install --with-deps chromium
+        run: bunx playwright install chromium
         working-directory: apps/web
 
       - name: Run the suite
+        id: suite
         working-directory: apps/web
         env:
           # Public testnet endpoints. No secret is needed for the paths under test: the
@@ -86,28 +94,36 @@ jobs:
   playground:
     name: playground against testnet
     runs-on: ubuntu-latest
+    outputs:
+      suite: ${{ steps.suite.outcome }}
     # Run 42844639885 (23 tests) ran into Playwright's globalTimeout (80 minutes in CI) at 1.3 h:
     # six failures each spent their 6-minute wait twice under `retries: 1`, about 72 minutes, and
     # 13 tests never ran. A healthy run has not been measured yet. The globalTimeout ends the run
     # before this limit, so a slow night is a failure with a report, not a kill here that the
     # report job below reads as cancelled and never files.
     timeout-minutes: 90
+    # Chromium, its system libraries and fonts come in the image, so a run never depends on the
+    # Ubuntu package mirrors, which failed every install on 2026-11-11.
+    container:
+      image: mcr.microsoft.com/playwright:v1.65.0-noble@sha256:6e3fb709361521eb27161606e6da6d2674e5e89fa16516cb37d6fdd91372273d
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: "1.4.4"
+      # setup-bun extracts a zip and the image has no unzip; its Node installs Bun instead.
+      - run: npm install -g bun@1.4.4
 
       - run: bun install --frozen-lockfile
 
+      # A no-op while the image matches the locked Playwright; after a lockfile-only bump it
+      # downloads the newer Chromium from Playwright's CDN, still without apt.
       - name: Install Playwright browser
-        run: bunx playwright install --with-deps chromium
+        run: bunx playwright install chromium
         working-directory: apps/playground
 
       - name: Run the suite
+        id: suite
         working-directory: apps/playground
         env:
           # Gateway first: SDF's endpoint stalls for seconds on a share of calls. SDF stays as the failover.
@@ -178,6 +194,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           RESULT: ${{ needs[matrix.job].result }}
+          SUITE: ${{ needs[matrix.job].outputs.suite }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           NAME: ${{ matrix.name }}
           ASSIGNEE: ${{ matrix.assignee }}
@@ -204,6 +221,13 @@ jobs:
               gh issue comment "$EXISTING" --repo "$REPO" --body "$NAME is green again: $RUN_URL"
               gh issue close "$EXISTING" --repo "$REPO" --reason completed
             fi
+            exit 0
+          fi
+
+          # A failure before the suite ran (runner network, image pull, bun install) says nothing
+          # about LumenWipe, so it stays a red run and never opens or comments on the tracker.
+          if [ "$SUITE" != "failure" ]; then
+            echo "::warning::$NAME failed before its suite ran; no issue filed: $RUN_URL"
             exit 0
           fi
 
