@@ -7,6 +7,7 @@ import {
   BackstopPoolV2,
   PoolContractV1,
   PoolContractV2,
+  PoolOracle,
   PoolV1,
   PoolV2,
   Positions,
@@ -14,7 +15,6 @@ import {
   RequestType,
   Version,
   type Pool,
-  type PoolOracle,
   type PoolUser,
 } from "@blend-capital/blend-sdk";
 import type {
@@ -115,9 +115,8 @@ export interface BlendUserView {
 /** The slice of the SDK's pool the adapter reads. */
 export interface BlendPoolView {
   version: Version;
-  metadata: { backstop: string };
+  metadata: { backstop: string; oracle: string };
   reserves: Map<string, BlendReserveView>;
-  loadOracle(): Promise<PoolOracle>;
   loadUser(userId: string): Promise<BlendUserView>;
 }
 
@@ -151,6 +150,8 @@ export interface BlendBackstopView {
 
 export interface BlendDeps {
   loadPool(network: Network, poolId: string, version: Version): Promise<BlendPoolView>;
+  /** Prices only `assetIds`, so a reserve the account does not hold cannot block its exit. */
+  loadOracle(network: Network, oracleId: string, assetIds: string[]): Promise<PoolOracle>;
   estimate(pool: BlendPoolView, oracle: PoolOracle, positions: Positions): BlendEstimate;
   emissions(pool: BlendPoolView, user: BlendUserView, now: number): BlendEmissionsView;
   loadBackstop(
@@ -266,6 +267,9 @@ export const defaultBlendDeps: BlendDeps = {
     return version === Version.V1
       ? PoolV1.load(sdkNetwork, poolId)
       : PoolV2.load(sdkNetwork, poolId);
+  },
+  loadOracle(network, oracleId, assetIds) {
+    return PoolOracle.load(blendSdkNetwork(network), oracleId, assetIds);
   },
   estimate(pool, oracle, positions) {
     // The real pool is a real SDK Pool; the view type only narrows what the adapter touches.
@@ -406,8 +410,7 @@ export function blendExitAdapter(
       try {
         const now = Math.floor(ctx.now.getTime() / 1000);
         const pool = await deps.loadPool(ctx.network, position.contractAddress, version);
-        const [oracle, user, backstop] = await Promise.all([
-          pool.loadOracle(),
+        const [user, backstop] = await Promise.all([
           pool.loadUser(ctx.account),
           deps.loadBackstop(
             ctx.network,
@@ -441,8 +444,13 @@ export function blendExitAdapter(
           });
         }
 
-        // Price every reserve now: an oracle gap is a reason to stop, not something to find out
-        // about in health() after a plan has been drawn up.
+        // Price every held reserve now: an oracle gap there is a reason to stop, not something to
+        // find out about in health() after a plan has been drawn up.
+        const oracle = await deps.loadOracle(
+          ctx.network,
+          pool.metadata.oracle,
+          held.map((h) => h.assetId)
+        );
         const current = deps.estimate(pool, oracle, positions);
         usd(current.totalEffectiveCollateral, "collateral value");
         usd(current.totalEffectiveLiabilities, "debt value");
