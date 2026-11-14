@@ -1,8 +1,9 @@
-import { afterEach, expect, mock, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { cleanup, render } from "@testing-library/react";
 import * as navigation from "next/navigation";
 import * as statsHook from "@/hooks/useStats";
 import NetworkLayout from "@/app/[network]/layout";
+import { useDemolishStore } from "@/store/demolish";
 
 const STATS = { testnet: 12, mainnet: 3, mainnetXlmStroops: "1000000000" };
 
@@ -24,6 +25,11 @@ function renderLayout(network: string, pathname: string): ReturnType<typeof rend
     </NetworkLayout>
   );
 }
+
+// No account is open, so the layout reads no saved close: this file is about the overlay.
+beforeEach(() => {
+  useDemolishStore.getState().reset();
+});
 
 afterEach(() => {
   cleanup();

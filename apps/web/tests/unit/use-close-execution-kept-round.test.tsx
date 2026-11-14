@@ -19,6 +19,7 @@ import {
 } from "@/lib/utils/user-error";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
+import { installIndexedDb, removeIndexedDb } from "./fixtures/indexed-db";
 
 // A 2-of-3 account: the master key signs first and the round pauses at weight 1 of 2. The tests
 // then stop the next signer in different ways and check whether that partly signed envelope is
@@ -190,6 +191,8 @@ function validUntilMs(xdr: string): number {
 }
 
 beforeEach(() => {
+  installIndexedDb();
+  useDemolishStore.getState().reset();
   clock = null;
   spyOn(Date, "now").mockImplementation(() => clock ?? realNow());
   useDemolishStore.setState({
@@ -203,6 +206,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   mock.restore();
+  removeIndexedDb();
 });
 
 test.each([

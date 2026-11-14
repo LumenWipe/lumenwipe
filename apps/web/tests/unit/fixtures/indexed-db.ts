@@ -15,14 +15,41 @@ const GLOBALS = [
   "IDBVersionChangeEvent",
 ] as const;
 
+let reached = false;
+
+/** Stands in for IndexedDB while no test has installed it: a reach throws as a missing global
+ *  would, and is recorded so the test it happened in fails instead of passing by file order. */
+export function guardIndexedDb(): void {
+  Object.defineProperty(globalThis, "indexedDB", {
+    configurable: true,
+    get() {
+      reached = true;
+      throw new ReferenceError(
+        "indexedDB is not installed: call installIndexedDb from tests/unit/fixtures/indexed-db.ts"
+      );
+    },
+  });
+}
+
+/** Whether the guard was reached since the last call, which clears it. */
+export function takeIndexedDbReach(): boolean {
+  const was = reached;
+  reached = false;
+  return was;
+}
+
 export function installIndexedDb(): void {
+  Object.defineProperty(globalThis, "indexedDB", {
+    configurable: true,
+    writable: true,
+    value: new fakeIdb.IDBFactory(),
+  });
   const g = globalThis as Record<string, unknown>;
-  g.indexedDB = new fakeIdb.IDBFactory();
   for (const name of GLOBALS) g[name] = fakeIdb[name];
 }
 
 export function removeIndexedDb(): void {
   const g = globalThis as Record<string, unknown>;
-  delete g.indexedDB;
   for (const name of GLOBALS) delete g[name];
+  guardIndexedDb();
 }

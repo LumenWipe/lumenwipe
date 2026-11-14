@@ -26,8 +26,9 @@ import {
   PLAN_HOLDINGS_CHANGED,
   PLAN_NEEDS_ANSWERS,
   PLAN_NOT_COMPARABLE,
-  PLAN_REFRESH_FAILED,
+  PLAN_REFRESH_UNUSABLE,
   PLAN_REVIEW_LEFT,
+  planRefreshFailure,
 } from "@/lib/utils/user-error";
 import type { PlanResponse } from "@lumenwipe/sdk";
 import type { AccountState } from "@/types/account";
@@ -66,25 +67,30 @@ export async function refreshReviewedPlan(
 ): Promise<RefreshOutcome> {
   const start = useDemolishStore.getState();
   const { sourceAddress: source, destinationAddress: destination, planSignature } = start;
-  if (!source || !destination) return { kind: "failed", message: PLAN_REFRESH_FAILED };
+  if (!source || !destination) return { kind: "failed", message: PLAN_REFRESH_UNUSABLE };
   // What the review was of: the answers it was consented to with, in the close it belongs to.
   const answers = answersOf(start, source, destination);
   const epoch = start.closeEpoch;
 
+  // The plan names the tokens of the account that was reviewed, so both requests run at once. A
+  // token set the fresh read disagrees with fails the holdings check below before anything is
+  // installed, so a plan asked for with a stale set is never consented to.
+  const tokens = (start.accountState?.sorobanTokens?.tokens ?? []).map((t) => t.contract);
   let account;
   let plan;
   try {
-    // The account is read again too: the net estimate depends on its balance, which the plan
-    // response does not carry and its hash does not cover.
-    account = await readAccount(network, source, signal);
-    const tokens = (account.sorobanTokens?.tokens ?? []).map((t) => t.contract);
-    plan = await fetchClosePlan(
-      { source, destination, decisions: closeDecisions(start, source, destination, tokens) },
-      network,
-      signal
-    );
-  } catch {
-    return { kind: "failed", message: PLAN_REFRESH_FAILED };
+    // The account is read again too: its balances, signers and sponsorships can change without
+    // the sequence the plan hash covers, and the plan response carries none of them.
+    [account, plan] = await Promise.all([
+      readAccount(network, source, signal),
+      fetchClosePlan(
+        { source, destination, decisions: closeDecisions(start, source, destination, tokens) },
+        network,
+        signal
+      ),
+    ]);
+  } catch (err) {
+    return { kind: "failed", message: planRefreshFailure(err) };
   }
 
   const now = useDemolishStore.getState();
@@ -106,7 +112,7 @@ export async function refreshReviewedPlan(
   try {
     return install(now, account, plan, planSignature);
   } catch {
-    return { kind: "failed", message: PLAN_REFRESH_FAILED };
+    return { kind: "failed", message: PLAN_REFRESH_UNUSABLE };
   }
 }
 
@@ -118,7 +124,7 @@ function install(
 ): RefreshOutcome {
   // Never installed as missing: the build would then be sent without the hash it is held to.
   if (typeof plan.planHash !== "string" || !PLAN_HASH.test(plan.planHash)) {
-    return { kind: "failed", message: PLAN_REFRESH_FAILED };
+    return { kind: "failed", message: PLAN_REFRESH_UNUSABLE };
   }
   // The same two gates the analyze page's proceed applies to the plan it fetches.
   const blocked = proceedError(plan.blockers);

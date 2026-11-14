@@ -5,6 +5,7 @@ import * as navigation from "next/navigation";
 import AnalyzePage from "@/app/[network]/analyze/page";
 import PlanView from "@/components/plan/PlanView";
 import { useDemolishStore } from "@/store/demolish";
+import { useNetworkStore } from "@/store/network";
 import type { AccountState } from "@/types/account";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 
@@ -46,20 +47,37 @@ function refused(code: string, status: number): Response {
   return Response.json({ error: { code, message: "refused" } }, { status });
 }
 
-function stubFetch(plan: () => Response): void {
+function busy(): Response {
+  return Response.json(
+    { error: { code: "service_unavailable", message: "The data provider is busy right now." } },
+    { status: 503, headers: { "Retry-After": "30" } }
+  );
+}
+
+function unreachable(): Response {
+  throw new TypeError("Failed to fetch");
+}
+
+const BUSY =
+  /busy or not answering right now\. This is not a problem with your connection\. Try again in about 30 seconds\./;
+
+function stubFetch(
+  plan: () => Response,
+  read: () => Response = () => Response.json(account()),
+  check: () => Response = () => Response.json({ requiresMediator: false, available: true })
+): void {
   spyOn(globalThis, "fetch").mockImplementation((async (input: string | URL | Request) => {
     const url = String(input);
     if (url.includes("/close/plan")) return plan();
-    if (url.includes("/mediator/check/")) {
-      return Response.json({ requiresMediator: false, available: true });
-    }
-    if (url.includes("/account/")) return Response.json(account());
+    if (url.includes("/mediator/check/")) return check();
+    if (url.includes("/account/")) return read();
     return Response.json({});
   }) as unknown as typeof fetch);
 }
 
 beforeEach(() => {
   useDemolishStore.getState().reset();
+  useNetworkStore.setState({ network: "testnet" });
   const router = { push: () => {}, replace: () => {} };
   const params = new URLSearchParams(`source=${SOURCE}`);
   spyOn(navigation, "useRouter").mockImplementation(
@@ -74,8 +92,11 @@ afterEach(() => {
   mock.restore();
 });
 
-async function proceed(plan: () => Response): Promise<{ refreshes: () => number }> {
-  stubFetch(plan);
+async function proceed(
+  plan: () => Response,
+  check?: () => Response
+): Promise<{ refreshes: () => number }> {
+  stubFetch(plan, undefined, check);
   useDemolishStore.setState({ destinationAddress: DEST, destinationAcknowledgedFor: DEST });
   let refreshes = 0;
   await act(async () => {
@@ -112,15 +133,36 @@ test("a state_changed from the final plan says so and refreshes, the same as nee
   expect(useDemolishStore.getState().phase).not.toBe("PREFLIGHT_COMPLETE");
 });
 
-test("any other refusal of the final plan keeps its own message and does not refresh", async () => {
+test("any other refusal of the final plan reads through the shared copy and does not refresh", async () => {
   const { refreshes } = await proceed(() => refused("internal_error", 500));
 
-  expect(refusal()).toContain(STALE);
+  expect(refusal()).toContain("The service is temporarily unavailable.");
+  expect(refusal()).not.toMatch(/connection/);
   expect(refreshes()).toBe(0);
 });
 
-async function analyze(plan: () => Response): Promise<string | null> {
-  stubFetch(plan);
+test("a busy provider on the final plan says so, not the connection", async () => {
+  const { refreshes } = await proceed(busy);
+
+  expect(refusal()).toMatch(BUSY);
+  expect(refusal()).not.toContain(STALE);
+  expect(refreshes()).toBe(0);
+});
+
+test("a busy provider on the destination check says so, not the connection", async () => {
+  await proceed(() => Response.json({}), busy);
+
+  expect(refusal()).toMatch(BUSY);
+});
+
+test("no answer at all on the final plan still names the connection", async () => {
+  await proceed(unreachable);
+
+  expect(refusal()).toMatch(/check your connection/);
+});
+
+async function analyze(plan: () => Response, read?: () => Response): Promise<string | null> {
+  stubFetch(plan, read);
   await act(async () => {
     render(<AnalyzePage params={settled({ network: "testnet" as const })} />);
   });
@@ -135,6 +177,24 @@ test("a state_changed from the analyze plan says the account changed and how to 
   expect(message).not.toContain(ANALYZE_FAILED);
 });
 
-test("any other refusal of the analyze plan keeps its own message", async () => {
-  expect(await analyze(() => refused("internal_error", 500))).toContain(ANALYZE_FAILED);
+test("any other refusal of the analyze plan reads through the shared copy", async () => {
+  const message = await analyze(() => refused("internal_error", 500));
+
+  expect(message).toContain("The service is temporarily unavailable.");
+  expect(message).not.toContain(ANALYZE_FAILED);
+});
+
+test("a busy provider on the analyze plan says so, not the connection", async () => {
+  const message = await analyze(busy);
+
+  expect(message).toMatch(BUSY);
+  expect(message).not.toContain(ANALYZE_FAILED);
+});
+
+test("a busy provider on the analyze account read says so, not the connection", async () => {
+  expect(await analyze(() => Response.json({}), busy)).toMatch(BUSY);
+});
+
+test("no answer at all on the analyze plan still names the connection", async () => {
+  expect(await analyze(unreachable)).toMatch(/check your connection/);
 });

@@ -28,7 +28,11 @@ import {
   SIGNER_RELEASED,
   STILL_UNCONFIRMED_NOTICE,
   UNCONFIRMED_NOTICE,
+  PLAN_REFRESH_FAILED,
+  PLAN_REFRESH_UNUSABLE,
+  planRefreshFailure,
   readApiError,
+  retryWhen,
   CLOCK_HINT,
   toUserMessage,
   UserFacingError,
@@ -184,7 +188,7 @@ describe("toUserMessage", () => {
     expect(toUserMessage(new ApiRequestError(502, "Bad Gateway"), "execute")).toMatch(
       /temporarily unavailable/
     );
-    expect(toUserMessage(new LumenWipeApiError(503, {}), "analyze")).toMatch(/temporarily/);
+    expect(toUserMessage(new LumenWipeApiError(503, {}), "analyze")).toMatch(/busy/);
     expect(toUserMessage(new LumenWipeTimeoutError(30000), "execute")).toMatch(/temporarily/);
   });
 
@@ -214,7 +218,7 @@ describe("toUserMessage", () => {
     expect(toUserMessage(new ApiRequestError(422, missing), "review")).toBe(missing);
     expect(
       toUserMessage(new ApiRequestError(503, "The destination could not be read."), "review")
-    ).toMatch(/temporarily unavailable/);
+    ).toMatch(/busy or not answering/);
   });
 
   test("a failed fetch is reported as a connection problem", () => {
@@ -279,6 +283,97 @@ describe("apiErrorText", () => {
   });
 });
 
+describe("a busy or unavailable service", () => {
+  const BUSY =
+    "The service LumenWipe reads the Stellar network through is busy or not answering right now. This is not a problem with your connection.";
+
+  test.each([
+    [
+      "rate limited",
+      "service_unavailable",
+      "The data provider is busy right now. Try again in a moment.",
+    ],
+    [
+      "timed out",
+      "service_unavailable",
+      "The data provider took too long to answer. Try again in a moment.",
+    ],
+    [
+      "unavailable",
+      "service_unavailable",
+      "The data provider is unavailable right now. Try again in a moment.",
+    ],
+    ["destination unread", "destination_read_failed", "The destination could not be read."],
+  ])("a 503 from a provider that %s says so in every context", (_case, code, message) => {
+    const err = new ApiRequestError(503, message, "req", code, 30);
+    for (const context of ["analyze", "review", "execute", "generic"] as const) {
+      expect(toUserMessage(err, context)).toBe(`${BUSY} Try again in about 30 seconds.`);
+    }
+  });
+
+  test("the SDK's own 503 carries its wait too", () => {
+    const err = new LumenWipeApiError(503, {}, new Headers({ "Retry-After": "45" }));
+    expect(toUserMessage(err, "analyze")).toBe(`${BUSY} Try again in about 45 seconds.`);
+  });
+
+  test.each([
+    [undefined, "Try again in a moment."],
+    [0, "Try again in a moment."],
+    [Number.POSITIVE_INFINITY, "Try again in a moment."],
+    [1, "Try again in about 1 second."],
+    [30, "Try again in about 30 seconds."],
+    [60, "Try again in about 1 minute."],
+    [90, "Try again in about 2 minutes."],
+    [600, "Try again in about 10 minutes."],
+  ])("a wait of %p seconds reads as %p", (seconds, phrase) => {
+    expect(retryWhen(seconds)).toBe(phrase);
+  });
+
+  test("other server failures keep their own copy, and no response still names the connection", () => {
+    expect(toUserMessage(new ApiRequestError(500, ""), "analyze")).toMatch(
+      /temporarily unavailable/
+    );
+    expect(toUserMessage(new ApiRequestError(502, ""), "analyze")).toMatch(
+      /temporarily unavailable/
+    );
+    expect(toUserMessage(new TypeError("Failed to fetch"), "analyze")).toMatch(
+      /check your connection/
+    );
+  });
+
+  test("an unmapped failure on analyze does not blame the connection", () => {
+    spyOn(console, "error").mockImplementation(() => {});
+    expect(toUserMessage(new Error("boom"), "analyze")).toBe(
+      "We couldn't analyze this account right now. Please try again."
+    );
+  });
+
+  test("a close that stops on a busy service says it, and still that it is safe to retry", () => {
+    const msg = closeFailureMessage(
+      new ApiRequestError(503, "", undefined, undefined, 30),
+      "before-submit",
+      []
+    );
+    expect(msg).toContain(`${BUSY} Try again in about 30 seconds.`);
+    expect(msg).toContain("It is safe to retry.");
+  });
+
+  test("the review's check names the busy service, other answers, and no answer apart", () => {
+    const busy = planRefreshFailure(
+      new ApiRequestError(503, "", undefined, "service_unavailable", 30)
+    );
+    expect(busy).toContain("busy or not answering");
+    expect(busy).toContain("signing has not started");
+    expect(busy).toContain("Try again in about 30 seconds.");
+    expect(busy).not.toMatch(/check your connection/i);
+    expect(planRefreshFailure(new LumenWipeApiError(503, {}))).toContain("Try again in a moment.");
+    expect(planRefreshFailure(new ApiRequestError(500, ""))).toBe(PLAN_REFRESH_UNUSABLE);
+    expect(planRefreshFailure(new ApiRequestError(404, ""))).toBe(PLAN_REFRESH_UNUSABLE);
+    expect(planRefreshFailure(new TypeError("Failed to fetch"))).toBe(PLAN_REFRESH_FAILED);
+    expect(planRefreshFailure(new UserFacingError("Failed to connect"))).toBe(PLAN_REFRESH_FAILED);
+  });
+});
+
 describe("readApiError", () => {
   function response(body: unknown, status: number): Response {
     return new Response(JSON.stringify(body), { status });
@@ -292,6 +387,25 @@ describe("readApiError", () => {
     expect(err.status).toBe(422);
     expect(err.code).toBe("bad_request");
     expect(toUserMessage(err, "review")).toBe("Choose a destination first.");
+  });
+
+  test.each([
+    ["30", 30],
+    ["0", 0],
+    [null, undefined],
+    ["", undefined],
+    ["30abc", undefined],
+    ["-5", undefined],
+    ["Wed, 21 Oct 2015 07:28:00 GMT", undefined],
+  ])("a Retry-After of %p is read as %p seconds", async (header, seconds) => {
+    const headers = header === null ? undefined : { "Retry-After": header };
+    const err = await readApiError(
+      new Response(JSON.stringify({ error: { code: "service_unavailable", message: "m" } }), {
+        status: 503,
+        headers,
+      })
+    );
+    expect(err.retryAfterSeconds).toBe(seconds);
   });
 
   test("a body without a code carries none", async () => {

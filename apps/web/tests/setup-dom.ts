@@ -1,5 +1,6 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { afterEach, beforeEach } from "bun:test";
+import { guardIndexedDb, takeIndexedDbReach } from "./unit/fixtures/indexed-db";
 
 GlobalRegistrator.register();
 
@@ -31,4 +32,14 @@ afterEach(cleanup);
 // before (or without) its own component setting one.
 beforeEach(() => {
   document.title = "";
+});
+
+// A test that reaches IndexedDB without installing it would pass or fail by which file ran first.
+guardIndexedDb();
+afterEach(() => {
+  if (takeIndexedDbReach()) {
+    throw new Error(
+      "This test reached IndexedDB without installing it (tests/unit/fixtures/indexed-db.ts)."
+    );
+  }
 });

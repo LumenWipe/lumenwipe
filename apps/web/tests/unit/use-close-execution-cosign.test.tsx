@@ -15,6 +15,7 @@ import { ApiRequestError } from "@/lib/utils/user-error";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import type { AccountSigner, AccountState } from "@/types/account";
+import { installIndexedDb, removeIndexedDb } from "./fixtures/indexed-db";
 
 // A 3-of-3 account: no key reaches the thresholds alone, so normalization is its own transaction
 // and the two cosigners sign it on their own devices.
@@ -77,6 +78,7 @@ let readLive: ReturnType<typeof spyOn>;
 type Hook = { current: ReturnType<typeof useCloseExecution> };
 
 beforeEach(() => {
+  installIndexedDb();
   submitted = [];
   spyOn(verifyModule, "verifyCloseTransaction").mockImplementation(() => {});
   spyOn(sessionStore, "saveUnconfirmed").mockImplementation(async () => true);
@@ -103,7 +105,10 @@ beforeEach(() => {
   } as never);
 });
 
-afterEach(() => mock.restore());
+afterEach(() => {
+  mock.restore();
+  removeIndexedDb();
+});
 
 async function pausedOnMaster(): Promise<{ hook: Hook; request: string }> {
   const hook = renderHook(() => useCloseExecution()).result;

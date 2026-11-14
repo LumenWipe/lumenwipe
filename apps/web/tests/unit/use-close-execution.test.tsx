@@ -60,6 +60,7 @@ import * as closeRecord from "@/lib/session/close-record";
 import * as signingPromptModule from "@/lib/execution/signing-prompt";
 import { freshAccount, freshPlan, stubUnchangedRefresh } from "./fixtures/fresh-plan";
 import { VARIAL_ID } from "@creit-tech/stellar-wallets-kit/modules/varial";
+import { installIndexedDb, removeIndexedDb } from "./fixtures/indexed-db";
 
 /** The stand-ins return only what the hook reads, so they are typed loosely on purpose. */
 function stubFetchCloseTransactions(impl: () => Promise<unknown>): void {
@@ -89,6 +90,8 @@ function stubFeeBumpSponsor(impl: (...args: unknown[]) => Promise<unknown>): voi
 // reliably. Without a per-test override, fetching transactions rejects with a benign error, so a
 // test that only exercises the signer guard never reaches a real fetch().
 beforeEach(() => {
+  installIndexedDb();
+  useDemolishStore.getState().reset();
   useDemolishStore.setState({
     unconfirmedSubmission: null,
     sessionId: "session",
@@ -103,6 +106,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   mock.restore();
+  removeIndexedDb();
 });
 
 /** A wallet's decline, as WalletKitSigner throws it. */
