@@ -294,6 +294,37 @@ describe("a batch close", () => {
     expect(routes.count(`POST /api/session/${MEMBER_IDS[2]}/cleanup`)).toBe(1);
   });
 
+  test("a batch plan that cannot be read still leaves every account to close", async () => {
+    batchRoutes(3);
+    routes.handlers.set(`/api/batch/${BATCH_ID}/plan`, async () => ({
+      status: 502,
+      body: { error: "batch_plan_failed" },
+    }));
+    rtl.render(<Harness />);
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: "A batch of 3" }));
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: "Create & trash 3 demo accounts" }));
+    await rtl.screen.findByRole("button", { name: "Close every account" }, { timeout: 5000 });
+    expect(usePlaygroundStore.getState().phase).toBe("DIRTY");
+    expect(
+      rtl.screen.getByText(
+        "The batch plan could not be read, but every account can still be closed."
+      )
+    ).toBeTruthy();
+    for (const n of [1, 2, 3]) {
+      expect(rtl.screen.getByRole("listitem", { name: `Account ${n}` }).textContent).toContain(
+        "Could not be read"
+      );
+    }
+
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: "Close every account" }));
+    await rtl.screen.findByText(/Batch complete: 2 of 3 accounts merged away/, undefined, {
+      timeout: 5000,
+    });
+    expect(routes.calls.filter((c) => c.endsWith("/demolish/round"))).toEqual(
+      MEMBER_IDS.map((id) => `POST /api/session/${id}/demolish/round`)
+    );
+  });
+
   test("a batch link opens on a batch of that size", async () => {
     window.history.replaceState(null, "", "/?batch=2");
     try {

@@ -47,6 +47,38 @@ export interface UseBatchExecutionResult {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
+/**
+ * Reads the batch plan into each member's row. The plan only informs: every member closes through
+ * its own rounds without it, so a plan that cannot be read marks the rows and the run carries on,
+ * rather than leaving funded accounts for the reaper. Only an expired session stops the run.
+ */
+async function planBatch(batchId: string, size: number): Promise<void> {
+  const store = usePlaygroundStore.getState();
+  try {
+    const { results } = await api<BatchPlanResponse>(`/batch/${batchId}/plan`);
+    for (const { index, status, blockers } of results) {
+      store.updateBatchMember(index, { plan: { status, blockers } });
+    }
+    const blocked = results.filter((r) => r.status === "blocked").length;
+    store.addLog({
+      label: `Batch plan: ${results.length - blocked} of ${results.length} accounts can close, ${blocked} blocked`,
+      txHash: null,
+      kind: "info",
+    });
+  } catch (err) {
+    if (err instanceof SessionExpiredError) throw err;
+    if (!(err instanceof PlaygroundApiError)) console.error("[playground] unexpected error:", err);
+    for (let index = 0; index < size; index++) {
+      store.updateBatchMember(index, { plan: "unavailable" });
+    }
+    store.addLog({
+      label: "Batch plan could not be read; each account can still be closed",
+      txHash: null,
+      kind: "info",
+    });
+  }
+}
+
 /** How a member's close stopped, as its row shows it. */
 export function stoppedMember(err: unknown): Pick<BatchMember, "close" | "stop" | "message"> {
   if (err instanceof PlanBlockedError) {
@@ -144,16 +176,7 @@ export function useBatchExecution(): UseBatchExecutionResult {
       }
 
       setProgressStatus("Planning every account with one call to the LumenWipe API...");
-      const { results } = await api<BatchPlanResponse>(`/batch/${created.batchId}/plan`);
-      for (const { index, status, blockers } of results) {
-        usePlaygroundStore.getState().updateBatchMember(index, { plan: { status, blockers } });
-      }
-      const blocked = results.filter((r) => r.status === "blocked").length;
-      usePlaygroundStore.getState().addLog({
-        label: `Batch plan: ${results.length - blocked} of ${results.length} accounts can close, ${blocked} blocked`,
-        txHash: null,
-        kind: "info",
-      });
+      await planBatch(created.batchId, created.members.length);
       usePlaygroundStore.getState().setPhase("DIRTY");
 
       // Best effort: without it the page only leaves out the code panel.

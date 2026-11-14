@@ -5,7 +5,7 @@ import { usePlaygroundStore, type BatchMember, type BatchSize } from "@/store/pl
 import { blockerCopy, GENERIC_ERROR_COPY } from "@/lib/error-copy";
 import BlockerCard from "./BlockerCard";
 
-const PLAN_COPY: Record<NonNullable<BatchMember["plan"]>["status"], string> = {
+const PLAN_COPY: Record<Exclude<BatchMember["plan"], "unavailable" | null>["status"], string> = {
   ready: "Ready to close",
   needs_decisions: "Ready once the playground answers its questions",
   blocked: "Blocked",
@@ -66,8 +66,12 @@ function MemberRow({
         </dd>
         <dt className="text-white/45">Batch plan</dt>
         <dd>
-          {member.plan ? PLAN_COPY[member.plan.status] : "Not planned yet"}
-          {member.plan && member.plan.blockers.length > 0 && (
+          {member.plan === "unavailable"
+            ? "Could not be read"
+            : member.plan
+              ? PLAN_COPY[member.plan.status]
+              : "Not planned yet"}
+          {member.plan && member.plan !== "unavailable" && member.plan.blockers.length > 0 && (
             <ul aria-label={`Account ${n} blockers`} className="mt-1 space-y-1 text-white/60">
               {member.plan.blockers.map((b) => (
                 <li key={b.code}>{blockerCopy(b.code)}</li>
@@ -119,6 +123,11 @@ export default function BatchPanel({
         {batch.members.length} demo accounts, planned with one call to the LumenWipe API, then
         closed one after another. One is blocked on purpose: it is reported, not skipped.
       </p>
+      {batch.members.some((m) => m.plan === "unavailable") && (
+        <p className="mb-4 text-sm text-white/65">
+          The batch plan could not be read, but every account can still be closed.
+        </p>
+      )}
       <ol aria-label="Batch accounts" className="space-y-3">
         {batch.members.map((member, index) => (
           <MemberRow

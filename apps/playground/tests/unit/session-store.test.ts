@@ -12,6 +12,7 @@ import {
   SessionLockLostError,
   sessionExpiresAt,
   sessionStore,
+  type PlaygroundBatch,
   type PlaygroundSession,
   type SessionStore,
 } from "@/lib/session-store";
@@ -479,7 +480,12 @@ describe("batch records", () => {
   test("a stored batch of another shape or version reads as none", async () => {
     const kv = memoryKv();
     const store = createSessionStore(() => kv);
-    const valid = { schemaVersion: BATCH_SCHEMA_VERSION, id: SID, memberIds: IDS, createdAt: 1 };
+    const valid: PlaygroundBatch = {
+      schemaVersion: BATCH_SCHEMA_VERSION,
+      id: SID,
+      memberIds: IDS,
+      createdAt: 1,
+    };
     const variants: unknown[] = [
       { ...valid, schemaVersion: BATCH_SCHEMA_VERSION + 1 },
       { ...valid, memberIds: IDS.slice(0, 1) },
