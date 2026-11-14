@@ -22,6 +22,10 @@ export function memoryStore(clock: FakeClock = fakeClock()): SessionStore {
   return createSessionStore(() => kv);
 }
 
+/** One expiry for every fixture record, an hour past the run's start: records built apart compare
+ *  equal, and none of them expires while the suite runs. */
+const FIXTURE_EXPIRES_AT = sessionExpiresAt(Date.now());
+
 export function newSessionData(): NewSessionData {
   return {
     demoPublic: "GDEMO",
@@ -38,7 +42,7 @@ export function newSessionData(): NewSessionData {
     claimableBalances: [],
     allowances: [],
     exchange: null,
-    expiresAt: sessionExpiresAt(Date.now()),
+    expiresAt: FIXTURE_EXPIRES_AT,
     extended: false,
   };
 }
