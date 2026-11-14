@@ -28,7 +28,9 @@ test("a busy analysis waits with a notice that can be stopped, then offers a ret
 
   await page.getByRole("button", { name: "Stop waiting" }).click();
   await expect(notice).toBeHidden();
-  await expect(page.getByRole("alert")).toContainText("Try again in about 30 seconds.");
+  await expect(page.getByRole("alert").filter({ hasText: "Analysis failed" })).toContainText(
+    "Try again in about 30 seconds."
+  );
   await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
   await expectNoAxeViolations(page, "analyze, busy service");
 });
