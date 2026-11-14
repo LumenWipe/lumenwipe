@@ -380,6 +380,10 @@ describe("GET /api/batch/[id]/plan", () => {
     const { store, body } = await messedBatch();
     const foreign = Keypair.random().publicKey();
     const answers: ((req: BatchPlanRequest) => BatchPlanResponse)[] = [
+      // Every member is there, plus one address that is none of them.
+      (req) => ({
+        results: [...honest(req).results, { address: foreign, plan: plan("ready") }],
+      }),
       (req) => ({
         results: honest(req).results.map((r, i) => (i === 0 ? { ...r, address: foreign } : r)),
       }),

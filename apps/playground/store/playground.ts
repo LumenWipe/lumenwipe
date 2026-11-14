@@ -58,7 +58,8 @@ export interface BatchMember {
   label: string;
   messPlan: MessStepDef[];
   messDone: number;
-  plan: BatchPlanLine | null;
+  /** The API's plan; "unavailable" when the batch plan could not be read, null before it is. */
+  plan: BatchPlanLine | "unavailable" | null;
   close: BatchCloseStatus;
   /** Why the close stopped, for a blocked member, with the blockers its session can resolve. */
   stop: StoppedClose | null;
