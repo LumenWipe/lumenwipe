@@ -41,10 +41,7 @@ export function willCreate(steps: readonly MessStepDef[]): string[] {
     const count = nodes.filter((n) => n.kind === kind).length;
     if (count > 0) lines.push(plural(count, one, many));
   }
-  const looseSigners = steps
-    .filter((s) => s.action.kind !== "multisig")
-    .flatMap((s) => s.nodes)
-    .filter((n) => n.kind === "signer").length;
+  const looseSigners = nodes.filter((n) => n.kind === "signer").length;
   if (looseSigners > 0) lines.push(plural(looseSigners, "extra signer", "extra signers"));
   for (const { action } of steps) {
     if (action.kind === "multisig") lines.push(MULTISIG_LINES[action.variant]);

@@ -18,6 +18,7 @@ export default defineConfig({
     reducedMotion: "reduce",
   },
   projects: [
+    { name: "small", use: { ...devices["Desktop Chrome"], viewport: { width: 320, height: 640 } } },
     { name: "phone", use: { ...devices["Desktop Chrome"], viewport: { width: 360, height: 800 } } },
     {
       name: "desktop",

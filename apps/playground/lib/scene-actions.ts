@@ -66,6 +66,29 @@ const SIGNER_NODES: Partial<Record<string, readonly string[]>> = {
   preauth_tx: ["signer:preauth"],
 };
 
+/** The claimable balance nodes a close's own claim can stand for: never a locked balance, which it
+ *  leaves behind, nor one the demo created for another account, which only that account claims. */
+const CLAIMED_BY_CLOSE = ["cb:claim:", "cb:add_trustline_then_claim:"];
+
+/** The sponsorship node a revoke of another account's entry stands for, by the entry's kind. */
+const SPONSORSHIP_NODES: Partial<Record<string, string>> = {
+  trustline: "sponsorship:trustline",
+  data_entry: "sponsorship:data",
+};
+
+/** The nodes a playground resolution clears, by the blocker it resolves: the claimant claims the
+ *  balance the demo created, or the other account removes the entries the demo paid for. */
+const RESOLVED_PREFIX: Partial<Record<string, string>> = {
+  sponsorship_claimable_balance_unrevocable: "cb:demo_sponsored:",
+  sponsorship_unaffordable: "sponsorship:",
+};
+
+/** The live nodes a successful resolution of `blocker` removes from the scene. */
+export function nodesResolvedBy(blocker: string, live: readonly LiveNode[]): string[] {
+  const prefix = RESOLVED_PREFIX[blocker];
+  return prefix ? live.filter((n) => n.id.startsWith(prefix)).map((n) => n.id) : [];
+}
+
 /** No visual: the operation changes nothing the scene draws. */
 const noVisual = (): null => null;
 
@@ -91,8 +114,15 @@ export const SCENE_HANDLERS: { [T in OperationType]: Handler<T> } = {
   account_merge: () => ({ type: "merge" }),
   // A conversion empties the trustline into XLM, as a payment out of it does.
   path_payment_strict_send: (op, live) => pulseIfLive(live, trustlineNodeId(op.sendAsset)),
-  claim_claimable_balance: noVisual,
-  revoke_sponsorship: noVisual,
+  // The close claims balances in an order of its own; any one of them stands for the claim.
+  claim_claimable_balance: (_op, live) => {
+    const node = live.find((n) => CLAIMED_BY_CLOSE.some((prefix) => n.id.startsWith(prefix)));
+    return node ? { type: "destroy", nodeIds: [node.id] } : null;
+  },
+  revoke_sponsorship: (op, live) => {
+    const nodeId = SPONSORSHIP_NODES[op.entryKind];
+    return nodeId ? destroyIfLive(live, nodeId) : null;
+  },
   invoke_host_function: (op, live) => {
     const exit = POSITION_NODE_BY_EXIT.get(op.contract);
     if (!exit || exit.fn !== op.function) return null;

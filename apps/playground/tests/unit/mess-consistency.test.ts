@@ -224,6 +224,13 @@ async function runAndCheck(selection: ScenarioSelection): Promise<void> {
     s.action.kind === "claimable_balances" ? s.action.balances.map((b) => b.intent) : []
   );
   expect(session.claimableBalances.map((b) => b.intent)).toEqual(planned);
+  // One claimable node per balance the chain received, named for its intent.
+  expect(
+    plan.steps
+      .flatMap((s) => s.nodes)
+      .filter((n) => n.kind === "claimable")
+      .map((n) => n.id)
+  ).toEqual(planned.map((intent, i) => `cb:${intent}:${i}`));
   // Each helper the plan needs exists, once.
   expect(session.helperAccounts.map((h) => h.role)).toEqual(
     plan.steps.flatMap((s) => {
@@ -444,7 +451,8 @@ function assertConsistent({
   expect(trustlines.map((code) => `tl:${code}`).sort()).toEqual(nodes("trustline").sort());
   expect(dataNames).toEqual(nodes("data"));
   expect(offerNodes).toEqual(nodes("offer"));
-  expect(signersAdded).toBe(nodes("signer").length);
+  expect(signersAdded).toBe(nodes("signer").length + nodes("multisig").length);
+  expect(nodes("sponsorship")).toHaveLength(helperEntries);
   expect(positions).toEqual(nodes("position"));
   // One recorded allowance per approval, and an allowance node for each.
   expect(approved).toEqual(nodes("allowance"));

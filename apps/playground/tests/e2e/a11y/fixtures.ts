@@ -1,6 +1,7 @@
 import { expect, type Page, type Route } from "@playwright/test";
 import { Keypair } from "@stellar/stellar-sdk";
 import { getMessPlanForMode } from "../../../lib/mess-plan";
+import { resolvePlan, type MessStepDef } from "../../../lib/scenarios";
 
 // The playground's own routes, answered in the browser: nothing is funded, signed or sent, and
 // the server only serves the page.
@@ -43,9 +44,30 @@ export const MERGE = {
   operations: [{ type: "account_merge", destination: sink, source: demo }],
 };
 
-/** Answers every playground route for a light demo whose countdown ends `minutesLeft` from now. */
-export async function answerRoutes(page: Page, minutesLeft = 60): Promise<PlaygroundRoutes> {
-  const plan = getMessPlanForMode("light");
+/** A plan whose scene holds a node of every kind but the allowance, which needs a ninth scenario. */
+export const EVERY_KIND_PLAN: readonly MessStepDef[] = resolvePlan({
+  scenarios: [
+    { id: "lwdemo-holding", params: {} },
+    { id: "data-entries", params: { count: 2 } },
+    { id: "stale-offers", params: { count: 1 } },
+    { id: "forgotten-signer", params: {} },
+    {
+      id: "claimable-balances",
+      params: { add_trustline: 1, time_gated: 1, demo_sponsored: 1 },
+    },
+    { id: "sponsored-reserves", params: { variant: 1 } },
+    { id: "multisig", params: { variant: 0 } },
+    { id: "blend-supply", params: {} },
+  ],
+}).steps;
+
+/** Answers every playground route for a demo of `plan` (a light one by default) whose countdown
+ *  ends `minutesLeft` from now. */
+export async function answerRoutes(
+  page: Page,
+  minutesLeft = 60,
+  plan: readonly MessStepDef[] = getMessPlanForMode("light")
+): Promise<PlaygroundRoutes> {
   const unanswered: string[] = [];
   let done = 0;
   const replies = new Map<string, () => Reply>([

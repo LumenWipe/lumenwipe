@@ -565,6 +565,20 @@ const toggle = (label: string, on: boolean) => ({
   choices: ON_OFF,
 });
 
+const CLAIM_NODE_NOTE: Record<ClaimableBalanceSpec["intent"], string> = {
+  claim: "",
+  add_trustline_then_claim: ", needs a trustline",
+  forfeit: ", locked two hours",
+  demo_sponsored: ", created by the demo",
+};
+
+/** lib/scene-actions.ts reads the intent back from the id to tell which balances a close claims. */
+const claimableNode = (balance: ClaimableBalanceSpec, index: number): SceneNodeSpec => ({
+  id: `cb:${balance.intent}:${index}`,
+  kind: "claimable",
+  label: `${balance.asset === "native" ? "XLM" : balance.asset}${CLAIM_NODE_NOTE[balance.intent]}`,
+});
+
 const claimableBalances: ScenarioDefinition = {
   id: "claimable-balances",
   featureSet: "classic",
@@ -607,7 +621,7 @@ const claimableBalances: ScenarioDefinition = {
         step: {
           id: "CLAIMABLE_BALANCES",
           label: `Leave ${balances.length} claimable ${plural(balances.length, "balance", "balances")}`,
-          nodes: [],
+          nodes: balances.map(claimableNode),
           balances: [],
           action: {
             kind: "claimable_balances",
@@ -706,7 +720,10 @@ const sponsoredReserves: ScenarioDefinition = {
               offer: { selling: SPONSORED_OFFER.selling, buying: SPONSORED_OFFER.buying },
             },
           ]
-        : [],
+        : [
+            { id: "sponsorship:trustline", kind: "sponsorship", label: "PERK trustline" },
+            { id: "sponsorship:data", kind: "sponsorship", label: dataEntry.key },
+          ],
       balances: [],
       action: { kind: "sponsored_entries", variant, asset: "PERK", dataEntry, helperFundingXlm },
     };
@@ -762,16 +779,16 @@ const sponsoredReserves: ScenarioDefinition = {
 const MULTISIG_VARIANTS: readonly MultisigVariant[] = ["two_of_three", "hash_x", "pre_auth"];
 
 const COSIGNER_NODES: SceneNodeSpec[] = [
-  { id: "signer:cosigner:1", kind: "signer", label: "Co-signer 1" },
-  { id: "signer:cosigner:2", kind: "signer", label: "Co-signer 2" },
+  { id: "signer:cosigner:1", kind: "multisig", label: "Co-signer 1" },
+  { id: "signer:cosigner:2", kind: "multisig", label: "Co-signer 2" },
 ];
 
 const MULTISIG_NODES: Record<MultisigVariant, SceneNodeSpec[]> = {
   two_of_three: COSIGNER_NODES,
-  hash_x: [{ id: "signer:hashx", kind: "signer", label: "hash(x) signer" }],
+  hash_x: [{ id: "signer:hashx", kind: "multisig", label: "hash(x) signer" }],
   pre_auth: [
     ...COSIGNER_NODES,
-    { id: "signer:preauth", kind: "signer", label: "Dormant pre-authorized transaction" },
+    { id: "signer:preauth", kind: "multisig", label: "Dormant pre-authorized transaction" },
   ],
 };
 

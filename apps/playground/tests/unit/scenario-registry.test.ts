@@ -195,7 +195,22 @@ describe.each(SCENARIOS.map((def) => [def.id, def] as const))("%s", (_id, def) =
       expect(count("trustline")).toBe(expectation.assets.length + actions("pinned_trust"));
       expect(count("offer")).toBe(expectation.offers);
       expect(count("data")).toBe(expectation.dataEntries);
-      expect(count("signer")).toBe(expectation.signers);
+      expect(count("signer") + count("multisig")).toBe(expectation.signers);
+      expect(count("multisig")).toBe(
+        build.steps.filter(({ step }) => step.action.kind === "multisig").length > 0
+          ? expectation.signers
+          : 0
+      );
+      // One node per claimable balance the demo leaves or creates, and one per entry of another
+      // account whose reserve the demo pays.
+      expect(count("claimable")).toBe(
+        build.steps.reduce(
+          (n, { step }) =>
+            n + (step.action.kind === "claimable_balances" ? step.action.balances.length : 0),
+          0
+        )
+      );
+      expect(count("sponsorship")).toBe(expectation.sponsoredEntries.length);
       // One position per deposit, and its exit is a close transaction of its own. Phoenix's swap
       // and bond only lead to or change the position its deposit opens.
       expect(count("position")).toBe(

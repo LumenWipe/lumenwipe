@@ -1,19 +1,10 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import {
-  usePlaygroundStore,
-  type PlaygroundAccounts,
-  type SceneNode,
-  type SceneNodeKind,
-} from "@/store/playground";
-import { operationToSceneAction } from "@/lib/scene-actions";
-import {
-  SCENE_NODE_KINDS,
-  messProgress,
-  type MessStepDef,
-  type SceneNodeSpec,
-} from "@/lib/scenarios";
+import { usePlaygroundStore, type PlaygroundAccounts } from "@/store/playground";
+import { nodesResolvedBy, operationToSceneAction } from "@/lib/scene-actions";
+import { buildSceneNode } from "@/lib/scene-model";
+import { messProgress, type MessStepDef } from "@/lib/scenarios";
 import type { AccountState, IntentOperation } from "@lumenwipe/sdk";
 import { GENERIC_ERROR_COPY } from "@/lib/error-copy";
 import { lockedReserveXlm } from "@/lib/account-summary";
@@ -77,61 +68,6 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 export function api<T>(path: string, init?: RequestInit): Promise<T> {
   return playgroundRequest<T>(fetch, path, init);
-}
-
-// Orbit radius/duration by node kind - adapted from the deleted
-// `lib/playground/scene-nodes.ts` (git show f416924^:apps/web/lib/playground/scene-nodes.ts),
-// inlined here since it was a small, single-purpose helper with no other
-// callers. One ring per kind is what OrbitalScene's five RING_FRACTIONS guide
-// rings visually group by - keep these two in sync.
-//
-// Radii pushed out from the original's 95/135/175/215: CoreAccount grows up
-// to 144px (h-36) plus a 60px glow at the lg breakpoint, and a labeled node
-// pill reaches into its own orbit radius, so the original inner rings left
-// the innermost nodes (especially signer, the smallest ring) overlapping the
-// core account's glow at wider viewports.
-const RING: Record<SceneNodeKind, { radius: number; durationSec: number }> = {
-  signer: { radius: 150, durationSec: 26 },
-  trustline: { radius: 180, durationSec: 34 },
-  data: { radius: 210, durationSec: 44 },
-  offer: { radius: 240, durationSec: 56 },
-  // A protocol position orbits outside the account's own entries: it lives in a contract.
-  position: { radius: 265, durationSec: 64 },
-  // An allowance also lives in a contract, the token's: it shares the positions' ring.
-  allowance: { radius: 265, durationSec: 72 },
-  // Shares the outer guide ring: OrbitalScene draws one ring per planned kind.
-  generic: { radius: 240, durationSec: 48 },
-};
-
-const GOLDEN_ANGLE = 137.5;
-
-const sceneKind = (kind: string): SceneNodeKind =>
-  SCENE_NODE_KINDS.find((k) => k === kind) ?? "generic";
-
-/** A plan's node spec as the scene draws it. A kind this client does not know renders as a generic
- *  node rather than failing the run, which would strand a funded account. */
-export function buildSceneNode(
-  spec: Omit<SceneNodeSpec, "kind"> & { kind: string },
-  seq: number
-): SceneNode {
-  const { id, label } = spec;
-  const kind = sceneKind(spec.kind);
-  const ring = RING[kind];
-  return {
-    id,
-    kind,
-    label,
-    balance: null,
-    status: "incoming",
-    txHash: null,
-    orbit: {
-      radius: ring.radius,
-      durationSec: ring.durationSec + (seq % 3) * 4,
-      phaseDeg: (seq * GOLDEN_ANGLE) % 360,
-    },
-    offer: spec.offer ?? null,
-    offerId: null,
-  };
 }
 
 /** Sets the displayed balance on the already-docked nodes a mess step funds. */
@@ -429,6 +365,9 @@ export function usePlaygroundExecution(): UsePlaygroundExecutionResult {
           method: "POST",
           body: JSON.stringify({ blocker }),
         });
+        const store = usePlaygroundStore.getState();
+        const live = store.nodes.filter((n) => n.status !== "destroyed");
+        store.destroyNodes(nodesResolvedBy(blocker, live), null);
       } catch (err) {
         setProgressStatus(null);
         fail(err);
