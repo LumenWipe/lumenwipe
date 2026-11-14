@@ -7,6 +7,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -100,6 +101,16 @@ describe("the store on disk", () => {
     await devFileKv(file).set("a", 1, 60);
     expect(mode(dir)).toBe(0o700);
     expect(mode(file)).toBe(0o600);
+  });
+
+  test("a store directory that is a symbolic link is refused, and nothing lands at its target", async () => {
+    const target = join(root, "elsewhere");
+    mkdirSync(target, { mode: 0o755 });
+    chmodSync(target, 0o755);
+    symlinkSync(target, dir, "dir");
+    await expect(devFileKv(file).set("a", 1, 60)).rejects.toThrow(/symbolic link/);
+    expect(readdirSync(target)).toEqual([]);
+    expect(mode(target)).toBe(0o755);
   });
 
   test("a write leaves no temporary file behind", async () => {
