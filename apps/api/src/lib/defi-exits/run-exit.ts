@@ -15,8 +15,12 @@ import {
   TX_TIMEOUT_SECONDS,
 } from "@/config/constants";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
-import { isRegistryFresh, resolveWasmHash, type ContractResolution } from "@/lib/contract-registry";
-import { readLiveWasmHash, type LedgerEntriesReader } from "@/lib/stellar/contract-instance";
+import { isRegistryFresh, resolveCode, type ContractResolution } from "@/lib/contract-registry";
+import {
+  readLiveCodeIdentity,
+  type CodeIdentity,
+  type LedgerEntriesReader,
+} from "@/lib/stellar/contract-instance";
 import {
   MIN_RECEIVED_REQUIRED,
   type BuiltExitStep,
@@ -45,9 +49,12 @@ import {
 export interface ExitRunDeps {
   rpc: ExitRpc;
   /** Overridable so the harness can run an adapter against a fixture registry. */
-  resolveWasmHash?: typeof resolveWasmHash;
+  resolveCode?: typeof resolveCode;
   isRegistryFresh?: typeof isRegistryFresh;
-  readLiveWasmHash?: (rpc: LedgerEntriesReader, contract: string) => Promise<string | null>;
+  readLiveCodeIdentity?: (
+    rpc: LedgerEntriesReader,
+    contract: string
+  ) => Promise<CodeIdentity | null>;
 }
 
 export interface ExitSimulation {
@@ -182,8 +189,8 @@ export async function runExitAdapter<P extends DefiPosition, L>(
       `${adapter.protocol} exit adapter cannot handle a ${protocol} ${position.positionType} position`
     );
   }
-  const readHash = deps.readLiveWasmHash ?? readLiveWasmHash;
-  const resolve = deps.resolveWasmHash ?? resolveWasmHash;
+  const readCode = deps.readLiveCodeIdentity ?? readLiveCodeIdentity;
+  const resolve = deps.resolveCode ?? resolveCode;
   const fresh = deps.isRegistryFresh ?? isRegistryFresh;
 
   // 1. A registry past its verification window vouches for nothing.
@@ -211,9 +218,9 @@ export async function runExitAdapter<P extends DefiPosition, L>(
     blockers: PlanBlocker[];
     leaveEligible: boolean;
   }> => {
-    let liveHash: string | null;
+    let liveCode: CodeIdentity | null;
     try {
-      liveHash = await readHash(deps.rpc, address);
+      liveCode = await readCode(deps.rpc, address);
     } catch {
       return {
         resolution: null,
@@ -227,7 +234,7 @@ export async function runExitAdapter<P extends DefiPosition, L>(
         leaveEligible: false,
       };
     }
-    if (liveHash === null) {
+    if (liveCode === null) {
       return {
         resolution: null,
         blockers: [
@@ -241,7 +248,7 @@ export async function runExitAdapter<P extends DefiPosition, L>(
         leaveEligible: true,
       };
     }
-    const resolution = resolve(ctx.network, liveHash);
+    const resolution = resolve(ctx.network, liveCode);
     if (resolution.status === "unknown") {
       return {
         resolution,

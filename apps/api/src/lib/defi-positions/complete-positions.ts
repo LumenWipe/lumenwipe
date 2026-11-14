@@ -10,9 +10,16 @@ import type {
 } from "@lumenwipe/types";
 import { Logger } from "@nestjs/common";
 import { Address, Contract, StrKey, scValToNative, xdr } from "@stellar/stellar-sdk";
-import { resolveWasmHash, type ContractResolution } from "@/lib/contract-registry";
+import { resolveCode, type ContractResolution } from "@/lib/contract-registry";
 import { withTimeout } from "@/lib/utils/with-timeout";
-import type { LedgerEntriesReader } from "@/lib/stellar/contract-instance";
+import {
+  batchReaderOf,
+  codeRefOf,
+  resolveCodeRefs,
+  type CodeIdentity,
+  type CodeRef,
+  type LedgerEntriesReader,
+} from "@/lib/stellar/contract-instance";
 import { getRpcServer } from "@/lib/stellar/rpc";
 import { phoenixConfigKey, phoenixShareToken } from "@/lib/defi-exits/phoenix";
 import { contractAddressOf, contractDataKey, instanceOfEntry } from "@/lib/stellar/contract-data";
@@ -43,7 +50,7 @@ import { contractAddressOf, contractDataKey, instanceOfEntry } from "@/lib/stell
 
 export interface CompletePositionsDeps {
   rpc: LedgerEntriesReader;
-  resolveWasmHash(network: Network, wasmHash: string): ContractResolution;
+  resolveCode(network: Network, code: CodeIdentity): ContractResolution;
 }
 
 /** No more contracts than this are read per analysis; the rest stay as reported. */
@@ -54,17 +61,15 @@ export const COMPLETION_TIMEOUT_MS = 8_000;
 const logger = new Logger("complete-positions");
 
 interface Instance {
-  wasmHash: string | null;
+  code: CodeIdentity | null;
   storage: Map<string, xdr.ScVal>;
 }
 
-function parseInstance(val: xdr.LedgerEntryData): Instance {
+function parseInstance(val: xdr.LedgerEntryData): {
+  ref: CodeRef | null;
+  storage: Instance["storage"];
+} {
   const instance = instanceOfEntry(val);
-  const executable = instance.executable;
-  const wasmHash =
-    executable.type === "contractExecutableWasm"
-      ? Buffer.from(executable.wasmHash.toBytes()).toString("hex")
-      : null;
   const storage = new Map<string, xdr.ScVal>();
   for (const entry of instance.storage ?? []) {
     try {
@@ -74,7 +79,7 @@ function parseInstance(val: xdr.LedgerEntryData): Instance {
       continue;
     }
   }
-  return { wasmHash, storage };
+  return { ref: codeRefOf(instance), storage };
 }
 
 /** At least two distinct token contracts, or nothing: a pool of one token is not a pool. */
@@ -101,8 +106,8 @@ function known(
   network: Network,
   deps: CompletePositionsDeps
 ): Extract<ContractResolution, { status: "known" }> | null {
-  if (!instance.wasmHash) return null;
-  const resolved = deps.resolveWasmHash(network, instance.wasmHash);
+  if (!instance.code) return null;
+  const resolved = deps.resolveCode(network, instance.code);
   return resolved.status === "known" ? resolved : null;
 }
 
@@ -180,7 +185,7 @@ function incomplete(position: DefiPosition): boolean {
 }
 
 export function defaultCompletePositionsDeps(network: Network): CompletePositionsDeps {
-  return { rpc: getRpcServer(network), resolveWasmHash };
+  return { rpc: getRpcServer(network), resolveCode };
 }
 
 /**
@@ -213,6 +218,7 @@ export async function completePositionsFromLedger(
       .filter((p) => p.protocol === "phoenix" && contracts.includes(p.contractAddress))
       .map((p) => p.contractAddress)
   );
+  const parsed = new Map<string, ReturnType<typeof parseInstance>>();
   const instances = new Map<string, Instance>();
   const configs = new Map<string, xdr.LedgerEntryData>();
   try {
@@ -230,7 +236,7 @@ export async function completePositionsFromLedger(
         const key = contractDataKey(entry.key);
         const contract = Address.fromScAddress(key.contract).toString();
         if (key.key.type === "scvLedgerKeyContractInstance") {
-          instances.set(contract, parseInstance(entry.val));
+          parsed.set(contract, parseInstance(entry.val));
         } else if (entry.key.toXdr("base64") === phoenixConfigKey(contract).toXdr("base64")) {
           configs.set(contract, entry.val);
         }
@@ -238,6 +244,18 @@ export async function completePositionsFromLedger(
         // An entry that is neither an instance nor a pool's config is not one we asked for.
       }
     }
+    const read = [...parsed];
+    const codes = await withTimeout(
+      resolveCodeRefs(
+        batchReaderOf(deps.rpc),
+        read.map(([, p]) => p.ref)
+      ),
+      COMPLETION_TIMEOUT_MS,
+      "timed out"
+    );
+    read.forEach(([contract, p], i) =>
+      instances.set(contract, { code: codes[i] ?? null, storage: p.storage })
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logger.warn(

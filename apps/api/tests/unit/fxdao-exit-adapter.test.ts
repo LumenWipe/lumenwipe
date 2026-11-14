@@ -194,7 +194,7 @@ async function run(over: Partial<FakeFxdaoOptions> = {}, ctxOver: Partial<typeof
     adapter,
     position,
     { ...ctx, ...ctxOver },
-    { rpc: rpc(over), resolveWasmHash: KNOWN.resolveWasmHash, isRegistryFresh: () => true }
+    { rpc: rpc(over), resolveCode: KNOWN.resolveCode, isRegistryFresh: () => true }
   );
 }
 
@@ -228,7 +228,7 @@ describe("fxdao exit adapter", () => {
     const windDown = registry([entry({ version: "wind-down" })]);
     const result = await runExitAdapter(adapter, position, ctx, {
       rpc: counting,
-      resolveWasmHash: windDown.resolveWasmHash,
+      resolveCode: windDown.resolveCode,
       isRegistryFresh: () => true,
     });
     expect(result.next).toBeNull();
@@ -352,7 +352,7 @@ describe("the exit round repays from the account's ledger-confirmed Soroban toke
     runExitAdapter: ((a, p, c, d) =>
       runExitAdapter(a, p, c, {
         ...d,
-        resolveWasmHash: KNOWN.resolveWasmHash,
+        resolveCode: KNOWN.resolveCode,
         isRegistryFresh: () => true,
       })) as typeof runExitAdapter,
   };

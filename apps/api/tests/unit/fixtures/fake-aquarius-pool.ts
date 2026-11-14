@@ -17,10 +17,12 @@ import {
 import type { ExitRpc } from "@/lib/defi-exits";
 import { v1Transaction } from "../../support/v1-transaction";
 
-export const AQ_CONSTANT_HASH = "d691135aade93ff0f7c229e009cde042130a05124cf7202b03d11246b4f9b473";
-export const AQ_STABLE_HASH = "22dff7242d2bc0ea4a4727b4b2cac33b188304d5945740ad24d8a33a5d22741e";
+export const AQ_CONSTANT_HASH = "70476939e1ce8b4f7d6898d7a1403bd0752ba0535ad6c4aea3c4b500ad4715e0";
+export const AQ_STABLE_HASH = "278f6f02d18ea4fcee8ecb208a5e2ea5ad8e81ff2a1015574161d44c6f325558";
 export const AQ_CONCENTRATED_HASH =
-  "155a17b9929ffb1f9e84bd6ef5c00a4d613c1ab5f4ad4c502d84515250cc2907";
+  "b3092d4560a24fd45c143295655846da66d49abad34d15f9613241b6256689d5";
+/** The testnet shared-release owner whose tags name every pool's code (CAP-85). */
+export const AQ_RELEASE_OWNER = "CDD3G6M2JSJLXBYLY4N6WLWVU2LB5UGPSKFO5ZV4M6BMYQY555Q6FA46";
 export const POOL = "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI";
 export const SHARE_TOKEN = "CAN7DMIQH7FGKNYCUQMWECJJ74EKN5JATVVUOVTXOWLQGZCWAFWANG5P";
 /** XLM's Stellar Asset Contract on testnet. */
@@ -54,7 +56,14 @@ export interface FakeAquariusOptions {
   claimKilled?: boolean;
   /** Which tokens are Stellar Asset Contracts; the rest are wasm tokens. */
   stellarAssets?: string[];
+  /** The hash the pool's tag entry names (or, with `poolCode: "wasm"`, the instance carries). */
   poolHash?: string;
+  /** Live testnet pools take their code from a release owner's tag; "wasm" carries it inline. */
+  poolCode?: "external-ref" | "wasm";
+  poolOwner?: string;
+  poolTag?: string;
+  /** The owner's tag entry is absent from the ledger. */
+  poolTagMissing?: boolean;
   poolMissing?: boolean;
   simulation?: "ok" | "error" | "restore";
   /** Reward gauges whose `UserRewardData(account)` the simulation records as read-only. */
@@ -65,6 +74,13 @@ type Entry = { key: xdr.LedgerKey; val: xdr.LedgerEntryData };
 
 const wasm = (hex: string): xdr.ContractExecutable =>
   xdr.ContractExecutable.contractExecutableWasm(Buffer.from(hex, "hex"));
+const externalRef = (owner: string, tag: string): xdr.ContractExecutable =>
+  xdr.ContractExecutable.contractExecutableExternalRef(
+    new xdr.ContractExecutableExternalRef({
+      executableOwner: new Address(owner).toScAddress(),
+      tag,
+    })
+  );
 const sym = (s: string): xdr.ScVal => xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(s)]);
 const addr = (a: string): xdr.ScVal => new Address(a).toScVal();
 const u128 = (v: bigint): xdr.ScVal => nativeToScVal(v, { type: "u128" });
@@ -94,6 +110,24 @@ function instanceEntry(
     })
   );
   return { key, val };
+}
+
+function tagEntry(owner: string, tag: string, hash: string): Entry {
+  const key = xdr.ScVal.scvExecutableTag(tag);
+  const durability = xdr.ContractDataDurability.persistent;
+  const contract = new Address(owner).toScAddress();
+  return {
+    key: xdr.LedgerKey.contractData(new xdr.LedgerKeyContractData({ contract, key, durability })),
+    val: xdr.LedgerEntryData.contractData(
+      new xdr.ContractDataEntry({
+        ext: xdr.ExtensionPoint.v0(),
+        contract,
+        key,
+        durability,
+        val: xdr.ScVal.scvBytes(Buffer.from(hash, "hex")),
+      })
+    ),
+  };
 }
 
 function balanceEntry(token: string, account: string, amount: bigint): Entry {
@@ -259,8 +293,13 @@ export function fakeAquariusRpc(
             [sym("ReserveA"), u128(reserves[0]!)],
             [sym("ReserveB"), u128(reserves[1]!)],
           ];
+    const poolHash = options.poolHash ?? AQ_CONSTANT_HASH;
+    const owner = options.poolOwner ?? AQ_RELEASE_OWNER;
+    const tag = options.poolTag ?? "amm.constant";
+    const external = (options.poolCode ?? "external-ref") === "external-ref";
+    if (external && !options.poolTagMissing) entries.push(tagEntry(owner, tag, poolHash));
     entries.push(
-      instanceEntry(POOL, wasm(options.poolHash ?? AQ_CONSTANT_HASH), [
+      instanceEntry(POOL, external ? externalRef(owner, tag) : wasm(poolHash), [
         ...layout,
         [sym("TotalShares"), u128(options.totalShares ?? 1_000_000_000n)],
         [sym("TokenShare"), addr(SHARE_TOKEN)],

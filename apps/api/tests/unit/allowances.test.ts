@@ -500,3 +500,13 @@ test("the registry probe takes one entry per code, so pools listed by address do
     expect(probed.some((e) => e.protocol === protocol)).toBe(true);
   }
 });
+
+test("an executable owner is never probed as a spender: it only names other contracts' code", () => {
+  const owner = registryEntry({
+    protocol: "aquarius",
+    kind: "executable-owner",
+    address: OTHER_SPENDER,
+    wasmHash: "c".repeat(64),
+  });
+  expect(onePerCode([registryEntry(), owner])).toEqual([registryEntry()]);
+});

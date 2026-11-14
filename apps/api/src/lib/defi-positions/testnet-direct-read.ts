@@ -39,8 +39,18 @@
 import { UserBalance } from "@blend-capital/blend-sdk";
 import { Address, Contract, hash, nativeToScVal, scValToNative, xdr } from "@stellar/stellar-sdk";
 import { getRpcServer } from "@/lib/stellar/rpc";
-import type { LedgerEntriesReader } from "@/lib/stellar/contract-instance";
-import { entriesForNetwork, type ContractRegistryEntry } from "@/lib/contract-registry";
+import {
+  codeRefOf,
+  resolveCodeRefs,
+  type CodeIdentity,
+  type CodeRef,
+  type LedgerEntriesReader,
+} from "@/lib/stellar/contract-instance";
+import {
+  codeMatchesEntry,
+  entriesForNetwork,
+  type ContractRegistryEntry,
+} from "@/lib/contract-registry";
 import type {
   BlendBorrowPosition,
   BlendSupplyPosition,
@@ -224,17 +234,18 @@ function asBigInt(value: unknown): bigint | null {
  * a wasmHash mismatch (halt-on-unknown, same
  * invariant the exit adapters hold to).
  *
- * `liveWasmHash` is what the ledger returned for the entry's instance - null when the contract
- * does not exist or is not Wasm-backed, the same reading `readLiveWasmHash` gives - fetched for
- * every entry in one batched read by the entry point, so verifying the registry costs one round
- * trip rather than one per contract.
+ * `live` is the code the ledger returned for the entry's instance - null when the contract does
+ * not exist, is not Wasm-backed, or names code that cannot be resolved, the same reading
+ * `readLiveCodeIdentity` gives - fetched for every entry in one batched read of the instances and
+ * one of the external-reference tags, so verifying the registry costs two round trips at most
+ * rather than one per contract.
  */
 function verifyEntry(
   entry: ContractRegistryEntry,
-  liveWasmHash: string | null,
+  live: CodeIdentity | null,
   unrecognized: UnrecognizedDefiPosition[]
 ): boolean {
-  if (liveWasmHash === null) {
+  if (live === null) {
     // The registry already records this entry as absent from the network (verifiedLive: false:
     // documented by the protocol but not deployed). Still absent is the registry's fact, not
     // this account's, and flagging it would block every account on the network - so it is
@@ -252,15 +263,28 @@ function verifyEntry(
     unrecognized.push({
       protocol: entry.protocol,
       rawType: "registry-entry-unpinned",
-      reason: `registered ${entry.kind} contract ${entry.address} resolves on ${entry.network} (wasmHash ${liveWasmHash}) but the registry records no wasmHash to verify it against`,
+      reason: `registered ${entry.kind} contract ${entry.address} resolves on ${entry.network} (wasmHash ${live.wasmHash}) but the registry records no wasmHash to verify it against`,
     });
     return false;
   }
-  if (liveWasmHash !== entry.wasmHash) {
+  const liveReference = live.kind === "wasm" ? "its own Wasm" : `${live.owner} tag ${live.tag}`;
+  const pinnedReference =
+    entry.executableOwner === undefined
+      ? "its own Wasm"
+      : `${entry.executableOwner} tag ${entry.executableTag}`;
+  if (liveReference !== pinnedReference) {
+    unrecognized.push({
+      protocol: entry.protocol,
+      rawType: "executable-reference-mismatch",
+      reason: `registered ${entry.kind} contract ${entry.address} takes its code from ${liveReference}, not the registry's recorded ${pinnedReference}`,
+    });
+    return false;
+  }
+  if (!codeMatchesEntry(entry, live)) {
     unrecognized.push({
       protocol: entry.protocol,
       rawType: "wasmhash-mismatch",
-      reason: `registered ${entry.kind} contract ${entry.address} is running wasmHash ${liveWasmHash}, not the registry's recorded ${entry.wasmHash}`,
+      reason: `registered ${entry.kind} contract ${entry.address} is running wasmHash ${live.wasmHash}, not the registry's recorded ${entry.wasmHash}`,
     });
     return false;
   }
@@ -434,7 +458,8 @@ async function batchReadChunked(
 }
 
 interface ParsedInstance {
-  wasmHash: string | null;
+  /** The code the instance names, before an external reference is followed. */
+  ref: CodeRef | null;
   /** Instance storage by its key's native JSON form, e.g. '["TotalPairs"]' or '0'. */
   storage: Map<string, xdr.ScVal>;
 }
@@ -442,11 +467,6 @@ interface ParsedInstance {
 /** A contract instance entry as its code hash and storage. Pure: one entry in, no network. */
 function parseInstance(val: xdr.LedgerEntryData): ParsedInstance {
   const instance = instanceOfEntry(val);
-  const executable = instance.executable;
-  const wasmHash =
-    executable.type === "contractExecutableWasm"
-      ? Buffer.from(executable.wasmHash.toBytes()).toString("hex")
-      : null;
   const storage = new Map<string, xdr.ScVal>();
   for (const entry of instance.storage ?? []) {
     let name: unknown;
@@ -458,7 +478,15 @@ function parseInstance(val: xdr.LedgerEntryData): ParsedInstance {
     if (typeof name !== "string") continue;
     storage.set(name, entry.val);
   }
-  return { wasmHash, storage };
+  return { ref: codeRefOf(instance), storage };
+}
+
+/** The live code behind each instance, following external references in one batched read. */
+function resolveCodes(
+  rpc: LedgerReader,
+  refs: ReadonlyArray<CodeRef | null>
+): Promise<Array<CodeIdentity | null>> {
+  return resolveCodeRefs((keys) => batchReadChunked(rpc, keys), refs);
 }
 
 const instanceKey = (contractAddress: string): xdr.LedgerKey =>
@@ -543,27 +571,31 @@ async function readSoroswapFactoryPairs(
 
   const heldKeys = held.map(({ pair }) => instanceKey(pair));
   const instances = await batchReadChunked(rpc, heldKeys);
-  const knownPairHashes = new Set(
-    entries
-      .filter(
-        (e) => e.network === factory.network && e.protocol === "soroswap" && e.kind === "pair"
-      )
-      .map((e) => e.wasmHash)
+  const pairEntries = entries.filter(
+    (e) => e.network === factory.network && e.protocol === "soroswap" && e.kind === "pair"
+  );
+  const parsed = heldKeys.map((key) => {
+    const val = instances.get(key.toXdr("base64"));
+    return val ? parseInstance(val) : null;
+  });
+  const codes = await resolveCodes(
+    rpc,
+    parsed.map((p) => p?.ref ?? null)
   );
 
   const positions: DefiPosition[] = [];
   for (let i = 0; i < held.length; i++) {
     const { pair, shares } = held[i]!;
-    const val = instances.get(heldKeys[i]!.toXdr("base64"));
-    if (!val) {
+    const instance = parsed[i];
+    if (!instance) {
       flag(
         "pair-code-unknown",
         `Soroswap pair ${pair} holds ${shares} shares for this account but has no contract instance on the ledger`
       );
       continue;
     }
-    const instance = parseInstance(val);
-    if (instance.wasmHash === null || !knownPairHashes.has(instance.wasmHash)) {
+    const code = codes[i] ?? null;
+    if (code === null || !pairEntries.some((e) => codeMatchesEntry(e, code))) {
       flag(
         "pair-code-unknown",
         `Soroswap pair ${pair} holds ${shares} shares for this account but runs code the registry has not verified as a Soroswap pair`
@@ -576,7 +608,7 @@ async function readSoroswapFactoryPairs(
       protocol: "soroswap",
       positionType: "lp",
       contractAddress: pair,
-      wasmHash: instance.wasmHash,
+      wasmHash: code.wasmHash,
       shareAmount: shares.toString(),
       usdValue: null,
       ...(token0 && token1 ? { tokens: [token0, token1] as [string, string] } : {}),
@@ -644,7 +676,8 @@ function aquariusPoolAddress(val: xdr.ScVal): string | null {
 
 export interface AquariusPoolView {
   pool: string;
-  wasmHash: string | null;
+  /** The pool's live code; null when it cannot be resolved. */
+  code: CodeIdentity | null;
   /** The pool's tokens in the pool's own order; null when the instance does not list them whole. */
   tokens: string[] | null;
   shareToken: string | null;
@@ -743,15 +776,22 @@ export async function enumerateAquariusPools(
   const poolList = [...pools];
   const poolInstanceKeys = poolList.map((pool) => instanceKey(pool));
   const poolInstances = await batchReadChunked(rpc, poolInstanceKeys);
+  const parsed = poolInstanceKeys.map((key) => {
+    const val = poolInstances.get(key.toXdr("base64"));
+    return val ? parseInstance(val) : null;
+  });
+  const codes = await resolveCodes(
+    rpc,
+    parsed.map((p) => p?.ref ?? null)
+  );
   const views: AquariusPoolView[] = [];
   let poolInstancesMissing = 0;
   for (let i = 0; i < poolList.length; i++) {
-    const val = poolInstances.get(poolInstanceKeys[i]!.toXdr("base64"));
-    if (!val) {
+    const instance = parsed[i];
+    if (!instance) {
       poolInstancesMissing += 1;
       continue;
     }
-    const instance = parseInstance(val);
     const tokens = instance.storage.has('["Tokens"]')
       ? asAddressList(instance.storage.get('["Tokens"]'))
       : (() => {
@@ -761,7 +801,7 @@ export async function enumerateAquariusPools(
         })();
     views.push({
       pool: poolList[i]!,
-      wasmHash: instance.wasmHash,
+      code: codes[i] ?? null,
       tokens,
       shareToken: asAddress(instance.storage.get('["TokenShare"]')),
     });
@@ -796,7 +836,7 @@ async function readAquariusRouterPools(
   const flag = (rawType: string, reason: string): void => {
     unrecognized.push({ protocol: "aquarius", rawType, reason });
   };
-  const knownCodes = new Map<string, AquariusPoolType>();
+  const knownCodes: Array<{ entry: ContractRegistryEntry; type: AquariusPoolType }> = [];
   for (const e of entries) {
     if (e.network !== router.network || e.protocol !== "aquarius" || e.kind !== "pool") continue;
     const type = aquariusPoolType(e.version);
@@ -807,7 +847,7 @@ async function readAquariusRouterPools(
       );
       continue;
     }
-    if (e.wasmHash) knownCodes.set(e.wasmHash, type);
+    knownCodes.push({ entry: e, type });
   }
 
   const views = await enumerateAquariusPools(rpc, router, flag);
@@ -817,7 +857,10 @@ async function readAquariusRouterPools(
     AquariusPoolView & { shareToken: string; type: AquariusPoolType | undefined }
   > = [];
   for (const view of views) {
-    const type = view.wasmHash ? knownCodes.get(view.wasmHash) : undefined;
+    const code = view.code;
+    const type = code
+      ? knownCodes.find(({ entry }) => codeMatchesEntry(entry, code))?.type
+      : undefined;
     if (type === "concentrated") continue;
     if (!view.shareToken) {
       // A share-based pool always names its share token. Without one, and without a verified
@@ -854,7 +897,7 @@ async function readAquariusRouterPools(
       protocol: "aquarius",
       positionType: "lp",
       contractAddress: view.pool,
-      wasmHash: view.wasmHash ?? undefined,
+      wasmHash: view.code?.wasmHash,
       shareAmount: shares.toString(),
       usdValue: null,
       shareToken: view.shareToken,
@@ -1017,13 +1060,14 @@ async function readEntry(
   rpc: LedgerReader,
   entry: ContractRegistryEntry,
   instance: xdr.LedgerEntryData | undefined,
+  liveCode: CodeIdentity | null,
   entries: ContractRegistryEntry[],
   address: string,
   verifiedStakes: ReadonlySet<string>
 ): Promise<EntryOutcome> {
   const positions: DefiPosition[] = [];
   const unrecognized: UnrecognizedDefiPosition[] = [];
-  if (!verifyEntry(entry, liveWasmHashOf(instance), unrecognized) || !instance) {
+  if (!verifyEntry(entry, liveCode, unrecognized) || !instance) {
     return { positions, unrecognized };
   }
 
@@ -1053,7 +1097,9 @@ async function readEntry(
  * Which registry entries this read probes. Two reference contracts ARE probed, because they
  * enumerate the positions' contracts: the Soroswap factory (pairs) and the Aquarius router
  * (pools). Every other factory/router is skipped, and so are pair and Aquarius pool entries:
- * those stand for their code and are never read for balances themselves.
+ * those stand for their code and are never read for balances themselves. An `executable-owner`
+ * is probed only to verify its code: it decides what code every pool referencing it runs, so a
+ * change to it halts the read like a router change does.
  */
 function probedEntries(entries: ContractRegistryEntry[]): ContractRegistryEntry[] {
   return entries.filter((entry) => {
@@ -1069,12 +1115,6 @@ function probedEntries(entries: ContractRegistryEntry[]): ContractRegistryEntry[
     if (entry.kind === "pair" || aquariusPool) return false;
     return true;
   });
-}
-
-/** The live code hash in an instance entry: null when absent or not Wasm-backed (a Stellar
- *  Asset Contract has no code of its own) - the same reading `readLiveWasmHash` gives. */
-function liveWasmHashOf(val: xdr.LedgerEntryData | undefined): string | null {
-  return val ? parseInstance(val).wasmHash : null;
 }
 
 export async function detectDefiPositionsViaDirectRead(
@@ -1093,20 +1133,32 @@ export async function detectDefiPositionsViaDirectRead(
   const instances = await batchReadChunked(rpc, instanceKeys);
   const instanceOf = (i: number): xdr.LedgerEntryData | undefined =>
     instances.get(instanceKeys[i]!.toXdr("base64"));
+  const liveCodes = await resolveCodes(
+    rpc,
+    probed.map((_, i) => {
+      const val = instanceOf(i);
+      return val ? parseInstance(val).ref : null;
+    })
+  );
+  const liveCodeOf = (i: number): CodeIdentity | null => liveCodes[i] ?? null;
   const verifiedStakes = new Set(
     probed
-      .filter(
-        (entry, i) =>
+      .filter((entry, i) => {
+        const code = liveCodeOf(i);
+        return (
           entry.network === network &&
           entry.protocol === "phoenix" &&
           entry.kind === "stake" &&
-          entry.wasmHash !== null &&
-          liveWasmHashOf(instanceOf(i)) === entry.wasmHash
-      )
+          code !== null &&
+          codeMatchesEntry(entry, code)
+        );
+      })
       .map((entry) => entry.address)
   );
   const outcomes = await Promise.all(
-    probed.map((entry, i) => readEntry(rpc, entry, instanceOf(i), entries, address, verifiedStakes))
+    probed.map((entry, i) =>
+      readEntry(rpc, entry, instanceOf(i), liveCodeOf(i), entries, address, verifiedStakes)
+    )
   );
   const positions = outcomes.flatMap((o) => o.positions);
   const unrecognized = outcomes.flatMap((o) => o.unrecognized);

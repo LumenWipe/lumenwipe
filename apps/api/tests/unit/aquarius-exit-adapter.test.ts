@@ -26,6 +26,7 @@ import {
   AQUA_SAC,
   AQ_CONCENTRATED_HASH,
   AQ_CONSTANT_HASH,
+  AQ_RELEASE_OWNER,
   AQ_STABLE_HASH,
   POOL,
   SHARE_TOKEN,
@@ -51,6 +52,8 @@ function entry(over: Partial<ContractRegistryEntry>): ContractRegistryEntry {
     kind: "pool",
     address: POOL,
     wasmHash: AQ_CONSTANT_HASH,
+    executableOwner: AQ_RELEASE_OWNER,
+    executableTag: "amm.constant",
     version: "constant_product",
     label: "test",
     verifiedLive: true,
@@ -75,11 +78,13 @@ const KNOWN = registry([
   entry({
     address: "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
     wasmHash: AQ_STABLE_HASH,
+    executableTag: "amm.stable",
     version: "stable",
   }),
   entry({
     address: "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
     wasmHash: AQ_CONCENTRATED_HASH,
+    executableTag: "amm.concentrated",
     version: "concentrated",
   }),
 ]);
@@ -168,7 +173,7 @@ async function run(over: Partial<FakeAquariusOptions> = {}, ctxOver: Partial<typ
     { ...ctx, ...ctxOver },
     {
       rpc: rpc(over),
-      resolveWasmHash: KNOWN.resolveWasmHash,
+      resolveCode: KNOWN.resolveCode,
       isRegistryFresh: () => true,
     }
   );
@@ -224,10 +229,12 @@ describe("aquarius exit adapter", () => {
   });
 
   test("a stableswap pool is read from its Tokens and Reserves vectors", async () => {
-    const stable = registry([entry({ wasmHash: AQ_STABLE_HASH, version: "stable" })]);
+    const stable = registry([
+      entry({ wasmHash: AQ_STABLE_HASH, executableTag: "amm.stable", version: "stable" }),
+    ]);
     const result = await runExitAdapter(adapter, position, ctx, {
-      rpc: rpc({ layout: "stable", poolHash: AQ_STABLE_HASH }),
-      resolveWasmHash: stable.resolveWasmHash,
+      rpc: rpc({ layout: "stable", poolHash: AQ_STABLE_HASH, poolTag: "amm.stable" }),
+      resolveCode: stable.resolveCode,
       isRegistryFresh: () => true,
     });
     expect(result.blockers).toEqual([]);
@@ -310,7 +317,7 @@ describe("aquarius exit adapter", () => {
       { ...ctx, tokenBalances: { [XLM_SAC]: "1", [AQUA_SAC]: "0" } },
       {
         rpc: rpc({ tokens: [XLM_SAC, AQUA_SAC], reward: 5n }),
-        resolveWasmHash: KNOWN.resolveWasmHash,
+        resolveCode: KNOWN.resolveCode,
         isRegistryFresh: () => true,
       }
     );
@@ -325,7 +332,7 @@ describe("aquarius exit adapter", () => {
       { ...ctx, tokenBalances: { [XLM_SAC]: "1", [AQUA_SAC]: "0" } },
       {
         rpc: rpc({ tokens: [XLM_SAC, SOROBAN_TOKEN], stellarAssets: [XLM_SAC, AQUA_SAC] }),
-        resolveWasmHash: KNOWN.resolveWasmHash,
+        resolveCode: KNOWN.resolveCode,
         isRegistryFresh: () => true,
       }
     );
@@ -335,8 +342,8 @@ describe("aquarius exit adapter", () => {
 
   test("a concentrated pool, and a contract registered as something other than a pool, are refused by name", async () => {
     const concentrated = await runExitAdapter(adapter, position, ctx, {
-      rpc: rpc({ poolHash: AQ_CONCENTRATED_HASH }),
-      resolveWasmHash: KNOWN.resolveWasmHash,
+      rpc: rpc({ poolHash: AQ_CONCENTRATED_HASH, poolTag: "amm.concentrated" }),
+      resolveCode: KNOWN.resolveCode,
       isRegistryFresh: () => true,
     });
     expect(concentrated.blockers.map((b) => b.code)).toEqual(["aquarius_pool_type_unsupported"]);
@@ -344,7 +351,7 @@ describe("aquarius exit adapter", () => {
     const asRouter = registry([entry({ kind: "router" })]);
     const notPool = await runExitAdapter(adapter, position, ctx, {
       rpc: rpc(),
-      resolveWasmHash: asRouter.resolveWasmHash,
+      resolveCode: asRouter.resolveCode,
       isRegistryFresh: () => true,
     });
     expect(notPool.blockers.map((b) => b.code)).toEqual(["aquarius_contract_not_pool"]);
@@ -353,6 +360,46 @@ describe("aquarius exit adapter", () => {
   test("a pool with no instance on the ledger is stopped by the registry gate", async () => {
     const result = await run({ poolMissing: true });
     expect(result.blockers.map((b) => b.code)).toEqual(["exit_contract_unresolvable"]);
+  });
+
+  describe("a pool on a shared release (CAP-85) passes the gate only as the registry pins it", () => {
+    const OTHER_OWNER = Address.contract(Buffer.alloc(32, 0x33)).toString();
+    const codes = async (over: Partial<FakeAquariusOptions>) =>
+      (await run(over)).blockers.map((b) => b.code);
+
+    test("the pinned owner and tag naming the pinned hash plans the exit", async () => {
+      expect(await codes({})).toEqual([]);
+    });
+
+    test("another owner's tag naming the same hash is unknown code", async () => {
+      expect(await codes({ poolOwner: OTHER_OWNER })).toEqual(["exit_unknown_contract_version"]);
+    });
+
+    test("another tag of the pinned owner naming the same hash is unknown code", async () => {
+      expect(await codes({ poolTag: "amm.stable" })).toEqual(["exit_unknown_contract_version"]);
+    });
+
+    test("the pinned tag repointed at other code is unknown code", async () => {
+      expect(await codes({ poolHash: "2".repeat(64) })).toEqual(["exit_unknown_contract_version"]);
+    });
+
+    test("a tag entry missing from the ledger leaves the pool's code unresolvable", async () => {
+      expect(await codes({ poolTagMissing: true })).toEqual(["exit_contract_unresolvable"]);
+    });
+
+    test("the pinned hash carried inline, without the pinned reference, is unknown code", async () => {
+      expect(await codes({ poolCode: "wasm" })).toEqual(["exit_unknown_contract_version"]);
+    });
+
+    test("a shared-release pool against an entry that pins no reference is unknown code", async () => {
+      const unpinned = registry([entry({ executableOwner: undefined, executableTag: undefined })]);
+      const result = await runExitAdapter(adapter, position, ctx, {
+        rpc: rpc(),
+        resolveCode: unpinned.resolveCode,
+        isRegistryFresh: () => true,
+      });
+      expect(result.blockers.map((b) => b.code)).toEqual(["exit_unknown_contract_version"]);
+    });
   });
 
   describe("footprint hardening: the account's reward keys are offered read-write", () => {

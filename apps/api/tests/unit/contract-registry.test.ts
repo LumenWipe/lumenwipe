@@ -5,12 +5,14 @@ import {
   entriesForProtocol,
   isRegistryFresh,
   isExitCapable,
-  resolveWasmHash,
+  resolveCode,
   servedContractRegistry,
   validateContractRegistry,
 } from "@/lib/contract-registry";
 import { FXDAO_REPAY_VERSION } from "@/lib/defi-exits/fxdao";
 import shippedRegistry from "@/config/contract-registry.json";
+import { StrKey } from "@stellar/stellar-sdk";
+import type { CodeIdentity } from "@/lib/stellar/contract-instance";
 
 const HASH_A = "a".repeat(64);
 const HASH_B = "b".repeat(64);
@@ -19,6 +21,8 @@ const ADDRESS = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
 const ADDRESS_2 = "CAIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRDB3V";
 
 type Raw = Record<string, unknown>;
+
+const wasm = (wasmHash: string): CodeIdentity => ({ kind: "wasm", wasmHash });
 
 function entry(overrides: Raw = {}): Raw {
   return {
@@ -136,7 +140,7 @@ test("filters entries by network and protocol", () => {
 test("resolves a shipped entry's recorded wasmHash to its protocol version", () => {
   const [firstBlend] = entriesForProtocol("testnet", "blend");
   if (!firstBlend?.wasmHash) throw new Error("expected a Blend entry with a hash");
-  expect(resolveWasmHash("testnet", firstBlend.wasmHash)).toEqual({
+  expect(resolveCode("testnet", wasm(firstBlend.wasmHash))).toEqual({
     status: "known",
     protocol: "blend",
     kind: firstBlend.kind,
@@ -146,7 +150,7 @@ test("resolves a shipped entry's recorded wasmHash to its protocol version", () 
 });
 
 test("an unregistered hash resolves to unknown, never to a guess", () => {
-  expect(resolveWasmHash("testnet", HASH_B)).toEqual({ status: "unknown", wasmHash: HASH_B });
+  expect(resolveCode("testnet", wasm(HASH_B))).toEqual({ status: "unknown", wasmHash: HASH_B });
 });
 
 test("the testnet FxDAO vault is our own reference redeploy of FxDAO's real code, not a guess", () => {
@@ -172,7 +176,7 @@ test("the mainnet FxDAO vault is pinned to its live code as a no-exit version, r
     verifiedLive: true,
   });
   expect(vault.verifiedBy).toContain("2026-11-08");
-  expect(resolveWasmHash("mainnet", vault.wasmHash!)).toEqual({
+  expect(resolveCode("mainnet", wasm(vault.wasmHash!))).toEqual({
     status: "known",
     protocol: "fxdao",
     kind: "vault",
@@ -210,9 +214,9 @@ test("resolves the xBull mainnet router by its live wasm hash", () => {
     })
   );
   expect(
-    lookup.resolveWasmHash(
+    lookup.resolveCode(
       "mainnet",
-      "c2b3ec57fbd45d5bade9df2ad30c464d1588cead18495a5ce327a98c45c02219"
+      wasm("c2b3ec57fbd45d5bade9df2ad30c464d1588cead18495a5ce327a98c45c02219")
     )
   ).toMatchObject({ status: "known", protocol: "xbull", kind: "router" });
 });
@@ -477,7 +481,7 @@ describe("createContractRegistryLookup", () => {
   );
 
   test("a registered hash resolves to its protocol version on the network it was verified for", () => {
-    expect(lookup.resolveWasmHash("testnet", HASH_A)).toEqual({
+    expect(lookup.resolveCode("testnet", wasm(HASH_A))).toEqual({
       status: "known",
       protocol: "blend",
       kind: "pool",
@@ -487,24 +491,24 @@ describe("createContractRegistryLookup", () => {
   });
 
   test("the same hash is unknown on a network nobody verified it for", () => {
-    expect(lookup.resolveWasmHash("mainnet", HASH_A)).toEqual({
+    expect(lookup.resolveCode("mainnet", wasm(HASH_A))).toEqual({
       status: "unknown",
       wasmHash: HASH_A,
     });
-    expect(lookup.resolveWasmHash("mainnet", HASH_B).status).toBe("known");
-    expect(lookup.resolveWasmHash("testnet", HASH_B).status).toBe("unknown");
+    expect(lookup.resolveCode("mainnet", wasm(HASH_B)).status).toBe("known");
+    expect(lookup.resolveCode("testnet", wasm(HASH_B)).status).toBe("unknown");
   });
 
   test("normalization maps a mixed-case, padded read onto the known entry", () => {
-    expect(lookup.resolveWasmHash("testnet", `  ${HASH_A.toUpperCase()}  `).status).toBe("known");
+    expect(lookup.resolveCode("testnet", wasm(`  ${HASH_A.toUpperCase()}  `)).status).toBe("known");
   });
 
   test("a non-string or malformed hash resolves to unknown rather than throwing mid-plan", () => {
-    expect(lookup.resolveWasmHash("testnet", undefined as unknown as string)).toEqual({
+    expect(lookup.resolveCode("testnet", wasm(undefined as unknown as string))).toEqual({
       status: "unknown",
       wasmHash: "",
     });
-    expect(lookup.resolveWasmHash("testnet", "not-a-hash").status).toBe("unknown");
+    expect(lookup.resolveCode("testnet", wasm("not-a-hash")).status).toBe("unknown");
   });
 
   test("entriesForNetwork and entriesForProtocol filter as named", () => {
@@ -517,5 +521,157 @@ describe("createContractRegistryLookup", () => {
   test("isRegistryFresh follows the fixture's own validUntil", () => {
     expect(lookup.isRegistryFresh(new Date("2026-12-01T12:00:00Z"))).toBe(true);
     expect(lookup.isRegistryFresh(new Date("2026-12-02T00:00:00Z"))).toBe(false);
+  });
+});
+
+// ─── CAP-85 external references ──────────────────────────────────────────────────────────────
+
+describe("an entry pinned to an external reference", () => {
+  const OWNER = StrKey.encodeContract(Buffer.alloc(32, 0x22));
+  const OTHER_OWNER = ADDRESS_2;
+  const pinned = (overrides: Raw = {}): Raw =>
+    entry({
+      protocol: "aquarius",
+      version: "constant_product",
+      label: "Aquarius pool on a shared release",
+      executableOwner: OWNER,
+      executableTag: "amm.constant",
+      ...overrides,
+    });
+  const ref = (owner: string, tag: string, wasmHash = HASH_A): CodeIdentity => ({
+    kind: "external-ref",
+    owner,
+    tag,
+    wasmHash,
+  });
+
+  test("validates with its owner, tag and the hash the tag names", () => {
+    expect(() => validateContractRegistry(wellFormed([pinned()]))).not.toThrow();
+    expect(() =>
+      validateContractRegistry(
+        wellFormed([
+          pinned(),
+          entry({
+            protocol: "aquarius",
+            kind: "executable-owner",
+            address: OWNER,
+            wasmHash: HASH_B,
+            version: "v1",
+            label: "release owner",
+          }),
+        ])
+      )
+    ).not.toThrow();
+  });
+
+  test("the release owner is verified like any entry but is never a contract an exit may touch", () => {
+    const registry = validateContractRegistry(
+      wellFormed([
+        entry({
+          protocol: "aquarius",
+          kind: "executable-owner",
+          address: OWNER,
+          version: "v1",
+          label: "release owner",
+        }),
+      ])
+    );
+    const owner = registry.entries[0]!;
+    expect(createContractRegistryLookup(registry).isExitCapable(owner)).toBe(false);
+  });
+
+  test("an owner without a tag, or a tag without an owner, is rejected", () => {
+    expectRejected(
+      wellFormed([pinned({ executableTag: undefined })]),
+      "entries[0] must set executableOwner and executableTag together"
+    );
+    expectRejected(
+      wellFormed([pinned({ executableOwner: undefined })]),
+      "entries[0] must set executableOwner and executableTag together"
+    );
+  });
+
+  test("the owner must be a checksummed contract and the pin needs a hash to compare against", () => {
+    expectRejected(
+      wellFormed([pinned({ executableOwner: "CNOTACONTRACT" })]),
+      "entries[0].executableOwner must be a valid C... contract address"
+    );
+    expectRejected(
+      wellFormed([pinned({ wasmHash: null, verifiedLive: false })]),
+      "entries[0].executableOwner needs the wasmHash its tag names"
+    );
+    expectRejected(
+      wellFormed([pinned({ executableTag: " " })]),
+      "entries[0].executableTag must be a non-empty string"
+    );
+  });
+
+  test("one hash pinned on one network and carried as plain Wasm on the same network is rejected", () => {
+    expectRejected(
+      wellFormed([
+        pinned(),
+        entry({ address: ADDRESS_2, protocol: "aquarius", version: "constant_product" }),
+      ]),
+      `wasmHash ${HASH_A} maps to conflicting executable references`
+    );
+  });
+
+  test("one hash pinned to two different references on the same network is rejected", () => {
+    expectRejected(
+      wellFormed([pinned(), pinned({ address: ADDRESS_2, executableTag: "amm.other" })]),
+      `wasmHash ${HASH_A} maps to conflicting executable references`
+    );
+    expectRejected(
+      wellFormed([pinned(), pinned({ address: ADDRESS_2, executableOwner: OTHER_OWNER })]),
+      `wasmHash ${HASH_A} maps to conflicting executable references`
+    );
+  });
+
+  test("the same hash may be pinned on one network and plain Wasm on another", () => {
+    expect(() =>
+      validateContractRegistry(
+        wellFormed([
+          pinned(),
+          entry({ network: "mainnet", protocol: "aquarius", version: "constant_product" }),
+        ])
+      )
+    ).not.toThrow();
+  });
+
+  describe("resolveCode", () => {
+    const lookup = createContractRegistryLookup(validateContractRegistry(wellFormed([pinned()])));
+
+    test("resolves the pinned owner and tag naming the pinned hash", () => {
+      expect(lookup.resolveCode("testnet", ref(OWNER, "amm.constant"))).toEqual({
+        status: "known",
+        protocol: "aquarius",
+        kind: "pool",
+        version: "constant_product",
+        wasmHash: HASH_A,
+      });
+    });
+
+    test("never falls back to a hash-only match: a wrong owner or tag is unknown", () => {
+      expect(lookup.resolveCode("testnet", ref(OTHER_OWNER, "amm.constant")).status).toBe(
+        "unknown"
+      );
+      expect(lookup.resolveCode("testnet", ref(OWNER, "amm.stable")).status).toBe("unknown");
+    });
+
+    test("the pinned reference resolving to another hash is unknown", () => {
+      expect(lookup.resolveCode("testnet", ref(OWNER, "amm.constant", HASH_B)).status).toBe(
+        "unknown"
+      );
+    });
+
+    test("the pinned hash carried by the instance itself is refused, not taken as the release", () => {
+      expect(lookup.resolveCode("testnet", wasm(HASH_A)).status).toBe("unknown");
+    });
+
+    test("an external reference to an unpinned entry's hash is refused", () => {
+      const plain = createContractRegistryLookup(validateContractRegistry(wellFormed([entry()])));
+      expect(plain.resolveCode("testnet", wasm(HASH_A)).status).toBe("known");
+      expect(plain.resolveCode("testnet", ref(OWNER, "amm.constant")).status).toBe("unknown");
+    });
   });
 });

@@ -178,7 +178,7 @@ async function run(
   const deps = fakeBlendDeps(state);
   const result = await runExitAdapter(blendExitAdapter(deps), position, context, {
     rpc: rpc(),
-    resolveWasmHash: registryLookup.resolveWasmHash,
+    resolveCode: registryLookup.resolveCode,
     isRegistryFresh: () => true,
   });
   return { result, deps };

@@ -73,7 +73,7 @@ test("mainnet returns the normalized OctoPos result untouched on success", async
 
   const result = await resolveDefiPositions(ADDRESS, "mainnet", {
     octopos: { baseUrl: OCTOPOS_BASE, fetch: octoposFetch },
-    complete: { rpc: mockRpc([]), resolveWasmHash: () => ({ status: "unknown", wasmHash: "" }) },
+    complete: { rpc: mockRpc([]), resolveCode: () => ({ status: "unknown", wasmHash: "" }) },
   });
 
   expect(result.network).toBe("mainnet");
@@ -114,7 +114,7 @@ test("mainnet completes an indexer's LP position from the pool's instance when t
           [vec("TokenShare"), addressVal(SHARE)],
         ]),
       ]),
-      resolveWasmHash: (_network, hash) =>
+      resolveCode: (_network, { wasmHash: hash }) =>
         hash === HASH
           ? {
               status: "known",
@@ -295,7 +295,7 @@ test("degradedFallbackCount does not increment on a normal OctoPos success", asy
 
   await resolveDefiPositions(ADDRESS, "mainnet", {
     octopos: { baseUrl: OCTOPOS_BASE, fetch: octoposFetch },
-    complete: { rpc: mockRpc([]), resolveWasmHash: () => ({ status: "unknown", wasmHash: "" }) },
+    complete: { rpc: mockRpc([]), resolveCode: () => ({ status: "unknown", wasmHash: "" }) },
   });
 
   expect(degradedFallbackCount()).toBe(0);

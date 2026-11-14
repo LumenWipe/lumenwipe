@@ -9,9 +9,17 @@ Two consumers read it:
 
 - The testnet detection fallback probes the listed contracts for an account's positions and
   confirms each is still running its recorded hash.
-- Exit adapters resolve a position's contract through `resolveWasmHash(network, hash)` before
-  building anything. An unknown hash flags the position for manual review and **builds nothing**
-  (§9.9). Resolution is scoped to the network an entry was verified on.
+- Exit adapters resolve a position's contract through `resolveCode(network, code)` before
+  building anything, where `code` is what `readLiveCodeIdentity` read from the ledger. An unknown
+  code flags the position for manual review and **builds nothing** (§9.9). Resolution is scoped to
+  the network an entry was verified on.
+
+A contract's code is its Wasm hash and how the instance reaches it. Most instances carry the hash
+themselves. A CAP-85 external reference instead names an owner contract and a tag, and the owner's
+persistent entry for that tag holds the hash; the owner can repoint the tag without touching the
+instance. Such an entry pins `executableOwner` and `executableTag` next to `wasmHash`, the hash
+is re-read from the owner on every resolution, and a match needs all three. Code carried by the
+instance never matches a pinned entry, and a reference never matches an entry that pins none.
 
 The registry is community-updated by pull request (§14). A protocol upgrade is a new entry here
 plus an adapter change, never a rewrite (§18).
@@ -26,23 +34,29 @@ plus an adapter change, never a rewrite (§18).
    - `network`: `mainnet` or `testnet` - the one network you verified this instance on
    - `protocol`: one of `blend`, `aquarius`, `soroswap`, `phoenix`, `fxdao`
    - `kind`: `pool`, `pair`, `backstop`, `stake`, `vault`, `factory`, `router`, `aggregator`, or
-     `adapter`. `stake` is a protocol's separate staking contract (Phoenix's `bond`/`unbond`
+     `adapter`, or `executable-owner`. `stake` is a protocol's separate staking contract (Phoenix's `bond`/`unbond`
      target) - registered like any other code-representative entry, resolved the same way a plan's
      other touched contracts are.
      `aggregator` and `adapter` are Soroswap's swap aggregator and the per-protocol adapters it
      dispatches to; a token conversion may invoke only those, the router, and the token itself
      (`soroswapConversionContracts`). A `pair` entry is one
      representative factory-deployed pair: every pair the factory deploys shares its code hash, so
-     one entry lets `resolveWasmHash` recognize all of them, and detection enumerates the pairs
+     one entry lets `resolveCode` recognize all of them, and detection enumerates the pairs
      themselves from the factory rather than from this file. Aquarius pools work the same way, one
      `pool` entry per pool code (`version`: `constant_product`, `stable`, `concentrated`), with the
      pools enumerated from the router; the entries stand for their code and are never read for
      balances themselves. Such code-representative entries are trusted at read time - the
      live integration test (`bun run test:integration`) is what re-checks that each still runs the
-     recorded hash
+     recorded hash. An `executable-owner` is the contract whose tags name other entries' code: it is
+     listed so detection verifies its own code on every read (it decides what every referencing
+     contract runs) and is never a contract an exit or a conversion may touch
    - `address`: the deployed contract (`C...`, checksum-validated)
    - `wasmHash`: 64 lowercase hex characters. `null` is allowed only with `verifiedLive: false`,
      for a contract the protocol documents but that does not currently resolve on-chain
+   - `executableOwner` and `executableTag` (together, only for an instance whose executable is a
+     CAP-85 external reference): the owner contract and tag it names; `wasmHash` is then the hash
+     the owner's tag entry holds. On one network a hash is either always carried by the instance
+     or always reached through one owner and tag; the validator rejects a mix
    - `version`: the protocol's own version name, e.g. `"v2"`
    - `label`: what this is, and any caveat (e.g. "reference only, not probed for balances")
    - `verifiedLive`: whether the address resolved on-chain when you checked
