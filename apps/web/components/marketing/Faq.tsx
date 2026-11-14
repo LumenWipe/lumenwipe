@@ -1,11 +1,16 @@
-"use client";
+import FaqAccordion, { type FaqItem } from "@/components/marketing/FaqAccordion";
+import {
+  feature,
+  LIVE_EXIT_PROTOCOLS,
+  listNames,
+  protocolsWithStatus,
+  testnetOnlySentence,
+} from "@/lib/site/status";
 
-import { useId, useState } from "react";
-import { ChevronDown } from "lucide-react";
+const TESTNET_ONLY_EXITS = protocolsWithStatus("testnet-only");
+const EXCHANGE_LIVE = feature("exchange-close").status === "live";
 
-type Item = { q: string; a: React.ReactNode };
-
-const ITEMS: Item[] = [
+export const ITEMS: readonly FaqItem[] = [
   {
     q: "Is LumenWipe really non-custodial?",
     a: (
@@ -44,12 +49,14 @@ const ITEMS: Item[] = [
     q: "Can I send the recovered XLM straight to an exchange?",
     a: (
       <>
-        Yes. Exchanges don&apos;t support{" "}
+        {EXCHANGE_LIVE ? "Yes." : "On testnet today."} Exchanges don&apos;t support{" "}
         <span className="mkt-mono text-white/80">ACCOUNT_MERGE</span>, so LumenWipe routes the final
         merge through a shared relay account in one atomic transaction and pays out to your deposit
-        address with the correct memo, so you recover essentially all of your XLM. Known exchanges
-        are validated against a registry that enforces the required memo type, so deposits
-        don&apos;t go missing.
+        address with the correct memo. Known exchanges are validated against a registry that
+        enforces the required memo type, so deposits don&apos;t go missing.
+        {EXCHANGE_LIVE
+          ? ""
+          : " On mainnet, the plan blocks an exchange close until the relay account is deployed there, so close to a wallet you control instead."}
       </>
     ),
   },
@@ -57,10 +64,19 @@ const ITEMS: Item[] = [
     q: "Does it handle Soroban DeFi positions?",
     a: (
       <>
-        This is where LumenWipe goes furthest. It detects and exits positions across{" "}
-        <span className="text-white/80">Blend, Aquarius, Soroswap, Phoenix and FxDAO</span>, on top
-        of classic DEX offers and AMM pools, using OctoPos for position detection. The full classic
-        close is live today; complete DeFi coverage is on the way.
+        Yes. LumenWipe detects positions through OctoPos and exits them in{" "}
+        <span className="text-white/80">{listNames(LIVE_EXIT_PROTOCOLS)}</span> on mainnet
+        {TESTNET_ONLY_EXITS.length > 0 && (
+          <>
+            ;{" "}
+            <span data-site-status="testnet-only">
+              <span className="text-white/80">{listNames(TESTNET_ONLY_EXITS)}</span> exits run on
+              testnet only
+            </span>
+          </>
+        )}
+        . Classic order-book offers are cancelled as part of every close. Classic AMM pool shares
+        are not unwound: they are reported as a blocker, so withdraw them with another tool first.
       </>
     ),
   },
@@ -97,63 +113,15 @@ const ITEMS: Item[] = [
     a: (
       <>
         Both. Run the entire flow on testnet with no real funds at risk to see exactly what will
-        happen, then switch to mainnet for the real close. Closing an account on mainnet is
-        irreversible and entirely at your own risk: review each step, the simulation result, and the
-        destination address before you sign anything.
+        happen, then switch to mainnet for the real close.{" "}
+        <span data-site-status="testnet-only">{testnetOnlySentence()}</span> Closing an account on
+        mainnet is irreversible and entirely at your own risk: review each step, the simulation
+        result, and the destination address before you sign anything.
       </>
     ),
   },
 ];
 
 export default function Faq() {
-  const [open, setOpen] = useState<number | null>(0);
-  const baseId = useId();
-
-  return (
-    <div className="divide-y divide-white/8 overflow-hidden rounded-2xl border border-white/10 bg-surface/60">
-      {ITEMS.map((item, i) => {
-        const isOpen = open === i;
-        return (
-          <div key={item.q}>
-            <button
-              type="button"
-              id={`${baseId}-${i}-header`}
-              aria-controls={`${baseId}-${i}-panel`}
-              onClick={() => setOpen(isOpen ? null : i)}
-              aria-expanded={isOpen}
-              className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-white/[0.02] focus-visible:-outline-offset-2 sm:px-6 sm:py-5"
-            >
-              <span
-                className={`text-body font-medium transition-colors ${
-                  isOpen ? "text-white" : "text-white/80"
-                }`}
-              >
-                {item.q}
-              </span>
-              <ChevronDown
-                className={`h-4 w-4 shrink-0 text-accent transition-transform duration-300 ${
-                  isOpen ? "rotate-180" : ""
-                }`}
-              />
-            </button>
-            <div
-              id={`${baseId}-${i}-panel`}
-              role="region"
-              aria-labelledby={`${baseId}-${i}-header`}
-              inert={!isOpen}
-              className={`grid transition-all duration-300 ease-out ${
-                isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
-              }`}
-            >
-              <div className="overflow-hidden">
-                <p className="px-5 pb-5 pr-10 text-sm leading-relaxed text-white/85 sm:px-6 sm:pb-6">
-                  {item.a}
-                </p>
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
+  return <FaqAccordion items={ITEMS} />;
 }

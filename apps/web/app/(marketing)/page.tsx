@@ -1,15 +1,45 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, Check, RefreshCw, Building2, Layers, Eye, ScanLine } from "lucide-react";
+import {
+  ArrowRight,
+  Check,
+  RefreshCw,
+  Building2,
+  Layers,
+  Eye,
+  ScanLine,
+  type LucideIcon,
+} from "lucide-react";
 import Faq from "@/components/marketing/Faq";
 import Reveal from "@/components/marketing/Reveal";
 import HeroConsole from "@/components/marketing/HeroConsole";
 import HeroAccountInput from "@/components/marketing/HeroAccountInput";
+import {
+  feature,
+  LIVE_EXIT_PROTOCOLS,
+  listNames,
+  protocolsWithStatus,
+  STATUS_LABEL,
+  type FeatureId,
+} from "@/lib/site/status";
 
 export const metadata: Metadata = {
   title: "LumenWipe: Recover the XLM locked in your Stellar account",
-  description:
-    "LumenWipe closes any Stellar account end to end and recovers the XLM locked in its reserves. Unwind trustlines, offers, data entries and Soroban DeFi positions, then merge out to your wallet or exchange. Non-custodial, open source.",
+  description: `LumenWipe closes a Stellar account end to end and recovers the XLM locked in its reserves. Unwind trustlines, offers, data entries and Soroban DeFi positions, then merge out to ${feature("exchange-close").status === "live" ? "your wallet or exchange" : "your wallet"}. Non-custodial, open source.`,
+};
+
+const CARD_IDS = [
+  "allowance-inspector",
+  "exchange-close",
+  "resumable-sessions",
+  "deterministic-plan",
+] as const satisfies readonly FeatureId[];
+
+const FEATURE_ICONS: Record<(typeof CARD_IDS)[number], LucideIcon> = {
+  "allowance-inspector": Eye,
+  "exchange-close": Building2,
+  "resumable-sessions": RefreshCw,
+  "deterministic-plan": ScanLine,
 };
 
 const APP = "/mainnet";
@@ -42,47 +72,15 @@ const TRUTHS = [
   },
   {
     icon: Layers,
-    title: "DeFi has no tool at all",
-    body: "Any account with a Blend loan, an Aquarius LP or a Soroswap position simply cannot be closed with today's tools.",
+    title: "DeFi positions hide outside the account",
+    body: "A Blend loan, Aquarius liquidity or a Soroswap position lives in the protocol's contract. Merge the account while one is open and the funds stay stranded there, so each has to be exited through its own contract first.",
   },
 ];
 
-const PROTOCOLS = [
-  "Blend",
-  "Aquarius",
-  "Soroswap",
-  "Phoenix",
-  "FxDAO",
-  "Classic DEX",
-  "Classic AMM",
-];
+const CARD_FEATURES = CARD_IDS.map((id) => ({ ...feature(id), icon: FEATURE_ICONS[id] }));
 
-const FEATURES = [
-  {
-    icon: Eye,
-    title: "Allowance inspector",
-    body: "See every token approval your account granted to DeFi contracts, and revoke risky ones, even without closing.",
-    status: "Soon",
-  },
-  {
-    icon: Building2,
-    title: "Exchange-compatible merge",
-    body: "A transparent, shared relay account bridges the final merge to any CEX deposit address, with the right memo, validated.",
-    status: "Live",
-  },
-  {
-    icon: RefreshCw,
-    title: "Resumable sessions",
-    body: "Close the tab mid-flow and resume in the same browser: the account is re-read and a fresh plan covers only what is left, so confirmed work is not repeated.",
-    status: "Live",
-  },
-  {
-    icon: ScanLine,
-    title: "Deterministic, auditable plan",
-    body: "The same account state always produces the same ordered plan: testable, reviewable, never built on stale data.",
-    status: "Live",
-  },
-];
+const DEFI = feature("defi-exits");
+const TESTNET_ONLY_EXITS = protocolsWithStatus("testnet-only");
 
 function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
@@ -234,35 +232,40 @@ export default function LandingPage() {
                   <Layers className="h-5 w-5" />
                 </span>
                 <span className="rounded-full border border-value/40 px-2.5 py-1 mkt-mono text-caption uppercase tracking-wider text-value">
-                  Classic live · Soroban on the way
+                  {STATUS_LABEL[DEFI.status]}
                 </span>
               </div>
-              <h3 className="mt-4 text-lg font-semibold text-white">Full Soroban DeFi coverage</h3>
-              <p className="mt-2 max-w-md text-sm leading-relaxed text-white/70">
-                The piece the original demolisher lacks. LumenWipe detects positions through
-                OctoPos, then exits each one with its own protocol adapter, repaying loans,
-                withdrawing liquidity, and unstaking, before it removes the trustline.
-              </p>
-              <div className="mt-5 flex flex-wrap gap-2">
-                {PROTOCOLS.map((p) => (
-                  <span
-                    key={p}
-                    className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1 mkt-mono text-xs text-white/65"
+              <h3 className="mt-4 text-lg font-semibold text-white">{DEFI.title}</h3>
+              <p className="mt-2 max-w-md text-sm leading-relaxed text-white/70">{DEFI.summary}</p>
+              <ul
+                aria-label="Protocol exits live on mainnet"
+                className="mt-5 flex flex-wrap gap-2"
+                data-site-status="live"
+              >
+                {LIVE_EXIT_PROTOCOLS.map((p) => (
+                  <li
+                    key={p.id}
+                    className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1 mkt-mono text-xs text-white/70"
                   >
-                    {p}
-                  </span>
+                    {p.name}
+                  </li>
                 ))}
-              </div>
+              </ul>
+              {TESTNET_ONLY_EXITS.length > 0 && (
+                <p className="mt-3 text-sm text-fg-muted" data-site-status="testnet-only">
+                  {STATUS_LABEL["testnet-only"]}: {listNames(TESTNET_ONLY_EXITS)}
+                </p>
+              )}
             </div>
           </Reveal>
 
-          {FEATURES.map((f) => (
+          {CARD_FEATURES.map((f) => (
             <Reveal key={f.title}>
               <div className="mkt-card flex h-full flex-col p-5">
                 <div className="flex items-center justify-between">
                   <span
                     className={`flex h-10 w-10 items-center justify-center rounded-lg border ${
-                      f.status === "Live"
+                      f.status === "live"
                         ? "border-white/10 bg-white/[0.03] text-accent"
                         : "border-value/30 bg-value/10 text-value"
                     }`}
@@ -271,16 +274,25 @@ export default function LandingPage() {
                   </span>
                   <span
                     className={`mkt-mono rounded-full border px-2.5 py-1 text-caption uppercase tracking-wider ${
-                      f.status === "Live"
+                      f.status === "live"
                         ? "border-accent/40 text-accent"
                         : "border-value/40 text-value"
                     }`}
                   >
-                    {f.status}
+                    {STATUS_LABEL[f.status]}
                   </span>
                 </div>
                 <h3 className="mt-4 text-body font-semibold text-white">{f.title}</h3>
-                <p className="mt-1.5 text-sm leading-relaxed text-white/70">{f.body}</p>
+                <p className="mt-1.5 text-sm leading-relaxed text-white/70">{f.summary}</p>
+                {f.link && (
+                  <Link
+                    href={f.link.href}
+                    className="mt-auto inline-flex items-center gap-1.5 pt-4 text-sm font-semibold text-accent underline-offset-4 hover:underline"
+                  >
+                    {f.link.label}
+                    <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                  </Link>
+                )}
               </div>
             </Reveal>
           ))}

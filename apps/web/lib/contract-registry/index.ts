@@ -137,3 +137,17 @@ export function registryContractsFor(network: Network, now: Date = new Date()): 
     .filter((e) => e.network === network && isExitCapable(e))
     .map((e) => e.address);
 }
+
+/**
+ * The protocols with at least one contract on `network` that an exit may touch, by the same rule
+ * the verifier applies. Read from the registry's content, not its date, so a page built from it
+ * names what the bundled registry pins rather than whether it has expired today.
+ */
+export function exitCapableProtocols(network: Network): Set<DefiPosition["protocol"]> {
+  const exitProtocols = new Set<string>(Object.keys(EXIT_FUNCTIONS));
+  return new Set(
+    REGISTRY.entries
+      .filter((e) => e.network === network && exitProtocols.has(e.protocol) && isExitCapable(e))
+      .map((e) => e.protocol as DefiPosition["protocol"])
+  );
+}

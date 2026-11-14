@@ -7,6 +7,13 @@ release is cut.
 
 ## [Unreleased]
 
+### Added
+
+- The bundled contract registry module gains `exitCapableProtocols(network)`, which names the
+  protocols with at least one contract an exit may touch on that network, by the same rule the
+  verifier applies. It is not exported from the package entry point, and verification is
+  unchanged.
+
 ### Changed
 
 - The bundled contract registry re-pins the Aquarius testnet router and its constant-product,
