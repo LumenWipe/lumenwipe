@@ -165,7 +165,7 @@ async function run(over: Partial<FakePhoenixOptions> = {}, ctxOver: Partial<type
     adapter,
     over.stakes ? stakePosition : lpPosition,
     { ...ctx, ...ctxOver },
-    { rpc: rpc(over), resolveWasmHash: KNOWN.resolveWasmHash, isRegistryFresh: () => true }
+    { rpc: rpc(over), resolveCode: KNOWN.resolveCode, isRegistryFresh: () => true }
   );
 }
 
@@ -249,7 +249,7 @@ describe("phoenix exit adapter", () => {
     // simply gone.
     const result = await runExitAdapter(adapter, lpPosition, ctx, {
       rpc: rpc({ shares: 0n, bondingInfoMissing: true }),
-      resolveWasmHash: KNOWN.resolveWasmHash,
+      resolveCode: KNOWN.resolveCode,
       isRegistryFresh: () => true,
     });
     expect(result.next).toBeNull();

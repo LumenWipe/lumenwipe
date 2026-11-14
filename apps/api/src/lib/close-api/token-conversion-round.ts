@@ -12,11 +12,11 @@ import {
 import { MAX_SOROBAN_EXIT_FEE_STROOPS, TX_TIMEOUT_SECONDS } from "@/config/constants";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import {
-  resolveWasmHash,
+  resolveCode,
   soroswapConversionContracts,
   xbullConversionContracts,
 } from "@/lib/contract-registry";
-import { readLiveWasmHash } from "@/lib/stellar/contract-instance";
+import { readLiveCodeIdentity } from "@/lib/stellar/contract-instance";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import {
   buildTokenConversion,
@@ -546,9 +546,10 @@ export async function buildTokenConversionRound(
         });
         // The address is in the registry; the code behind it must be what the registry verified.
         const called = invokedContract(tx);
-        const hash = await readLiveWasmHash(deps.rpc, called);
-        const resolved = resolveWasmHash(network, hash ?? "");
+        const code = await readLiveCodeIdentity(deps.rpc, called);
+        const resolved = code ? resolveCode(network, code) : null;
         if (
+          !resolved ||
           resolved.status !== "known" ||
           resolved.protocol !== "xbull" ||
           resolved.kind !== "router"
@@ -643,9 +644,10 @@ export async function buildTokenConversionRound(
       });
       // The address is in the registry; the code behind it must be what the registry verified.
       const called = invokedContract(tx);
-      const hash = await readLiveWasmHash(deps.rpc, called);
-      const resolved = resolveWasmHash(network, hash ?? "");
+      const code = await readLiveCodeIdentity(deps.rpc, called);
+      const resolved = code ? resolveCode(network, code) : null;
       if (
+        !resolved ||
         resolved.status !== "known" ||
         resolved.protocol !== "soroswap" ||
         (resolved.kind !== "aggregator" && resolved.kind !== "router")

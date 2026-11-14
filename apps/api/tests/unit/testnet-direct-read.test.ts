@@ -17,6 +17,8 @@ import {
   addressListVal,
   contractDataEntry,
   contractInstanceEntry,
+  executableTagEntry,
+  externalRefInstanceEntry,
   i128Val,
   mockRpc,
   structVal,
@@ -1027,10 +1029,17 @@ test("Soroswap: without a pair entry in the registry, every held pair is unknown
 // ─── Aquarius: pools enumerated from the router ──────────────────────────────
 
 const AQ_ROUTER = "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD";
-const AQ_ROUTER_HASH = "d34668cd0b957f4e549719032951503495310a4d1c401ddce591c0f152834254";
-const AQ_CONSTANT_HASH = "d691135aade93ff0f7c229e009cde042130a05124cf7202b03d11246b4f9b473";
-const AQ_STABLE_HASH = "22dff7242d2bc0ea4a4727b4b2cac33b188304d5945740ad24d8a33a5d22741e";
-const AQ_CONCENTRATED_HASH = "155a17b9929ffb1f9e84bd6ef5c00a4d613c1ab5f4ad4c502d84515250cc2907";
+const AQ_ROUTER_HASH = "840aa116e14f3f01578933c76c472b372a65e8a2ecff3a8b8d69b2df0a114108";
+const AQ_CONSTANT_HASH = "70476939e1ce8b4f7d6898d7a1403bd0752ba0535ad6c4aea3c4b500ad4715e0";
+const AQ_STABLE_HASH = "278f6f02d18ea4fcee8ecb208a5e2ea5ad8e81ff2a1015574161d44c6f325558";
+const AQ_CONCENTRATED_HASH = "b3092d4560a24fd45c143295655846da66d49abad34d15f9613241b6256689d5";
+const AQ_OWNER = "CDD3G6M2JSJLXBYLY4N6WLWVU2LB5UGPSKFO5ZV4M6BMYQY555Q6FA46";
+const AQ_OWNER_HASH = "758bdb9683495f07a96c1dbdd4f7775c45205691eea317d22b97aeb82fa4960f";
+const AQ_TAGS = {
+  constant: "amm.constant",
+  stable: "amm.stable",
+  concentrated: "amm.concentrated",
+} as const;
 const AQ_POOL_CONSTANT = "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI";
 const AQ_POOL_STABLE = "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC";
 const AQ_POOL_CONCENTRATED = "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO";
@@ -1040,8 +1049,21 @@ const AQ_TOKEN_A = "CAZRY5GSFBFXD7H6GAFBA5YGYQTDXU4QKWKMYFWBAZFUCURN3WKX6LF5";
 const AQ_TOKEN_B = "CBL6KD2LFMLAUKFFWNNXWOXFN73GAXLEA4WMJRLQ5L76DMYTM3KWQVJN";
 
 function aquariusRegistry(): ContractRegistryEntry[] {
-  const pool = (address: string, wasmHash: string, version: string): ContractRegistryEntry =>
-    registryEntry({ protocol: "aquarius", kind: "pool", address, wasmHash, version });
+  const pool = (
+    address: string,
+    wasmHash: string,
+    version: string,
+    executableTag: string
+  ): ContractRegistryEntry =>
+    registryEntry({
+      protocol: "aquarius",
+      kind: "pool",
+      address,
+      wasmHash,
+      version,
+      executableOwner: AQ_OWNER,
+      executableTag,
+    });
   return [
     registryEntry({
       protocol: "aquarius",
@@ -1050,9 +1072,9 @@ function aquariusRegistry(): ContractRegistryEntry[] {
       wasmHash: AQ_ROUTER_HASH,
       version: "v1",
     }),
-    pool(AQ_POOL_CONSTANT, AQ_CONSTANT_HASH, "constant_product"),
-    pool(AQ_POOL_STABLE, AQ_STABLE_HASH, "stable"),
-    pool(AQ_POOL_CONCENTRATED, AQ_CONCENTRATED_HASH, "concentrated"),
+    pool(AQ_POOL_CONSTANT, AQ_CONSTANT_HASH, "constant_product", AQ_TAGS.constant),
+    pool(AQ_POOL_STABLE, AQ_STABLE_HASH, "stable", AQ_TAGS.stable),
+    pool(AQ_POOL_CONCENTRATED, AQ_CONCENTRATED_HASH, "concentrated", AQ_TAGS.concentrated),
   ];
 }
 
@@ -1094,6 +1116,20 @@ function aquariusRouterEntries(sets: Array<{ tokens: string[]; pools: string[] }
   return entries;
 }
 
+/** A pool as live testnet runs it: its instance names a tag on the release owner, whose entry
+ *  holds the code hash. */
+function releasePool(
+  pool: string,
+  tag: string,
+  wasmHash: string,
+  storage: Array<[xdr.ScVal, xdr.ScVal]>
+) {
+  return [
+    externalRefInstanceEntry(pool, AQ_OWNER, tag, storage),
+    executableTagEntry(AQ_OWNER, tag, wasmHash),
+  ];
+}
+
 function constantPool(
   pool: string,
   share: string,
@@ -1101,7 +1137,7 @@ function constantPool(
   wasmHash = AQ_CONSTANT_HASH
 ) {
   const out = [
-    contractInstanceEntry(pool, wasmHash, [
+    ...releasePool(pool, AQ_TAGS.constant, wasmHash, [
       [sym("TokenA"), addrVal(AQ_TOKEN_A)],
       [sym("TokenB"), addrVal(AQ_TOKEN_B)],
       [sym("TokenShare"), addrVal(share)],
@@ -1114,7 +1150,7 @@ function constantPool(
 
 function stablePool(pool: string, share: string, shares: bigint | null) {
   const out = [
-    contractInstanceEntry(pool, AQ_STABLE_HASH, [
+    ...releasePool(pool, AQ_TAGS.stable, AQ_STABLE_HASH, [
       [sym("Tokens"), xdr.ScVal.scvVec([addrVal(AQ_TOKEN_A), addrVal(AQ_TOKEN_B)])],
       [sym("TokenShare"), addrVal(share)],
     ]),
@@ -1159,7 +1195,7 @@ test("Aquarius: a stableswap pool reads its token list; a concentrated pool is s
       ]),
       ...stablePool(AQ_POOL_STABLE, AQ_SHARE_STABLE, 5n),
       // Given a share token and a balance on purpose: only the registry's pool code may skip it.
-      contractInstanceEntry(AQ_POOL_CONCENTRATED, AQ_CONCENTRATED_HASH, [
+      ...releasePool(AQ_POOL_CONCENTRATED, AQ_TAGS.concentrated, AQ_CONCENTRATED_HASH, [
         [sym("TokenShare"), addrVal(AQ_SHARE_STABLE)],
       ]),
       contractDataEntry(AQ_SHARE_STABLE, variantVal("Balance", addressVal(USER)), i128Val(5n)),
@@ -1307,7 +1343,7 @@ test("Aquarius: tokens are omitted when the pool instance does not list every on
           }),
         ])
       ),
-      contractInstanceEntry(AQ_POOL_CONSTANT, AQ_CONSTANT_HASH, [
+      ...releasePool(AQ_POOL_CONSTANT, AQ_TAGS.constant, AQ_CONSTANT_HASH, [
         [sym("TokenA"), addrVal(AQ_TOKEN_A)],
         [sym("TokenShare"), addrVal(AQ_SHARE_CONSTANT)],
       ]),
@@ -1318,6 +1354,183 @@ test("Aquarius: tokens are omitted when the pool instance does not list every on
   expect(result.unrecognizedPositions).toEqual([]);
   expect(result.positions).toHaveLength(1);
   expect("tokens" in result.positions[0]!).toBe(false);
+});
+
+// ─── CAP-85 shared releases: owner and tag are part of a pool's code ─────────
+
+/** Shares in the constant-product pool whose code comes from `entries`, as the read flags them. */
+async function heldPoolRead(poolEntries: ReturnType<typeof contractInstanceEntry>[]) {
+  return detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([
+      ...aquariusRouterEntries([{ tokens: [AQ_TOKEN_A, AQ_TOKEN_B], pools: [AQ_POOL_CONSTANT] }]),
+      ...poolEntries,
+      contractDataEntry(AQ_SHARE_CONSTANT, variantVal("Balance", addressVal(USER)), i128Val(9n)),
+    ]),
+    registryEntries: aquariusRegistry(),
+  });
+}
+
+const constantStorage = (): Array<[xdr.ScVal, xdr.ScVal]> => [
+  [sym("TokenA"), addrVal(AQ_TOKEN_A)],
+  [sym("TokenB"), addrVal(AQ_TOKEN_B)],
+  [sym("TokenShare"), addrVal(AQ_SHARE_CONSTANT)],
+];
+
+test("Aquarius: a pool on the pinned owner's pinned tag naming the pinned hash is read", async () => {
+  const result = await heldPoolRead(
+    releasePool(AQ_POOL_CONSTANT, AQ_TAGS.constant, AQ_CONSTANT_HASH, constantStorage())
+  );
+  expect(result.unrecognizedPositions).toEqual([]);
+  expect(result.positions.map((p) => p.wasmHash)).toEqual([AQ_CONSTANT_HASH]);
+});
+
+test("Aquarius: a pool whose code comes from another owner, another tag, or a missing tag entry is flagged, not decoded", async () => {
+  const otherOwner = Address.contract(Buffer.alloc(32, 0x44)).toString();
+  const cases = [
+    [
+      externalRefInstanceEntry(AQ_POOL_CONSTANT, otherOwner, AQ_TAGS.constant, constantStorage()),
+      executableTagEntry(otherOwner, AQ_TAGS.constant, AQ_CONSTANT_HASH),
+    ],
+    [
+      externalRefInstanceEntry(AQ_POOL_CONSTANT, AQ_OWNER, AQ_TAGS.stable, constantStorage()),
+      executableTagEntry(AQ_OWNER, AQ_TAGS.stable, AQ_CONSTANT_HASH),
+    ],
+    [externalRefInstanceEntry(AQ_POOL_CONSTANT, AQ_OWNER, AQ_TAGS.constant, constantStorage())],
+    releasePool(AQ_POOL_CONSTANT, AQ_TAGS.constant, "7".repeat(64), constantStorage()),
+  ];
+  for (const entries of cases) {
+    const result = await heldPoolRead(entries);
+    expect(result.positions).toEqual([]);
+    expect(result.unrecognizedPositions.map((u) => u.rawType)).toEqual(["pool-code-unknown"]);
+  }
+});
+
+test("Aquarius: the pinned hash carried by a plain Wasm pool is not the pinned release, and is flagged", async () => {
+  const result = await heldPoolRead([
+    contractInstanceEntry(AQ_POOL_CONSTANT, AQ_CONSTANT_HASH, constantStorage()),
+  ]);
+  expect(result.positions).toEqual([]);
+  expect(result.unrecognizedPositions.map((u) => u.rawType)).toEqual(["pool-code-unknown"]);
+});
+
+test("Aquarius: every pool's tag is resolved in one batched read, deduplicated across pools", async () => {
+  const calls: string[][] = [];
+  const inner = mockRpc([
+    ...aquariusRouterEntries([
+      {
+        tokens: [AQ_TOKEN_A, AQ_TOKEN_B],
+        pools: [AQ_POOL_CONSTANT, AQ_POOL_STABLE, AQ_POOL_CONCENTRATED],
+      },
+    ]),
+    ...constantPool(AQ_POOL_CONSTANT, AQ_SHARE_CONSTANT, 0n),
+    ...releasePool(AQ_POOL_STABLE, AQ_TAGS.constant, AQ_CONSTANT_HASH, constantStorage()),
+    ...releasePool(AQ_POOL_CONCENTRATED, AQ_TAGS.concentrated, AQ_CONCENTRATED_HASH, []),
+  ]);
+  const rpc = {
+    getLedgerEntries: async (...keys: xdr.LedgerKey[]) => {
+      calls.push(keys.map((k) => k.toXdr("base64")));
+      return inner.getLedgerEntries(...keys);
+    },
+  } as unknown as typeof inner;
+  await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc,
+    registryEntries: aquariusRegistry(),
+  });
+  const tagKey = (tag: string) =>
+    executableTagEntry(AQ_OWNER, tag, AQ_CONSTANT_HASH).key.toXdr("base64");
+  const tagCalls = calls.filter((c) => c.includes(tagKey(AQ_TAGS.constant)));
+  expect(tagCalls).toHaveLength(1);
+  expect([...tagCalls[0]!].sort()).toEqual(
+    [tagKey(AQ_TAGS.constant), tagKey(AQ_TAGS.concentrated)].sort()
+  );
+});
+
+// ─── registry verification of code identity ──────────────────────────────────
+
+function ownerEntry(over: Partial<ContractRegistryEntry> = {}): ContractRegistryEntry {
+  return registryEntry({
+    protocol: "aquarius",
+    kind: "executable-owner",
+    address: AQ_OWNER,
+    wasmHash: AQ_OWNER_HASH,
+    version: "v1",
+    ...over,
+  });
+}
+
+test("the release owner is verified on every read and adds no positions of its own", async () => {
+  const ok = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([contractInstanceEntry(AQ_OWNER, AQ_OWNER_HASH)]),
+    registryEntries: [ownerEntry()],
+  });
+  expect(ok.positions).toEqual([]);
+  expect(ok.unrecognizedPositions).toEqual([]);
+
+  const upgraded = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([contractInstanceEntry(AQ_OWNER, "5".repeat(64))]),
+    registryEntries: [ownerEntry()],
+  });
+  expect(upgraded.unrecognizedPositions.map((u) => u.rawType)).toEqual(["wasmhash-mismatch"]);
+
+  const gone = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([]),
+    registryEntries: [ownerEntry()],
+  });
+  expect(gone.unrecognizedPositions.map((u) => u.rawType)).toEqual(["registry-entry-unresolvable"]);
+});
+
+test("a probed entry pinned to a reference refuses Wasm, another reference, or the reference naming other code", async () => {
+  const pinned = ownerEntry({ executableOwner: AQ_OWNER, executableTag: "release.self" });
+  const otherOwner = Address.contract(Buffer.alloc(32, 0x55)).toString();
+  const read = (entries: ReturnType<typeof contractInstanceEntry>[]) =>
+    detectDefiPositionsViaDirectRead(USER, "testnet", {
+      rpc: mockRpc(entries),
+      registryEntries: [pinned],
+    }).then((r) => r.unrecognizedPositions.map((u) => u.rawType));
+
+  expect(
+    await read([
+      externalRefInstanceEntry(AQ_OWNER, AQ_OWNER, "release.self"),
+      executableTagEntry(AQ_OWNER, "release.self", AQ_OWNER_HASH),
+    ])
+  ).toEqual([]);
+  expect(await read([contractInstanceEntry(AQ_OWNER, AQ_OWNER_HASH)])).toEqual([
+    "executable-reference-mismatch",
+  ]);
+  expect(
+    await read([
+      externalRefInstanceEntry(AQ_OWNER, otherOwner, "release.self"),
+      executableTagEntry(otherOwner, "release.self", AQ_OWNER_HASH),
+    ])
+  ).toEqual(["executable-reference-mismatch"]);
+  expect(
+    await read([
+      externalRefInstanceEntry(AQ_OWNER, AQ_OWNER, "release.other"),
+      executableTagEntry(AQ_OWNER, "release.other", AQ_OWNER_HASH),
+    ])
+  ).toEqual(["executable-reference-mismatch"]);
+  expect(
+    await read([
+      externalRefInstanceEntry(AQ_OWNER, AQ_OWNER, "release.self"),
+      executableTagEntry(AQ_OWNER, "release.self", "6".repeat(64)),
+    ])
+  ).toEqual(["wasmhash-mismatch"]);
+  expect(await read([externalRefInstanceEntry(AQ_OWNER, AQ_OWNER, "release.self")])).toEqual([
+    "registry-entry-unresolvable",
+  ]);
+});
+
+test("a probed entry that pins no reference refuses an instance that takes its code from one", async () => {
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc: mockRpc([
+      externalRefInstanceEntry(AQ_OWNER, AQ_OWNER, "release.self"),
+      executableTagEntry(AQ_OWNER, "release.self", AQ_OWNER_HASH),
+    ]),
+    registryEntries: [ownerEntry()],
+  });
+  expect(result.unrecognizedPositions.map((u) => u.rawType)).toEqual([
+    "executable-reference-mismatch",
+  ]);
 });
 
 // ─── read shape: one verification read, concurrent sweeps ────────────────────

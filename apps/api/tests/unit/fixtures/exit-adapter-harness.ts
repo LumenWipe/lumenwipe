@@ -28,6 +28,7 @@ import {
   createContractRegistryLookup,
   validateContractRegistry,
   type ContractKind,
+  type ContractRegistryEntry,
   type ContractRegistryLookup,
 } from "@/lib/contract-registry";
 import { v1TransactionFromXdr } from "../../support/v1-transaction";
@@ -88,7 +89,8 @@ export function registryKnowing(
   protocol: DefiProtocol,
   kind: ContractKind = "pool",
   network: Network = "testnet",
-  version = "v-test"
+  version = "v-test",
+  reference: Pick<ContractRegistryEntry, "executableOwner" | "executableTag"> = {}
 ): ContractRegistryLookup {
   return createContractRegistryLookup(
     validateContractRegistry({
@@ -106,6 +108,7 @@ export function registryKnowing(
           version,
           label: "harness fixture",
           verifiedLive: true,
+          ...reference,
         },
       ],
     })
@@ -163,7 +166,7 @@ function run<P extends DefiPosition, L>(
     { ...ctx, ...scenario.ctx },
     {
       rpc: scenario.rpc,
-      resolveWasmHash: scenario.registry.resolveWasmHash,
+      resolveCode: scenario.registry.resolveCode,
       isRegistryFresh: fresh,
     }
   );
@@ -251,7 +254,8 @@ export function describeExitAdapterInvariants<P extends DefiPosition, L>(
         otherProtocol,
         own.kind,
         own.network,
-        own.version
+        own.version,
+        { executableOwner: own.executableOwner, executableTag: own.executableTag }
       );
       const result = await run(adapter, { ...healthy, registry }, ctx);
       expect(result.next).toBeNull();

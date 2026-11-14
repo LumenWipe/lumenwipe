@@ -4,7 +4,8 @@ import {
   detectDefiPositionsViaDirectRead,
   enumerateAquariusPools,
 } from "@/lib/defi-positions/testnet-direct-read";
-import { servedContractRegistry } from "@/lib/contract-registry";
+import { codeMatchesEntry, servedContractRegistry } from "@/lib/contract-registry";
+import { readLiveCodeIdentity } from "@/lib/stellar/contract-instance";
 import { getRpcServer } from "@/lib/stellar/rpc";
 
 // This test calls the real, live Stellar testnet RPC - no mock. The package's `test` script
@@ -13,12 +14,10 @@ import { getRpcServer } from "@/lib/stellar/rpc";
 const RUN_INTEGRATION = !!process.env.LUMENWIPE_RUN_INTEGRATION;
 
 test.skipIf(!RUN_INTEGRATION)(
-  "every verifiedLive registry entry still resolves on live testnet with the recorded wasmHash",
+  "every verifiedLive registry entry still runs its recorded code on live testnet, reached the recorded way",
   async () => {
     // A real regression/staleness canary: if a `verifiedLive: true` entry starts failing, testnet
     // reset or a redeploy invalidated the registry and it needs a refresh PR.
-    const { Contract } = await import("@stellar/stellar-sdk");
-    const { getRpcServer } = await import("@/lib/stellar/rpc");
     const rpc = getRpcServer("testnet");
 
     // Testnet entries only. The registry gained mainnet entries in #195, and a mainnet contract
@@ -29,11 +28,14 @@ test.skipIf(!RUN_INTEGRATION)(
       (e) => e.verifiedLive && e.network === "testnet"
     );
     expect(testnetEntries.length).toBeGreaterThan(0);
+    const drifted: string[] = [];
     for (const entry of testnetEntries) {
-      const contract = new Contract(entry.address);
-      const res = await rpc.getLedgerEntries(contract.getFootprint());
-      expect(res.entries.length).toBeGreaterThan(0);
+      const live = await readLiveCodeIdentity(rpc, entry.address);
+      if (live === null || !codeMatchesEntry(entry, live)) {
+        drifted.push(`${entry.protocol} ${entry.kind} ${entry.address}: ${JSON.stringify(live)}`);
+      }
     }
+    expect(drifted).toEqual([]);
   },
   30_000
 );

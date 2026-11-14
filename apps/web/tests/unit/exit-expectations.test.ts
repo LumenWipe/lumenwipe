@@ -367,3 +367,20 @@ describe("repayTokensByPool", () => {
     expect(repay[BLEND_POOL]).toBeUndefined();
   });
 });
+
+test("the testnet release owner the registry pins Aquarius pools to is nothing an exit may touch", () => {
+  const owner = (
+    embeddedRegistry as { entries: Array<{ address: string; network: string; kind: string }> }
+  ).entries.find((e) => e.network === "testnet" && e.kind === "executable-owner");
+  expect(owner).toBeDefined();
+  expect(registryContractsFor("testnet")).not.toContain(owner!.address);
+  expect(registryContractsFor("testnet").length).toBeGreaterThan(0);
+  for (const kind of ["router", "backstop", "stake"] as const) {
+    expect(
+      exitContractsFor("testnet", ["aquarius", "blend", "soroswap", "phoenix", "fxdao"], kind).map(
+        (c) => c.address
+      )
+    ).not.toContain(owner!.address);
+  }
+  expect(conversionContractsFor("testnet")).not.toContain(owner!.address);
+});

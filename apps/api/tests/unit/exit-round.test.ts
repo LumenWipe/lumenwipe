@@ -511,7 +511,7 @@ describe("buildExitRound on a Phoenix account that bonded every share", () => {
       runExitAdapter: (adapter, position, ctx, deps) =>
         runExitAdapter(adapter, position, ctx, {
           ...deps,
-          resolveWasmHash: known.resolveWasmHash,
+          resolveCode: known.resolveCode,
           isRegistryFresh: () => true,
         }),
     });

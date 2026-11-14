@@ -150,7 +150,7 @@ describeExitAdapterInvariants("soroswap pair", {
 async function runHealthy(over: Partial<FakePairOptions> = {}) {
   return runExitAdapter(adapter, position, ctx, {
     rpc: rpc(over),
-    resolveWasmHash: KNOWN.resolveWasmHash,
+    resolveCode: KNOWN.resolveCode,
     isRegistryFresh: () => true,
   });
 }
@@ -213,7 +213,7 @@ describe("soroswap exit adapter", () => {
       { ...ctx, tokenBalances: { [XLM_SAC]: "1" } },
       {
         rpc: rpc({ token1: SOROBAN_TOKEN, stellarAssets: [XLM_SAC] }),
-        resolveWasmHash: KNOWN.resolveWasmHash,
+        resolveCode: KNOWN.resolveCode,
         isRegistryFresh: () => true,
       }
     );
@@ -229,7 +229,7 @@ describe("soroswap exit adapter", () => {
     const noRouter = soroswapExitAdapter({ routerFor: () => null, factoryFor: () => FACTORY });
     const result = await runExitAdapter(noRouter, position, ctx, {
       rpc: rpc(),
-      resolveWasmHash: KNOWN.resolveWasmHash,
+      resolveCode: KNOWN.resolveCode,
       isRegistryFresh: () => true,
     });
     expect(result.blockers.map((b) => b.code)).toEqual(["soroswap_router_unknown"]);
@@ -242,7 +242,7 @@ describe("soroswap exit adapter", () => {
     ]);
     const result = await runExitAdapter(adapter, position, ctx, {
       rpc: rpc(),
-      resolveWasmHash: asPool.resolveWasmHash,
+      resolveCode: asPool.resolveCode,
       isRegistryFresh: () => true,
     });
     expect(result.blockers.map((b) => b.code)).toEqual(["soroswap_contract_not_pair"]);

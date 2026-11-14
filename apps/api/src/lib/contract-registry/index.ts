@@ -1,6 +1,7 @@
 import rawRegistry from "@/config/contract-registry.json";
 import type { DefiProtocol, Network } from "@lumenwipe/types";
 import { StrKey } from "@stellar/stellar-sdk";
+import type { CodeIdentity } from "@/lib/stellar/contract-instance";
 
 /**
  * The versioned wasmHash contract registry architecture.md §9 describes, shared by two consumers:
@@ -8,8 +9,8 @@ import { StrKey } from "@stellar/stellar-sdk";
  * - The testnet DeFi-detection fallback (#148) asks "which contracts do I probe for a position on
  *   this network?" - `entriesForNetwork` / `entriesForProtocol` - and then confirms each one is
  *   still running the code it was verified against.
- * - Every exit adapter asks "which interface does this contract speak?" - `resolveWasmHash` -
- *   before it builds anything. An unknown hash resolves to `{ status: "unknown" }`, and the
+ * - Every exit adapter asks "which interface does this contract speak?" - `resolveCode` - before
+ *   it builds anything. An unknown hash resolves to `{ status: "unknown" }`, and the
  *   caller's only safe move is to flag the position for manual review and build nothing (§9.9).
  *
  * Resolution is network-scoped: an entry records the network its hash was verified on, and a hash
@@ -50,7 +51,8 @@ export type ContractKind =
   | "factory"
   | "router"
   | "aggregator"
-  | "adapter";
+  | "adapter"
+  | "executable-owner";
 const KINDS: Record<ContractKind, true> = {
   pool: true,
   pair: true,
@@ -61,6 +63,7 @@ const KINDS: Record<ContractKind, true> = {
   router: true,
   aggregator: true,
   adapter: true,
+  "executable-owner": true,
 };
 
 const ALL_PROTOCOLS = Object.keys(PROTOCOLS) as DefiProtocol[];
@@ -77,6 +80,11 @@ export interface ContractRegistryEntry {
    *  by the protocol's own docs but not currently resolvable on-chain (`verifiedLive: false`) -
    *  never fabricated to fill the field. */
   wasmHash: string | null;
+  /** Set, with `executableTag`, when the instance runs a CAP-85 external reference: the contract
+   *  whose tag entry names the code. The owner can repoint the tag, so it is pinned as part of the
+   *  code's identity; absent means the instance must carry its Wasm hash itself. */
+  executableOwner?: string;
+  executableTag?: string;
   /** The protocol's own version name for this code, e.g. "v2". */
   version: string;
   label: string;
@@ -172,6 +180,8 @@ function validateEntry(raw: unknown, path: string): ContractRegistryEntry {
     "label",
     "verifiedLive",
     "verifiedBy",
+    "executableOwner",
+    "executableTag",
   ]);
   if (!isOneOf(raw.network, ALL_NETWORKS)) {
     fail(`${path}.network`, `must be one of: ${ALL_NETWORKS.join(", ")}`);
@@ -215,6 +225,18 @@ function validateEntry(raw: unknown, path: string): ContractRegistryEntry {
   };
   if (raw.verifiedBy !== undefined) {
     entry.verifiedBy = requireString(raw.verifiedBy, `${path}.verifiedBy`);
+  }
+  if (raw.executableOwner !== undefined || raw.executableTag !== undefined) {
+    if (raw.executableOwner === undefined || raw.executableTag === undefined) {
+      fail(path, "must set executableOwner and executableTag together");
+    }
+    if (wasmHash === null) fail(`${path}.executableOwner`, "needs the wasmHash its tag names");
+    const owner = requireString(raw.executableOwner, `${path}.executableOwner`);
+    if (!StrKey.isValidContract(owner)) {
+      fail(`${path}.executableOwner`, "must be a valid C... contract address (StrKey checksum)");
+    }
+    entry.executableOwner = owner;
+    entry.executableTag = requireString(raw.executableTag, `${path}.executableTag`);
   }
   return entry;
 }
@@ -278,6 +300,7 @@ export function validateContractRegistry(raw: unknown): ContractRegistry {
 
   const seenAddresses = new Set<string>();
   const versionByHash = new Map<string, ContractRegistryEntry>();
+  const referenceByHash = new Map<string, string>();
   for (const entry of entries) {
     const addressKey = `${entry.network}:${entry.address}`;
     if (seenAddresses.has(addressKey)) fail("entries", `duplicate address ${addressKey}`);
@@ -297,6 +320,17 @@ export function validateContractRegistry(raw: unknown): ContractRegistry {
       fail("entries", `wasmHash ${entry.wasmHash} maps to conflicting protocol versions`);
     }
     versionByHash.set(entry.wasmHash, entry);
+
+    // Resolution matches on the hash and the reference together, so on one network a hash is
+    // either always carried by the instance or always named by one owner's tag - never both.
+    const hashKey = `${entry.network}:${entry.wasmHash}`;
+    const reference =
+      entry.executableOwner === undefined ? "" : `${entry.executableOwner}/${entry.executableTag}`;
+    const priorReference = referenceByHash.get(hashKey);
+    if (priorReference !== undefined && priorReference !== reference) {
+      fail("entries", `wasmHash ${entry.wasmHash} maps to conflicting executable references`);
+    }
+    referenceByHash.set(hashKey, reference);
   }
 
   return deepFreeze({
@@ -309,14 +343,27 @@ export function validateContractRegistry(raw: unknown): ContractRegistry {
   });
 }
 
+/**
+ * Whether live code is the code an entry pins: the same hash, reached the same way. Wasm carried
+ * by the instance matches only an entry that pins no owner; an external reference matches only an
+ * entry pinning that exact owner and tag, so a reference never falls back to a hash-only match.
+ */
+export function codeMatchesEntry(entry: ContractRegistryEntry, code: CodeIdentity): boolean {
+  if (entry.wasmHash === null || entry.wasmHash !== code.wasmHash) return false;
+  return code.kind === "wasm"
+    ? entry.executableOwner === undefined
+    : entry.executableOwner === code.owner && entry.executableTag === code.tag;
+}
+
 export interface ContractRegistryLookup {
   registry: ContractRegistry;
   isRegistryFresh: (now?: Date) => boolean;
   entriesForNetwork: (network: Network) => ContractRegistryEntry[];
   entriesForProtocol: (network: Network, protocol: DefiProtocol) => ContractRegistryEntry[];
-  resolveWasmHash: (network: Network, wasmHash: string) => ContractResolution;
+  resolveCode: (network: Network, code: CodeIdentity) => ContractResolution;
   /** Whether an exit or a conversion may invoke this entry's contract: verified live, pinned to a
-   *  hash, and not running a version listed in `noExitVersions`. */
+   *  hash, not running a version listed in `noExitVersions`, and not an `executable-owner`, which
+   *  is registered only so the code it names is verified. */
   isExitCapable: (entry: ContractRegistryEntry) => boolean;
 }
 
@@ -346,26 +393,30 @@ export function createContractRegistryLookup(registry: ContractRegistry): Contra
       return entries.filter((e) => e.network === network && e.protocol === protocol);
     },
 
-    /**
-     * Resolves a contract's code hash to the protocol version it was verified as, on one network.
-     * Input is whatever a live ledger read produced, so it is normalized (trimmed, lowercased)
-     * rather than trusted to match the file's canonical form - and a malformed or non-string hash
-     * (a SAC executable has none) resolves to "unknown" instead of throwing, because a hostile or
-     * odd contract on someone's account must surface as a manual-review flag, not crash their
-     * close plan. A hash never verified on the caller's network is unknown there.
-     */
     isExitCapable(entry: ContractRegistryEntry): boolean {
       return (
+        entry.kind !== "executable-owner" &&
         entry.verifiedLive &&
         entry.wasmHash !== null &&
         !(registry.noExitVersions[entry.protocol] ?? []).includes(entry.version)
       );
     },
 
-    resolveWasmHash(network: Network, wasmHash: string): ContractResolution {
-      if (typeof wasmHash !== "string") return { status: "unknown", wasmHash: "" };
-      const normalized = wasmHash.trim().toLowerCase();
-      const match = entries.find((e) => e.network === network && e.wasmHash === normalized);
+    /**
+     * Resolves a contract's live code to the protocol version it was verified as, on one network.
+     * The hash comes from a live ledger read, so it is normalized (trimmed, lowercased) rather than
+     * trusted to match the file's canonical form, and a malformed one resolves to "unknown" instead
+     * of throwing: an odd contract on someone's account must surface as a manual-review flag, not
+     * crash their close plan. A match needs the same hash and the same reference: Wasm carried by
+     * the instance matches only an entry that pins no owner, and an external reference only the
+     * entry pinning that exact owner and tag. A hash never verified on the network is unknown.
+     */
+    resolveCode(network: Network, code: CodeIdentity): ContractResolution {
+      if (typeof code?.wasmHash !== "string") return { status: "unknown", wasmHash: "" };
+      const normalized = code.wasmHash.trim().toLowerCase();
+      const match = entries.find(
+        (e) => e.network === network && codeMatchesEntry(e, { ...code, wasmHash: normalized })
+      );
       if (!match || match.wasmHash === null) return { status: "unknown", wasmHash: normalized };
       return {
         status: "known",
@@ -400,8 +451,8 @@ export function entriesForProtocol(
   return shipped.entriesForProtocol(network, protocol);
 }
 
-export function resolveWasmHash(network: Network, wasmHash: string): ContractResolution {
-  return shipped.resolveWasmHash(network, wasmHash);
+export function resolveCode(network: Network, code: CodeIdentity): ContractResolution {
+  return shipped.resolveCode(network, code);
 }
 
 export function isExitCapable(entry: ContractRegistryEntry): boolean {

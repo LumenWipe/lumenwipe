@@ -18,10 +18,17 @@ import {
   completePositionsFromLedger,
   type CompletePositionsDeps,
 } from "@/lib/defi-positions/complete-positions";
-import type { ContractResolution } from "@/lib/contract-registry";
+import {
+  createContractRegistryLookup,
+  validateContractRegistry,
+  type ContractResolution,
+} from "@/lib/contract-registry";
+import type { CodeIdentity } from "@/lib/stellar/contract-instance";
 import {
   contractDataEntry,
   contractInstanceEntry,
+  executableTagEntry,
+  externalRefInstanceEntry,
   mockRpc,
   structVal,
 } from "./fixtures/testnet-direct-read-helpers";
@@ -75,7 +82,7 @@ function result(positions: DefiPositionsResult["positions"]): DefiPositionsResul
 }
 
 /** A registry knowing one Aquarius pool code per type and the Soroswap pair code. */
-const registry = (_n: string, hash: string): ContractResolution => {
+const registry = (_n: string, { wasmHash: hash }: CodeIdentity): ContractResolution => {
   const known = (
     protocol: "aquarius" | "soroswap" | "phoenix",
     kind: "pool" | "pair",
@@ -102,7 +109,7 @@ const phoenixConfig = (pool: string, shareToken: xdr.ScVal) =>
   );
 
 function deps(entries: ReturnType<typeof contractInstanceEntry>[]): CompletePositionsDeps {
-  return { rpc: mockRpc(entries), resolveWasmHash: registry };
+  return { rpc: mockRpc(entries), resolveCode: registry };
 }
 
 describe("completing LP positions from the ledger", () => {
@@ -230,7 +237,7 @@ describe("completing LP positions from the ledger", () => {
     );
     const indiscriminate: CompletePositionsDeps = {
       rpc: { getLedgerEntries: async () => ({ latestLedger: 1, entries: [instance, misplaced] }) },
-      resolveWasmHash: registry,
+      resolveCode: registry,
     };
     expect(
       (await completePositionsFromLedger(result([phoenix]), "mainnet", indiscriminate)).positions
@@ -284,7 +291,7 @@ describe("completing LP positions from the ledger", () => {
           return { latestLedger: 1, entries: [] };
         },
       },
-      resolveWasmHash: registry,
+      resolveCode: registry,
     };
     const untouched = await completePositionsFromLedger(result([complete]), "mainnet", counting);
     expect(untouched.positions).toEqual([complete]);
@@ -301,7 +308,7 @@ describe("completing LP positions from the ledger", () => {
           throw new Error("rpc down");
         },
       },
-      resolveWasmHash: registry,
+      resolveCode: registry,
     };
     const out = await completePositionsFromLedger(result([aquarius, soroswap]), "mainnet", failing);
     expect(out.positions).toEqual([aquarius, soroswap]);
@@ -332,9 +339,66 @@ describe("completing LP positions from the ledger", () => {
           return { latestLedger: 1, entries: [] };
         },
       },
-      resolveWasmHash: registry,
+      resolveCode: registry,
     };
     await completePositionsFromLedger(result(many), "mainnet", counting);
     expect(requested).toBe(MAX_COMPLETION_READS);
+  });
+});
+
+describe("a pool that takes its code from a shared release (CAP-85)", () => {
+  const OWNER = Address.contract(Buffer.alloc(32, 0x66)).toString();
+  const OTHER_OWNER = Address.contract(Buffer.alloc(32, 0x77)).toString();
+  const pinned = createContractRegistryLookup(
+    validateContractRegistry({
+      version: "test",
+      lastVerified: "2026-09-01",
+      validUntil: "2099-01-01",
+      source: "test",
+      entries: [
+        {
+          network: "mainnet",
+          protocol: "aquarius",
+          kind: "pool",
+          address: AQ_POOL,
+          wasmHash: CONSTANT_HASH,
+          executableOwner: OWNER,
+          executableTag: "amm.constant",
+          version: "constant_product",
+          label: "test",
+          verifiedLive: true,
+        },
+      ],
+    })
+  );
+  const storage: Array<[xdr.ScVal, xdr.ScVal]> = [
+    [sym("TokenA"), addr(XLM_SAC)],
+    [sym("TokenB"), addr(AQUA_SAC)],
+    [sym("TokenShare"), addr(AQ_SHARE)],
+  ];
+  const complete = (entries: ReturnType<typeof contractInstanceEntry>[]) =>
+    completePositionsFromLedger(result([aquarius]), "mainnet", {
+      rpc: mockRpc(entries),
+      resolveCode: pinned.resolveCode,
+    });
+
+  test("is completed when its pinned owner and tag name the pinned hash", async () => {
+    const out = await complete([
+      externalRefInstanceEntry(AQ_POOL, OWNER, "amm.constant", storage),
+      executableTagEntry(OWNER, "amm.constant", CONSTANT_HASH),
+    ]);
+    expect(out.positions[0]).toMatchObject({ shareToken: AQ_SHARE, poolType: "constant_product" });
+  });
+
+  test("nominates nothing when another owner names the code, or the tag entry is missing", async () => {
+    const otherOwner = await complete([
+      externalRefInstanceEntry(AQ_POOL, OTHER_OWNER, "amm.constant", storage),
+      executableTagEntry(OTHER_OWNER, "amm.constant", CONSTANT_HASH),
+    ]);
+    expect(otherOwner.positions).toEqual([aquarius]);
+    const missing = await complete([
+      externalRefInstanceEntry(AQ_POOL, OWNER, "amm.constant", storage),
+    ]);
+    expect(missing.positions).toEqual([aquarius]);
   });
 });

@@ -74,7 +74,8 @@ export const SOROSWAP_SEED = {
  * Aquarius on testnet: the router the registry vouches for (apps/api/src/config/
  * contract-registry.json, `aquarius` / `router`), and its Circle-USDC/XLM constant-product pool
  * (30 bps), which the router lists under `pool_index` (`get_pools([USDC, XLM])`) and which runs
- * the registry's constant-product pool code (`d691135a…`). The pool keeps its shares in a separate
+ * the registry's constant-product pool code (`70476939…`, through the release owner's
+ * `amm.constant` tag). The pool keeps its shares in a separate
  * token contract, `shareToken` (`share_id`). `tokens` is the pool's own order (`get_tokens`): the
  * order `deposit` takes its amounts in and `withdraw` pays out and takes its floors in.
  */

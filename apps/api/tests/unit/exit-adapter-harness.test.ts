@@ -77,7 +77,7 @@ describeExitAdapterInvariants("reference adapter, externally built envelope", {
 async function runWith(knobs: FakeAdapterKnobs, rpc = liveRpc()) {
   return runExitAdapter(fakeExitAdapter(knobs), position, ctx, {
     rpc,
-    resolveWasmHash: registry.resolveWasmHash,
+    resolveCode: registry.resolveCode,
     isRegistryFresh: () => true,
   });
 }
@@ -272,9 +272,9 @@ describe("runExitAdapter catches each invariant violation from outside the adapt
     let resolveCalls = 0;
     const result = await runExitAdapter(fakeExitAdapter(), position, ctx, {
       rpc: liveRpc({ liveWasmHash: null }),
-      resolveWasmHash: (network, hash) => {
+      resolveCode: (network, code) => {
         resolveCalls += 1;
-        return registry.resolveWasmHash(network, hash);
+        return registry.resolveCode(network, code);
       },
       isRegistryFresh: () => true,
     });
@@ -320,7 +320,7 @@ describe("runExitAdapter catches each invariant violation from outside the adapt
     );
     const result = await runExitAdapter(fakeExitAdapter(), position, ctx, {
       rpc: liveRpc(),
-      resolveWasmHash: mainnetOnly.resolveWasmHash,
+      resolveCode: mainnetOnly.resolveCode,
       isRegistryFresh: () => true,
     });
     expect(result.blockers.map((b) => b.code)).toEqual(["exit_unknown_contract_version"]);
@@ -336,7 +336,7 @@ describe("runExitAdapter catches each invariant violation from outside the adapt
     await expect(
       runExitAdapter(fakeExitAdapter(), borrow as never, ctx, {
         rpc: liveRpc(),
-        resolveWasmHash: emptyRegistry().resolveWasmHash,
+        resolveCode: emptyRegistry().resolveCode,
       })
     ).rejects.toThrow("cannot handle a blend borrow position");
   });
@@ -407,7 +407,7 @@ describe("runExitAdapter marks which blockers a close may leave a position behin
     } as typeof rpc);
     const expired = await runExitAdapter(fakeExitAdapter(), position, ctx, {
       rpc: liveRpc(),
-      resolveWasmHash: registry.resolveWasmHash,
+      resolveCode: registry.resolveCode,
       isRegistryFresh: () => false,
     });
     const unhealthy = await runWith({ debt: true }, liveRpc({ liveBalance: "520000000" }));

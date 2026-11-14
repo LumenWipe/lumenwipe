@@ -92,10 +92,12 @@ const LEDGER_READS_RESERVE_MS = 6_000;
 const RPC_CALL_TIMEOUT_MS = 12_000;
 
 /** One entry per code hash: the pools listed by address share their representative's code, and
- *  probing each would spend the capped speculative budget before reaching the other protocols. */
+ *  probing each would spend the capped speculative budget before reaching the other protocols.
+ *  An `executable-owner` only names other contracts' code and spends nothing, so it is skipped. */
 export function onePerCode(entries: ContractRegistryEntry[]): ContractRegistryEntry[] {
   const seen = new Set<string>();
   return entries.filter((e) => {
+    if (e.kind === "executable-owner") return false;
     if (e.wasmHash === null) return true;
     if (seen.has(e.wasmHash)) return false;
     seen.add(e.wasmHash);

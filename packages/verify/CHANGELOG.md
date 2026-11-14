@@ -7,6 +7,15 @@ release is cut.
 
 ## [Unreleased]
 
+### Changed
+
+- The bundled contract registry re-pins the Aquarius testnet router and its constant-product,
+  stableswap and concentrated pool code after the upstream upgrade. The testnet pools now take
+  their code from a CAP-85 external reference, so their entries record the owner contract and tag
+  next to the hash, and the owner is registered as a new entry kind, `executable-owner`, which is
+  never treated as a contract a close may call. On testnet, `exitExpectations` lists the same
+  contract addresses as before. Mainnet entries are unchanged.
+
 ## [0.4.0] - 2026-11-10
 
 ### Changed

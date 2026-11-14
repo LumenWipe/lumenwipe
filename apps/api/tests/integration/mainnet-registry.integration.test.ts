@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { Address, Contract, scValToNative, xdr } from "@stellar/stellar-sdk";
-import { entriesForNetwork, entriesForProtocol } from "@/lib/contract-registry";
-import { readLiveWasmHash } from "@/lib/stellar/contract-instance";
+import { codeMatchesEntry, entriesForNetwork, entriesForProtocol } from "@/lib/contract-registry";
+import { readLiveCodeIdentity, type CodeIdentity } from "@/lib/stellar/contract-instance";
 import { getRpcServer } from "@/lib/stellar/rpc";
 
 // Read-only against live mainnet RPC: no account, no transaction, no funds. Every verifiedLive
@@ -18,15 +18,15 @@ test.skipIf(!RUN_INTEGRATION)(
     expect(entries.length).toBeGreaterThan(0);
     const mismatches: string[] = [];
     for (const entry of entries) {
-      let live: string | null;
+      let live: CodeIdentity | null | string;
       try {
-        live = await readLiveWasmHash(rpc, entry.address);
+        live = await readLiveCodeIdentity(rpc, entry.address);
       } catch (err) {
         live = `error: ${err instanceof Error ? err.message : String(err)}`;
       }
-      if (live !== entry.wasmHash) {
+      if (live === null || typeof live === "string" || !codeMatchesEntry(entry, live)) {
         mismatches.push(
-          `${entry.protocol} ${entry.kind} ${entry.address}: live ${live}, registry ${entry.wasmHash}`
+          `${entry.protocol} ${entry.kind} ${entry.address}: live ${JSON.stringify(live)}, registry ${entry.wasmHash}`
         );
       }
     }

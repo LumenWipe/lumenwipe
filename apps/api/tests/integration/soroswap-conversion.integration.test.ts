@@ -3,14 +3,14 @@ import { invokedContract } from "@/lib/stellar/envelope-ops";
 import { TransactionBuilder, type Transaction } from "@stellar/stellar-sdk";
 import { SoroswapSDK, SupportedNetworks } from "@soroswap/sdk";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
-import { resolveWasmHash, soroswapConversionContracts } from "@/lib/contract-registry";
+import { resolveCode, soroswapConversionContracts } from "@/lib/contract-registry";
 import { assertConversionShape, withCloseExpiry } from "@/lib/close-api/token-conversion-round";
 import {
   buildTokenConversion,
   quoteTokenToXlm,
   xlmContractId,
 } from "@/lib/soroswap/conversion-quotes";
-import { readLiveWasmHash } from "@/lib/stellar/contract-instance";
+import { readLiveCodeIdentity } from "@/lib/stellar/contract-instance";
 import { getRpcServer } from "@/lib/stellar/rpc";
 
 // Live, read-only QA of the conversion path against the real Soroswap API and mainnet RPC: a quote
@@ -69,8 +69,9 @@ test.skipIf(!RUN)(
     ).not.toThrow();
 
     const called = invokedContract(tx);
-    const hash = await readLiveWasmHash(rpc, called);
-    const resolved = resolveWasmHash("mainnet", hash ?? "");
+    const code = await readLiveCodeIdentity(rpc, called);
+    expect(code).not.toBeNull();
+    const resolved = resolveCode("mainnet", code!);
     expect(resolved.status).toBe("known");
     if (resolved.status === "known") {
       expect(resolved.protocol).toBe("soroswap");

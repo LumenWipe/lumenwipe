@@ -20,9 +20,40 @@ export function contractInstanceEntry(
   /** Instance storage, as (key, value) ScVal pairs - what `#[contracttype]` instance keys hold. */
   storage: Array<[xdr.ScVal, xdr.ScVal]> = []
 ): LedgerEntry {
+  return instanceEntry(
+    contractAddress,
+    xdr.ContractExecutable.contractExecutableWasm(Buffer.from(wasmHashHex, "hex")),
+    storage
+  );
+}
+
+/** A contract instance that takes its code from a CAP-85 external reference: `owner`'s `tag`. */
+export function externalRefInstanceEntry(
+  contractAddress: string,
+  owner: string,
+  tag: string,
+  storage: Array<[xdr.ScVal, xdr.ScVal]> = []
+): LedgerEntry {
+  return instanceEntry(
+    contractAddress,
+    xdr.ContractExecutable.contractExecutableExternalRef(
+      new xdr.ContractExecutableExternalRef({
+        executableOwner: new Address(owner).toScAddress(),
+        tag,
+      })
+    ),
+    storage
+  );
+}
+
+function instanceEntry(
+  contractAddress: string,
+  executable: xdr.ContractExecutable,
+  storage: Array<[xdr.ScVal, xdr.ScVal]>
+): LedgerEntry {
   const contract = new Contract(contractAddress);
   const instance = new xdr.ScContractInstance({
-    executable: xdr.ContractExecutable.contractExecutableWasm(Buffer.from(wasmHashHex, "hex")),
+    executable,
     storage:
       storage.length === 0 ? null : storage.map(([key, val]) => new xdr.ScMapEntry({ key, val })),
   });
@@ -36,6 +67,19 @@ export function contractInstanceEntry(
     })
   );
   return { key: contract.getFootprint(), val };
+}
+
+/** The owner's persistent tag entry an external reference resolves through. */
+export function executableTagEntry(
+  owner: string,
+  tag: string,
+  value: string | xdr.ScVal
+): LedgerEntry {
+  return contractDataEntry(
+    owner,
+    xdr.ScVal.scvExecutableTag(tag),
+    typeof value === "string" ? xdr.ScVal.scvBytes(Buffer.from(value, "hex")) : value
+  );
 }
 
 export function contractDataEntry(

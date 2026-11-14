@@ -37,10 +37,13 @@ const REGISTRY = embedded as Registry;
  * Whether an exit or a conversion may touch this entry's contract at all: verified live, pinned
  * to a hash, and not running a version the registry lists in `noExitVersions`. A refused
  * protocol's contract adds nothing an exit may touch, even where `EXIT_FUNCTIONS` would block
- * every call it could receive: its code can change under the same address.
+ * every call it could receive: its code can change under the same address. An
+ * `executable-owner` is listed only so the API verifies the code it hands its pools, never as a
+ * contract an exit may reach.
  */
 function isExitCapable(entry: RegistryEntry): boolean {
   return (
+    entry.kind !== "executable-owner" &&
     entry.verifiedLive &&
     entry.wasmHash !== null &&
     !(REGISTRY.noExitVersions?.[entry.protocol] ?? []).includes(entry.version)
