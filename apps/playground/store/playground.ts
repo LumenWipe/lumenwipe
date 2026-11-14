@@ -157,7 +157,7 @@ interface PlaygroundState {
   setCurrentMessIndex: (index: number) => void;
   dockNodes: (nodes: SceneNode[], txHash: string | null) => void;
   updateNode: (id: string, patch: Partial<SceneNode>) => void;
-  destroyNodes: (ids: string[], txHash: string) => void;
+  destroyNodes: (ids: string[], txHash: string | null) => void;
   addLog: (entry: Omit<LogEntry, "id" | "at">) => void;
   setAccountState: (state: AccountState | null) => void;
   setPreCloseReserveXlm: (xlm: number | null) => void;

@@ -34,6 +34,18 @@
     --mkt-line: 190 30% 84%;
     /* Hint text: at least 4.5:1 on the background and on every panel. */
     --subtle-foreground: 200 8% 64%;
+    /* Scene node kinds: each at least 3:1 on the node fill and on every panel (WCAG 1.4.11). */
+    --scene-node: 200 16% 10%;
+    --kind-signer: 145 65% 50%;
+    --kind-multisig: 175 80% 42%;
+    --kind-trustline: 196 100% 55%;
+    --kind-data: 265 85% 76%;
+    --kind-offer: 41 96% 56%;
+    --kind-generic: 200 8% 64%;
+    --kind-position: 320 80% 72%;
+    --kind-allowance: 20 95% 62%;
+    --kind-claimable: 60 80% 55%;
+    --kind-sponsorship: 230 90% 76%;
   }
 
   body {
@@ -54,6 +66,18 @@
   }
   .border-stellar {
     border-color: hsl(var(--stellar));
+  }
+}
+
+/* One rule for every CSS animation and transition on the page; motion/react follows the same
+   preference through the scene's MotionConfig. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 

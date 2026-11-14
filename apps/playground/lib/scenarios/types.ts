@@ -173,17 +173,22 @@ export const SCENE_NODE_KINDS = [
   "offer",
   "data",
   "signer",
+  "multisig",
   "position",
   "allowance",
+  "claimable",
+  "sponsorship",
 ] as const;
 
 /** The kinds that are entries of the account itself, each holding a base reserve. A protocol
- *  position or an allowance lives in a contract's storage instead. */
+ *  position or an allowance lives in a contract's storage, a claimable balance is an entry of its
+ *  own, and a sponsorship node is another account's entry whose reserve the demo pays. */
 export const SUB_ENTRY_NODE_KINDS: readonly SceneNodeKind[] = [
   "trustline",
   "offer",
   "data",
   "signer",
+  "multisig",
 ];
 
 export type SceneNodeKind = (typeof SCENE_NODE_KINDS)[number];

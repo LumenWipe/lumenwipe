@@ -5,7 +5,8 @@ import { AnimatePresence, motion, useSpring, useTransform } from "motion/react";
 import { CheckCircle2 } from "lucide-react";
 import { usePlaygroundStore } from "@/store/playground";
 
-export default function CoreAccount() {
+/** The demo account at the scene's centre; `still` shows each new balance at once. */
+export default function CoreAccount({ still }: { still: boolean }) {
   const phase = usePlaygroundStore((s) => s.phase);
   const accountState = usePlaygroundStore((s) => s.accountState);
   const demoPublic = usePlaygroundStore((s) => s.demoPublic);
@@ -15,8 +16,9 @@ export default function CoreAccount() {
 
   const spring = useSpring(0, { stiffness: 45, damping: 16 });
   useEffect(() => {
-    spring.set(balance);
-  }, [balance, spring]);
+    if (still) spring.jump(balance);
+    else spring.set(balance);
+  }, [balance, spring, still]);
   const display = useTransform(spring, (v) => v.toFixed(2));
 
   const merged = phase === "COMPLETE";
@@ -71,9 +73,7 @@ export default function CoreAccount() {
           >
             <CheckCircle2 className="h-10 w-10 text-stellar" />
             <span className="font-display text-lg text-white">Account merged</span>
-            <span className="text-[11px] mkt-mono text-white/50">
-              Every reserve recovered. Nothing left on the ledger.
-            </span>
+            <span className="text-[11px] mkt-mono text-white/50">Every reserve recovered.</span>
           </motion.div>
         )}
       </AnimatePresence>

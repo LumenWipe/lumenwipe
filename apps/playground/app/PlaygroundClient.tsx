@@ -58,12 +58,10 @@ export default function PlaygroundClient() {
         </p>
       </div>
 
+      {/* The controls come first in the page, so on a phone they sit above the scene and focus
+          reaches them first; from lg the grid puts them in the right-hand column. */}
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
-        <div className="mkt-panel relative overflow-hidden rounded-lg p-4 sm:p-8">
-          {batch ? <BatchPanel onResolve={batchRun.resolveMember} /> : <OrbitalScene />}
-        </div>
-
-        <div className="flex min-w-0 flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-4 lg:col-start-2 lg:row-start-1">
           <PlaygroundControls
             start={start}
             demolish={demolish}
@@ -73,6 +71,10 @@ export default function PlaygroundClient() {
             progressStatus={batchRun.progressStatus ?? progressStatus}
           />
           <TxLogPanel />
+        </div>
+
+        <div className="mkt-panel relative min-w-0 overflow-hidden rounded-lg p-4 sm:p-8 lg:col-start-1 lg:row-start-1">
+          {batch ? <BatchPanel onResolve={batchRun.resolveMember} /> : <OrbitalScene />}
         </div>
       </div>
 

@@ -1,6 +1,7 @@
 "use client";
 
-import { ExternalLink, Flame, Info, PlusCircle } from "lucide-react";
+import { useState } from "react";
+import { ChevronDown, ExternalLink, Flame, Info, PlusCircle } from "lucide-react";
 import { usePlaygroundStore } from "@/store/playground";
 import { txExplorerUrl } from "@/lib/explorer";
 
@@ -12,12 +13,29 @@ const KIND_META = {
 
 export default function TxLogPanel() {
   const log = usePlaygroundStore((s) => s.log);
+  // Below the lg breakpoint the log starts collapsed under the controls; from it, the toggle is
+  // not rendered and the list always shows.
+  const [open, setOpen] = useState(false);
   if (log.length === 0) return null;
 
   return (
     <div className="mkt-panel relative rounded-lg p-4">
-      <p className="mkt-eyebrow mb-3 text-white/50">On-chain activity</p>
-      <ul aria-label="On-chain activity" className="max-h-64 space-y-1.5 overflow-y-auto pr-1">
+      <p className="mkt-eyebrow mb-3 hidden text-white/50 lg:block">On-chain activity</p>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls="tx-log"
+        onClick={() => setOpen((o) => !o)}
+        className="mkt-eyebrow flex min-h-6 w-full items-center justify-between text-white/70 lg:hidden"
+      >
+        On-chain activity ({log.length})
+        <ChevronDown aria-hidden className={`h-4 w-4 ${open ? "rotate-180" : ""}`} />
+      </button>
+      <ul
+        id="tx-log"
+        aria-label="On-chain activity"
+        className={`${open ? "mt-3" : "hidden"} max-h-64 space-y-1.5 overflow-y-auto pr-1 lg:mt-0 lg:block`}
+      >
         {[...log].reverse().map((entry) => {
           const { Icon, className } = KIND_META[entry.kind];
           return (

@@ -3,7 +3,9 @@
 import { Check, CircleDashed, Loader2, ShieldAlert, XCircle } from "lucide-react";
 import { usePlaygroundStore, type BatchMember, type BatchSize } from "@/store/playground";
 import { blockerCopy, GENERIC_ERROR_COPY } from "@/lib/error-copy";
+import { planNodes } from "@/lib/scene-model";
 import BlockerCard from "./BlockerCard";
+import SceneList from "./SceneList";
 
 const PLAN_COPY: Record<Exclude<BatchMember["plan"], "unavailable" | null>["status"], string> = {
   ready: "Ready to close",
@@ -90,6 +92,11 @@ function MemberRow({
           )}
         </dd>
       </dl>
+      <SceneList
+        nodes={planNodes(member.messPlan, member.messDone, member.close === "closed")}
+        label={`Account ${n} entries`}
+        className="mt-3"
+      />
       {member.close === "blocked" && member.stop && (
         <div className="mt-3">
           <BlockerCard

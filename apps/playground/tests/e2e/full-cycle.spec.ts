@@ -56,7 +56,10 @@ test("the standard recipe closes the demo account into the market maker", async 
   // Mess: every step of the plan lands, and the account now holds subentries.
   const demolish = page.getByRole("button", { name: "Demolish it here" });
   await expect(demolish).toBeVisible({ timeout: 6 * 60_000 });
-  await expect(page.getByText("The account is now a mess")).toBeVisible();
+  // The polite status region repeats the summary for screen readers; this is the visible one.
+  await expect(
+    page.getByText("The account is now a mess").and(page.locator(":not([role=status])"))
+  ).toBeVisible();
   await expect(appAlerts(page)).toHaveCount(0);
 
   // The close runs one round per request; each confirmed transaction appears in the activity log,

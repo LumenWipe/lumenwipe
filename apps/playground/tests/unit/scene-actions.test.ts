@@ -1,6 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import {
   SCENE_HANDLERS,
+  nodesResolvedBy,
   operationToSceneAction,
   type LiveNode,
   type SceneAction,
@@ -295,5 +296,63 @@ describe("the Phoenix position", () => {
       operationToSceneAction(call(PHOENIX.pool, "withdraw_liquidity"), live("lend:blend"))
     ).toBeNull();
     expect(operationToSceneAction(call(PHOENIX.stake, "unbond"), live("lend:blend"))).toBeNull();
+  });
+});
+
+describe("claimable balances and sponsored reserves", () => {
+  const claim: IntentOperation = {
+    type: "claim_claimable_balance",
+    source: SOURCE,
+    balanceId: "x",
+  };
+  const revoke = (entryKind: "trustline" | "data_entry" | "offer"): IntentOperation => ({
+    type: "revoke_sponsorship",
+    source: SOURCE,
+    entryKind,
+    owner: "GBENEFICIARY",
+  });
+
+  test("a claim removes a claimed balance's node, never a forfeited one", () => {
+    const scene = live("cb:forfeit:2", "cb:demo_sponsored:3", "cb:add_trustline_then_claim:1");
+    expect(operationToSceneAction(claim, scene)).toEqual({
+      type: "destroy",
+      nodeIds: ["cb:add_trustline_then_claim:1"],
+    });
+    expect(operationToSceneAction(claim, live("cb:claim:0", "cb:forfeit:1"))).toEqual({
+      type: "destroy",
+      nodeIds: ["cb:claim:0"],
+    });
+    expect(operationToSceneAction(claim, live("cb:forfeit:2", "cb:demo_sponsored:3"))).toBeNull();
+  });
+
+  test("a revoke of another account's sponsored entry removes its sponsorship node", () => {
+    const scene = live("sponsorship:trustline", "sponsorship:data");
+    expect(operationToSceneAction(revoke("trustline"), scene)).toEqual({
+      type: "destroy",
+      nodeIds: ["sponsorship:trustline"],
+    });
+    expect(operationToSceneAction(revoke("data_entry"), scene)).toEqual({
+      type: "destroy",
+      nodeIds: ["sponsorship:data"],
+    });
+    expect(operationToSceneAction(revoke("offer"), scene)).toBeNull();
+    expect(operationToSceneAction(revoke("trustline"), live("tl:PERK"))).toBeNull();
+  });
+
+  test("a resolution removes only the nodes its blocker stands for", () => {
+    const scene = live(
+      "cb:demo_sponsored:0",
+      "cb:claim:1",
+      "sponsorship:trustline",
+      "sponsorship:data"
+    );
+    expect(nodesResolvedBy("sponsorship_claimable_balance_unrevocable", scene)).toEqual([
+      "cb:demo_sponsored:0",
+    ]);
+    expect(nodesResolvedBy("sponsorship_unaffordable", scene)).toEqual([
+      "sponsorship:trustline",
+      "sponsorship:data",
+    ]);
+    expect(nodesResolvedBy("some_other_blocker", scene)).toEqual([]);
   });
 });

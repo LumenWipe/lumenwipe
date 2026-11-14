@@ -18,14 +18,15 @@ import {
   willCreate,
 } from "@/lib/scenarios";
 import { usePlaygroundStore, type PlaygroundPhase } from "@/store/playground";
-import { buildSceneNode, usePlaygroundExecution } from "@/hooks/usePlaygroundExecution";
+import { usePlaygroundExecution } from "@/hooks/usePlaygroundExecution";
+import { buildSceneNode } from "@/lib/scene-model";
 import { useBatchExecution } from "@/hooks/useBatchExecution";
 import BatchPanel from "@/components/scene/BatchPanel";
 import PlaygroundControls from "@/components/scene/PlaygroundControls";
 import TxLogPanel from "@/components/scene/TxLogPanel";
 import SdkSnippetPanel from "@/components/scene/SdkSnippetPanel";
 import ScenarioPicker from "@/components/scene/ScenarioPicker";
-import OrbitalNode from "@/components/scene/OrbitalNode";
+import OrbitalScene from "@/components/scene/OrbitalScene";
 import PlaygroundClient from "@/app/PlaygroundClient";
 import { TIME_UP_COPY, WARNING_COPY } from "@/components/scene/SessionCountdown";
 import { tick } from "./session-fixtures";
@@ -41,8 +42,14 @@ import { tick } from "./session-fixtures";
 // import after registering.
 // A real origin, so a test can put a shared link in the address bar with history.replaceState.
 GlobalRegistrator.register({ url: "http://localhost:3002/" });
+// happy-dom's Web Animations reject a cancelled animation's `finished` promise, which nothing in
+// motion/react awaits, so a scene node leaving mid-animation fails the run. Without `animate`,
+// motion animates in JS on its own frame loop instead.
+const nativeAnimate = Object.getOwnPropertyDescriptor(Element.prototype, "animate");
+delete (Element.prototype as { animate?: unknown }).animate;
 const rtl = await import("@testing-library/react");
 afterAll(async () => {
+  if (nativeAnimate) Object.defineProperty(Element.prototype, "animate", nativeAnimate);
   await GlobalRegistrator.unregister();
 });
 
@@ -1014,19 +1021,159 @@ describe("the scenario picker", () => {
   });
 
   describe("the scene", () => {
+    const dock = (...specs: { id: string; kind: string; label: string }[]): void => {
+      const store = usePlaygroundStore.getState();
+      store.reset();
+      store.dockNodes(
+        specs.map((spec, i) => buildSceneNode(spec, i)),
+        "d".repeat(64)
+      );
+    };
+    const orbitButtons = (): HTMLButtonElement[] => [
+      ...document.querySelectorAll<HTMLButtonElement>(
+        'ul[aria-label="Entries on the demo account"] button'
+      ),
+    ];
+    const MIXED = [
+      { id: "cb:claim:0", kind: "claimable", label: "BONUS" },
+      { id: "tl:LWDEMO", kind: "trustline", label: "LWDEMO" },
+      { id: "signer:cosigner:1", kind: "multisig", label: "Co-signer 1" },
+      { id: "sponsorship:data", kind: "sponsorship", label: "sponsored_by_demo" },
+      { id: "data:promo", kind: "data", label: "promo" },
+    ];
+
     test("a node of a kind this client does not know renders as a generic node", () => {
       const node = buildSceneNode({ id: "vault:1", kind: "vault", label: "Vault" }, 0);
       expect(node.kind).toBe("generic");
-      rtl.render(<OrbitalNode node={{ ...node, status: "docked" }} />);
+      dock({ id: "vault:1", kind: "vault", label: "Vault" });
+      rtl.render(<OrbitalScene />);
       expect(rtl.screen.getByText("Vault")).toBeTruthy();
+      expect(rtl.screen.getByRole("button", { name: "Vault: entry, on testnet" })).toBeTruthy();
     });
 
     test("an allowance node keeps its kind and draws its label and amount", () => {
       const node = buildSceneNode({ id: "allowance:1", kind: "allowance", label: "Spender 1" }, 0);
       expect(node.kind).toBe("allowance");
-      rtl.render(<OrbitalNode node={{ ...node, status: "docked", balance: "10" }} />);
+      dock({ id: "allowance:1", kind: "allowance", label: "Spender 1" });
+      usePlaygroundStore.getState().updateNode("allowance:1", { balance: "10" });
+      rtl.render(<OrbitalScene />);
       expect(rtl.screen.getByText("Spender 1")).toBeTruthy();
       expect(rtl.screen.getByText("10")).toBeTruthy();
+    });
+
+    test("each orbit node's name matches its list row", () => {
+      dock(...MIXED);
+      usePlaygroundStore.getState().updateNode("tl:LWDEMO", { balance: "25" });
+      rtl.render(<OrbitalScene />);
+      const named = orbitButtons().map((b) => b.getAttribute("aria-label") ?? "");
+      expect(named).toHaveLength(MIXED.length);
+      rtl.fireEvent.click(rtl.screen.getByRole("button", { name: "List" }));
+      const rows = [...document.querySelectorAll("[data-scene-name]")].map(
+        (r) => r.textContent ?? ""
+      );
+      expect(rows).toEqual(named);
+      expect(rows).toContain("LWDEMO 25: trustline, on testnet");
+      expect(rows).toContain("BONUS: claimable balance, on testnet");
+    });
+
+    test("each node's name starts with the text it shows", () => {
+      dock(...MIXED);
+      usePlaygroundStore.getState().updateNode("tl:LWDEMO", { balance: "1234.5" });
+      rtl.render(<OrbitalScene />);
+      for (const button of orbitButtons()) {
+        const shown = (button.textContent ?? "").replace(/\s+/g, " ").trim();
+        expect(shown.length).toBeGreaterThan(0);
+        expect(button.getAttribute("aria-label")?.startsWith(`${shown}:`)).toBe(true);
+      }
+      expect(orbitButtons().map((b) => b.textContent)).toContain("LWDEMO 1,234.5");
+    });
+
+    test("a removed node stays in the list with the transaction that removed it", () => {
+      dock(...MIXED);
+      usePlaygroundStore.getState().destroyNodes(["data:promo"], "e".repeat(64));
+      rtl.render(<OrbitalScene />);
+      expect(orbitButtons().map((b) => b.getAttribute("aria-label"))).not.toContain(
+        "promo: data entry, removed"
+      );
+      rtl.fireEvent.click(rtl.screen.getByRole("button", { name: "List" }));
+      expect(rtl.screen.getByText("promo: data entry, removed")).toBeTruthy();
+      expect(txLink("e".repeat(64))).toHaveLength(1);
+    });
+
+    test("the orbit is one tab stop and the arrow keys move between nodes", () => {
+      dock(...MIXED);
+      rtl.render(<OrbitalScene />);
+      const buttons = orbitButtons();
+      const stops = (): HTMLButtonElement[] => orbitButtons().filter((b) => b.tabIndex === 0);
+      expect(stops()).toEqual([buttons[0]!]);
+      // Ring order: the multisig signer, the trustline, the data entry, then the outer ring.
+      expect(buttons.map((b) => b.getAttribute("aria-label")?.split(",")[0])).toEqual([
+        "Co-signer 1: multi-signature signer",
+        "LWDEMO: trustline",
+        "promo: data entry",
+        "BONUS: claimable balance",
+        "sponsored_by_demo: sponsored reserve",
+      ]);
+      rtl.act(() => buttons[0]!.focus());
+      rtl.fireEvent.keyDown(buttons[0]!, { key: "ArrowRight" });
+      expect(document.activeElement).toBe(buttons[1]!);
+      expect(stops()).toEqual([buttons[1]!]);
+      rtl.fireEvent.keyDown(buttons[1]!, { key: "End" });
+      expect(document.activeElement).toBe(buttons[4]!);
+      rtl.fireEvent.keyDown(buttons[4]!, { key: "ArrowDown" });
+      expect(document.activeElement).toBe(buttons[0]!);
+      rtl.fireEvent.keyDown(buttons[0]!, { key: "ArrowLeft" });
+      expect(document.activeElement).toBe(buttons[4]!);
+      rtl.fireEvent.keyDown(buttons[4]!, { key: "Home" });
+      expect(document.activeElement).toBe(buttons[0]!);
+    });
+
+    test("removing the focused node moves focus to the one that takes its place", async () => {
+      dock(...MIXED);
+      rtl.render(<OrbitalScene />);
+      const buttons = orbitButtons();
+      rtl.act(() => buttons[1]!.focus());
+      rtl.act(() => usePlaygroundStore.getState().destroyNodes(["tl:LWDEMO"], "f".repeat(64)));
+      await rtl.waitFor(() =>
+        expect(document.activeElement?.getAttribute("aria-label")).toBe(
+          "promo: data entry, on testnet"
+        )
+      );
+      expect(orbitButtons().filter((b) => b.tabIndex === 0)).toHaveLength(1);
+    });
+
+    test("pressing a node shows its label, Escape hides it again", () => {
+      dock(...MIXED);
+      rtl.render(<OrbitalScene />);
+      const button = orbitButtons()[0]!;
+      expect(button.getAttribute("aria-expanded")).toBe("false");
+      rtl.fireEvent.click(button);
+      expect(button.getAttribute("aria-expanded")).toBe("true");
+      rtl.fireEvent.keyDown(button, { key: "Escape" });
+      expect(button.getAttribute("aria-expanded")).toBe("false");
+    });
+
+    test("the legend lists each kind in the scene once, in ring order", () => {
+      dock(...MIXED, { id: "tl:GIFT", kind: "trustline", label: "GIFT" });
+      rtl.render(<OrbitalScene />);
+      const legend = rtl.screen.getByRole("list", { name: "Legend" });
+      expect([...legend.querySelectorAll("li")].map((li) => li.textContent?.split(":")[0])).toEqual(
+        [
+          "Multi-signature signer",
+          "Trustline",
+          "Data entry",
+          "Claimable balance",
+          "Sponsored reserve",
+        ]
+      );
+    });
+
+    test("an empty scene has no toolbar, legend or list", () => {
+      usePlaygroundStore.getState().reset();
+      rtl.render(<OrbitalScene />);
+      expect(rtl.screen.queryByRole("group", { name: "Scene view" })).toBeNull();
+      expect(rtl.screen.queryByRole("list", { name: "Legend" })).toBeNull();
+      expect(rtl.screen.queryByRole("list", { name: "Entries on the demo account" })).toBeNull();
     });
 
     test("an offer node is bound to the chain offer that trades its pair", () => {
@@ -1205,6 +1352,59 @@ describe("the run explains itself", () => {
     });
     await dirtyAccount();
     expect(usePlaygroundStore.getState().phase).toBe("DIRTY");
+  });
+
+  test("the next setup step starts while the state read after the last one is in flight", async () => {
+    const pending: Array<() => void> = [];
+    let reads = 0;
+    routes.handlers.set(STATE, () => {
+      reads++;
+      // The read after the last step is awaited; only the reads between steps are held.
+      if (reads > getMessPlanForMode("light").length) {
+        return Promise.resolve({ status: 200, body: routes.state });
+      }
+      return new Promise((resolve) => {
+        pending.push(() => resolve({ status: 200, body: routes.state }));
+      });
+    });
+    rtl.render(<Harness />);
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: /Create & trash a demo account/ }));
+    const mess = `POST /api/session/${SESSION_ID}/mess`;
+    await rtl.waitFor(() => expect(routes.count(mess)).toBe(2));
+    expect(pending.length).toBeGreaterThanOrEqual(1);
+    await rtl.screen.findByRole("button", { name: /Demolish it here/ }, { timeout: 5000 });
+    await rtl.act(async () => {
+      for (const release of pending) release();
+      await tick();
+    });
+  });
+
+  test("a read that answers late never replaces a newer state", async () => {
+    const pending: Array<() => void> = [];
+    let reads = 0;
+    const at = (numSubEntries: number) => ({
+      ...routes.state,
+      accountState: { ...ACCOUNT_SHAPE, nativeBalanceLumens: "9999.5", numSubEntries },
+    });
+    routes.handlers.set(STATE, () => {
+      reads++;
+      const n = reads;
+      if (n > getMessPlanForMode("light").length) {
+        return Promise.resolve({ status: 200, body: at(7) });
+      }
+      return new Promise((resolve) => {
+        pending.push(() => resolve({ status: 200, body: at(n) }));
+      });
+    });
+    rtl.render(<Harness />);
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: /Create & trash a demo account/ }));
+    await rtl.screen.findByRole("button", { name: /Demolish it here/ }, { timeout: 5000 });
+    expect(usePlaygroundStore.getState().accountState?.numSubEntries).toBe(7);
+    await rtl.act(async () => {
+      for (const release of pending) release();
+      await tick();
+    });
+    expect(usePlaygroundStore.getState().accountState?.numSubEntries).toBe(7);
   });
 
   test("each credential failure has its own plain copy", async () => {

@@ -89,7 +89,18 @@ test("a close that stops part way offers a resume and warns before abandoning th
     isState,
     reply(200, {
       demoPublic: Keypair.random().publicKey(),
-      accountState: { nativeBalanceLumens: "9999.5", numSubEntries: 1 },
+      // The whole account read: the live state panel draws its signers and thresholds, and the
+      // read after the last step binds its open offers.
+      accountState: {
+        address: Keypair.random().publicKey(),
+        network: "testnet",
+        nativeBalanceLumens: "9999.5",
+        numSubEntries: 1,
+        numSponsoring: 0,
+        signers: [{ type: "ed25519_public_key", key: Keypair.random().publicKey(), weight: 1 }],
+        thresholds: { low: 0, med: 0, high: 0 },
+        openOffers: [],
+      },
       completedMessSteps: [],
       demolishLog: [],
       demolishDone: false,
