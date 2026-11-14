@@ -66,9 +66,13 @@ function mergeAmount(result: OpResultWire | undefined): bigint | null {
   return merge.code === ACCOUNT_MERGE_SUCCESS ? merge.sourceAccountBalance : null;
 }
 
+/** The memo as a wallet shows it: an id or text as written, a hash or return memo as hex. */
 function memoOf(tx: Transaction): string | null {
-  const { value } = tx.memo;
+  const { type, value } = tx.memo;
   if (value === null || value === undefined) return null;
+  if (type === "hash" || type === "return") {
+    return typeof value === "string" ? value.toLowerCase() : Buffer.from(value).toString("hex");
+  }
   return typeof value === "string" ? value : Buffer.from(value).toString("utf8");
 }
 

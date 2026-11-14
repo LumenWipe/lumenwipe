@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { FeeBumpTransaction, Networks, TransactionBuilder } from "@stellar/stellar-sdk";
+import {
+  FeeBumpTransaction,
+  Memo,
+  Networks,
+  Transaction,
+  TransactionBuilder,
+  xdr,
+} from "@stellar/stellar-sdk";
 import { readReceipt } from "@/lib/receipt";
 import { networkStroops } from "@/lib/stroops";
 import captured from "../fixtures/receipt-testnet.json";
@@ -123,6 +130,21 @@ describe("a receipt read from a recorded testnet transaction", () => {
     });
   });
 
+  test("a hash memo on the forward reads as lowercase hex", () => {
+    const f = fixture("exchange");
+    const recorded = TransactionBuilder.fromXDR(f.horizon.envelope_xdr, Networks.TESTNET);
+    if (!(recorded instanceof Transaction)) throw new Error("not a transaction");
+    const memo = "0f".repeat(32);
+    const builder = TransactionBuilder.cloneFrom(recorded, { fee: recorded.fee });
+    builder.addMemo(Memo.hash(memo));
+    const rebuilt = builder.build();
+    const hash = Buffer.from(rebuilt.hash()).toString("hex");
+    const record = { ...recordOf(f), envelopeXdr: rebuilt.toXDR() };
+    const receipt = readReceipt(record, hash, f.account);
+    if (receipt.status !== "read" || receipt.merge?.into !== "relay") throw new Error("not read");
+    expect(receipt.merge.forwarded.memo).toBe(memo);
+  });
+
   test("a merge sourced by another account is not the account's merge", () => {
     const f = fixture("exchange");
     const relay = f.credited[0]!.account;
@@ -158,6 +180,22 @@ describe("a record that is not the transaction asked for", () => {
     const f = fixture("classic");
     const stranger = fixture("soroban").account;
     expect(readReceipt(recordOf(f), f.hash, stranger)).toEqual({
+      hash: f.hash,
+      status: "unavailable",
+    });
+  });
+
+  test("operation results that do not line up with the operations read as unavailable", () => {
+    const f = fixture("classic");
+    const wire = xdr.TransactionResult.fromXDR(f.horizon.result_xdr, "base64").toXdrObject();
+    if (wire.result.code !== 0) throw new Error("not a success");
+    const results = wire.result.results;
+    const extra = {
+      ...wire,
+      result: { ...wire.result, results: [...results, results[results.length - 1]!] },
+    };
+    const resultXdr = xdr.TransactionResult.fromXdrObject(extra).toXDR("base64");
+    expect(readReceipt({ ...recordOf(f), resultXdr }, f.hash, f.account)).toEqual({
       hash: f.hash,
       status: "unavailable",
     });
