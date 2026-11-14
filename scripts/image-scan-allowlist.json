@@ -1,1 +1,546 @@
-[]
+[
+  {
+    "advisory": "CVE-2025-69720",
+    "package": "libtinfo6",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie ncurses 6.5+20250216-2: vulnerable, no-dsa (Minor issue). Stack overflow in the infocmp command-line tool. From the base image; the API process never runs infocmp or any ncurses tool, and node does not link libtinfo.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2025-69720",
+    "package": "ncurses-base",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie ncurses 6.5+20250216-2: vulnerable, no-dsa (Minor issue). Stack overflow in the infocmp command-line tool. From the base image; the API process never runs infocmp or any ncurses tool, and node does not link libtinfo.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2025-69720",
+    "package": "ncurses-bin",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie ncurses 6.5+20250216-2: vulnerable, no-dsa (Minor issue). Stack overflow in the infocmp command-line tool. From the base image; the API process never runs infocmp or any ncurses tool, and node does not link libtinfo.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-102010",
+    "package": "gcc-14-base",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie gcc-14 14.2.0-19: vulnerable, no-dsa (Minor issue). libstdc++ erase_if on a binary-heap priority queue. From the base image; node links libstdc++6, libgcc-s1 and libatomic1 (ldd on the pinned node binary), so this is accepted on Debian's rating until a trixie update lands.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-102010",
+    "package": "libatomic1",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie gcc-14 14.2.0-19: vulnerable, no-dsa (Minor issue). libstdc++ erase_if on a binary-heap priority queue. From the base image; node links libstdc++6, libgcc-s1 and libatomic1 (ldd on the pinned node binary), so this is accepted on Debian's rating until a trixie update lands.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-102010",
+    "package": "libgcc-s1",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie gcc-14 14.2.0-19: vulnerable, no-dsa (Minor issue). libstdc++ erase_if on a binary-heap priority queue. From the base image; node links libstdc++6, libgcc-s1 and libatomic1 (ldd on the pinned node binary), so this is accepted on Debian's rating until a trixie update lands.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-102010",
+    "package": "libstdc++6",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie gcc-14 14.2.0-19: vulnerable, no-dsa (Minor issue). libstdc++ erase_if on a binary-heap priority queue. From the base image; node links libstdc++6, libgcc-s1 and libatomic1 (ldd on the pinned node binary), so this is accepted on Debian's rating until a trixie update lands.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-119373",
+    "package": "libsqlite3-0",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie sqlite3 3.46.1-7+deb13u2: vulnerable, no-dsa (Minor issue). FTS5 heap overflow. From the base image, pulled in only by liblastlog2-2 (util-linux); node does not link libsqlite3 (ldd) and bundles its own SQLite 3.54.1, which has the fix.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-119374",
+    "package": "libsqlite3-0",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie sqlite3 3.46.1-7+deb13u2: vulnerable, no-dsa (Minor issue). FTS5 secure-delete heap overflow. From the base image, pulled in only by liblastlog2-2 (util-linux); node does not link libsqlite3 (ldd) and bundles its own SQLite 3.54.1, which has the fix.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-119379",
+    "package": "libsqlite3-0",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie sqlite3 3.46.1-7+deb13u2: vulnerable, no-dsa (Minor issue). Session extension heap overflow in sqlite3changeset_apply. From the base image, pulled in only by liblastlog2-2 (util-linux); node does not link libsqlite3 (ldd) and bundles its own SQLite 3.54.1, which has the fix.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-19499",
+    "package": "libc-bin",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie glibc 2.41-12+deb13u4: vulnerable, no-dsa (Minor issue). Overflow in strfmon and strfmon_l with right-justified padding. From the base image; node links libc6 but formats numbers and currencies with its bundled ICU, not strfmon.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-19499",
+    "package": "libc6",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie glibc 2.41-12+deb13u4: vulnerable, no-dsa (Minor issue). Overflow in strfmon and strfmon_l with right-justified padding. From the base image; node links libc6 but formats numbers and currencies with its bundled ICU, not strfmon.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-5435",
+    "package": "libc-bin",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie glibc 2.41-12+deb13u4: vulnerable, no-dsa (Minor issue). Out-of-bounds write in the deprecated debugging functions ns_printrrf, ns_printrr and fp_nquery. From the base image; node links libc6 but resolves DNS through its bundled c-ares and does not call these resolver debugging functions.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-5435",
+    "package": "libc6",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie glibc 2.41-12+deb13u4: vulnerable, no-dsa (Minor issue). Out-of-bounds write in the deprecated debugging functions ns_printrrf, ns_printrr and fp_nquery. From the base image; node links libc6 but resolves DNS through its bundled c-ares and does not call these resolver debugging functions.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-54369",
+    "package": "libacl1",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie acl 2.3.2-2: vulnerable, no-dsa (Will be fixed first in unstable, then point release update; not to be backported by individual patches). Symlink traversal in libacl's pathname functions. From the base image (used by coreutils, tar, sed and passwd); node does not link libacl1.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-54370",
+    "package": "libacl1",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie acl 2.3.2-2: vulnerable, no-dsa (Will be fixed first in unstable, then point release update; not to be backported by individual patches). Local TOCTOU in recursive setfacl and chacl. From the base image; the API process never runs setfacl or chacl, and node does not link libacl1.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-76642",
+    "package": "bsdutils",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). Mount helper exit status is not checked before post-mount hooks. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-76642",
+    "package": "libblkid1",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). Mount helper exit status is not checked before post-mount hooks. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-76642",
+    "package": "liblastlog2-2",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). Mount helper exit status is not checked before post-mount hooks. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-76642",
+    "package": "libmount1",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). Mount helper exit status is not checked before post-mount hooks. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-76642",
+    "package": "libsmartcols1",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). Mount helper exit status is not checked before post-mount hooks. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-76642",
+    "package": "libuuid1",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). Mount helper exit status is not checked before post-mount hooks. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-76642",
+    "package": "login",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). Mount helper exit status is not checked before post-mount hooks. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-76642",
+    "package": "mount",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). Mount helper exit status is not checked before post-mount hooks. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-76642",
+    "package": "util-linux",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). Mount helper exit status is not checked before post-mount hooks. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-76844",
+    "package": "zlib1g",
+    "severity": "high",
+    "reason": "Fixed in trixie by DSA-6613-1 (zlib 1:1.3.dfsg+really1.3.1-1+deb13u1), but the pinned node:26.13.1-slim base still ships 1:1.3.dfsg+really1.3.1-1+b1. Used by apt, dpkg and libssl in the image; node does not link zlib1g (ldd) and bundles its own zlib. Clears when Renovate pins a newer node:26-slim digest.",
+    "added": "2026-11-14",
+    "expires": "2026-12-14"
+  },
+  {
+    "advisory": "CVE-2026-78408",
+    "package": "bsdutils",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). nsenter --join-cgroup leaks a root-opened descriptor. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-78408",
+    "package": "libblkid1",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). nsenter --join-cgroup leaks a root-opened descriptor. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-78408",
+    "package": "liblastlog2-2",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). nsenter --join-cgroup leaks a root-opened descriptor. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-78408",
+    "package": "libmount1",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). nsenter --join-cgroup leaks a root-opened descriptor. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-78408",
+    "package": "libsmartcols1",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). nsenter --join-cgroup leaks a root-opened descriptor. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-78408",
+    "package": "libuuid1",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). nsenter --join-cgroup leaks a root-opened descriptor. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-78408",
+    "package": "login",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). nsenter --join-cgroup leaks a root-opened descriptor. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-78408",
+    "package": "mount",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). nsenter --join-cgroup leaks a root-opened descriptor. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-78408",
+    "package": "util-linux",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). nsenter --join-cgroup leaks a root-opened descriptor. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-78409",
+    "package": "bsdutils",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). X-mount.subdir symlink race on Linux 6.15 and later. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-78409",
+    "package": "libblkid1",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). X-mount.subdir symlink race on Linux 6.15 and later. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-78409",
+    "package": "liblastlog2-2",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). X-mount.subdir symlink race on Linux 6.15 and later. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-78409",
+    "package": "libmount1",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). X-mount.subdir symlink race on Linux 6.15 and later. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-78409",
+    "package": "libsmartcols1",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). X-mount.subdir symlink race on Linux 6.15 and later. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-78409",
+    "package": "libuuid1",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). X-mount.subdir symlink race on Linux 6.15 and later. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-78409",
+    "package": "login",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). X-mount.subdir symlink race on Linux 6.15 and later. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-78409",
+    "package": "mount",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). X-mount.subdir symlink race on Linux 6.15 and later. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-78409",
+    "package": "util-linux",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). X-mount.subdir symlink race on Linux 6.15 and later. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-78410",
+    "package": "bsdutils",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). Restricted bind mounts do not pin their source. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-78410",
+    "package": "libblkid1",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). Restricted bind mounts do not pin their source. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-78410",
+    "package": "liblastlog2-2",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). Restricted bind mounts do not pin their source. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-78410",
+    "package": "libmount1",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). Restricted bind mounts do not pin their source. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-78410",
+    "package": "libsmartcols1",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). Restricted bind mounts do not pin their source. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-78410",
+    "package": "libuuid1",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). Restricted bind mounts do not pin their source. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-78410",
+    "package": "login",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). Restricted bind mounts do not pin their source. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-78410",
+    "package": "mount",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). Restricted bind mounts do not pin their source. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-78410",
+    "package": "util-linux",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie 2.41.5-0+deb13u1: vulnerable, no-dsa (Minor issue). Restricted bind mounts do not pin their source. From the base image (util-linux and the libraries built from it). The API process never runs mount, login or nsenter; node links none of these libraries.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-82560",
+    "package": "perl-base",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie perl 5.40.1-6+deb13u1: vulnerable, no-dsa (Minor issue). Pod::Text resource exhaustion. From the base image (perl-base is essential in Debian); the API process never runs perl.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-84243",
+    "package": "libc-bin",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie glibc 2.41-12+deb13u4: vulnerable, no-dsa (Minor issue). gettext accepts LANGUAGE entries containing '/' or '..'. From the base image; exploiting it needs control of the process environment, which on Cloud Run is set only by the deploy.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-84243",
+    "package": "libc6",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie glibc 2.41-12+deb13u4: vulnerable, no-dsa (Minor issue). gettext accepts LANGUAGE entries containing '/' or '..'. From the base image; exploiting it needs control of the process environment, which on Cloud Run is set only by the deploy.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-85091",
+    "package": "zlib1g",
+    "severity": "high",
+    "reason": "Fixed in trixie by DSA-6613-1 (zlib 1:1.3.dfsg+really1.3.1-1+deb13u1), but the pinned node:26.13.1-slim base still ships 1:1.3.dfsg+really1.3.1-1+b1. gz_write heap overflow after a failed write(). Used by apt, dpkg and libssl in the image; node does not link zlib1g (ldd) and bundles its own zlib. Clears when Renovate pins a newer node:26-slim digest.",
+    "added": "2026-11-14",
+    "expires": "2026-12-14"
+  },
+  {
+    "advisory": "CVE-2026-9538",
+    "package": "perl-base",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie perl 5.40.1-6+deb13u1: vulnerable, postponed (Minor issue; wait for regressions upstream sorted out). Archive::Tar memory exhaustion. From the base image (perl-base is essential in Debian); the API process never runs perl.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-95619",
+    "package": "gcc-14-base",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie gcc-14 14.2.0-19: vulnerable, no-dsa (Minor issue). Integer overflow in libstdc++'s aligned operator new on very large sizes. From the base image; node links libstdc++6, libgcc-s1 and libatomic1 (ldd on the pinned node binary), so this is accepted on Debian's rating until a trixie update lands.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-95619",
+    "package": "libatomic1",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie gcc-14 14.2.0-19: vulnerable, no-dsa (Minor issue). Integer overflow in libstdc++'s aligned operator new on very large sizes. From the base image; node links libstdc++6, libgcc-s1 and libatomic1 (ldd on the pinned node binary), so this is accepted on Debian's rating until a trixie update lands.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-95619",
+    "package": "libgcc-s1",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie gcc-14 14.2.0-19: vulnerable, no-dsa (Minor issue). Integer overflow in libstdc++'s aligned operator new on very large sizes. From the base image; node links libstdc++6, libgcc-s1 and libatomic1 (ldd on the pinned node binary), so this is accepted on Debian's rating until a trixie update lands.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-95619",
+    "package": "libstdc++6",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie gcc-14 14.2.0-19: vulnerable, no-dsa (Minor issue). Integer overflow in libstdc++'s aligned operator new on very large sizes. From the base image; node links libstdc++6, libgcc-s1 and libatomic1 (ldd on the pinned node binary), so this is accepted on Debian's rating until a trixie update lands.",
+    "added": "2026-11-14",
+    "expires": "2027-02-14"
+  },
+  {
+    "advisory": "GHSA-2m5v-pch6-74hx",
+    "package": "undici",
+    "severity": "high",
+    "reason": "undici 6.28.0, TLS certificate validation bypass via dropped tls options in Agent (fixed in 6.29.1), is the copy bundled inside npm in the pinned node:26.13.1-slim base (/usr/local/lib/node_modules/npm). The API never runs npm, and its own lockfile has no undici and brace-expansion 5.0.13. Fixed upstream; clears when Renovate pins a newer node:26-slim digest that ships a newer npm.",
+    "added": "2026-11-14",
+    "expires": "2026-12-14"
+  },
+  {
+    "advisory": "GHSA-6j4f-fj2g-mc7p",
+    "package": "brace-expansion",
+    "severity": "high",
+    "reason": "brace-expansion 5.0.9, denial of service via recursion in parseCommaParts (fixed in 5.0.10), is the copy bundled inside npm in the pinned node:26.13.1-slim base (/usr/local/lib/node_modules/npm). The API never runs npm, and its own lockfile has no undici and brace-expansion 5.0.13. Fixed upstream; clears when Renovate pins a newer node:26-slim digest that ships a newer npm.",
+    "added": "2026-11-14",
+    "expires": "2026-12-14"
+  },
+  {
+    "advisory": "GHSA-qhr7-859c-m2p7",
+    "package": "brace-expansion",
+    "severity": "high",
+    "reason": "brace-expansion 5.0.9, denial of service via recursion on nested brace groups (fixed in 5.0.11), is the copy bundled inside npm in the pinned node:26.13.1-slim base (/usr/local/lib/node_modules/npm). The API never runs npm, and its own lockfile has no undici and brace-expansion 5.0.13. Fixed upstream; clears when Renovate pins a newer node:26-slim digest that ships a newer npm.",
+    "added": "2026-11-14",
+    "expires": "2026-12-14"
+  },
+  {
+    "advisory": "GHSA-qrxm-fqhp-jwvm",
+    "package": "undici",
+    "severity": "high",
+    "reason": "undici 6.28.0, denial of service via TLS 1.2 certificate-changing renegotiation (fixed in 6.29.1), is the copy bundled inside npm in the pinned node:26.13.1-slim base (/usr/local/lib/node_modules/npm). The API never runs npm, and its own lockfile has no undici and brace-expansion 5.0.13. Fixed upstream; clears when Renovate pins a newer node:26-slim digest that ships a newer npm.",
+    "added": "2026-11-14",
+    "expires": "2026-12-14"
+  },
+  {
+    "advisory": "GHSA-rfgv-xxqx-mfg5",
+    "package": "undici",
+    "severity": "high",
+    "reason": "undici 6.28.0, denial of service via an unrequested WebSocket subprotocol (fixed in 6.28.1), is the copy bundled inside npm in the pinned node:26.13.1-slim base (/usr/local/lib/node_modules/npm). The API never runs npm, and its own lockfile has no undici and brace-expansion 5.0.13. Fixed upstream; clears when Renovate pins a newer node:26-slim digest that ships a newer npm.",
+    "added": "2026-11-14",
+    "expires": "2026-12-14"
+  },
+  {
+    "advisory": "GHSA-xjj6-f33q-929c",
+    "package": "undici",
+    "severity": "high",
+    "reason": "undici 6.28.0, denial of service via excessive content-encodings (fixed in 6.29.1), is the copy bundled inside npm in the pinned node:26.13.1-slim base (/usr/local/lib/node_modules/npm). The API never runs npm, and its own lockfile has no undici and brace-expansion 5.0.13. Fixed upstream; clears when Renovate pins a newer node:26-slim digest that ships a newer npm.",
+    "added": "2026-11-14",
+    "expires": "2026-12-14"
+  }
+]
