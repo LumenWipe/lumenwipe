@@ -30,10 +30,11 @@ describe("the kinds the scene draws", () => {
     }
   });
 
-  test("rings run outward in kind order, the outer one inside 240 of 280", () => {
+  test("rings run outward in kind order, from 170 to 240 of 280", () => {
     const radii = KIND_ORDER.map((k) => KIND_META[k].radius);
     expect(radii).toEqual([...radii].sort((a, b) => a - b));
     expect(Math.max(...GUIDE_RINGS)).toBeLessThanOrEqual(240 / SCENE_HALF);
+    expect(Math.min(...GUIDE_RINGS)).toBeGreaterThanOrEqual(170 / SCENE_HALF);
     expect(new Set(GUIDE_RINGS).size).toBe(GUIDE_RINGS.length);
   });
 });
@@ -41,16 +42,16 @@ describe("the kinds the scene draws", () => {
 describe("one node in words", () => {
   test("names its kind, label, balance and where it stands", () => {
     expect(nodeAccessibleName(node("tl:BONUS", "trustline", "BONUS"))).toBe(
-      "Trustline BONUS, on testnet"
+      "BONUS: trustline, on testnet"
     );
     expect(
       nodeAccessibleName({ ...node("tl:GIFT", "trustline", "GIFT"), balance: "1234.5678" })
-    ).toBe("Trustline GIFT, balance 1,234.57, on testnet");
+    ).toBe("GIFT 1,234.57: trustline, on testnet");
     expect(
       nodeAccessibleName({ ...node("cb:claim:0", "claimable", "BONUS"), status: "destroyed" })
-    ).toBe("Claimable balance BONUS, removed");
+    ).toBe("BONUS: claimable balance, removed");
     expect(nodeAccessibleName({ ...node("tl:X", "trustline", "X"), status: "converting" })).toBe(
-      "Trustline X, being converted to XLM"
+      "X: trustline, being converted to XLM"
     );
   });
 });

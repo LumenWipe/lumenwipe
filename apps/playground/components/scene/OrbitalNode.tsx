@@ -102,7 +102,8 @@ export default function OrbitalNode({
           <span
             className={`${shown} max-w-[52px] shrink-0 truncate ${converting ? "text-value" : "text-subtle"}`}
           >
-            {formatBalance(node.balance)}
+            {/* The space keeps "label balance" as one phrase in the text the name starts with. */}
+            {` ${formatBalance(node.balance)}`}
           </span>
         )}
       </motion.button>

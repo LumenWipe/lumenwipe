@@ -1048,7 +1048,7 @@ describe("the scenario picker", () => {
       dock({ id: "vault:1", kind: "vault", label: "Vault" });
       rtl.render(<OrbitalScene />);
       expect(rtl.screen.getByText("Vault")).toBeTruthy();
-      expect(rtl.screen.getByRole("button", { name: "Entry Vault, on testnet" })).toBeTruthy();
+      expect(rtl.screen.getByRole("button", { name: "Vault: entry, on testnet" })).toBeTruthy();
     });
 
     test("an allowance node keeps its kind and draws its label and amount", () => {
@@ -1072,8 +1072,20 @@ describe("the scenario picker", () => {
         (r) => r.textContent ?? ""
       );
       expect(rows).toEqual(named);
-      expect(rows).toContain("Trustline LWDEMO, balance 25, on testnet");
-      expect(rows).toContain("Claimable balance BONUS, on testnet");
+      expect(rows).toContain("LWDEMO 25: trustline, on testnet");
+      expect(rows).toContain("BONUS: claimable balance, on testnet");
+    });
+
+    test("each node's name starts with the text it shows", () => {
+      dock(...MIXED);
+      usePlaygroundStore.getState().updateNode("tl:LWDEMO", { balance: "1234.5" });
+      rtl.render(<OrbitalScene />);
+      for (const button of orbitButtons()) {
+        const shown = (button.textContent ?? "").replace(/\s+/g, " ").trim();
+        expect(shown.length).toBeGreaterThan(0);
+        expect(button.getAttribute("aria-label")?.startsWith(`${shown}:`)).toBe(true);
+      }
+      expect(orbitButtons().map((b) => b.textContent)).toContain("LWDEMO 1,234.5");
     });
 
     test("a removed node stays in the list with the transaction that removed it", () => {
@@ -1081,10 +1093,10 @@ describe("the scenario picker", () => {
       usePlaygroundStore.getState().destroyNodes(["data:promo"], "e".repeat(64));
       rtl.render(<OrbitalScene />);
       expect(orbitButtons().map((b) => b.getAttribute("aria-label"))).not.toContain(
-        "Data entry promo, removed"
+        "promo: data entry, removed"
       );
       rtl.fireEvent.click(rtl.screen.getByRole("button", { name: "List" }));
-      expect(rtl.screen.getByText("Data entry promo, removed")).toBeTruthy();
+      expect(rtl.screen.getByText("promo: data entry, removed")).toBeTruthy();
       expect(txLink("e".repeat(64))).toHaveLength(1);
     });
 
@@ -1096,11 +1108,11 @@ describe("the scenario picker", () => {
       expect(stops()).toEqual([buttons[0]!]);
       // Ring order: the multisig signer, the trustline, the data entry, then the outer ring.
       expect(buttons.map((b) => b.getAttribute("aria-label")?.split(",")[0])).toEqual([
-        "Multi-signature signer Co-signer 1",
-        "Trustline LWDEMO",
-        "Data entry promo",
-        "Claimable balance BONUS",
-        "Sponsored reserve sponsored_by_demo",
+        "Co-signer 1: multi-signature signer",
+        "LWDEMO: trustline",
+        "promo: data entry",
+        "BONUS: claimable balance",
+        "sponsored_by_demo: sponsored reserve",
       ]);
       rtl.act(() => buttons[0]!.focus());
       rtl.fireEvent.keyDown(buttons[0]!, { key: "ArrowRight" });
@@ -1124,7 +1136,7 @@ describe("the scenario picker", () => {
       rtl.act(() => usePlaygroundStore.getState().destroyNodes(["tl:LWDEMO"], "f".repeat(64)));
       await rtl.waitFor(() =>
         expect(document.activeElement?.getAttribute("aria-label")).toBe(
-          "Data entry promo, on testnet"
+          "promo: data entry, on testnet"
         )
       );
       expect(orbitButtons().filter((b) => b.tabIndex === 0)).toHaveLength(1);

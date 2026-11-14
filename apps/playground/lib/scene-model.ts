@@ -18,39 +18,40 @@ interface KindMeta {
 
 /**
  * Every kind, inner ring first. The account's own entries orbit close to it, and what lives
- * elsewhere (a contract, an entry of its own, another account) orbits outside them. The outer
- * ring stays at 240 so a node at 320 px still fits inside the scene.
+ * elsewhere (a contract, an entry of its own, another account) orbits outside them. At 320 px
+ * the inner ring at 170 keeps a node about 8 px clear of the account, and the outer ring at 240
+ * keeps it inside the scene.
  */
 export const KIND_META: Record<SceneNodeKind, KindMeta> = {
   signer: {
     name: "Signer",
     meaning: "An extra key on the account",
-    radius: 150,
+    radius: 170,
     durationSec: 26,
   },
   multisig: {
     name: "Multi-signature signer",
     meaning: "A signer the close needs, or removes first",
-    radius: 150,
+    radius: 170,
     durationSec: 30,
   },
   trustline: {
     name: "Trustline",
     meaning: "An asset the account holds",
-    radius: 175,
+    radius: 188,
     durationSec: 34,
   },
   data: {
     name: "Data entry",
     meaning: "A key and value on the account",
-    radius: 200,
+    radius: 205,
     durationSec: 44,
   },
-  offer: { name: "Offer", meaning: "An open order on the DEX", radius: 220, durationSec: 56 },
+  offer: { name: "Offer", meaning: "An open order on the DEX", radius: 222, durationSec: 56 },
   generic: {
     name: "Entry",
     meaning: "Something else the run created",
-    radius: 220,
+    radius: 222,
     durationSec: 48,
   },
   position: {
@@ -141,10 +142,16 @@ const STATUS_TEXT: Record<SceneNodeStatus, string> = {
   destroyed: "removed",
 };
 
-/** One node in words: what it is, its label and balance, and where it stands. */
+/** What a node shows on screen: its label, then its balance when it has one. */
+export function nodeVisibleText(node: SceneNode): string {
+  return node.balance === null ? node.label : `${node.label} ${formatBalance(node.balance)}`;
+}
+
+/** One node in words. It starts with the text the node shows (WCAG 2.5.3), then says what kind
+ *  of entry it is and where it stands. */
 export function nodeAccessibleName(node: SceneNode): string {
-  const balance = node.balance === null ? "" : `, balance ${formatBalance(node.balance)}`;
-  return `${KIND_META[node.kind].name} ${node.label}${balance}, ${STATUS_TEXT[node.status]}`;
+  const kind = KIND_META[node.kind].name.toLowerCase();
+  return `${nodeVisibleText(node)}: ${kind}, ${STATUS_TEXT[node.status]}`;
 }
 
 /** The nodes in ring order, then in the order they were created. */
