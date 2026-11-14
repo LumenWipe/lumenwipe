@@ -250,6 +250,7 @@ describe("create session", () => {
 
   test("a new session is stored and the response carries the plan and no secret", async () => {
     const { deps, store, encrypted, funded } = createDeps();
+    const requested = Date.now();
     const res = await create(deps, { mode: "standard" });
     expect(res.status).toBe(200);
     const body = await jsonBody(res);
@@ -286,7 +287,8 @@ describe("create session", () => {
     expect(decrypt(stored!.encDemoSecret)).toBe(encrypted[0]!);
     // The countdown the response shows is the one stored, an hour from the start.
     expect(body.expiresAt).toBe(stored!.expiresAt);
-    expect(stored!.expiresAt - stored!.createdAt).toBeGreaterThanOrEqual(3600 * 1000);
+    // The expiry is computed before the record is written, so it is held to the request's start.
+    expect(stored!.expiresAt - requested).toBeGreaterThanOrEqual(3600 * 1000);
     expect(stored!.expiresAt - stored!.createdAt).toBeLessThan(3600 * 1000 + 1000);
   });
 

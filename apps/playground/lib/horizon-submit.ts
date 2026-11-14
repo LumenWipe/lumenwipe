@@ -180,6 +180,37 @@ const TX_HASH = /^[0-9a-f]{64}$/;
 export async function loadLedgerTransaction(
   hash: string
 ): Promise<{ successful: boolean; envelopeXdr: string } | null> {
+  const json = await readTransaction(hash);
+  if (!json) return null;
+  if (typeof json.successful !== "boolean" || typeof json.envelope_xdr !== "string") {
+    throw new Error("Horizon returned an unreadable transaction");
+  }
+  return { successful: json.successful, envelopeXdr: json.envelope_xdr };
+}
+
+/** A confirmed transaction with its result, as a receipt reads it (lib/receipt.ts). */
+export interface TransactionRecord {
+  successful: boolean;
+  envelopeXdr: string;
+  resultXdr: string;
+}
+
+/** Like loadLedgerTransaction, with the result the network recorded. */
+export async function loadTransactionRecord(hash: string): Promise<TransactionRecord | null> {
+  const json = await readTransaction(hash);
+  if (!json) return null;
+  const { successful, envelope_xdr, result_xdr } = json;
+  if (
+    typeof successful !== "boolean" ||
+    typeof envelope_xdr !== "string" ||
+    typeof result_xdr !== "string"
+  ) {
+    throw new Error("Horizon returned an unreadable transaction");
+  }
+  return { successful, envelopeXdr: envelope_xdr, resultXdr: result_xdr };
+}
+
+async function readTransaction(hash: string): Promise<Record<string, unknown> | null> {
   if (!TX_HASH.test(hash)) throw new Error("Not a transaction hash");
   const res = await fetch(`${HORIZON_TESTNET_URL}/transactions/${hash}`, {
     headers: { Accept: "application/json" },
@@ -188,11 +219,11 @@ export async function loadLedgerTransaction(
   });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`Horizon transaction fetch failed (${res.status})`);
-  const json = (await res.json()) as { successful?: unknown; envelope_xdr?: unknown };
-  if (typeof json.successful !== "boolean" || typeof json.envelope_xdr !== "string") {
+  const json: unknown = await res.json();
+  if (typeof json !== "object" || json === null) {
     throw new Error("Horizon returned an unreadable transaction");
   }
-  return { successful: json.successful, envelopeXdr: json.envelope_xdr };
+  return json as Record<string, unknown>;
 }
 
 /** False only for Horizon's 404; any other failure throws, so it is never read as "gone". */

@@ -1,4 +1,5 @@
-import { expect, test, type Response } from "@playwright/test";
+import { type Response } from "@playwright/test";
+import { expect, test } from "./timed";
 import { appAlerts } from "./alerts";
 import { operationsOf } from "./close-with";
 import { HORIZON } from "./testnet";

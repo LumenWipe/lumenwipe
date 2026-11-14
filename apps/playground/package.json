@@ -11,7 +11,8 @@
     "test": "bun run --filter '@lumenwipe/verify' build:js && bun test tests/unit",
     "test:e2e": "bun run --filter '@lumenwipe/verify' build:js && playwright test",
     "test:a11y": "bun run build && playwright test -c playwright.a11y.config.ts",
-    "test:integration": "LUMENWIPE_RUN_INTEGRATION=1 bun test tests/integration"
+    "test:integration": "LUMENWIPE_RUN_INTEGRATION=1 bun test tests/integration",
+    "durations": "bun scripts/durations.ts"
   },
   "dependencies": {
     "@lumenwipe/sdk": "workspace:*",

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./timed";
 import { scValToNative, xdr } from "@stellar/stellar-sdk";
 import { phoenixReads, phoenixSwapFits } from "../../lib/phoenix-pool";
 import { networkStroops } from "../../lib/stroops";

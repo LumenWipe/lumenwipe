@@ -101,6 +101,20 @@ export async function answerRoutes(page: Page, minutesLeft = 60): Promise<Playgr
       () => ({ status: 200, body: { done: true, confirmed: [MERGE], remainingSteps: 0 } }),
     ],
     [`/session/${SESSION_ID}/cleanup`, () => ({ status: 200, body: { ok: true } })],
+    [
+      "/receipt",
+      () => ({
+        status: 200,
+        body: {
+          hash: MERGE.hash,
+          status: "read",
+          feeStroops: "100",
+          feePaidBy: "account",
+          operations: [{ type: "accountMerge", count: 1 }],
+          merge: { into: "destination", amountStroops: "99995000000", destination: sink },
+        },
+      }),
+    ],
   ]);
 
   await page.route(

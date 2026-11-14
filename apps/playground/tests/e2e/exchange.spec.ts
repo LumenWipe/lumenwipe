@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./timed";
 import { Keypair, Networks, Transaction, TransactionBuilder } from "@stellar/stellar-sdk";
 import { EXCHANGE_STAND_IN } from "../../lib/scenarios";
 import { closeWith } from "./close-with";

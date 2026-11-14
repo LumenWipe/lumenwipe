@@ -416,10 +416,11 @@ describe("allowances are revoked before the close", () => {
     await rtl.screen.findByText(/demo complete/, undefined, { timeout: 5000 });
 
     const demolishCalls = routes.calls.slice(routes.calls.indexOf(`GET ${ALLOWANCES}`));
-    expect(demolishCalls.slice(0, 4)).toEqual([
+    expect(demolishCalls.slice(0, 5)).toEqual([
       `GET ${ALLOWANCES}`,
       `POST ${REVOKE}`,
       `POST ${REVOKE}`,
+      `GET /api/session/${SESSION_ID}/state`,
       `POST ${ROUND}`,
     ]);
     expect(routes.bodies.slice(-2)).toEqual(spenders.map((spender) => JSON.stringify({ spender })));
@@ -652,16 +653,18 @@ describe("the demolish runs round by round", () => {
     let rounds = 0;
     routes.handlers.set(ROUND, async () => {
       rounds++;
-      if (rounds === 1) return { status: 502, body: { error: "demolish_outcome_unknown" } };
+      if (rounds === 1) {
+        // What the failed round confirmed before it stopped is in the session log.
+        routes.state = {
+          ...routes.state,
+          accountState: { ...ACCOUNT_SHAPE, nativeBalanceLumens: "9999.0", numSubEntries: 0 },
+          demolishLog: [REMOVE_TRUSTLINE],
+        };
+        return { status: 502, body: { error: "demolish_outcome_unknown" } };
+      }
       return { status: 200, body: { done: true, confirmed: [MERGE], remainingSteps: 0 } };
     });
     await dirtyAccount();
-    // What the failed round confirmed before it stopped is in the session log.
-    routes.state = {
-      ...routes.state,
-      accountState: { ...ACCOUNT_SHAPE, nativeBalanceLumens: "9999.0", numSubEntries: 0 },
-      demolishLog: [REMOVE_TRUSTLINE],
-    };
 
     rtl.fireEvent.click(rtl.screen.getByRole("button", { name: /Demolish it here/ }));
 
@@ -675,7 +678,9 @@ describe("the demolish runs round by round", () => {
     await rtl.screen.findByText(/demo complete/, undefined, { timeout: 5000 });
     expect(txLink(REMOVE_TRUSTLINE.hash)).toHaveLength(1);
     expect(txLink(MERGE.hash)).toHaveLength(1);
-    expect(rtl.screen.getByText(/9999.50 XLM/)).toBeTruthy();
+    // The reserve is the one read before the first round, two base reserves and the trustline's;
+    // the resume, after a transaction landed, does not read it again.
+    expect(usePlaygroundStore.getState().preCloseReserveXlm).toBe(1.5);
     expect(routes.count("POST /api/session")).toBe(1);
   });
 
@@ -1305,5 +1310,235 @@ describe("the run explains itself", () => {
     await rtl.screen.findByRole("button", { name: /Start a new session/ }, { timeout: 5000 });
     expect(rtl.screen.queryByRole("button", { name: /Close the demo account now/ })).toBeNull();
     expect(usePlaygroundStore.getState().expiredReason).toBe("gone");
+  });
+});
+
+describe("the receipt", () => {
+  const ACCOUNT = "GDEMO";
+  const REMOVE = "d".repeat(64);
+  const MERGED = "e".repeat(64);
+  const SINK = "GSINKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAZZZZ";
+  const receiptPath = (hash: string, account = ACCOUNT) =>
+    `/api/receipt?${new URLSearchParams({ account, hash }).toString()}`;
+  const readRemove = {
+    hash: REMOVE,
+    status: "read",
+    feeStroops: "100",
+    feePaidBy: "sponsor",
+    operations: [{ type: "changeTrust", count: 1 }],
+    merge: null,
+  };
+  const readMerge = {
+    hash: MERGED,
+    status: "read",
+    feeStroops: "200",
+    feePaidBy: "sponsor",
+    operations: [{ type: "accountMerge", count: 1 }],
+    merge: { into: "destination", amountStroops: "99995000000", destination: SINK },
+  };
+  let copied: string[];
+
+  beforeEach(() => {
+    copied = [];
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: async (text: string) => void copied.push(text) },
+    });
+  });
+
+  const answer = (hash: string, body: unknown, account = ACCOUNT): void => {
+    routes.handlers.set(receiptPath(hash, account), async () => ({ status: 200, body }));
+  };
+
+  function complete(reserve: number | null): void {
+    usePlaygroundStore.setState({
+      phase: "COMPLETE",
+      sessionId: SESSION_ID,
+      demoPublic: ACCOUNT,
+      preCloseReserveXlm: reserve,
+      sdkSnippet: 'const source = "GDEMO";',
+      log: [
+        { id: "1", label: "Remove the trustline", txHash: REMOVE, kind: "demolish", at: 1 },
+        { id: "2", label: "Close the account", txHash: MERGED, kind: "demolish", at: 2 },
+      ],
+    });
+  }
+
+  const flush = async (): Promise<void> => {
+    for (let i = 0; i < 50; i++) await Promise.resolve();
+  };
+
+  test("reads the fee and the merge from each confirmed transaction, with one SDK panel", async () => {
+    answer(REMOVE, readRemove);
+    answer(MERGED, readMerge);
+    complete(1.5);
+    rtl.render(<PlaygroundClient />);
+
+    await rtl.screen.findByText("9999.5 XLM");
+    expect(rtl.screen.getByText(/to GSIN…ZZZZ/)).toBeTruthy();
+    expect(rtl.screen.getByText(/of which 1.5 XLM was the reserve/)).toBeTruthy();
+    expect(rtl.screen.getByText("0.00003 XLM paid by LumenWipe's fee sponsor")).toBeTruthy();
+    const operations = rtl.screen.getByRole("list", { name: "Operations by type" });
+    expect(operations.textContent).toContain("Trustline change: 1");
+    expect(operations.textContent).toContain("Account merge: 1");
+    const receipt = rtl.screen.getByRole("region", { name: "Receipt" });
+    const links = rtl
+      .within(receipt)
+      .getAllByRole("link")
+      .map((a) => a.getAttribute("href"));
+    expect(links).toEqual([EXPLORER_TX + REMOVE, EXPLORER_TX + MERGED]);
+    expect(rtl.screen.getAllByText("This close with the SDK")).toHaveLength(1);
+    expect(routes.count(`GET ${receiptPath(MERGED)}`)).toBe(1);
+  });
+
+  test("shows no reserve line when the read before the close is missing", async () => {
+    answer(REMOVE, readRemove);
+    answer(MERGED, readMerge);
+    complete(null);
+    rtl.render(<PlaygroundClient />);
+
+    await rtl.screen.findByText("9999.5 XLM");
+    expect(rtl.screen.queryByText(/was the reserve/)).toBeNull();
+  });
+
+  test("an exchange close names the forward and its memo, not the relay", async () => {
+    answer(REMOVE, readRemove);
+    answer(MERGED, {
+      ...readMerge,
+      merge: {
+        into: "relay",
+        amountStroops: "99995000000",
+        forwarded: { amountStroops: "99994900000", to: SINK, memo: "4242" },
+      },
+    });
+    complete(1.5);
+    rtl.render(<PlaygroundClient />);
+
+    await rtl.screen.findByText("9999.5 XLM");
+    expect(rtl.screen.getByText(/forwarded 9999.49 XLM with memo 4242/)).toBeTruthy();
+  });
+
+  test("no total is shown until every transaction reads, and a retry reads the rest", async () => {
+    answer(REMOVE, readRemove);
+    answer(MERGED, { hash: MERGED, status: "pending" });
+    complete(1.5);
+    jest.useFakeTimers();
+    try {
+      rtl.render(<PlaygroundClient />);
+      await rtl.act(flush);
+      expect(rtl.screen.getByText(/Reading each transaction from the ledger/)).toBeTruthy();
+      expect(rtl.screen.queryByText(/XLM paid by/)).toBeNull();
+      for (let attempt = 1; attempt < 6; attempt++) {
+        await rtl.act(async () => {
+          jest.advanceTimersByTime(2_000);
+          await flush();
+        });
+      }
+      expect(routes.count(`GET ${receiptPath(MERGED)}`)).toBe(6);
+      expect(rtl.screen.getByText(/so no total is shown/)).toBeTruthy();
+      expect(rtl.screen.queryByText(/XLM paid by/)).toBeNull();
+
+      answer(MERGED, readMerge);
+      rtl.fireEvent.click(rtl.screen.getByRole("button", { name: /Read again/ }));
+      await rtl.act(flush);
+      expect(rtl.screen.getByText("0.00003 XLM paid by LumenWipe's fee sponsor")).toBeTruthy();
+      expect(routes.count(`GET ${receiptPath(REMOVE)}`)).toBe(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("shares the exact selection and nothing that grants access", async () => {
+    answer(REMOVE, readRemove);
+    answer(MERGED, readMerge);
+    complete(1.5);
+    rtl.render(<PlaygroundClient />);
+    await rtl.screen.findByText("9999.5 XLM");
+
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: /Share this case/ }));
+    await rtl.waitFor(() => expect(copied).toHaveLength(1));
+    const link = new URL(copied[0]!);
+    expect([...link.searchParams.keys()]).toEqual(["selection"]);
+    expect(decodeSelection(link.searchParams.get("selection") ?? "")).toEqual(
+      usePlaygroundStore.getState().selection
+    );
+    expect(copied[0]).not.toContain(SESSION_ID);
+    expect(copied[0]).not.toContain(ACCOUNT);
+  });
+
+  test("a batch lists each account, the blocked one with nothing sent, and shares its size", async () => {
+    const closedHash = "f".repeat(64);
+    answer(closedHash, { ...readMerge, hash: closedHash, feePaidBy: "account" }, "GCLOSED");
+    const member = (sessionId: string, demoPublic: string, close: "closed" | "blocked") => ({
+      sessionId,
+      demoPublic,
+      label: close === "closed" ? "Demo token holding" : "Claimable balances",
+      messPlan: [],
+      messDone: 0,
+      plan: null,
+      close,
+      stop: null,
+      message: null,
+      hashes: close === "closed" ? [closedHash] : [],
+    });
+    usePlaygroundStore.getState().setBatchSize(2);
+    usePlaygroundStore.setState({
+      phase: "COMPLETE",
+      batch: {
+        batchId: "4f1c2d3e-5a6b-4c7d-8e9f-0a1b2c3d4e5f",
+        blockedIndex: 1,
+        members: [
+          member("1a2b3c4d-1111-4222-8333-444455556666", "GCLOSED", "closed"),
+          member("1a2b3c4d-2222-4333-8444-555566667777", "GBLOCKED", "blocked"),
+        ],
+      },
+    });
+    rtl.render(<PlaygroundClient />);
+
+    const rows = await rtl.screen.findByRole("list", { name: "Each account's close" });
+    await rtl.waitFor(() =>
+      expect(rows.textContent).toContain("9999.5 XLM merged, fees 0.00002 XLM")
+    );
+    expect(rows.textContent).toContain(
+      "Reported blocked before anything was sent: no close transaction, nothing merged"
+    );
+    expect(rows.textContent).not.toContain("0 XLM merged");
+    expect(rtl.screen.getByText("0.00002 XLM paid by the demo account")).toBeTruthy();
+    expect(routes.calls.some((c) => c.includes("GBLOCKED"))).toBe(false);
+
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: /Share this case/ }));
+    await rtl.waitFor(() => expect(copied).toHaveLength(1));
+    expect(copied[0]).toBe("http://localhost:3002/?batch=2");
+  });
+});
+
+describe("the duration the picker shows", () => {
+  test("keeps the estimate while no nightly measurement exists", () => {
+    rtl.render(<ScenarioPicker />);
+    expect(rtl.screen.getByText("Estimated")).toBeTruthy();
+    expect(rtl.screen.queryByText("Measured")).toBeNull();
+    expect(rtl.screen.queryByText(/nightly run/)).toBeNull();
+  });
+
+  test("shows the measured range with its date and run count once measured", () => {
+    const unit = (low: number, high: number) => ({ samples: 10, low, high });
+    rtl.render(
+      <ScenarioPicker
+        measured={{
+          measuredAt: "2026-11-15",
+          runs: ["43600000001", "43600000002"],
+          units: {
+            setup: unit(10, 20),
+            classicStep: unit(3, 6),
+            sorobanStep: unit(8, 12),
+            closeRound: unit(10, 30),
+          },
+          coverage: { inside: 9, tests: 10 },
+        }}
+      />
+    );
+    expect(rtl.screen.getByText("Measured")).toBeTruthy();
+    expect(rtl.screen.queryByText("Estimated")).toBeNull();
+    expect(rtl.screen.getByText(/Timed across 2 nightly runs from 2026-11-15/)).toBeTruthy();
   });
 });

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./timed";
 import { scValToNative, xdr } from "@stellar/stellar-sdk";
 import { blendBorrowFits, readBlendReserve } from "../../lib/blend-utilization";
 import { networkStroops } from "../../lib/stroops";

@@ -12,6 +12,7 @@ import OrbitalScene from "@/components/scene/OrbitalScene";
 import PlaygroundControls from "@/components/scene/PlaygroundControls";
 import TxLogPanel from "@/components/scene/TxLogPanel";
 import SdkSnippetPanel from "@/components/scene/SdkSnippetPanel";
+import ReceiptPanel from "@/components/scene/ReceiptPanel";
 
 export default function PlaygroundClient() {
   const { start, demolish, resolve, progressStatus } = usePlaygroundExecution();
@@ -75,7 +76,7 @@ export default function PlaygroundClient() {
         </div>
       </div>
 
-      <SdkSnippetPanel />
+      {phase === "COMPLETE" ? <ReceiptPanel /> : <SdkSnippetPanel />}
 
       {phase === "IDLE" && (
         <p className="mt-8 text-center text-sm text-white/50">

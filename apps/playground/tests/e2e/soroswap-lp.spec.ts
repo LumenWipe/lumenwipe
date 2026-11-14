@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./timed";
 import { scValToNative, xdr } from "@stellar/stellar-sdk";
 import { PINNED_ASSETS, SOROSWAP, SOROSWAP_SEED } from "../../lib/scenarios";
 import { closeWith, count } from "./close-with";

@@ -129,6 +129,8 @@ function cost(steps: number, closeGroups: number, xlm: number, subEntries: numbe
     sorobanTransactions: 0,
     seconds: steps * MESS_STEP_SECONDS + closeGroups * CLOSE_GROUP_SECONDS,
     subEntries,
+    closeGroups,
+    sorobanExits: 0,
   };
 }
 
@@ -846,7 +848,7 @@ const multisig: ScenarioDefinition = {
 /** The most a Soroban call may pay, in XLM (lib/soroban-submit.ts `MAX_SOROBAN_FEE_STROOPS`). */
 const SOROBAN_FEE_CAP_XLM = 1;
 /** A Soroban step simulates, sends and waits for its ledger: slower than a classic one. */
-const SOROBAN_STEP_SECONDS = 10;
+export const SOROBAN_STEP_SECONDS = 10;
 
 /**
  * A scenario that pairs Circle's USDC with XLM in a pinned pool: one seeding call, which spends the
@@ -916,6 +918,8 @@ function poolScenario(spec: {
           sorobanTransactions: 1,
           seconds: SOROBAN_STEP_SECONDS + CLOSE_GROUP_SECONDS + SOROBAN_STEP_SECONDS,
           subEntries: 0,
+          closeGroups: 1,
+          sorobanExits: 1,
         },
       },
     }),
@@ -1038,6 +1042,8 @@ const blendSupply: ScenarioDefinition = {
           sorobanTransactions: 1,
           seconds: SOROBAN_STEP_SECONDS + CLOSE_GROUP_SECONDS + exits * SOROBAN_STEP_SECONDS,
           subEntries: 0,
+          closeGroups: 1,
+          sorobanExits: exits,
         },
       },
     };
@@ -1145,6 +1151,8 @@ const phoenixLp: ScenarioDefinition = {
           seconds:
             seeds * SOROBAN_STEP_SECONDS + CLOSE_GROUP_SECONDS + exits * SOROBAN_STEP_SECONDS,
           subEntries: 0,
+          closeGroups: 1,
+          sorobanExits: exits,
         },
       },
     };
@@ -1225,6 +1233,8 @@ const allowances: ScenarioDefinition = {
           sorobanTransactions: count,
           seconds: count * 2 * SOROBAN_STEP_SECONDS,
           subEntries: 0,
+          closeGroups: 0,
+          sorobanExits: count,
         },
       },
     };

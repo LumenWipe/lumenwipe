@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./timed";
 import { closeWith, count } from "./close-with";
 
 // The claimable-balance and sponsored-reserve scenarios end to end on testnet, including the

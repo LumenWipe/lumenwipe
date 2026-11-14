@@ -1,4 +1,5 @@
-import { expect, test, type Page, type Response } from "@playwright/test";
+import { type Page, type Response } from "@playwright/test";
+import { expect, test } from "./timed";
 import { appAlerts } from "./alerts";
 
 // A random wallet replayed from its code runs the same wallet twice, end to end on testnet: the

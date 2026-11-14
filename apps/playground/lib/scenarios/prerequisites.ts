@@ -114,6 +114,8 @@ export function purchaseBuild(steps: readonly MessStepDef[]): ScenarioBuild | nu
       sorobanTransactions: 0,
       seconds: 2 * assets * MESS_STEP_SECONDS,
       subEntries: assets,
+      closeGroups: 0,
+      sorobanExits: 0,
     },
   };
 }

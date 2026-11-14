@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./timed";
 import { scValToNative, xdr } from "@stellar/stellar-sdk";
 import { ALLOWANCE_SEED, XLM_SAC } from "../../lib/scenarios";
 import { closeWith } from "./close-with";
