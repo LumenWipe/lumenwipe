@@ -16,6 +16,7 @@ import {
 } from "@/lib/scenarios";
 import type { AccountState, IntentOperation } from "@lumenwipe/sdk";
 import { GENERIC_ERROR_COPY } from "@/lib/error-copy";
+import { lockedReserveXlm } from "@/lib/account-summary";
 import {
   DecisionBlockedError,
   PlanBlockedError,
@@ -192,8 +193,6 @@ export function usePlaygroundExecution(): UsePlaygroundExecutionResult {
   const nodeSeq = useRef(0);
   // Hashes already played on the scene, so a resumed close never plays a transaction twice.
   const shown = useRef(new Set<string>());
-  // The balance before the close started, kept across resumes for the completion summary.
-  const preDemolishXlm = useRef<string | null>(null);
   // Whether the session's allowances were revoked, so a resumed close does not list them again.
   const allowancesRevoked = useRef(false);
 
@@ -229,7 +228,6 @@ export function usePlaygroundExecution(): UsePlaygroundExecutionResult {
     running.current = true;
     nodeSeq.current = 0;
     shown.current = new Set();
-    preDemolishXlm.current = null;
     allowancesRevoked.current = false;
     const store = usePlaygroundStore.getState();
 
@@ -314,9 +312,6 @@ export function usePlaygroundExecution(): UsePlaygroundExecutionResult {
   }, []);
 
   const complete = useCallback((sessionId: string) => {
-    if (preDemolishXlm.current) {
-      usePlaygroundStore.getState().setRecoveredXlm(preDemolishXlm.current);
-    }
     usePlaygroundStore.getState().setPhase("COMPLETE");
 
     fetch(`/api/session/${sessionId}/cleanup`, { method: "POST" }).catch((err) =>
@@ -371,11 +366,9 @@ export function usePlaygroundExecution(): UsePlaygroundExecutionResult {
       if (!sessionId) throw new Error("No active playground session");
 
       const store = usePlaygroundStore.getState();
-      // Captured on the first attempt only: once rounds land, /state's accountState shrinks, and
-      // once the merge lands it goes null (the "account no longer exists" success path).
-      if (!store.demolishFailed) {
-        preDemolishXlm.current = store.accountState?.nativeBalanceLumens ?? null;
-      }
+      // Until a close transaction lands, every attempt reads the reserve again: a resolved blocker
+      // may have changed the account. After one lands, part of the reserve is already released.
+      const nothingClosed = !store.log.some((entry) => entry.kind === "demolish");
       store.setDemolishFailed(false);
       store.setLastError(null);
       store.setPhase("DEMOLISHING");
@@ -384,6 +377,13 @@ export function usePlaygroundExecution(): UsePlaygroundExecutionResult {
       if (seedsAllowances && !allowancesRevoked.current) {
         await revokeAllowances(sessionId);
         allowancesRevoked.current = true;
+      }
+
+      if (nothingClosed) {
+        const state = await refreshState().catch(() => null);
+        usePlaygroundStore
+          .getState()
+          .setPreCloseReserveXlm(state?.accountState ? lockedReserveXlm(state.accountState) : null);
       }
 
       let remainingSteps: number | null = null;

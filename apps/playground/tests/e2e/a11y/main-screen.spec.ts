@@ -31,6 +31,7 @@ test("a finished demo", async ({ page }) => {
   await runSetup(page);
   await page.getByRole("button", { name: "Demolish it here" }).click();
   await expect(page.getByText(/demo complete/)).toBeVisible();
+  await expect(page.getByRole("region", { name: "Receipt" }).getByText("9999.5 XLM")).toBeVisible();
   await expectNoAxeViolations(page, "complete");
   routes.expectAllAnswered();
 });

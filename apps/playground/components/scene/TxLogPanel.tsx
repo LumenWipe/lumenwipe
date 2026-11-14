@@ -2,8 +2,7 @@
 
 import { ExternalLink, Flame, Info, PlusCircle } from "lucide-react";
 import { usePlaygroundStore } from "@/store/playground";
-
-const SV_EXPLORER_TESTNET = "https://stellarview.acachete.xyz/en/testnet";
+import { txExplorerUrl } from "@/lib/explorer";
 
 const KIND_META = {
   mess: { Icon: PlusCircle, className: "text-value" },
@@ -18,7 +17,7 @@ export default function TxLogPanel() {
   return (
     <div className="mkt-panel relative rounded-lg p-4">
       <p className="mkt-eyebrow mb-3 text-white/50">On-chain activity</p>
-      <ul className="max-h-64 space-y-1.5 overflow-y-auto pr-1">
+      <ul aria-label="On-chain activity" className="max-h-64 space-y-1.5 overflow-y-auto pr-1">
         {[...log].reverse().map((entry) => {
           const { Icon, className } = KIND_META[entry.kind];
           return (
@@ -27,7 +26,7 @@ export default function TxLogPanel() {
               <span className="min-w-0 flex-1 truncate">{entry.label}</span>
               {entry.txHash && (
                 <a
-                  href={`${SV_EXPLORER_TESTNET}/tx/${entry.txHash}`}
+                  href={txExplorerUrl(entry.txHash)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex shrink-0 items-center gap-1 mkt-mono text-[10px] text-stellar hover:underline"

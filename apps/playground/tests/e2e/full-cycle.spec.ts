@@ -1,4 +1,6 @@
-import { expect, test, type Response } from "@playwright/test";
+import { type Response } from "@playwright/test";
+import { expect, test } from "./timed";
+import { formatStroops, networkStroops } from "../../lib/stroops";
 import { appAlerts } from "./alerts";
 import { HORIZON } from "./testnet";
 
@@ -65,7 +67,9 @@ test("the standard recipe closes the demo account into the market maker", async 
   expect(hashes.length).toBeGreaterThan(0);
   // The log links a transaction only after the scene has played each of its operations.
   for (const hash of hashes) {
-    await expect(page.locator(`a[href$="/tx/${hash}"]`)).toHaveCount(1, { timeout: 60_000 });
+    await expect(
+      page.getByRole("list", { name: "On-chain activity" }).locator(`a[href$="/tx/${hash}"]`)
+    ).toHaveCount(1, { timeout: 60_000 });
   }
   await expect(page.getByText("demo complete. The account was merged away")).toBeVisible({
     timeout: 3 * 60_000,
@@ -97,4 +101,52 @@ test("the standard recipe closes the demo account into the market maker", async 
       into: session.accounts.mm,
     })
   );
+
+  // The receipt's figures are the ledger's: each fee as Horizon reports it charged, and the merge
+  // as the amount the market maker was credited, read here without the receipt's own parser.
+  const receipt = page.getByRole("region", { name: "Receipt" });
+  await expect(receipt.getByText(/XLM paid by/)).toBeVisible({ timeout: 60_000 });
+  const linked = await receipt
+    .locator('a[href*="/tx/"]')
+    .evaluateAll((links) => links.map((a) => a.getAttribute("href")?.split("/tx/")[1] ?? ""));
+  let byAccount = BigInt(0);
+  let bySponsor = BigInt(0);
+  let credited: string | null = null;
+  for (const hash of linked) {
+    const tx = (await (await fetch(`${HORIZON}/transactions/${hash}`)).json()) as {
+      hash: string;
+      fee_charged: string;
+      fee_account: string;
+    };
+    if (tx.fee_account === session.demoPublic) byAccount += BigInt(tx.fee_charged);
+    else bySponsor += BigInt(tx.fee_charged);
+    const effects = (await (
+      await fetch(`${HORIZON}/transactions/${tx.hash}/effects?limit=200`)
+    ).json()) as {
+      _embedded: { records: { type: string; account?: string; amount?: string }[] };
+    };
+    const merge = effects._embedded.records.find(
+      (e) => e.type === "account_credited" && e.account === session.accounts.mm
+    );
+    if (merge?.amount) credited = merge.amount;
+  }
+  expect(credited).not.toBeNull();
+  await expect(
+    receipt.getByText(`${xlm(networkStroops(credited!))} XLM`, { exact: true })
+  ).toBeVisible();
+  if (byAccount > BigInt(0)) {
+    await expect(receipt.getByText(`${xlm(byAccount)} XLM paid by the demo account`)).toBeVisible();
+  }
+  if (bySponsor > BigInt(0)) {
+    await expect(
+      receipt.getByText(`${xlm(bySponsor)} XLM paid by LumenWipe's fee sponsor`)
+    ).toBeVisible();
+  }
 });
+
+/** XLM as the receipt prints it: seven decimals with trailing zeros dropped. */
+function xlm(stroops: bigint): string {
+  const [whole, fraction = ""] = formatStroops(stroops).split(".");
+  const trimmed = fraction.replace(/0+$/, "");
+  return trimmed ? `${whole}.${trimmed}` : `${whole}`;
+}

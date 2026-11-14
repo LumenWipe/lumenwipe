@@ -44,7 +44,6 @@ export default function PlaygroundControls({
   const lastError = usePlaygroundStore((s) => s.lastError);
   const blocker = usePlaygroundStore((s) => s.blocker);
   const accountState = usePlaygroundStore((s) => s.accountState);
-  const recoveredXlm = usePlaygroundStore((s) => s.recoveredXlm);
   const sessionId = usePlaygroundStore((s) => s.sessionId);
   const selection = usePlaygroundStore((s) => s.selection);
   const preset = usePlaygroundStore((s) => s.preset);
@@ -157,8 +156,8 @@ export default function PlaygroundControls({
         <>
           <div className="mb-4 rounded-md border border-stellar/30 bg-[hsl(var(--stellar)/0.07)] px-4 py-3 text-sm text-white/75">
             Batch complete: {closedCount} of {batch.members.length} accounts merged away
-            {stoppedCount > 0 ? `, ${stoppedCount} reported and left open` : ""} - each row shows
-            how its close went.
+            {stoppedCount > 0 ? `, ${stoppedCount} reported and left open` : ""} - the receipt below
+            shows how each account closed.
           </div>
           <div className="flex flex-col gap-2">
             <button
@@ -209,18 +208,8 @@ export default function PlaygroundControls({
       {phase === "COMPLETE" && !batch && (
         <>
           <div className="mb-4 rounded-md border border-stellar/30 bg-[hsl(var(--stellar)/0.07)] px-4 py-3 text-sm text-white/75">
-            {demoLabel} demo complete. The account was merged away
-            {recoveredXlm ? (
-              <>
-                {" "}
-                and its final{" "}
-                <span className="text-stellar">{parseFloat(recoveredXlm).toFixed(2)} XLM</span>{" "}
-                (junk reserves included) was recovered
-              </>
-            ) : (
-              " and every locked reserve recovered"
-            )}{" "}
-            - check the activity log for the receipts.
+            {demoLabel} demo complete. The account was merged away - the receipt below shows what
+            the network charged and what the merge carried.
             {replayLine}
           </div>
           <div className="flex flex-col gap-2">

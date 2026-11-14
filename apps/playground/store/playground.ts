@@ -119,8 +119,9 @@ interface PlaygroundState {
   lastError: string | null;
   /** The decision ids that stopped the close, when the last error was such a stop. */
   blocker: StoppedClose | null;
-  /** XLM recovered so far during the demolish phase (for the core counter). */
-  recoveredXlm: string | null;
+  /** The reserve the account held at the state read just before its first close round; null when
+   *  that read did not happen or failed. The receipt shows it as part of the merged amount. */
+  preCloseReserveXlm: number | null;
   /** The last error stopped a close that had started: the demo can resume it. */
   demolishFailed: boolean;
   /** The session's close as SDK code, once the server has built it. */
@@ -159,7 +160,7 @@ interface PlaygroundState {
   destroyNodes: (ids: string[], txHash: string) => void;
   addLog: (entry: Omit<LogEntry, "id" | "at">) => void;
   setAccountState: (state: AccountState | null) => void;
-  setRecoveredXlm: (xlm: string) => void;
+  setPreCloseReserveXlm: (xlm: number | null) => void;
   setLastError: (error: string | null, blocker?: StoppedClose | null) => void;
   setDemolishFailed: (failed: boolean) => void;
   setSdkSnippet: (snippet: string) => void;
@@ -193,7 +194,7 @@ const sessionInitialState = {
   accountState: null,
   lastError: null,
   blocker: null,
-  recoveredXlm: null,
+  preCloseReserveXlm: null,
   demolishFailed: false,
   sdkSnippet: null,
   batch: null as BatchRun | null,
@@ -263,7 +264,7 @@ export const usePlaygroundStore = create<PlaygroundState>((set) => ({
 
   setAccountState: (accountState) => set({ accountState }),
 
-  setRecoveredXlm: (recoveredXlm) => set({ recoveredXlm }),
+  setPreCloseReserveXlm: (preCloseReserveXlm) => set({ preCloseReserveXlm }),
 
   setLastError: (lastError, blocker = null) => set({ lastError, blocker }),
 

@@ -22,6 +22,9 @@ export const CREDENTIALS_PER_DAY_PER_IP = 50;
 /** Batch plans per IP per day. Each one spends the playground's API key on every member's read;
  *  a batch needs one, so this leaves room for retries across the batches the session limit allows. */
 export const BATCH_PLANS_PER_DAY_PER_IP = 50;
+/** Receipt reads per IP per day: one per close transaction, with room for retries while the
+ *  network catches up, across every close the session limit allows. */
+export const RECEIPTS_PER_DAY_PER_IP = 500;
 
 // One-way, so no raw IP is ever written to Redis.
 function hashIp(ip: string): string {
