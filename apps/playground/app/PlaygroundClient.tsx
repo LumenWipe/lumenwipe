@@ -2,10 +2,12 @@
 
 import { useLayoutEffect } from "react";
 import { usePlaygroundStore } from "@/store/playground";
-import { decodeSelection, parseUnavailable } from "@/lib/scenarios";
+import { decodeSelection, parseBatchSize, parseUnavailable } from "@/lib/scenarios";
 import { replaySeed } from "@/components/scene/ScenarioPicker";
 import { playgroundRequest } from "@/lib/playground-api";
 import { usePlaygroundExecution } from "@/hooks/usePlaygroundExecution";
+import { useBatchExecution } from "@/hooks/useBatchExecution";
+import BatchPanel from "@/components/scene/BatchPanel";
 import OrbitalScene from "@/components/scene/OrbitalScene";
 import PlaygroundControls from "@/components/scene/PlaygroundControls";
 import TxLogPanel from "@/components/scene/TxLogPanel";
@@ -13,14 +15,19 @@ import SdkSnippetPanel from "@/components/scene/SdkSnippetPanel";
 
 export default function PlaygroundClient() {
   const { start, demolish, resolve, progressStatus } = usePlaygroundExecution();
+  const batchRun = useBatchExecution();
   const phase = usePlaygroundStore((s) => s.phase);
+  const batch = usePlaygroundStore((s) => s.batch);
 
   // Until this answers, every scenario shows as available; the create route checks again anyway.
   // A shared link then restores its wallet: `?seed=` replays a code, `?selection=` an exact
   // selection (validated again when the run starts). Create stays disabled until the link is
   // applied, set before the first paint so no click can start the default selection meanwhile.
+  // `?batch=2` or `?batch=3` opens on a batch of that size.
   useLayoutEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const batchSize = parseBatchSize(params.get("batch"));
+    if (batchSize) usePlaygroundStore.getState().setBatchSize(batchSize);
     if (params.has("seed") || params.has("selection")) {
       usePlaygroundStore.getState().setLinkPending(true);
     }
@@ -52,7 +59,7 @@ export default function PlaygroundClient() {
 
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <div className="mkt-panel relative overflow-hidden rounded-lg p-4 sm:p-8">
-          <OrbitalScene />
+          {batch ? <BatchPanel onResolve={batchRun.resolveMember} /> : <OrbitalScene />}
         </div>
 
         <div className="flex min-w-0 flex-col gap-4">
@@ -60,7 +67,9 @@ export default function PlaygroundClient() {
             start={start}
             demolish={demolish}
             resolve={resolve}
-            progressStatus={progressStatus}
+            startBatch={batchRun.startBatch}
+            closeBatch={batchRun.closeBatch}
+            progressStatus={batchRun.progressStatus ?? progressStatus}
           />
           <TxLogPanel />
         </div>

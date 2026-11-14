@@ -47,7 +47,7 @@ function stringsAt(body: unknown, key: string): string[] {
 
 /**
  * Calls a playground route and returns its JSON, or throws an error carrying plain-language copy.
- * Only a `session_not_found` body means the session expired: any other 404 (an unknown route, or an
+ * Only a `session_not_found` or `batch_not_found` body means the session expired: any other 404 (an unknown route, or an
  * account Horizon has not caught up with yet) is an ordinary failure.
  */
 export async function playgroundRequest<T>(
@@ -67,7 +67,7 @@ export async function playgroundRequest<T>(
   if (res.ok) return (await res.json()) as T;
   const body: unknown = await res.json().catch(() => null);
   const code = errorCode(body);
-  if (res.status === 404 && code === "session_not_found") {
+  if (res.status === 404 && (code === "session_not_found" || code === "batch_not_found")) {
     throw new SessionExpiredError(errorCopy(code));
   }
   if (code === "demolish_decision_unanswerable") {
