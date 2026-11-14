@@ -1342,6 +1342,59 @@ describe("the run explains itself", () => {
     expect(usePlaygroundStore.getState().phase).toBe("DIRTY");
   });
 
+  test("the next setup step starts while the state read after the last one is in flight", async () => {
+    const pending: Array<() => void> = [];
+    let reads = 0;
+    routes.handlers.set(STATE, () => {
+      reads++;
+      // The read after the last step is awaited; only the reads between steps are held.
+      if (reads > getMessPlanForMode("light").length) {
+        return Promise.resolve({ status: 200, body: routes.state });
+      }
+      return new Promise((resolve) => {
+        pending.push(() => resolve({ status: 200, body: routes.state }));
+      });
+    });
+    rtl.render(<Harness />);
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: /Create & trash a demo account/ }));
+    const mess = `POST /api/session/${SESSION_ID}/mess`;
+    await rtl.waitFor(() => expect(routes.count(mess)).toBe(2));
+    expect(pending.length).toBeGreaterThanOrEqual(1);
+    await rtl.screen.findByRole("button", { name: /Demolish it here/ }, { timeout: 5000 });
+    await rtl.act(async () => {
+      for (const release of pending) release();
+      await tick();
+    });
+  });
+
+  test("a read that answers late never replaces a newer state", async () => {
+    const pending: Array<() => void> = [];
+    let reads = 0;
+    const at = (numSubEntries: number) => ({
+      ...routes.state,
+      accountState: { ...ACCOUNT_SHAPE, nativeBalanceLumens: "9999.5", numSubEntries },
+    });
+    routes.handlers.set(STATE, () => {
+      reads++;
+      const n = reads;
+      if (n > getMessPlanForMode("light").length) {
+        return Promise.resolve({ status: 200, body: at(7) });
+      }
+      return new Promise((resolve) => {
+        pending.push(() => resolve({ status: 200, body: at(n) }));
+      });
+    });
+    rtl.render(<Harness />);
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: /Create & trash a demo account/ }));
+    await rtl.screen.findByRole("button", { name: /Demolish it here/ }, { timeout: 5000 });
+    expect(usePlaygroundStore.getState().accountState?.numSubEntries).toBe(7);
+    await rtl.act(async () => {
+      for (const release of pending) release();
+      await tick();
+    });
+    expect(usePlaygroundStore.getState().accountState?.numSubEntries).toBe(7);
+  });
+
   test("each credential failure has its own plain copy", async () => {
     const answers: [number, string][] = [
       [429, "rate_limited"],

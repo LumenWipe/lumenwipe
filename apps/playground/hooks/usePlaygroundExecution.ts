@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePlaygroundStore, type PlaygroundAccounts } from "@/store/playground";
 import { nodesResolvedBy, operationToSceneAction } from "@/lib/scene-actions";
 import { buildSceneNode } from "@/lib/scene-model";
@@ -150,13 +150,49 @@ export function usePlaygroundExecution(): UsePlaygroundExecutionResult {
     store.setPhase("ERROR");
   }, []);
 
-  const refreshState = useCallback(async (): Promise<StateResponse | null> => {
-    const { sessionId, setAccountState } = usePlaygroundStore.getState();
+  // A state read is an account read on the API, seconds long on testnet. Only the newest read
+  // started may show its answer, and only while this page still runs the same session.
+  const mounted = useRef(true);
+  const readSeq = useRef(0);
+  const peek = useRef<AbortController | null>(null);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      peek.current?.abort();
+    };
+  }, []);
+
+  const readState = useCallback(async (signal?: AbortSignal): Promise<StateResponse | null> => {
+    const { sessionId } = usePlaygroundStore.getState();
     if (!sessionId) return null;
-    const state = await api<StateResponse>(`/session/${sessionId}/state`);
-    setAccountState(state.accountState);
+    const seq = ++readSeq.current;
+    const state = await api<StateResponse>(`/session/${sessionId}/state`, { signal });
+    const now = usePlaygroundStore.getState();
+    if (mounted.current && seq === readSeq.current && now.sessionId === sessionId) {
+      now.setAccountState(state.accountState);
+    }
     return state;
   }, []);
+
+  /** A read the caller waits for, which supersedes any read still in flight. */
+  const refreshState = useCallback((): Promise<StateResponse | null> => {
+    peek.current?.abort();
+    peek.current = null;
+    return readState();
+  }, [readState]);
+
+  /** A read nobody waits for, for the live state between setup steps: a newer one cancels it. */
+  const peekState = useCallback((): void => {
+    peek.current?.abort();
+    const controller = new AbortController();
+    peek.current = controller;
+    readState(controller.signal)
+      .catch(() => null)
+      .finally(() => {
+        if (peek.current === controller) peek.current = null;
+      });
+  }, [readState]);
 
   /** Phase A: create the custodial account and run the full mess sequence. */
   const start = useCallback(async () => {
@@ -211,8 +247,9 @@ export function usePlaygroundExecution(): UsePlaygroundExecutionResult {
         }
         applyBalanceUpdates(step);
 
-        // Best effort: the live state is only shown, and the read after the last step is checked.
-        await refreshState().catch(() => null);
+        // Shown only, so the next step does not wait for it; the read after the last step is
+        // awaited and checked.
+        peekState();
       }
 
       setProgressStatus("Reading the account state...");
@@ -237,7 +274,7 @@ export function usePlaygroundExecution(): UsePlaygroundExecutionResult {
       setProgressStatus(null);
       running.current = false;
     }
-  }, [fail, refreshState]);
+  }, [fail, peekState, refreshState]);
 
   const showConfirmed = useCallback(async (entries: DemolishLogEntry[]) => {
     for (const entry of entries) {
