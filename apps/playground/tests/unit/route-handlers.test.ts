@@ -281,8 +281,13 @@ describe("create session", () => {
       demolishPending: null,
       demolishDone: false,
       selection: resolvePlan(selectionForMode("standard")).selection,
+      extended: false,
     });
     expect(decrypt(stored!.encDemoSecret)).toBe(encrypted[0]!);
+    // The countdown the response shows is the one stored, an hour from the start.
+    expect(body.expiresAt).toBe(stored!.expiresAt);
+    expect(stored!.expiresAt - stored!.createdAt).toBeGreaterThanOrEqual(3600 * 1000);
+    expect(stored!.expiresAt - stored!.createdAt).toBeLessThan(3600 * 1000 + 1000);
   });
 
   test("an over-limit caller gets 429 before any account is funded or stored", async () => {
@@ -1800,6 +1805,25 @@ describe("credentials", () => {
     expect(limits).toEqual([["credentials", 50]]);
     expect(counted.calls()).toBe(0);
     expect(decrypted).toBe(0);
+  });
+
+  test("once the countdown ends no key is handed out, and nothing is decrypted", async () => {
+    const store = memoryStore();
+    const seeded = await seed(store, { expiresAt: 1_900_000_000_000 });
+    let decrypted = 0;
+    const deps = {
+      store,
+      rateLimit: allow,
+      decrypt: (payload: string) => {
+        decrypted++;
+        return decrypt(payload);
+      },
+    };
+    const atEnd = await reveal(seeded.id, { ...deps, now: () => 1_900_000_000_000 });
+    expect(await outcome(atEnd)).toEqual({ status: 410, body: { error: "session_expired" } });
+    expect(decrypted).toBe(0);
+    const before = await reveal(seeded.id, { ...deps, now: () => 1_900_000_000_000 - 1 });
+    expect(before.status).toBe(200);
   });
 
   test("an id that is not a session uuid is session_not_found without a store read", async () => {

@@ -13,7 +13,8 @@ import {
 } from "./market-maker";
 import type { NativeBalance } from "./horizon-submit";
 import { BATCH_PLANS_PER_DAY_PER_IP, SESSIONS_PER_DAY_PER_IP, type RateLimit } from "./rate-limit";
-import { notConfiguredResponse } from "./route-helpers";
+import { actionResponse, notConfiguredResponse } from "./route-helpers";
+import { runExtend } from "./session-actions";
 import {
   createdSessionBody,
   discardSession,
@@ -133,11 +134,15 @@ export async function handleCreateBatch(
   if (spendableXlm(mmBalance) - draw < MM_SESSION_FLOOR_XLM) return refusedForFunds(deps.store);
 
   const drafts = batch.members.map(draftSession);
+  // One countdown for the whole batch: every member expires, and is extended, together.
+  const expiresAt = sessionExpiresAt(Date.now());
   const sessions: PlaygroundSession[] = [];
   const discardAll = () => Promise.all(sessions.map((s) => discardSession(deps.store, s)));
   try {
     for (const draft of drafts) {
-      sessions.push(await deps.store.createSession(sessionRecordOf(draft, null, deps.encrypt)));
+      sessions.push(
+        await deps.store.createSession(sessionRecordOf(draft, null, deps.encrypt, expiresAt))
+      );
     }
   } catch (err) {
     await discardAll();
@@ -192,7 +197,7 @@ export async function handleCreateBatch(
   return NextResponse.json({
     batchId: record.id,
     blockedIndex: batch.blockedIndex,
-    expiresAt: sessionExpiresAt(),
+    expiresAt,
     members: drafts.map((draft, i) => ({
       ...createdSessionBody(sessions[i]!, draft, issuer, mm, null),
       label: memberLabel(draft.plan),
@@ -205,6 +210,27 @@ function memberLabel(plan: ResolvedPlan): string {
   return plan.selection.scenarios
     .map(({ id }) => SCENARIOS.find((d) => d.id === id)?.label ?? id)
     .join(", ");
+}
+
+export interface ExtendBatchDeps {
+  store: SessionStore;
+  /** The clock the members' expiry is held to; tests set it. */
+  now?: () => number;
+}
+
+/** Uses the one extension of every member of the batch at once. */
+export async function handleExtendBatch(id: string, deps: ExtendBatchDeps): Promise<NextResponse> {
+  const notFound = NextResponse.json({ error: "batch_not_found" }, { status: 404 });
+  if (!isSessionId(id)) return notFound;
+  let batch: PlaygroundBatch | null;
+  try {
+    batch = await deps.store.loadBatch(id);
+  } catch (err) {
+    if (err instanceof PlaygroundStoreUnavailableError) return notConfiguredResponse();
+    throw err;
+  }
+  if (!batch) return notFound;
+  return actionResponse(await runExtend(deps.store, batch.memberIds, deps.now ?? Date.now));
 }
 
 /** Loads a batch and every member, or the response the route sends instead. */

@@ -22,7 +22,11 @@ import {
   type ResolutionKind,
 } from "./scenarios";
 import {
+  EXTENSION_WINDOW_SECONDS,
   PlaygroundStoreUnavailableError,
+  SESSION_EXTENSION_SECONDS,
+  SessionLockLostError,
+  isSessionExpired,
   type DemolishLogEntry,
   type PlaygroundSession,
   type RecordedAllowance,
@@ -47,6 +51,10 @@ const SESSION_NOT_FOUND: ActionResult = { status: 404, body: { error: "session_n
 const STEP_IN_PROGRESS: ActionResult = { status: 409, body: { error: "step_in_progress" } };
 const STEP_NOT_IN_PLAN: ActionResult = { status: 400, body: { error: "step_not_in_plan" } };
 const STEP_OUT_OF_ORDER: ActionResult = { status: 409, body: { error: "step_out_of_order" } };
+export const SESSION_EXPIRED: ActionResult = { status: 410, body: { error: "session_expired" } };
+const EXTENSION_USED: ActionResult = { status: 409, body: { error: "extension_used" } };
+const EXTENSION_NOT_YET: ActionResult = { status: 409, body: { error: "extension_not_yet" } };
+const DEMOLISH_DONE: ActionResult = { status: 409, body: { error: "demolish_started" } };
 
 /** How many unanswerable decision ids a refused round reports, and how much of each. */
 const MAX_REPORTED_DECISIONS = 10;
@@ -63,6 +71,8 @@ export interface MessStepDeps {
     recordClaimableBalances: (balances: RecordedClaimableBalance[]) => Promise<void>,
     recordAllowance: (index: number, allowance: RecordedAllowance) => Promise<void>
   ) => Promise<string | null>;
+  /** The clock the session's expiry is held to; tests set it. */
+  now?: () => number;
 }
 
 export interface DemolishRoundDeps {
@@ -121,6 +131,7 @@ export async function runMessStep(
 ): Promise<ActionResult> {
   try {
     return await withSessionLock(store, id, async (session, lock) => {
+      if (isSessionExpired(session, (deps.now ?? Date.now)())) return SESSION_EXPIRED;
       // The plan comes from the session's stored selection, never from the request: a step the
       // session did not select would build entries its close expectation does not allow for.
       const plan = resolvePlan(session.selection).steps;
@@ -205,6 +216,62 @@ function demolishStarted(session: PlaygroundSession): boolean {
  * for the merge, the done flag are one write: an interrupted request leaves either the record (the
  * next round settles it by hash and logs it then) or the entry, never both and never neither.
  */
+/**
+ * Uses the one extension of every session in `ids` together (a single session, or every member of
+ * a batch): each moves from the expiry they share to that expiry plus SESSION_EXTENSION_SECONDS.
+ * A member already moved to that same target is left as it is, so a retry after a busy lock
+ * finishes the rest without extending anyone twice.
+ */
+export async function runExtend(
+  store: SessionStore,
+  ids: readonly string[],
+  now: () => number
+): Promise<ActionResult> {
+  try {
+    if (ids.length === 0 || !ids.every(isSessionId)) return SESSION_NOT_FOUND;
+    const sessions: PlaygroundSession[] = [];
+    for (const id of ids) {
+      const session = await store.loadSession(id);
+      if (!session) return SESSION_NOT_FOUND;
+      sessions.push(session);
+    }
+    const pending = sessions.filter((s) => !s.extended);
+    const base = pending[0]?.expiresAt;
+    if (base === undefined) return EXTENSION_USED;
+    const target = base + SESSION_EXTENSION_SECONDS * 1000;
+    const consistent = sessions.every((s) => s.expiresAt === (s.extended ? target : base));
+    if (!consistent) return EXTENSION_USED;
+    const refusal = extensionRefusal(base, now());
+    if (refusal) return refusal;
+    if (sessions.every((s) => s.demolishDone)) return DEMOLISH_DONE;
+
+    for (const id of ids) {
+      const result = await withSessionLock(store, id, async (session, lock) => {
+        if (session.extended) return session.expiresAt === target ? EXTENDED : EXTENSION_USED;
+        if (session.expiresAt !== base) return EXTENSION_USED;
+        const late = extensionRefusal(base, now());
+        if (late) return late;
+        await store.updateSession(lock, () => ({ expiresAt: target, extended: true }));
+        return EXTENDED;
+      });
+      if (result !== EXTENDED) return result;
+    }
+    return { status: 200, body: { expiresAt: target, extended: true } };
+  } catch (err) {
+    if (isConfigError(err)) return NOT_CONFIGURED;
+    if (err instanceof SessionLockLostError) return STEP_IN_PROGRESS;
+    throw err;
+  }
+}
+
+const EXTENDED: ActionResult = { status: 200, body: {} };
+
+function extensionRefusal(expiresAt: number, now: number): ActionResult | null {
+  if (isSessionExpired({ expiresAt }, now)) return SESSION_EXPIRED;
+  if (expiresAt - now > EXTENSION_WINDOW_SECONDS * 1000) return EXTENSION_NOT_YET;
+  return null;
+}
+
 export async function runDemolishRound(
   store: SessionStore,
   id: string,

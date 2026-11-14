@@ -110,7 +110,8 @@ const create = (deps: CreateBatchDeps, body: unknown) =>
 interface CreatedBatch {
   batchId: string;
   blockedIndex: number;
-  members: { sessionId: string; demoPublic: string; label: string }[];
+  expiresAt: number;
+  members: { sessionId: string; demoPublic: string; label: string; expiresAt: number }[];
 }
 
 async function created(deps: CreateBatchDeps, members: readonly ScenarioSelection[]) {
@@ -147,6 +148,10 @@ describe("POST /api/batch", () => {
     expect(sessions.map((s) => s.selection)).toEqual(
       [...DEFAULT_BATCH_MEMBERS[3], BLOCKED_MEMBER_SELECTION].map((s) => resolvePlan(s).selection)
     );
+    // One countdown for the batch: every member stores the expiry the response shows.
+    expect(sessions.map((s) => s.expiresAt)).toEqual(sessions.map(() => body.expiresAt));
+    expect(body.members.map((m) => m.expiresAt)).toEqual(sessions.map(() => body.expiresAt));
+    expect(sessions.every((s) => !s.extended)).toBe(true);
     // Every member is an ordinary indexed session the reaper reaches.
     expect((await store.indexedSessionIds()).sort()).toEqual(
       body.members.map((m) => m.sessionId).sort()

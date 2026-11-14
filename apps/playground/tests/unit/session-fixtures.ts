@@ -1,6 +1,11 @@
 import { memoryKv } from "@/lib/kv";
 import { selectionForMode } from "@/lib/mess-plan";
-import { createSessionStore, type NewSessionData, type SessionStore } from "@/lib/session-store";
+import {
+  createSessionStore,
+  sessionExpiresAt,
+  type NewSessionData,
+  type SessionStore,
+} from "@/lib/session-store";
 
 export interface FakeClock {
   now: () => number;
@@ -33,6 +38,8 @@ export function newSessionData(): NewSessionData {
     claimableBalances: [],
     allowances: [],
     exchange: null,
+    expiresAt: sessionExpiresAt(Date.now()),
+    extended: false,
   };
 }
 
