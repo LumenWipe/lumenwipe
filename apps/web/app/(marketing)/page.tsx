@@ -115,8 +115,8 @@ export default function LandingPage() {
         </h1>
 
         <p className="mx-auto mt-6 max-w-xl text-body leading-relaxed text-white/70">
-          Unwind every trustline, offer, data entry, signer and Soroban position, convert the
-          leftovers, and merge out. Signed entirely in your browser.
+          Unwind trustlines, offers, data entries, signers and Soroban positions, convert the
+          leftovers, and merge out. You sign every transaction in your browser.
         </p>
 
         {/* Inline account analyzer */}
@@ -355,7 +355,7 @@ export default function LandingPage() {
                 <Check className="h-3.5 w-3.5 text-accent" /> No signup
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <Check className="h-3.5 w-3.5 text-accent" /> No custody
+                <Check className="h-3.5 w-3.5 text-accent" /> Signed in your browser
               </span>
               <span className="inline-flex items-center gap-1.5">
                 <Check className="h-3.5 w-3.5 text-accent" /> Open source

@@ -324,19 +324,19 @@ export default function HowItWorksPage() {
               {[
                 {
                   l: "Browser",
-                  s: "UI · wallet · tx builder · session",
-                  note: "keys never leave",
+                  s: "UI · wallet · transaction check · signing · session",
+                  note: "your key stays here",
                   tone: true,
                 },
                 {
-                  l: "Read-only backend",
-                  s: "analysis · DeFi adapters · routing · cache",
-                  note: "no custody",
+                  l: "LumenWipe API",
+                  s: "reads · DeFi adapters · routing · builds unsigned transactions",
+                  note: "never holds your key",
                 },
                 {
                   l: "Stellar network",
                   s: "Stellar RPC · stellar.expert · Soroswap",
-                  note: "read-only",
+                  note: "read · submit",
                 },
               ].map((row) => (
                 <div

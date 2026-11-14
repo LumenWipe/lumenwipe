@@ -31,7 +31,7 @@ Non-custodial &nbsp;·&nbsp; Client-side signing &nbsp;·&nbsp; Soroban & DeFi s
 
 LumenWipe is an open-source, non-custodial web app that walks you through closing a Stellar account from start to finish - automatically. It detects everything holding your account open (trustlines, DEX offers, DeFi positions, data entries, extra signers), unwinds it step by step, converts leftover tokens to XLM, and merges the account into your destination wallet or exchange address.
 
-**The API builds every unsigned transaction; the browser verifies it against your own choices and signs it. Your private keys never leave your device.** The API holds no user keys and can never move your funds.
+**The API builds every unsigned transaction; the browser verifies it against your own choices and signs it. Your private keys never leave your device.** The API holds no user keys. Its two service keys, the exchange relay account and the fee sponsor, cannot sign for your account: the relay co-signs only the forwarding payment of an exchange close, which the browser checks goes to the address you typed, and the sponsor signs only the fee-bump envelope around a transaction you already signed.
 
 > **Status:** the classic account wind-down, Soroban & DeFi protocol exits, Soroban token conversion and the allowance inspector are built for testnet and mainnet, and each protocol exit is exercised against testnet by integration tests. Exchange (mediator) closes and sponsored fees are available on testnet; mainnet availability follows the deployment status in the [monitoring plan](docs/monitoring-plan.md). FxDAO exits are testnet only. The public REST API, the `@lumenwipe/sdk` client and the testnet playground are live. See the [roadmap](#roadmap) for what remains.
 

@@ -129,8 +129,7 @@ export default function HeroConsole() {
             />
           </div>
           <p className="mt-3 text-label leading-normal text-fg-subtle">
-            {active} of {ROWS.length} steps · {TOTAL.toFixed(2)} XLM total · 0 servers can move
-            funds
+            Example account · {active} of {ROWS.length} steps · {TOTAL.toFixed(2)} XLM total
           </p>
         </div>
       </div>

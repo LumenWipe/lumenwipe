@@ -9,7 +9,7 @@ Companion to the [technical architecture](/architecture). This document covers h
 
 ## 1. Building in the open
 
-LumenWipe is open source under Apache 2.0 from the start, not after a private build phase. That means a permissive license, a public repository, a public issue tracker, and a public roadmap. The reference tool this project extends, [stellar.expert/demolisher/public](https://stellar.expert/demolisher/public) by Orbit Lens, is itself open, and this project keeps that spirit: the full frontend, the read-only backend, the transaction construction layer, the contract registry, and the test suite are public.
+LumenWipe is open source under Apache 2.0 from the start, not after a private build phase. That means a permissive license, a public repository, a public issue tracker, and a public roadmap. The reference tool this project extends, [stellar.expert/demolisher/public](https://stellar.expert/demolisher/public) by Orbit Lens, is itself open, and this project keeps that spirit: the full frontend, the API, the transaction construction layer, the contract registry, and the test suite are public.
 
 Anyone can read the code, file an issue, or propose a change. Because the tool performs irreversible actions on real accounts, openness is also a security property: the more eyes on the signing and transaction-construction code, the better.
 

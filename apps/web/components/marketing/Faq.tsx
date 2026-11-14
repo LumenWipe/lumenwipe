@@ -6,6 +6,14 @@ import {
   protocolsWithStatus,
   testnetOnlySentence,
 } from "@/lib/site/status";
+import {
+  CHECK_STATEMENT,
+  KEY_STATEMENT,
+  SERVER_KEYS,
+  SERVER_KEYS_INTRO,
+  serverKeyScope,
+  VERIFY_SOURCE_URL,
+} from "@/lib/site/trust";
 
 const TESTNET_ONLY_EXITS = protocolsWithStatus("testnet-only");
 const EXCHANGE_LIVE = feature("exchange-close").status === "live";
@@ -15,10 +23,22 @@ export const ITEMS: readonly FaqItem[] = [
     q: "Is LumenWipe really non-custodial?",
     a: (
       <>
-        Yes. Every transaction is built and signed in your browser, through your wallet or an
-        in-memory secret key. Your private key never reaches our servers. The backend is read-only
-        and stateless. It aggregates on-chain data and is never in the signing path, so no operator
-        (including us) can move your funds.
+        Yes. {KEY_STATEMENT} {CHECK_STATEMENT} {SERVER_KEYS_INTRO}{" "}
+        {SERVER_KEYS.map((key) => (
+          <span key={key.name}>
+            {key.name}: {key.statement} {serverKeyScope(key)}{" "}
+          </span>
+        ))}
+        The check is open source:{" "}
+        <a
+          href={VERIFY_SOURCE_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-accent underline underline-offset-4"
+        >
+          verify.ts<span className="sr-only"> (opens in a new tab)</span>
+        </a>
+        .
       </>
     ),
   },
