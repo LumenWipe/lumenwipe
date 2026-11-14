@@ -1,11 +1,13 @@
 import { NextRequest } from "next/server";
-import { LumenWipeClient } from "@lumenwipe/sdk";
+import { readClient } from "@/lib/api-clients";
 import { getPlaygroundMmKeypair } from "@/lib/accounts";
 import { handleBatchPlan } from "@/lib/batch-handlers";
 import { rateLimit } from "@/lib/rate-limit";
 import { sessionStore } from "@/lib/session-store";
 
-export const maxDuration = 30;
+// Two reads at the SDK's timeout and the wait between them (READ_RETRY_ROUTE_BUDGET_MS), under
+// the session lock's TTL.
+export const maxDuration = 125;
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -18,7 +20,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     }),
     sink: () => getPlaygroundMmKeypair()?.publicKey() ?? null,
     batchPlan: (baseUrl, apiKey) => {
-      const client = new LumenWipeClient({ baseUrl, apiKey, network: "testnet" });
+      const client = readClient(baseUrl, apiKey);
       return (body) => client.batchPlan(body);
     },
   });
