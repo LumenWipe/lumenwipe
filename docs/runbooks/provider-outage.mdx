@@ -6,7 +6,7 @@ icon: "plug-circle-xmark"
 
 Each network reads through an ordered list of RPC URLs (`STELLAR_RPC_<NET>`) and of Horizon-compatible URLs (`PATH_ROUTING_API_<NET>`). The full rules are in [Provider failover](/architecture#provider-failover); the parts that matter during an outage:
 
-- A provider that answers `429` or a `5xx` ends that request with `503 service_unavailable` and `Retry-After: 30`, and cools down for 30 seconds (`RPC_PROVIDER_COOLDOWN_MS`). The client's retry pins the next provider. A cooling provider is still tried when every other one fails.
+- A provider that answers `429`, a `5xx`, or a `200` with no JSON-RPC envelope (an empty or cut-off body) ends that request with `503 service_unavailable` and `Retry-After: 30`, and cools down for 70 seconds (`RPC_PROVIDER_COOLDOWN_MS`, the `Retry-After` plus the 40-second request deadline). The client's retry pins the next provider. A cooling provider is still tried when every other one fails.
 - A timeout is a `503` too, but starts no cooldown, so a provider that hangs keeps being probed first. That is the case to act on by hand.
 - A provider outage becomes a retryable `503`, never a wrong answer about an account, and a send never goes to a second provider.
 

@@ -9,13 +9,14 @@ import {
   xdr,
 } from "@stellar/stellar-sdk";
 import { requestContextMiddleware } from "@/common/request-context";
-import { RPC_PROVIDER_COOLDOWN_MS } from "@/config/constants";
+import { REQUEST_DEADLINE_MS, SERVICE_UNAVAILABLE_RETRY_AFTER_SECONDS } from "@/config/constants";
 import { RPC_FALLBACKS, RPC_HEADERS, RPC_URLS } from "@/config/networks";
 import { mapDomainError, PLAN_ERRORS, UPSTREAM_ERRORS } from "@/lib/close-api/domain-errors";
 import { getRpcServer, resetRpcCooldowns } from "@/lib/stellar/rpc";
 import { providerFailoverCount, resetProviderFailoverCount } from "@/lib/stellar/provider-failover";
 import { submitAndWait } from "@/lib/stellar/submit";
 import { UpstreamError } from "@/lib/stellar/upstream-client";
+import { drainUpstreamCounts } from "@/lib/stellar/upstream-metrics";
 
 const A = "https://rpc-a.test";
 const B = "https://rpc-b.test";
@@ -23,8 +24,13 @@ const B = "https://rpc-b.test";
 const HEADER_XDR = Buffer.alloc(4 + 32 + 48 + 32 + 32 + 4 + 8 + 8 + 4 + 8 + 4 + 4 + 4 + 128 + 4);
 const META_XDR = Buffer.alloc(4 + 32 + HEADER_XDR.length + 4 + 32 + 4 + 4 + 4 + 4);
 
-/** A JSON-RPC result, an HTTP error status, or a thrown fetch failure. */
-type Reply = { result: unknown } | { status: number } | { rpcError: string } | { throws: Error };
+/** A JSON-RPC result, an HTTP error status, a thrown fetch failure, or a raw 200 body. */
+type Reply =
+  | { result: unknown }
+  | { status: number }
+  | { rpcError: string }
+  | { throws: Error }
+  | { raw: () => ConstructorParameters<typeof Response>[0] };
 type Handler = (method: string) => Reply;
 
 interface Call {
@@ -41,6 +47,7 @@ function fakeRpc(hosts: Record<string, Handler>): Call[] {
     const reply = hosts[url.origin]!(method);
     if ("throws" in reply) throw reply.throws;
     if ("status" in reply) return new Response("busy", { status: reply.status });
+    if ("raw" in reply) return new Response(reply.raw(), { status: 200 });
     const body =
       "rpcError" in reply
         ? { jsonrpc: "2.0", id: 1, error: { code: -32602, message: reply.rpcError } }
@@ -73,6 +80,16 @@ const provider =
 const EMPTY_ENTRIES: Reply = { result: { entries: [], latestLedger: 100 } };
 const RATE_LIMITED: Reply = { status: 429 };
 
+/** Headers, then a body that never completes: the SDK's client reads it as no data at all. */
+const CUT_OFF: Reply = {
+  raw: () =>
+    new ReadableStream({
+      start(controller) {
+        controller.error(new Error("socket closed mid-body"));
+      },
+    }),
+};
+
 const KEY = xdr.LedgerKey.account(
   new xdr.LedgerKeyAccount({ accountId: Keypair.random().xdrAccountId() })
 );
@@ -88,6 +105,14 @@ function inRequest<T>(run: () => Promise<T>): Promise<T> {
 
 const readEntries = (): Promise<unknown> =>
   inRequest(() => getRpcServer("testnet").getLedgerEntries(KEY)).catch((e: unknown) => e);
+
+/** The testnet RPC failure counts recorded since the last drain, requests left out. */
+const rpcFailureCounts = (): Record<string, number> =>
+  Object.fromEntries(
+    drainUpstreamCounts()
+      .filter((d) => d.network === "testnet" && d.upstream === "rpc" && d.metric !== "requests")
+      .map((d) => [d.metric, d.count])
+  );
 
 const hostsOf = (calls: Call[], method: string): string[] =>
   calls.filter((c) => c.method === method).map((c) => c.host);
@@ -211,19 +236,20 @@ test("with every provider cooling down, the probe walks the whole list from the 
   expect(hostsOf(calls, "getLatestLedger")).toEqual([A]);
 });
 
-test("a cooldown ends after its window", async () => {
+test("a cooldown outlasts a Retry-After counted from the end of the deadline, then ends", async () => {
   useProviders(A, B);
   const start = Date.now();
   setSystemTime(start);
   fakeRpc({ [A]: provider(RATE_LIMITED), [B]: provider(EMPTY_ENTRIES) });
   await readEntries();
 
-  setSystemTime(start + RPC_PROVIDER_COOLDOWN_MS - 1);
+  const retryAt = start + REQUEST_DEADLINE_MS + SERVICE_UNAVAILABLE_RETRY_AFTER_SECONDS * 1000;
+  setSystemTime(retryAt - 1);
   let calls = fakeRpc({ [A]: provider(EMPTY_ENTRIES), [B]: provider(EMPTY_ENTRIES) });
   await readEntries();
   expect(hostsOf(calls, "getLatestLedger")).toEqual([B]);
 
-  setSystemTime(start + RPC_PROVIDER_COOLDOWN_MS);
+  setSystemTime(retryAt);
   calls = fakeRpc({ [A]: provider(EMPTY_ENTRIES), [B]: provider(EMPTY_ENTRIES) });
   await readEntries();
   expect(hostsOf(calls, "getLatestLedger")).toEqual([A]);
@@ -234,6 +260,57 @@ test("a timeout is typed but starts no cooldown", async () => {
   const timeout = new DOMException("The operation timed out.", "TimeoutError");
   fakeRpc({ [A]: provider({ throws: timeout }), [B]: provider(EMPTY_ENTRIES) });
   expect(await readEntries()).toMatchObject({ kind: "timeout" });
+  const calls = fakeRpc({ [A]: provider(EMPTY_ENTRIES), [B]: provider(EMPTY_ENTRIES) });
+  await readEntries();
+  expect(hostsOf(calls, "getLatestLedger")).toEqual([A]);
+});
+
+test("an answer with no JSON-RPC envelope is a typed unavailable, never the SDK's TypeError", async () => {
+  const bodies = ["null", "", "<html>bad gateway</html>", "[]", '{"jsonrpc":"2.0","id":1}'];
+  for (const answer of [CUT_OFF, ...bodies.map((body): Reply => ({ raw: () => body }))]) {
+    const lone = useLoneProvider();
+    fakeRpc({ [lone]: provider(answer) });
+    const failure = await readEntries();
+    expect(failure).toBeInstanceOf(UpstreamError);
+    expect(failure).toMatchObject({ kind: "unavailable" });
+    expect(mapDomainError(PLAN_ERRORS, failure)).toMatchObject({ status: 503 });
+  }
+});
+
+test("a provider that answered with no envelope ends this request and is skipped by the next", async () => {
+  useProviders(A, B);
+  drainUpstreamCounts();
+  let calls = fakeRpc({ [A]: provider(CUT_OFF), [B]: provider(EMPTY_ENTRIES) });
+  expect(await readEntries()).toMatchObject({ kind: "unavailable" });
+  expect(hostsOf(calls, "getLedgerEntries")).toEqual([A]);
+  expect(rpcFailureCounts()).toEqual({ unavailable: 1 });
+
+  calls = fakeRpc({ [A]: provider(EMPTY_ENTRIES), [B]: provider(EMPTY_ENTRIES) });
+  expect(await readEntries()).toMatchObject({ entries: [] });
+  expect(calls.map((c) => c.host)).toEqual([B, B]);
+  expect(providerFailoverCount()).toBe(1);
+});
+
+test("a probe answered with no envelope fails over within the request", async () => {
+  useProviders(A, B);
+  const calls = fakeRpc({
+    [A]: (method) => (method === "getLatestLedger" ? CUT_OFF : EMPTY_ENTRIES),
+    [B]: provider(EMPTY_ENTRIES),
+  });
+  expect(await readEntries()).toMatchObject({ entries: [] });
+  expect(hostsOf(calls, "getLatestLedger")).toEqual([A, B]);
+  expect(hostsOf(calls, "getLedgerEntries")).toEqual([B]);
+});
+
+test("an enveloped answer the SDK cannot parse stays untyped and cools nothing", async () => {
+  useProviders(A, B);
+  fakeRpc({
+    [A]: provider({ result: { entries: [{}], latestLedger: 100 } }),
+    [B]: provider(EMPTY_ENTRIES),
+  });
+  const failure = await readEntries();
+  expect(failure).toBeInstanceOf(TypeError);
+  expect(failure).not.toBeInstanceOf(UpstreamError);
   const calls = fakeRpc({ [A]: provider(EMPTY_ENTRIES), [B]: provider(EMPTY_ENTRIES) });
   await readEntries();
   expect(hostsOf(calls, "getLatestLedger")).toEqual([A]);
@@ -261,6 +338,23 @@ test("a rate-limited send keeps its untyped error and starts no cooldown", async
   ).catch((e: unknown) => e);
   expect(failure).toBeInstanceOf(Error);
   expect(failure).not.toBeInstanceOf(UpstreamError);
+  const calls = fakeRpc({ [A]: provider(EMPTY_ENTRIES), [B]: provider(EMPTY_ENTRIES) });
+  await readEntries();
+  expect(hostsOf(calls, "getLatestLedger")).toEqual([A]);
+});
+
+test("a send answered with no envelope stays untyped, says nothing raw and starts no cooldown", async () => {
+  useProviders(A, B);
+  fakeRpc({
+    [A]: (method) => (method === "sendTransaction" ? CUT_OFF : provider(EMPTY_ENTRIES)(method)),
+    [B]: provider(EMPTY_ENTRIES),
+  });
+  const failure = await inRequest(() =>
+    getRpcServer("testnet").sendTransaction(signedTransaction())
+  ).catch((e: unknown) => e);
+  expect(failure).toBeInstanceOf(Error);
+  expect(failure).not.toBeInstanceOf(UpstreamError);
+  expect((failure as Error).message).toBe("The data provider sent an incomplete answer.");
   const calls = fakeRpc({ [A]: provider(EMPTY_ENTRIES), [B]: provider(EMPTY_ENTRIES) });
   await readEntries();
   expect(hostsOf(calls, "getLatestLedger")).toEqual([A]);
