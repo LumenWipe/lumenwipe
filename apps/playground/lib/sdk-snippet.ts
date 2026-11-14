@@ -34,12 +34,21 @@ export interface SnippetClose {
   sponsored: boolean;
 }
 
-/** What the snippet shows. A batch form (`batchPlan`, then one close per address) would add a
- *  variant here and reuse `closeBody` for each account. */
+/** What the snippet shows: one account's close. */
 export interface SdkSnippetInput {
   network: "testnet" | "mainnet";
   close: SnippetClose;
 }
+
+/** A batch's closes: `batchPlan` for every address, then one close per account into the one
+ *  destination they share, each signed with its own key. */
+export interface SdkBatchSnippetInput {
+  network: "testnet" | "mainnet";
+  closes: readonly SnippetClose[];
+}
+
+/** The accounts a batch snippet closes, as the playground's batch has them. */
+const BATCH_SNIPPET_SIZES = { min: 2, max: 3 } as const;
 
 export class SdkSnippetInputError extends Error {
   constructor(readonly field: string) {
@@ -127,27 +136,53 @@ function signer(value: SnippetSigner): SnippetSigner {
   return { type, key };
 }
 
-/** The input rebuilt from validated fields only, so nothing the caller added can reach the text. */
-function validated(input: SdkSnippetInput): SdkSnippetInput {
-  if (input.network !== "testnet" && input.network !== "mainnet") {
-    throw new SdkSnippetInputError("network");
-  }
-  const { close } = input;
+function network(value: SdkSnippetInput["network"]): SdkSnippetInput["network"] {
+  if (value !== "testnet" && value !== "mainnet") throw new SdkSnippetInputError("network");
+  return value;
+}
+
+/** One close rebuilt from validated fields only. */
+function validClose(close: SnippetClose): SnippetClose {
   const address = publicKey(close.destination.address, "destination");
   const destination: SnippetDestination =
     close.destination.kind === "exchange"
       ? { kind: "exchange", address, memo: idMemo(close.destination.memo), memoType: "id" }
       : { kind: "account", address };
   return {
-    network: input.network,
-    close: {
-      source: publicKey(close.source, "source"),
-      destination,
-      decisions: close.decisions.map(decision),
-      signers: close.signers.map(signer),
-      sponsored: close.sponsored === true,
-    },
+    source: publicKey(close.source, "source"),
+    destination,
+    decisions: close.decisions.map(decision),
+    signers: close.signers.map(signer),
+    sponsored: close.sponsored === true,
   };
+}
+
+/** The input rebuilt from validated fields only, so nothing the caller added can reach the text. */
+function validated(input: SdkSnippetInput): SdkSnippetInput {
+  return { network: network(input.network), close: validClose(input.close) };
+}
+
+/** A batch input rebuilt from validated fields only: two or three distinct accounts closing to one
+ *  account destination, which `batchPlan` plans them all into. */
+function validatedBatch(input: SdkBatchSnippetInput): SdkBatchSnippetInput {
+  const { min, max } = BATCH_SNIPPET_SIZES;
+  if (input.closes.length < min || input.closes.length > max) {
+    throw new SdkSnippetInputError("batch size");
+  }
+  const closes = input.closes.map(validClose);
+  const [first] = closes;
+  for (const close of closes) {
+    if (
+      close.destination.kind !== "account" ||
+      close.destination.address !== first?.destination.address
+    ) {
+      throw new SdkSnippetInputError("batch destination");
+    }
+  }
+  if (new Set(closes.map((c) => c.source)).size !== closes.length) {
+    throw new SdkSnippetInputError("batch source");
+  }
+  return { network: network(input.network), closes };
 }
 
 /** A `CODE:ISSUER` asset as its parts. */
@@ -251,8 +286,10 @@ function recordLines(
   ];
 }
 
-/** The statements that close one account, from the plan to the last confirmed transaction. */
-function closeBody(close: SnippetClose): string[] {
+/** The statements that close one account, from the plan to the last confirmed transaction.
+ *  `envPrefix` keeps each account's co-signer and preimage variables apart in a batch; it is built
+ *  from a number only. */
+function closeBody(close: SnippetClose, envPrefix = ""): string[] {
   const { destination, decisions } = close;
   const exchange = destination.kind === "exchange" ? destination : null;
   const acknowledgement: Field[] = [
@@ -317,9 +354,9 @@ function closeBody(close: SnippetClose): string[] {
   const prepareParam = close.sponsored ? "tx" : "_tx";
   const multisig = close.signers.length > 0;
   const cosigners = close.signers.filter((sg) => sg.type === "ed25519_public_key");
-  const cosignerEnv = cosigners.map((_, i) => `LUMENWIPE_COSIGNER_${i + 1}_SECRET`);
+  const cosignerEnv = cosigners.map((_, i) => `LUMENWIPE_${envPrefix}COSIGNER_${i + 1}_SECRET`);
   const hashSigners = close.signers.filter((sg) => sg.type === "hash_x");
-  const preimageEnv = hashSigners.map((_, i) => `LUMENWIPE_HASHX_PREIMAGE_${i + 1}`);
+  const preimageEnv = hashSigners.map((_, i) => `LUMENWIPE_${envPrefix}HASHX_PREIMAGE_${i + 1}`);
   const preAuth = close.signers.filter((sg) => sg.type === "preauth_tx");
   const preimageLines =
     hashSigners.length > 0
@@ -480,7 +517,61 @@ function closeBody(close: SnippetClose): string[] {
  */
 export function buildSdkSnippet(input: SdkSnippetInput): string {
   const { network, close } = validated(input);
-  const passphrase = network === "testnet" ? "Networks.TESTNET" : "Networks.PUBLIC";
+  return [
+    ...preamble(network),
+    'const signer = Keypair.fromSecret(process.env.LUMENWIPE_SIGNING_SECRET ?? "");',
+    "",
+    ...parseFunction(network),
+    "",
+    ...closeBody(close),
+    "",
+  ].join("\n");
+}
+
+/**
+ * The TypeScript an integrator writes to close a batch: one `batchPlan` call for every address,
+ * then each account's close in turn, each signed with its own key from its own variable. A close
+ * that cannot run (a blocker, a refused transaction) is reported and the next one still runs, so
+ * one blocked account never stops the others. Only public data reaches the text.
+ */
+export function buildBatchSdkSnippet(input: SdkBatchSnippetInput): string {
+  const { network, closes } = validatedBatch(input);
+  const sink = closes[0]?.destination.address ?? "";
+  const accounts = closes.flatMap((close, i) => {
+    const n = i + 1;
+    return [
+      "",
+      `// Account ${n} of ${closes.length}.`,
+      "try {",
+      ...[
+        `const signer = Keypair.fromSecret(process.env.LUMENWIPE_ACCOUNT_${n}_SIGNING_SECRET ?? "");`,
+        ...closeBody(close, `ACCOUNT_${n}_`),
+      ].map((line) => (line === "" ? line : `  ${line}`)),
+      "} catch (error) {",
+      `  console.log(\`Account ${n} not closed: \${error instanceof Error ? error.message : String(error)}\`);`,
+      "}",
+    ];
+  });
+  return [
+    ...preamble(network),
+    "",
+    ...parseFunction(network),
+    "",
+    "// One read-only plan for every account, into the destination they share.",
+    "const addresses = [",
+    ...closes.map((close) => `  ${str(close.source)},`),
+    "];",
+    `const { results } = await client.batchPlan({ addresses, destination: ${str(sink)} });`,
+    "for (const { address, plan } of results) {",
+    '  const reasons = plan.blockers.map((b) => b.code).join(", ");',
+    '  console.log(`${address}: ${plan.status}${reasons ? ` (${reasons})` : ""}`);',
+    "}",
+    ...accounts,
+    "",
+  ].join("\n");
+}
+
+function preamble(network: SdkSnippetInput["network"]): string[] {
   return [
     'import { Keypair, Networks, Transaction, TransactionBuilder } from "@stellar/stellar-sdk";',
     'import { LumenWipeClient, runClose, type DecisionAnswer } from "@lumenwipe/sdk";',
@@ -492,17 +583,18 @@ export function buildSdkSnippet(input: SdkSnippetInput): string {
     '  apiKey: process.env.LUMENWIPE_API_KEY ?? "",',
     "  network,",
     "});",
-    'const signer = Keypair.fromSecret(process.env.LUMENWIPE_SIGNING_SECRET ?? "");',
-    "",
+  ];
+}
+
+function parseFunction(network: SdkSnippetInput["network"]): string[] {
+  const passphrase = network === "testnet" ? "Networks.TESTNET" : "Networks.PUBLIC";
+  return [
     "function parse(xdr: string): Transaction {",
     `  const tx = TransactionBuilder.fromXdr(xdr, ${passphrase});`,
     '  if (!(tx instanceof Transaction)) throw new Error("Unexpected fee-bump envelope");',
     "  return tx;",
     "}",
-    "",
-    ...closeBody(close),
-    "",
-  ].join("\n");
+  ];
 }
 
 /**

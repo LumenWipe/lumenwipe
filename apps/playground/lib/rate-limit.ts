@@ -10,14 +10,18 @@ import { isRedisConfigured, redis } from "./upstash-redis";
 // keys every counter under a `playground:` prefix, so the two limiters share no counters even
 // when they use the same namespace names.
 //
-// Both routes it guards spend real resources on an anonymous caller's behalf - one creates and
-// Friendbot-funds a testnet account and writes a custodial session, the other decrypts and
-// hands back a secret key - so neither can be left unbounded.
+// The routes it guards spend real resources on an anonymous caller's behalf - a start creates
+// and funds testnet accounts and writes custodial sessions, a credential reveal decrypts and hands
+// back a secret key, and a batch plan spends the playground's API key - so none can be left
+// unbounded.
 
 /** Session creations per IP per day. Matches the pre-rebuild playground's own limit. */
 export const SESSIONS_PER_DAY_PER_IP = 25;
 /** Credential reveals per IP per day. Higher: it is a read of a session the caller already has. */
 export const CREDENTIALS_PER_DAY_PER_IP = 50;
+/** Batch plans per IP per day. Each one spends the playground's API key on every member's read;
+ *  a batch needs one, so this leaves room for retries across the batches the session limit allows. */
+export const BATCH_PLANS_PER_DAY_PER_IP = 50;
 
 // One-way, so no raw IP is ever written to Redis.
 function hashIp(ip: string): string {

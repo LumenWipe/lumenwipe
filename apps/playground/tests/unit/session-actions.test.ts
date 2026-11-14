@@ -648,6 +648,8 @@ test("an id that is not a session uuid is a 404 and never reaches the store or t
     releaseLease: counted(store.releaseLease),
     lastFaucetFailure: counted(store.lastFaucetFailure),
     recordFaucetFailure: counted(store.recordFaucetFailure),
+    createBatch: counted(store.createBatch),
+    loadBatch: counted(store.loadBatch),
   };
   const logged: unknown[] = [];
   const originalError = console.error;

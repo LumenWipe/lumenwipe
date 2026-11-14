@@ -6,6 +6,8 @@ import { DEV_STORE_FILE, devFileKv, upstashKv, type SessionKv } from "./kv";
 import { parseStroops } from "./stroops";
 import {
   EXCHANGE_STAND_IN,
+  MAX_BATCH_SIZE,
+  MIN_BATCH_SIZE,
   parseSelection,
   validateSelection,
   type ClaimIntent,
@@ -320,6 +322,38 @@ export function isPlaygroundSession(value: unknown): value is PlaygroundSession 
   );
 }
 
+/**
+ * Two or three sessions created together. The record holds member ids only: no key, encrypted or
+ * not, and no expiry or progress of its own, so each member keeps its own record, lock, countdown
+ * and index entry, and the reaper reclaims it like any other session.
+ */
+export interface PlaygroundBatch {
+  schemaVersion: typeof BATCH_SCHEMA_VERSION;
+  id: string;
+  memberIds: string[];
+  createdAt: number;
+}
+
+/** Bumped whenever the stored batch shape changes; a batch of any other version reads as gone. */
+export const BATCH_SCHEMA_VERSION = 1;
+
+/** Validates a stored batch: a batch id, and two or three distinct session ids other than it. */
+export function isPlaygroundBatch(value: unknown): value is PlaygroundBatch {
+  return (
+    isRecord(value) &&
+    value.schemaVersion === BATCH_SCHEMA_VERSION &&
+    typeof value.id === "string" &&
+    isSessionId(value.id) &&
+    isStringArray(value.memberIds) &&
+    value.memberIds.length >= MIN_BATCH_SIZE &&
+    value.memberIds.length <= MAX_BATCH_SIZE &&
+    value.memberIds.every(isSessionId) &&
+    new Set(value.memberIds).size === value.memberIds.length &&
+    !value.memberIds.includes(value.id) &&
+    typeof value.createdAt === "number"
+  );
+}
+
 export interface SessionLock {
   sessionId: string;
   token: string;
@@ -369,13 +403,18 @@ export interface SessionStore {
   acquireLease(name: string, ttlMs: number): Promise<Lease | null>;
   releaseLease(lease: Lease): Promise<void>;
   lastFaucetFailure(): Promise<FaucetFailure | null>;
+  /** Writes a batch of sessions already created, under a fresh id of its own. */
+  createBatch(memberIds: readonly string[]): Promise<PlaygroundBatch>;
+  /** The batch stored under `id`, or null when there is none or it has expired. */
+  loadBatch(id: string): Promise<PlaygroundBatch | null>;
   /** Records the outcome of the reaper's faucet call; null after a successful one. */
   recordFaucetFailure(failure: FaucetFailure | null): Promise<void>;
 }
 
 const SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
-/** A session id is the uuid v4 `createSession` generates; anything else from a URL is rejected. */
+/** A session id is the uuid v4 `createSession` generates; anything else from a URL is rejected.
+ *  A batch id has the same shape, under a key namespace of its own. */
 export function isSessionId(value: string): boolean {
   return SESSION_ID.test(value);
 }
@@ -383,6 +422,7 @@ export function isSessionId(value: string): boolean {
 const sessionKey = (id: string): string => `playground:session:${id}`;
 const lockKey = (id: string): string => `playground:session-lock:${id}`;
 const leaseKey = (name: string): string => `playground:lease:${name}`;
+const batchKey = (id: string): string => `playground:batch:${id}`;
 const SESSION_INDEX_KEY = "playground:session-index";
 const FAUCET_FAILURE_KEY = "playground:faucet-failure";
 /** A faucet failure older than this no longer explains a refusal: a day's run has come since. */
@@ -456,6 +496,22 @@ export function createSessionStore(resolveKv: () => SessionKv): SessionStore {
     },
     async recordFaucetFailure(failure) {
       await resolveKv().set(FAUCET_FAILURE_KEY, failure ?? "none", FAUCET_FAILURE_TTL_SECONDS);
+    },
+    async createBatch(memberIds) {
+      const batch: PlaygroundBatch = {
+        schemaVersion: BATCH_SCHEMA_VERSION,
+        id: uuidv4(),
+        memberIds: [...memberIds],
+        createdAt: Date.now(),
+      };
+      if (!isPlaygroundBatch(batch))
+        throw new Error("A batch needs two or three distinct sessions");
+      await resolveKv().set(batchKey(batch.id), batch, SESSION_RECORD_TTL_SECONDS);
+      return batch;
+    },
+    async loadBatch(id) {
+      const value = await resolveKv().get(batchKey(id));
+      return isPlaygroundBatch(value) && value.id === id ? value : null;
     },
   };
 }
