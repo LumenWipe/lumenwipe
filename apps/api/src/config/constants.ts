@@ -26,9 +26,11 @@ export const RPC_MAX_LEDGER_AGE_SECONDS = 30;
 export const RPC_SIMULATE_TIMEOUT_MS = 20_000;
 // How long a client is told to wait after a 503; a fixed default, not a measured recovery time.
 export const SERVICE_UNAVAILABLE_RETRY_AFTER_SECONDS = 30;
-// An RPC provider that answered 429 or 5xx is skipped by the next requests' probes for as long as
-// the 503 it caused tells the client to wait, so the client's retry lands on another provider.
-export const RPC_PROVIDER_COOLDOWN_MS = SERVICE_UNAVAILABLE_RETRY_AFTER_SECONDS * 1000;
+// An RPC provider that failed is skipped by the next requests' probes. The 503 it caused can leave
+// up to a whole request deadline after the failure, and the client then waits Retry-After, so the
+// window covers both or the client's retry lands back on the provider that failed.
+export const RPC_PROVIDER_COOLDOWN_MS =
+  SERVICE_UNAVAILABLE_RETRY_AFTER_SECONDS * 1000 + REQUEST_DEADLINE_MS;
 // OctoPos is an optional enhancement - fail fast into degraded mode rather than stall the
 // analyze call waiting on a third-party DeFi position provider. Combined with the 1-retry
 // budget in octopos-http.ts, worst case is 2 * 2500ms + one 300ms backoff ~= 5.3s, leaving

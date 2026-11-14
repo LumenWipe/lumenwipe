@@ -9,7 +9,7 @@ import {
   xdr,
 } from "@stellar/stellar-sdk";
 import { requestContextMiddleware } from "@/common/request-context";
-import { RPC_PROVIDER_COOLDOWN_MS } from "@/config/constants";
+import { REQUEST_DEADLINE_MS, SERVICE_UNAVAILABLE_RETRY_AFTER_SECONDS } from "@/config/constants";
 import { RPC_FALLBACKS, RPC_HEADERS, RPC_URLS } from "@/config/networks";
 import { mapDomainError, PLAN_ERRORS, UPSTREAM_ERRORS } from "@/lib/close-api/domain-errors";
 import { getRpcServer, resetRpcCooldowns } from "@/lib/stellar/rpc";
@@ -236,19 +236,20 @@ test("with every provider cooling down, the probe walks the whole list from the 
   expect(hostsOf(calls, "getLatestLedger")).toEqual([A]);
 });
 
-test("a cooldown ends after its window", async () => {
+test("a cooldown outlasts a Retry-After counted from the end of the deadline, then ends", async () => {
   useProviders(A, B);
   const start = Date.now();
   setSystemTime(start);
   fakeRpc({ [A]: provider(RATE_LIMITED), [B]: provider(EMPTY_ENTRIES) });
   await readEntries();
 
-  setSystemTime(start + RPC_PROVIDER_COOLDOWN_MS - 1);
+  const retryAt = start + REQUEST_DEADLINE_MS + SERVICE_UNAVAILABLE_RETRY_AFTER_SECONDS * 1000;
+  setSystemTime(retryAt - 1);
   let calls = fakeRpc({ [A]: provider(EMPTY_ENTRIES), [B]: provider(EMPTY_ENTRIES) });
   await readEntries();
   expect(hostsOf(calls, "getLatestLedger")).toEqual([B]);
 
-  setSystemTime(start + RPC_PROVIDER_COOLDOWN_MS);
+  setSystemTime(retryAt);
   calls = fakeRpc({ [A]: provider(EMPTY_ENTRIES), [B]: provider(EMPTY_ENTRIES) });
   await readEntries();
   expect(hostsOf(calls, "getLatestLedger")).toEqual([A]);
