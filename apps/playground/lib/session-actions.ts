@@ -207,16 +207,6 @@ function demolishStarted(session: PlaygroundSession): boolean {
 }
 
 /**
- * Runs one demolish round under the session lock and returns the transactions it confirmed. The
- * client calls again while `done` is false, and calling again after a failure is the resume: the
- * API re-reads live state, and a transaction left in flight is settled from `demolishPending`.
- *
- * Every write goes through one chain, so writes land in order and none is lost to another's
- * read-modify-write. A confirmed transaction's log entry, the clearing of its in-flight record and,
- * for the merge, the done flag are one write: an interrupted request leaves either the record (the
- * next round settles it by hash and logs it then) or the entry, never both and never neither.
- */
-/**
  * Uses the one extension of every session in `ids` together (a single session, or every member of
  * a batch): each moves from the expiry they share to that expiry plus SESSION_EXTENSION_SECONDS.
  * A member already moved to that same target is left as it is, so a retry after a busy lock
@@ -272,6 +262,16 @@ function extensionRefusal(expiresAt: number, now: number): ActionResult | null {
   return null;
 }
 
+/**
+ * Runs one demolish round under the session lock and returns the transactions it confirmed. The
+ * client calls again while `done` is false, and calling again after a failure is the resume: the
+ * API re-reads live state, and a transaction left in flight is settled from `demolishPending`.
+ *
+ * Every write goes through one chain, so writes land in order and none is lost to another's
+ * read-modify-write. A confirmed transaction's log entry, the clearing of its in-flight record and,
+ * for the merge, the done flag are one write: an interrupted request leaves either the record (the
+ * next round settles it by hash and logs it then) or the entry, never both and never neither.
+ */
 export async function runDemolishRound(
   store: SessionStore,
   id: string,

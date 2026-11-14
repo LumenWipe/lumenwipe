@@ -197,12 +197,29 @@ describe("a batch's extension", () => {
     expect(outcome(await runExtend(store, ids, () => T0 + MINUTE))).toBe("extension_used");
   });
 
-  test("members whose expiry differs are refused, and nothing moves", async () => {
+  /** Every member's record, to show a refused extension wrote none of them. */
+  const records = (store: SessionStore, ids: readonly string[]) =>
+    Promise.all(ids.map((id) => store.loadSession(id)));
+
+  test("members whose expiry differs are refused before any of them is written", async () => {
     const store = memoryStore();
-    const a = await sessionExpiringAt(store, T0);
-    const b = await sessionExpiringAt(store, T0 + 1);
-    expect(outcome(await runExtend(store, [a.id, b.id], () => T0 - MINUTE))).toBe("extension_used");
-    expect((await store.loadSession(a.id))?.extended).toBe(false);
+    const first = await sessionExpiringAt(store, T0);
+    const second = await sessionExpiringAt(store, T0 + 1);
+    const ids = [first.id, second.id];
+    const before = await records(store, ids);
+    expect(outcome(await runExtend(store, ids, () => T0 - MINUTE))).toBe("extension_used");
+    expect(await records(store, ids)).toEqual(before);
+  });
+
+  test("a member already extended to another expiry is refused before any is written", async () => {
+    const store = memoryStore();
+    const first = await sessionExpiringAt(store, T0);
+    const second = await sessionExpiringAt(store, T0);
+    const stray = await sessionExpiringAt(store, T0 + EXTENSION_MS + MINUTE, { extended: true });
+    const ids = [first.id, second.id, stray.id];
+    const before = await records(store, ids);
+    expect(outcome(await runExtend(store, ids, () => T0 - MINUTE))).toBe("extension_used");
+    expect(await records(store, ids)).toEqual(before);
   });
 
   test("an unknown batch is batch_not_found", async () => {
