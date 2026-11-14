@@ -5,6 +5,7 @@ import * as navigation from "next/navigation";
 import AnalyzePage from "@/app/[network]/analyze/page";
 import PlanView from "@/components/plan/PlanView";
 import { useDemolishStore } from "@/store/demolish";
+import { useNetworkStore } from "@/store/network";
 import type { AccountState } from "@/types/account";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 
@@ -60,6 +61,7 @@ function stubFetch(plan: () => Response): void {
 
 beforeEach(() => {
   useDemolishStore.getState().reset();
+  useNetworkStore.setState({ network: "testnet" });
   const router = { push: () => {}, replace: () => {} };
   const params = new URLSearchParams(`source=${SOURCE}`);
   spyOn(navigation, "useRouter").mockImplementation(

@@ -1,4 +1,4 @@
-import { afterEach, expect, mock, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import {
   Account,
@@ -18,6 +18,7 @@ import { WalletKitSigner, WalletNotUsableError } from "@/lib/stellar/signer";
 import { toHex } from "@/lib/stellar/hex";
 import type { Allowance } from "@/types/allowance";
 import { expectFocused, expectNotFocused, expectSameElement } from "./fixtures/focus";
+import { installIndexedDb, removeIndexedDb } from "./fixtures/indexed-db";
 
 function stubWalletKit(
   address: string | null = null,
@@ -43,8 +44,11 @@ function stubWalletKit(
   );
 }
 
+beforeEach(installIndexedDb);
+
 afterEach(() => {
   mock.restore();
+  removeIndexedDb();
 });
 
 const OWNER_KP = Keypair.random();

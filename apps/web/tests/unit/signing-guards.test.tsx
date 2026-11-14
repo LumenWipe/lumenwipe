@@ -22,6 +22,7 @@ import { NO_MERGE_CONFIRMED } from "@/lib/utils/user-error";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import type { AccountSigner } from "@/types/account";
+import { installIndexedDb, removeIndexedDb } from "./fixtures/indexed-db";
 
 const master = Keypair.random();
 const cosigner = Keypair.random();
@@ -106,8 +107,10 @@ async function runWith(
 }
 
 beforeEach(() => {
+  installIndexedDb();
   spyOn(verifyModule, "verifyCloseTransaction").mockImplementation(() => {});
   spyOn(sessionStore, "saveUnconfirmed").mockImplementation(async () => true);
+  spyOn(sessionStore, "recordConfirmed").mockImplementation(async () => true);
   spyOn(sessionStore, "loadSession").mockImplementation(async () => ({ id: "session" }) as never);
   useDemolishStore.getState().reset();
   useDemolishStore.setState({ sessionId: "session" });
@@ -122,6 +125,7 @@ beforeEach(() => {
 
 afterEach(() => {
   mock.restore();
+  removeIndexedDb();
 });
 
 test("a preimage is never attached to a claim round, whatever the round says it covers", async () => {

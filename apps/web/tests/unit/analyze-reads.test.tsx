@@ -16,6 +16,7 @@ import type { AccountState } from "@/types/account";
 import type { SessionRecord } from "@/types/session";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { expectFocusedNow, expectSameElement } from "./fixtures/focus";
+import { installIndexedDb, removeIndexedDb } from "./fixtures/indexed-db";
 
 const SOURCE = Keypair.random().publicKey();
 const BALANCE = "00000000b1";
@@ -117,6 +118,7 @@ async function mountPage(): Promise<void> {
 }
 
 beforeEach(() => {
+  installIndexedDb();
   useDemolishStore.getState().reset();
   useNetworkStore.setState({ network: "testnet" });
   push = mock(() => {});
@@ -130,6 +132,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   mock.restore();
+  removeIndexedDb();
 });
 
 test("an account with a claimable balance is read once and planned once", async () => {
