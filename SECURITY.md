@@ -133,7 +133,7 @@ Understanding the security model helps you identify which issues are most impact
 The primary signing path uses [stellar-wallets-kit](https://github.com/Creit-Tech/Stellar-Wallets-Kit), which means the application never sees the private key at all. The advanced secret-key mode keeps the key in memory only, never in `localStorage`, `sessionStorage`, IndexedDB, cookies or any network request, for the current close, and wipes it on completion, on abort, on leaving the flow, or when you choose Forget key.
 
 **The backend never signs for a user's account.**
-It builds unsigned transactions and holds only two narrow service keys: the shared mediator, which co-signs one validated forward payment, and the fee-bump sponsor, which signs only the outer fee-bump envelope. A compromised backend could return wrong read data or a wrong transaction, which client-side verification refuses before signing.
+It builds unsigned transactions and holds only two narrow service keys: the shared mediator, which co-signs one validated forward payment, and the fee-bump sponsor, which signs only the outer fee-bump envelope. A compromised backend could return a transaction that does not match the user's choices, which client-side verification refuses before signing, or wrong read data (amounts, positions, quotes), which the user reviews; the [threat model](docs/threat-model.md) lists what that leaves.
 
 **Every destructive step requires explicit user confirmation.**
 The tool never auto-submits. Users confirm each step after reviewing what it does, see the XDR, and in the case of the final merge, confirm the full destination address on a dedicated confirmation screen.
