@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./timed";
 import { Keypair } from "@stellar/stellar-sdk";
 import { closeWith } from "./close-with";
 import { HORIZON } from "./testnet";

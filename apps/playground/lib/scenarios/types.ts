@@ -280,6 +280,10 @@ export interface ScenarioCost {
   sorobanTransactions: number;
   seconds: number;
   subEntries: number;
+  /** Close rounds of classic operations, and the contract calls the close sends one by one: what
+   *  `seconds` charges for the close, which measured durations scale by (durations.ts). */
+  closeGroups: number;
+  sorobanExits: number;
 }
 
 export interface IntParam {

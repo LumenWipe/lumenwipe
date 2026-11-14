@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./timed";
 import { scValToNative, xdr } from "@stellar/stellar-sdk";
 import { AQUARIUS, AQUARIUS_SEED, PINNED_ASSETS } from "../../lib/scenarios";
 import { closeWith, count } from "./close-with";

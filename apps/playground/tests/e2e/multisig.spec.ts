@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./timed";
 import { closeWith } from "./close-with";
 
 // The multi-signature scenario end to end on testnet, one test per variant. The mess raises every

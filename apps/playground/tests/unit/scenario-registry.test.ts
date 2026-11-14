@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { MESS_EXECUTORS } from "@/lib/mess-builders";
 import { PLAYGROUND_CLOSE_OPERATION_TYPES } from "@/lib/verify";
 import {
+  isSorobanStep,
   PURCHASE_OWNER,
   purchaseBuild,
   SCENARIOS,
@@ -11,6 +12,11 @@ import {
   type ScenarioBuild,
   type ScenarioDefinition,
 } from "@/lib/scenarios";
+import {
+  CLOSE_GROUP_SECONDS,
+  MESS_STEP_SECONDS,
+  SOROBAN_STEP_SECONDS,
+} from "@/lib/scenarios/definitions";
 
 // Every scenario must be complete before it can ship: steps, a cost, a close expectation, an
 // executor for each step it declares, a scene node for each entry it creates, and only operation
@@ -76,6 +82,8 @@ function builds(def: ScenarioDefinition): ScenarioBuild[] {
         sorobanTransactions: sum("sorobanTransactions"),
         seconds: sum("seconds"),
         subEntries: sum("subEntries"),
+        closeGroups: sum("closeGroups"),
+        sorobanExits: sum("sorobanExits"),
       },
     };
   });
@@ -121,6 +129,19 @@ describe.each(SCENARIOS.map((def) => [def.id, def] as const))("%s", (_id, def) =
         continue;
       }
       expect(cost.xlm).toBeGreaterThan(0);
+    }
+  });
+
+  test("charges its seconds for exactly the steps and close rounds the measured ranges scale by", () => {
+    for (const { cost, steps } of builds(def)) {
+      expect(cost.seconds).toBe(
+        cost.classicTransactions * MESS_STEP_SECONDS +
+          cost.sorobanTransactions * SOROBAN_STEP_SECONDS +
+          cost.closeGroups * CLOSE_GROUP_SECONDS +
+          cost.sorobanExits * SOROBAN_STEP_SECONDS
+      );
+      const contractCalls = steps.filter((o) => isSorobanStep(o.step.action.kind)).length;
+      expect(contractCalls).toBe(cost.sorobanTransactions);
     }
   });
 

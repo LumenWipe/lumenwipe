@@ -1,5 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 import { Keypair } from "@stellar/stellar-sdk";
+import { JSON_REPORT_PATH } from "./scripts/durations-report";
 
 // The API's fee sponsor for this run only: generated here, so the workers and both servers share
 // it, given to the local API as its fee account, and funded by tests/e2e/serve.ts. The playground
@@ -32,9 +33,10 @@ export default defineConfig({
   // measured.
   globalTimeout: process.env.CI ? 80 * 60_000 : undefined,
   // The github reporter writes no report directory on its own, so it is paired with html to give
-  // the nightly something to upload.
+  // the nightly something to upload. The JSON report carries each test's request timings
+  // (tests/e2e/timed.ts) for scripts/durations.ts, inside the uploaded test-results directory.
   reporter: process.env.CI
-    ? [["github"], ["html", { open: "never" }]]
+    ? [["github"], ["html", { open: "never" }], ["json", { outputFile: JSON_REPORT_PATH }]]
     : [["html", { open: "never" }]],
   use: {
     baseURL: "http://localhost:3002",

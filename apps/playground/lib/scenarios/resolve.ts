@@ -206,6 +206,8 @@ export function validateSelection(
     sorobanTransactions: 0,
     seconds: MESS_STEP_SECONDS + CLOSE_GROUP_SECONDS,
     subEntries: 0,
+    closeGroups: 1,
+    sorobanExits: 0,
   };
   const absorb = (build: ScenarioBuild): void => {
     ordered.push(...build.steps);
@@ -227,6 +229,8 @@ export function validateSelection(
     cost.sorobanTransactions += build.cost.sorobanTransactions;
     cost.seconds += build.cost.seconds;
     cost.subEntries += build.cost.subEntries;
+    cost.closeGroups += build.cost.closeGroups;
+    cost.sorobanExits += build.cost.sorobanExits;
   };
   for (const { def, params } of picked) {
     const result = def.build(params, { heldAssets });
@@ -238,7 +242,10 @@ export function validateSelection(
   const purchases = purchaseBuild(ordered.map((o) => o.step));
   if (purchases) absorb(purchases);
   // Removing the emptied trustlines is one more close step once there is any.
-  if (expectation.assets.length > 0) cost.seconds += CLOSE_GROUP_SECONDS;
+  if (expectation.assets.length > 0) {
+    cost.seconds += CLOSE_GROUP_SECONDS;
+    cost.closeGroups += 1;
+  }
 
   const capped = capMessage(cost);
   if (capped) return fail(capped);

@@ -1,4 +1,5 @@
-import { expect, test, type Response } from "@playwright/test";
+import { type Response } from "@playwright/test";
+import { expect, test } from "./timed";
 import { encodeSelection, type ScenarioSelection } from "../../lib/scenarios";
 import { appAlerts } from "./alerts";
 import { HORIZON } from "./testnet";

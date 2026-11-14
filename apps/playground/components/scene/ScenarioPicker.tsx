@@ -8,8 +8,8 @@ import {
   NO_SCENARIOS_REASON,
   SCENARIOS,
   TESTNET_UNAVAILABLE,
-  encodeSelection,
   formatReplayCode,
+  measuredRange,
   generateRandomSelection,
   newReplayCode,
   parseReplayCode,
@@ -18,12 +18,22 @@ import {
   toggleScenario,
   validateSelection,
   type FeatureSetId,
+  type MeasuredDurations,
   type ScenarioId,
 } from "@/lib/scenarios";
+import { MEASURED_DURATIONS } from "@/lib/scenarios/measured-durations";
+import { selectionLink } from "@/lib/share-link";
 
 function durationLabel(seconds: number): string {
   if (seconds < 60) return `~${seconds}s`;
   return `~${Math.round(seconds / 60)} min`;
+}
+
+const span = (seconds: number): string =>
+  seconds < 60 ? `${seconds}s` : `${Math.round(seconds / 60)} min`;
+
+function rangeLabel(low: number, high: number): string {
+  return span(low) === span(high) ? `~${span(high)}` : `${span(low)}-${span(high)}`;
 }
 
 function Counter({
@@ -147,7 +157,12 @@ export function replaySeed(code: string): boolean {
 }
 
 /** The preset row and the scenario toggles, with the live cost and the steps the run will take. */
-export default function ScenarioPicker() {
+export default function ScenarioPicker({
+  measured = MEASURED_DURATIONS,
+}: {
+  /** The nightly measurements the duration range comes from; null keeps the constant estimate. */
+  measured?: MeasuredDurations | null;
+} = {}) {
   const selection = usePlaygroundStore((s) => s.selection);
   const preset = usePlaygroundStore((s) => s.preset);
   const unavailable = usePlaygroundStore((s) => s.unavailable);
@@ -159,6 +174,7 @@ export default function ScenarioPicker() {
 
   const options = { unavailable };
   const result = validateSelection(selection, options);
+  const range = result.ok ? measuredRange(result.plan.cost, measured) : null;
   const selected = new Set(selection.scenarios.map((c) => c.id));
 
   function choosePreset(id: FeatureSetId): void {
@@ -175,11 +191,6 @@ export default function ScenarioPicker() {
     const ok = replaySeed(replayText);
     setReplayError(!ok);
     if (ok) setReplayText("");
-  }
-
-  function selectionLink(): string {
-    const { origin, pathname } = window.location;
-    return `${origin}${pathname}?selection=${encodeSelection(selection)}`;
   }
 
   function toggle(id: ScenarioId): void {
@@ -380,18 +391,31 @@ export default function ScenarioPicker() {
                 <dt className="text-subtle">Transactions</dt>
                 <dd className="text-white/80">{result.plan.steps.length}</dd>
               </div>
-              <div>
-                <dt className="text-subtle">Estimated</dt>
-                <dd className="text-white/80">{durationLabel(result.plan.cost.seconds)}</dd>
-              </div>
+              {range ? (
+                <div>
+                  <dt className="text-subtle">Measured</dt>
+                  <dd className="text-white/80">{rangeLabel(range.low, range.high)}</dd>
+                </div>
+              ) : (
+                <div>
+                  <dt className="text-subtle">Estimated</dt>
+                  <dd className="text-white/80">{durationLabel(result.plan.cost.seconds)}</dd>
+                </div>
+              )}
             </dl>
+            {range && (
+              <p className="mt-1 text-[10px] text-subtle">
+                Timed across {range.runs} nightly {range.runs === 1 ? "run" : "runs"} from{" "}
+                {range.measuredAt}
+              </p>
+            )}
             <ol aria-label="Steps before the close" className="mt-2 space-y-0.5 text-[10px]">
               {result.plan.steps.map((step) => (
                 <li key={step.id}>{step.label}</li>
               ))}
             </ol>
             <button
-              onClick={() => copy("link", selectionLink())}
+              onClick={() => copy("link", selectionLink(window.location, selection))}
               className="mt-2 flex items-center gap-1 text-[10px] text-white/50 hover:text-white/80"
             >
               {copied === "link" ? (

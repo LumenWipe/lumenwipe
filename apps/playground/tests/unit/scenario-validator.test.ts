@@ -92,6 +92,8 @@ function synthetic(id: ScenarioId, cost: Partial<ScenarioCost>): ScenarioDefinit
           sorobanTransactions: 0,
           seconds: 0,
           subEntries: 0,
+          closeGroups: 0,
+          sorobanExits: 0,
           ...cost,
         },
       },

@@ -13,3 +13,4 @@ export * from "./random";
 export * from "./resolve";
 export * from "./types";
 export * from "./will-create";
+export * from "./durations";
