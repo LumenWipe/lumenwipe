@@ -851,7 +851,7 @@ describe("the scenario picker", () => {
 
   describe("presets and toggles", () => {
     test("the classic preset is pressed and its totals and steps are shown before the run", () => {
-      rtl.render(<ScenarioPicker />);
+      rtl.render(<ScenarioPicker measured={null} />);
       expect(button(/Classic account teardown/).getAttribute("aria-pressed")).toBe("true");
       const plan = resolvePlan(STANDARD_SELECTION);
       expect(totals()).toEqual({
@@ -1714,7 +1714,7 @@ describe("the receipt", () => {
 
 describe("the duration the picker shows", () => {
   test("keeps the estimate while no nightly measurement exists", () => {
-    rtl.render(<ScenarioPicker />);
+    rtl.render(<ScenarioPicker measured={null} />);
     expect(rtl.screen.getByText("Estimated")).toBeTruthy();
     expect(rtl.screen.queryByText("Measured")).toBeNull();
     expect(rtl.screen.queryByText(/nightly run/)).toBeNull();

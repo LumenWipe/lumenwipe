@@ -38,8 +38,16 @@ const MEASURED: MeasuredDurations = {
 
 describe("the measured range", () => {
   test("is absent while nothing has been measured, so the picker keeps the estimate", () => {
-    expect(MEASURED_DURATIONS).toBeNull();
-    expect(measuredRange(resolvePlan(STANDARD_SELECTION).cost)).toBeNull();
+    expect(measuredRange(resolvePlan(STANDARD_SELECTION).cost, null)).toBeNull();
+  });
+
+  test("the recorded measurements meet the script's own floor and cover the standard run", () => {
+    expect(MEASURED_DURATIONS).not.toBeNull();
+    for (const unit of Object.values(MEASURED_DURATIONS!.units)) {
+      expect(unit.samples).toBeGreaterThanOrEqual(MIN_SAMPLES);
+      expect(unit.low).toBeLessThanOrEqual(unit.high);
+    }
+    expect(measuredRange(resolvePlan(STANDARD_SELECTION).cost)).not.toBeNull();
   });
 
   test("scales each unit's range by the run's own counts, setup included", () => {
