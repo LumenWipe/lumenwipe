@@ -33,7 +33,7 @@ LumenWipe is an open-source, non-custodial web app that walks you through closin
 
 **The API builds every unsigned transaction; the browser verifies it against your own choices and signs it. Your private keys never leave your device.** The API holds no user keys and can never move your funds.
 
-> **Status:** the classic account wind-down runs today on testnet and mainnet. Soroban & DeFi protocol exits, the allowance inspector, and sponsored fees are in active development - see the [roadmap](#delivery-roadmap). Exchange (mediator) closes and sponsored fees are available on testnet; mainnet availability follows the deployment status in the [monitoring plan](docs/monitoring-plan.md). FxDAO exits are testnet only.
+> **Status:** the classic account wind-down, Soroban & DeFi protocol exits, Soroban token conversion and the allowance inspector are built for testnet and mainnet, and each protocol exit is exercised against testnet by integration tests. Exchange (mediator) closes and sponsored fees are available on testnet; mainnet availability follows the deployment status in the [monitoring plan](docs/monitoring-plan.md). FxDAO exits are testnet only. The public REST API, the `@lumenwipe/sdk` client and the testnet playground are live. See the [roadmap](#roadmap) for what remains.
 
 ---
 
@@ -165,19 +165,19 @@ The codebase undergoes internal security reviews as part of the development proc
 
 ## Technology Stack
 
-| Layer          | Choice                                              | Why                                                                                                    |
-| -------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| Web client     | Next.js, TypeScript                                 | Thin open-source client: verifies (`verify()`) and signs, no transaction-building                      |
-| API            | NestJS, TypeScript, cache                           | Builds transactions; stateless across a close; own deployable, reached via a key-injecting proxy       |
-| Packaging      | Bun workspaces monorepo                             | `apps/{web,api}` + `packages/{sdk,types}`; `@lumenwipe/sdk` is a thin API fetch client                 |
-| Stellar SDK    | `@stellar/stellar-sdk`                              | Official SDK for classic and Soroban                                                                   |
-| Wallets        | `stellar-wallets-kit` (SEP-43)                      | One interface across wallets; the enabled list is in [Supported](docs/reference/supported.mdx#wallets) |
-| Network access | Stellar RPC                                         | Live reads, simulation, submission, events                                                             |
-| Enumeration    | Existing indexer, set by configuration              | See architecture section 5                                                                             |
-| Routing        | Soroswap API + SDEX paths                           | Best routes across Soroban and classic venues                                                          |
-| DeFi detection | OctoPos                                             | Funded DeFi Position API, behind a pluggable adapter                                                   |
-| State          | Zustand + IndexedDB                                 | Resumable sessions, never persists keys                                                                |
-| Testing        | Bun test runner (unit), Playwright (E2E on testnet) | Automated tests do not use mainnet; per-package CI across the monorepo                                 |
+| Layer          | Choice                                              | Why                                                                                                      |
+| -------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Web client     | Next.js, TypeScript                                 | Thin open-source client: verifies (`verify()`) and signs, no transaction-building                        |
+| API            | NestJS, TypeScript, cache                           | Builds transactions; stateless across a close; own deployable, reached via a key-injecting proxy         |
+| Packaging      | Bun workspaces monorepo                             | `apps/{web,api,playground}` + `packages/{sdk,types,verify}`; `@lumenwipe/sdk` is a thin API fetch client |
+| Stellar SDK    | `@stellar/stellar-sdk`                              | Official SDK for classic and Soroban                                                                     |
+| Wallets        | `stellar-wallets-kit` (SEP-43)                      | One interface across wallets; the enabled list is in [Supported](docs/reference/supported.mdx#wallets)   |
+| Network access | Stellar RPC                                         | Live reads, simulation, submission, events                                                               |
+| Enumeration    | Existing indexer, set by configuration              | See architecture section 5                                                                               |
+| Routing        | Soroswap API + SDEX paths                           | Best routes across Soroban and classic venues                                                            |
+| DeFi detection | OctoPos                                             | Funded DeFi Position API, behind a pluggable adapter                                                     |
+| State          | Zustand + IndexedDB                                 | Resumable sessions, never persists keys                                                                  |
+| Testing        | Bun test runner (unit), Playwright (E2E on testnet) | Automated tests do not use mainnet; per-package CI across the monorepo                                   |
 
 ---
 
@@ -242,7 +242,7 @@ Full technical documentation is at [**docs.lumenwipe.com**](https://docs.lumenwi
 
 | Document                                                           | Description                                                                                                                     |
 | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
-| [Executive Summary](docs/executive-summary.md)                     | One-page overview: problem, solution, technical pillars, and delivery plan                                                      |
+| [Executive Summary](docs/executive-summary.md)                     | One-page overview: problem, solution, technical pillars, and roadmap                                                            |
 | [Technical Architecture](docs/architecture.md)                     | Complete system design: data sources, execution plan, Soroban & DeFi integration, mediator flow, security, testing, and roadmap |
 | [Community & Communications](docs/community-and-communications.md) | Building in the open, update cadence, decentralized social channels, and post-launch maintenance                                |
 | [Diagram sources](diagrams/)                                       | All 9 diagrams: Python/Graphviz generator, Mermaid context copies, rendered PNG/SVG exports                                     |
@@ -262,17 +262,17 @@ Full technical documentation is at [**docs.lumenwipe.com**](https://docs.lumenwi
 
 ---
 
-## Delivery Roadmap
+## Roadmap
 
-The project is delivered in three cumulative phases, each independently verifiable:
+The project is built in three cumulative phases, each independently verifiable:
 
 | Phase                              | Focus                                                                                                                                                                                                                             | Status          |
 | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
-| **Phase 1 - Classic wind-down**    | Full classic wind-down on testnet: signer normalization, data entries, offer cancellation, classic liquidity pool withdrawal, asset conversion, trustline removal, merge, mediator flow, multisig, session recovery               | **In progress** |
-| **Phase 2 - Soroban & DeFi**       | DeFi position detection via OctoPos; Blend, Aquarius, Soroswap, Phoenix, and FxDAO (testnet only) exits; Soroban token conversion; allowance inspector; per-step simulation; sponsored fees for reserve-locked accounts (testnet) | Planned         |
-| **Phase 3 - Production hardening** | Security review and remediation, performance validation, final UX from user testing, complete public documentation, public REST API and TypeScript SDK for integrators                                                            | Planned         |
+| **Phase 1 - Classic wind-down**    | Signer normalization, sponsorship revocation, data entries, offer cancellation, claimable balances, per-asset conversion or return, trustline removal, merge, mediator flow, multisig, session recovery                           | **Complete**    |
+| **Phase 2 - Soroban & DeFi**       | DeFi position detection via OctoPos; Blend, Aquarius, Soroswap, Phoenix, and FxDAO (testnet only) exits; Soroban token conversion; allowance inspector; per-step simulation; sponsored fees for reserve-locked accounts (testnet) | **Complete**    |
+| **Phase 3 - Production hardening** | Public REST API and TypeScript SDK, standalone `verify()` package, monitoring, complete public documentation, testnet playground; security review and remediation, mainnet mediator and sponsor, final UX from user testing       | **In progress** |
 
-> The classic wind-down already runs. The API builds the classic transactions, the browser verifies and signs them, and the tool executes the full path - signer normalization, offer cancellation, asset conversion, trustline removal, and `AccountMerge` - on both testnet and mainnet. The mediator flow for exchange destinations is available on testnet.
+> Shipped in Phase 3 so far: the public REST API with self-serve API keys, `@lumenwipe/sdk` and `@lumenwipe/verify` on npm, on-ledger monitors, the documentation site with API and SDK guides, and the testnet playground. Still open: the security review and its remediation, the mainnet mediator and fee sponsor, a recorded mainnet close that includes a DeFi exit, and UX changes from moderated user testing. Live status is in the [Phase 3 milestone](https://github.com/LumenWipe/lumenwipe/milestone/3).
 
 ---
 
