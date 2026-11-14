@@ -121,7 +121,7 @@ The system has three layers: an **API service** that reads account state, aggreg
 
 ![Three-layer system architecture: API service builds transactions, browser trust boundary verifies and signs, and Stellar network with external data services](./diagrams/output/01-system-architecture.svg)
 
-Two things to read off this diagram. The unsigned XDR is built by the API and returned to the client; the client verifies it, signs it, and submission is routed back through the API. The API is not in the signing path for a user's account - it can build and propose a transaction, but only a client-side signature (applied after `verify()` passes) makes it valid, and its only signature of its own is the shared mediator's co-signature on the exchange forwarding payment (section 11). And every external read source is pluggable: RPC, the indexer, the routing API, and the DeFi position API can each be swapped for another provider without touching the transaction logic.
+Two things to read off this diagram. The unsigned XDR is built by the API and returned to the client; the client verifies it, signs it, and submission is routed back through the API. The API is not in the signing path for a user's account - it can build and propose a transaction, but only a client-side signature (applied after `verify()` passes) makes it valid, and its only signatures of its own are the shared mediator's co-signature on the exchange forwarding payment (section 11) and the fee-bump sponsor's signature on the outer envelope (Section 8.1). And every external read source is pluggable: RPC, the indexer, the routing API, and the DeFi position API can each be swapped for another provider without touching the transaction logic.
 
 ## 5. Data sources, and why we run no indexer
 

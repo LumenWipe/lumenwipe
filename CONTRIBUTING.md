@@ -153,7 +153,7 @@ A protocol name is the scope for that protocol's exit adapter and its tests. `xb
 feat(blend): add V2 pool exit via blend-sdk Pool.submit
 fix(mediator): require memo for known exchange destinations before submission
 test(builder): add edge case for account with 1000 subentries
-security(key-handling): clear secret key from memory after each signing operation
+security(key-handling): wipe the secret key on Forget key and on leaving the flow
 chore(registry): add Binance deposit address to exchange registry
 ```
 

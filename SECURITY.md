@@ -44,8 +44,6 @@ Include in your report:
 - The potential impact - what an attacker could do and under what conditions
 - Your preferred disclosure timeline, if any
 
-**PGP encryption** (recommended for sensitive reports): a PGP public key is published at [lumenwipe.com/.well-known/security.txt](https://lumenwipe.com/.well-known/security.txt).
-
 You will receive an acknowledgment within **48 hours**. If you do not hear back within that window, follow up by opening a GitHub issue with the title "Security contact - please check email" and no further details.
 
 ---
@@ -69,19 +67,19 @@ We will coordinate the public disclosure date with you. We ask for a minimum of 
 
 The following components are in scope for security reports:
 
-| Component                       | Examples of in-scope issues                                                                                                                                    |
-| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Key handling**                | Secret key leaking outside browser memory, persisted to `localStorage` / `sessionStorage` / IndexedDB / network requests, logged, or exposed in error messages |
-| **Transaction construction**    | Operations encoded incorrectly (wrong destination, wrong amount, wrong memo), fee manipulation, envelope tampering                                             |
-| **Signing flow**                | User signing a transaction they did not review; auto-submission without explicit user confirmation; multisig signature accumulation leaking a partial key      |
-| **Mediator account flow**       | Mediator keypair persisted, reused, or sent to the backend; funds forwarded to the wrong destination; memo validation bypass for known exchange destinations   |
-| **Allowance inspector**         | Incorrect allowance data leading a user to believe an approval was revoked when it was not                                                                     |
-| **Content Security Policy**     | Bypasses that allow injected scripts to execute in the application context                                                                                     |
-| **XSS**                         | Cross-site scripting that could read the in-memory key or intercept a signing operation                                                                        |
-| **Backend read-only guarantee** | Any path by which the backend receives a private key, a signed envelope with key material, or can influence a transaction without user awareness               |
-| **Session store**               | Sensitive data (keys, signed envelopes) written to IndexedDB or any persistent browser storage                                                                 |
-| **Dependency vulnerabilities**  | High or critical CVEs in direct dependencies that affect the signing or transaction construction surface                                                       |
-| **DeFi exit correctness**       | Exit adapter building a transaction that would drain more funds than the user's position, or skipping a repayment that leaves a protocol in an unsafe state    |
+| Component                      | Examples of in-scope issues                                                                                                                                                                                 |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Key handling**               | Secret key leaking outside browser memory, persisted to `localStorage` / `sessionStorage` / IndexedDB / network requests, logged, or exposed in error messages                                              |
+| **Transaction construction**   | Operations encoded incorrectly (wrong destination, wrong amount, wrong memo), fee manipulation, envelope tampering                                                                                          |
+| **Signing flow**               | User signing a transaction they did not review; auto-submission without explicit user confirmation; multisig signature accumulation leaking a partial key                                                   |
+| **Mediator co-sign**           | The API co-signing anything other than the validated merge-and-forward pair, a forward larger than the merged balance, a forward to the wrong destination, or a missing or wrong memo for a listed exchange |
+| **Allowance inspector**        | Incorrect allowance data leading a user to believe an approval was revoked when it was not                                                                                                                  |
+| **Content Security Policy**    | Bypasses that allow injected scripts to execute in the application context                                                                                                                                  |
+| **XSS**                        | Cross-site scripting that could read the in-memory key or intercept a signing operation                                                                                                                     |
+| **Backend key boundary**       | Any path by which the API receives a user's private key, signs for a user's account, or uses the mediator or sponsor key outside its validated shape                                                        |
+| **Session store**              | Sensitive data (keys, signed envelopes) written to IndexedDB or any persistent browser storage                                                                                                              |
+| **Dependency vulnerabilities** | High or critical CVEs in direct dependencies that affect the signing or transaction construction surface                                                                                                    |
+| **DeFi exit correctness**      | Exit adapter building a transaction that would drain more funds than the user's position, or skipping a repayment that leaves a protocol in an unsafe state                                                 |
 
 ---
 
@@ -91,7 +89,7 @@ The following are not considered security vulnerabilities for this project:
 
 - Vulnerabilities in the Stellar protocol itself, Stellar RPC, or third-party data services (stellar.expert, OctoPos, Orion, Soroswap API) - report those to the respective projects
 - Phishing sites that impersonate LumenWipe - report these to us for awareness, but they are not code vulnerabilities
-- Denial of service against the read-only backend - the backend holds no funds or keys; disrupting it affects availability, not security
+- Denial of service against the API: it holds no user funds or user keys, so disrupting it affects availability, not custody. Draining the fee-bump sponsor or the mediator is in scope
 - Social engineering attacks
 - Issues requiring physical access to the user's device
 - Vulnerabilities in browsers that LumenWipe cannot control
@@ -132,10 +130,10 @@ The codebase undergoes internal security reviews as part of our development proc
 Understanding the security model helps you identify which issues are most impactful. The full model is in [docs/architecture.md - Section 13](docs/architecture.md#13-security-model). In brief:
 
 **Private keys never leave the browser.**
-The primary signing path uses [stellar-wallets-kit](https://github.com/Creit-Tech/Stellar-Wallets-Kit), which means the application never sees the private key at all. The advanced secret-key mode keeps the key in memory only - never in `localStorage`, `sessionStorage`, IndexedDB, cookies, or any network request - and clears it immediately after each signing operation.
+The primary signing path uses [stellar-wallets-kit](https://github.com/Creit-Tech/Stellar-Wallets-Kit), which means the application never sees the private key at all. The advanced secret-key mode keeps the key in memory only, never in `localStorage`, `sessionStorage`, IndexedDB, cookies or any network request, for the current close, and wipes it on completion, on abort, on leaving the flow, or when you choose Forget key.
 
-**The backend is read-only and never in the signing path.**
-A fully compromised backend could return incorrect read data, but it cannot sign transactions, move funds, or access keys. Wrong read data is defended against by on-chain simulation and explicit user confirmation before every destructive step.
+**The backend never signs for a user's account.**
+It builds unsigned transactions and holds only two narrow service keys: the shared mediator, which co-signs one validated forward payment, and the fee-bump sponsor, which signs only the outer fee-bump envelope. A compromised backend could return wrong read data or a wrong transaction, which client-side verification refuses before signing.
 
 **Every destructive step requires explicit user confirmation.**
 The tool never auto-submits. Users confirm each step after reviewing what it does, see the XDR, and in the case of the final merge, confirm the full destination address on a dedicated confirmation screen.
