@@ -234,10 +234,45 @@ function isTransportTimeout(error: unknown): boolean {
 }
 
 /**
- * What a failed RPC request means. Only the HTTP status or a transport timeout counts: a JSON-RPC
- * error, a missing entry or a 4xx is the provider's answer, never an outage, so it maps to null.
+ * A 200 whose body is not a JSON-RPC envelope. The SDK's HTTP client swallows a body that fails
+ * to arrive (a read timeout or a reset after the headers) and hands back no data at all.
+ */
+class MalformedRpcAnswer extends Error {
+  constructor() {
+    super("The data provider sent an incomplete answer.");
+    this.name = "MalformedRpcAnswer";
+  }
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const isJsonRpcRequest = (body: unknown): boolean => isRecord(body) && body.jsonrpc === "2.0";
+
+const isJsonRpcEnvelope = (data: unknown): boolean =>
+  isRecord(data) && (Object.hasOwn(data, "result") || Object.hasOwn(data, "error"));
+
+/** Rejects a JSON-RPC answer with no envelope before the SDK parses it. */
+function rejectMalformedAnswers(server: rpc.Server): rpc.Server {
+  const client = server.httpClient;
+  const post = client.post.bind(client) as (...args: unknown[]) => Promise<{ data: unknown }>;
+  client.post = ((...args: unknown[]) =>
+    post(...args).then((response) => {
+      if (isJsonRpcRequest(args[1]) && !isJsonRpcEnvelope(response.data)) {
+        throw new MalformedRpcAnswer();
+      }
+      return response;
+    })) as typeof client.post;
+  return server;
+}
+
+/**
+ * What a failed RPC request means. Only the HTTP status, a transport timeout or an answer with no
+ * JSON-RPC envelope counts: a JSON-RPC error, a missing entry or a 4xx is the provider's answer,
+ * never an outage, so it maps to null.
  */
 function rpcFailureKind(error: unknown): UpstreamErrorKind | null {
+  if (error instanceof MalformedRpcAnswer) return "unavailable";
   const status = httpStatusOf(error);
   if (status === 429) return "rate_limited";
   if (status !== undefined) return status >= 500 ? "unavailable" : null;
@@ -246,8 +281,9 @@ function rpcFailureKind(error: unknown): UpstreamErrorKind | null {
 
 /**
  * Types a read's outage as an `UpstreamError`, which every route answers as a 503. A provider that
- * refused (429) or failed (5xx) cools down, so the next requests pin another one; the current
- * request stays on its pin. A timeout already spent its share of the budget and cools nothing.
+ * refused (429), failed (5xx) or answered with no envelope cools down, so the next requests pin
+ * another one; the current request stays on its pin. A timeout already spent its share of the
+ * budget and cools nothing.
  */
 function typedRead(network: Network, provider: ProviderEndpoint, call: unknown): Promise<unknown> {
   return Promise.resolve(call).catch((error: unknown) => {
@@ -305,7 +341,8 @@ function withRequestDeadline(network: Network): rpc.Server {
 
 function recordRpcFailure(network: Network, error: unknown): void {
   const kind = rpcFailureKind(error);
-  if (kind === "rate_limited") recordUpstream(network, "rpc", "rate_limited");
+  if (error instanceof MalformedRpcAnswer) recordUpstream(network, "rpc", "unavailable");
+  else if (kind === "rate_limited") recordUpstream(network, "rpc", "rate_limited");
   else if (kind === "unavailable") recordUpstream(network, "rpc", "server_errors");
   else if (kind === "timeout") recordUpstream(network, "rpc", "timeouts");
   else if (httpStatusOf(error) === undefined) recordUpstream(network, "rpc", "unavailable");
@@ -314,8 +351,9 @@ function recordRpcFailure(network: Network, error: unknown): void {
 /**
  * Counts below the SDK's methods, on its HTTP client: `pollTransaction` is many requests behind
  * one method, while a missing account or a JSON-RPC error is a successful response that a method
- * turns into a throw. A rejection here is a transport failure or an error status, never an
- * answer. The caller gets the same promise, so a send is still one call and is never retried.
+ * turns into a throw. A rejection here is a transport failure, an error status or a body with no
+ * envelope, never an answer. The caller gets the same promise, so a send is still one call and is
+ * never retried.
  */
 function countRequests(network: Network, server: rpc.Server): rpc.Server {
   const client = server.httpClient;
@@ -347,10 +385,12 @@ export function buildRpcServer(
   };
   return countRequests(
     network,
-    new rpc.Server(url, {
-      allowHttp: false,
-      ...(Object.keys(headers).length > 0 && { headers }),
-      ...(opts.timeout !== undefined && { timeout: opts.timeout }),
-    })
+    rejectMalformedAnswers(
+      new rpc.Server(url, {
+        allowHttp: false,
+        ...(Object.keys(headers).length > 0 && { headers }),
+        ...(opts.timeout !== undefined && { timeout: opts.timeout }),
+      })
+    )
   );
 }
