@@ -1,10 +1,10 @@
 ---
 title: "Executive summary"
-description: "One-page overview: problem, solution, technical pillars, and delivery."
+description: "One-page overview: problem, solution, technical pillars, and roadmap."
 icon: "file-lines"
 ---
 
-LumenWipe is an open-source, non-custodial tool that cleanly closes a Stellar account and returns its locked XLM to the user. It unwinds everything that holds an account open (trustlines, offers, data entries, extra signers, liquidity pool shares, and DeFi positions), converts whatever is left to XLM, and merges the account into a destination wallet or exchange. Its differentiator is full Soroban and DeFi support: the piece existing tools lack.
+LumenWipe is an open-source, non-custodial tool that cleanly closes a Stellar account and returns its locked XLM to the user. It unwinds everything that holds an account open (trustlines, offers, data entries, extra signers, claimable balances, and DeFi positions; classic liquidity pool shares are reported as a blocker to withdraw elsewhere first), converts whatever is left to XLM, and merges the account into a destination wallet or exchange. Its differentiator is full Soroban and DeFi support: the piece existing tools lack.
 
 ## The problem
 
@@ -14,9 +14,9 @@ Stellar has more than ten million accounts on mainnet, and a large share are sta
 
 A guided web app that runs the whole wind-down in one flow and signs every transaction in the browser. The headline difference from the reference tool is closing positions across the main Soroban DeFi protocols (Blend, Aquarius, Soroswap, Phoenix, and FxDAO on testnet only) on top of all classic operations, plus a CEX-compatible merge, a read-only allowance inspector for revoking risky token approvals, and a UX designed for irreversible actions. Two capabilities widen who can use it: sponsored fees close accounts that hold only their locked reserves and cannot pay their own transaction fees, and a REST API plus a TypeScript SDK let wallets and platforms run the same wind-down programmatically, from a single account to a fleet.
 
-## Why us
+## What runs today
 
-The classic wind-down already runs. The current codebase reads account state from the sources described in [the architecture](/architecture#5-data-sources-and-why-we-run-no-indexer), has the API build every unsigned classic transaction while the browser verifies and signs it, and executes the full path (signer normalization, data entry removal, offer cancellation, asset conversion via SDEX path payments, trustline removal, and `AccountMerge`, including the mediator flow for exchange destinations on testnet; mainnet follows the [monitoring plan](/monitoring-plan)), with unit and end-to-end tests. We are extending a working foundation, not starting from a blank page.
+The full wind-down runs. The API reads account state from the sources described in [the architecture](/architecture#5-data-sources-and-why-we-run-no-indexer) and builds every unsigned transaction; the browser verifies and signs it. That covers the classic path (signer normalization, data entry removal, offer cancellation, claimable balances, asset conversion, trustline removal, and `AccountMerge`), exits from Blend, Aquarius, Soroswap, Phoenix, and FxDAO (testnet only), Soroban token conversion, and the allowance inspector. Each protocol exit is exercised against testnet by integration tests. The mediator flow for exchange destinations and sponsored fees are available on testnet; mainnet follows the [monitoring plan](/monitoring-plan). The public REST API, the `@lumenwipe/sdk` client, the standalone `@lumenwipe/verify` package and a testnet playground are live for integrators.
 
 ## How it works
 
@@ -36,13 +36,13 @@ Analyze the account, generate a deterministic ordered plan, execute it step by s
 - Consumes a funded DeFi Position API recipient, OctoPos, behind a pluggable adapter with an explicit degraded mode.
 - Open source under Apache 2.0, with a REST API and TypeScript SDK so wallets and platforms can integrate the same wind-down.
 
-## Delivery
+## Roadmap
 
-| Phase                          | Focus                                                                                                                                                                                              |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Phase 1 - Classic wind-down    | Full classic wind-down on testnet, the mediator flow, multisig, session recovery. Largely built today.                                                                                             |
-| Phase 2 - Soroban and DeFi     | Position detection via OctoPos; Blend, Aquarius, Soroswap, Phoenix, and FxDAO (testnet only) exits; Soroban conversion; allowance inspector; sponsored fees for reserve-locked accounts (testnet). |
-| Phase 3 - Production hardening | Security review and remediation, mainnet deployment, performance validation, final documentation; public REST API and TypeScript SDK for integrators.                                              |
+| Phase                          | Focus                                                                                                                                                                                              | Status      |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| Phase 1 - Classic wind-down    | Full classic wind-down, the mediator flow, multisig, session recovery.                                                                                                                             | Complete    |
+| Phase 2 - Soroban and DeFi     | Position detection via OctoPos; Blend, Aquarius, Soroswap, Phoenix, and FxDAO (testnet only) exits; Soroban conversion; allowance inspector; sponsored fees for reserve-locked accounts (testnet). | Complete    |
+| Phase 3 - Production hardening | Public REST API and TypeScript SDK, monitoring, complete documentation (shipped); security review and remediation, mainnet mediator and sponsor, final UX from user testing (open).                | In progress |
 
 ## Read more
 
