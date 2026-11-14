@@ -40,9 +40,9 @@
       "protocol": "aquarius",
       "kind": "router",
       "address": "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
-      "wasmHash": "d34668cd0b957f4e549719032951503495310a4d1c401ddce591c0f152834254",
+      "wasmHash": "840aa116e14f3f01578933c76c472b372a65e8a2ecff3a8b8d69b2df0a114108",
       "version": "v1",
-      "label": "Aquarius testnet router - reference only; no specific pool instance is publicly documented yet; hash re-verified 2026-11-06 after an in-place upstream upgrade (interface unchanged, swap_split added)",
+      "label": "Aquarius testnet router - reference only; no specific pool instance is publicly documented yet; hash re-verified 2026-11-14 after an in-place upstream upgrade (interface unchanged, get_reward_token and get_reward_token_count added)",
       "verifiedLive": true
     },
     {
@@ -50,9 +50,11 @@
       "protocol": "aquarius",
       "kind": "pool",
       "address": "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
-      "wasmHash": "d691135aade93ff0f7c229e009cde042130a05124cf7202b03d11246b4f9b473",
+      "wasmHash": "70476939e1ce8b4f7d6898d7a1403bd0752ba0535ad6c4aea3c4b500ad4715e0",
+      "executableOwner": "CDD3G6M2JSJLXBYLY4N6WLWVU2LB5UGPSKFO5ZV4M6BMYQY555Q6FA46",
+      "executableTag": "amm.constant",
       "version": "constant_product",
-      "label": "Aquarius testnet constant-product pool (router ConstantPoolHash) - stands for the code every standard pool shares; pools are enumerated from the router",
+      "label": "Aquarius testnet constant-product pool - stands for the code every standard pool shares; pools are enumerated from the router; hash re-verified 2026-11-14 after an in-place upstream upgrade to a CAP-85 shared release: the instance names tag amm.constant on the registered executable owner, whose entry holds this hash (interface unchanged, enroll_shared_release and get_shared_release_owner added)",
       "verifiedLive": true
     },
     {
@@ -60,9 +62,11 @@
       "protocol": "aquarius",
       "kind": "pool",
       "address": "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
-      "wasmHash": "22dff7242d2bc0ea4a4727b4b2cac33b188304d5945740ad24d8a33a5d22741e",
+      "wasmHash": "278f6f02d18ea4fcee8ecb208a5e2ea5ad8e81ff2a1015574161d44c6f325558",
+      "executableOwner": "CDD3G6M2JSJLXBYLY4N6WLWVU2LB5UGPSKFO5ZV4M6BMYQY555Q6FA46",
+      "executableTag": "amm.stable",
       "version": "stable",
-      "label": "Aquarius testnet stableswap pool (router StableSwapPoolHash) - stands for the code every stableswap pool shares",
+      "label": "Aquarius testnet stableswap pool - stands for the code every stableswap pool shares; hash re-verified 2026-11-14 after an in-place upstream upgrade to a CAP-85 shared release: the instance names tag amm.stable on the registered executable owner, whose entry holds this hash (interface unchanged, enroll_shared_release and get_shared_release_owner added)",
       "verifiedLive": true
     },
     {
@@ -70,10 +74,23 @@
       "protocol": "aquarius",
       "kind": "pool",
       "address": "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
-      "wasmHash": "155a17b9929ffb1f9e84bd6ef5c00a4d613c1ab5f4ad4c502d84515250cc2907",
+      "wasmHash": "b3092d4560a24fd45c143295655846da66d49abad34d15f9613241b6256689d5",
+      "executableOwner": "CDD3G6M2JSJLXBYLY4N6WLWVU2LB5UGPSKFO5ZV4M6BMYQY555Q6FA46",
+      "executableTag": "amm.concentrated",
       "version": "concentrated",
-      "label": "Aquarius testnet concentrated-liquidity pool (router ConcentratedPoolHash) - positions are tick ranges, not shares; recognized so they are never mistaken for a share pool, not exited",
+      "label": "Aquarius testnet concentrated-liquidity pool - positions are tick ranges, not shares; recognized so they are never mistaken for a share pool, not exited; hash re-verified 2026-11-14 after an in-place upstream upgrade to a CAP-85 shared release: the instance names tag amm.concentrated on the registered executable owner, whose entry holds this hash (interface unchanged, enroll_shared_release and get_shared_release_owner added)",
       "verifiedLive": true
+    },
+    {
+      "network": "testnet",
+      "protocol": "aquarius",
+      "kind": "executable-owner",
+      "address": "CDD3G6M2JSJLXBYLY4N6WLWVU2LB5UGPSKFO5ZV4M6BMYQY555Q6FA46",
+      "wasmHash": "758bdb9683495f07a96c1dbdd4f7775c45205691eea317d22b97aeb82fa4960f",
+      "version": "v1",
+      "label": "Aquarius testnet shared-release owner - holds the amm.constant, amm.stable and amm.concentrated tags every testnet pool takes its code from; it can repoint them, so its own code is verified on every read; never a call target of an exit",
+      "verifiedLive": true,
+      "verifiedBy": "2026-11-14: readLiveCodeIdentity over RPC (soroban-rpc.testnet.stellar.gateway.fm and soroban-testnet.stellar.org) on the owner and on all 412 router pools, each an external reference to one of its three tags"
     },
     {
       "network": "testnet",

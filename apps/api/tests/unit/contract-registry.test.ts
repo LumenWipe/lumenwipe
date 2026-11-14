@@ -675,3 +675,12 @@ describe("an entry pinned to an external reference", () => {
     });
   });
 });
+
+test("the shipped testnet Aquarius pools are pinned to the release owner the registry also verifies", () => {
+  const aquarius = entriesForProtocol("testnet", "aquarius");
+  const owner = aquarius.find((e) => e.kind === "executable-owner");
+  expect(owner?.wasmHash).not.toBeNull();
+  const pools = aquarius.filter((e) => e.kind === "pool");
+  expect(pools.length).toBe(3);
+  for (const pool of pools) expect(pool.executableOwner).toBe(owner!.address);
+});
