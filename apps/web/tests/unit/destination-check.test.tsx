@@ -5,6 +5,7 @@ import * as navigation from "next/navigation";
 import PlanView from "@/components/plan/PlanView";
 import { activeRegistry } from "@/lib/exchange-registry";
 import { destinationRefusal } from "@/lib/plan/destination-check";
+import { ApiRequestError } from "@/lib/utils/user-error";
 import { useDemolishStore } from "@/store/demolish";
 import type { AccountState } from "@/types/account";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
@@ -142,11 +143,18 @@ test("a destination that needs a memo is refused without one and passes with one
   expect(await destinationRefusal("testnet", DEST, "123")).toBeNull();
 });
 
-test("a failed check throws, so the caller shows its own connection message", async () => {
+test("a failed check throws the API's answer, so the caller can say what went wrong", async () => {
   spyOn(globalThis, "fetch").mockImplementation(
-    (async () => new Response("", { status: 503 })) as unknown as typeof fetch
+    (async () =>
+      new Response("", {
+        status: 503,
+        headers: { "Retry-After": "30" },
+      })) as unknown as typeof fetch
   );
-  await expect(destinationRefusal("testnet", DEST, "")).rejects.toThrow("Relay check failed");
+  const err = await destinationRefusal("testnet", DEST, "").catch((e: unknown) => e);
+  expect(err).toBeInstanceOf(ApiRequestError);
+  expect((err as ApiRequestError).status).toBe(503);
+  expect((err as ApiRequestError).retryAfterSeconds).toBe(30);
 });
 
 async function renderReadyPlan(): Promise<void> {

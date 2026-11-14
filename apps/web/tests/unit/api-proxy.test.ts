@@ -53,4 +53,21 @@ describe("proxy error paths speak the API's envelope", () => {
     expect(res.status).toBe(422);
     expect(await res.json()).toEqual(body);
   });
+
+  test("a busy API's Retry-After reaches the page", async () => {
+    const body = { error: { code: "service_unavailable", message: "The data provider is busy." } };
+    const res = proxyErrorResponse(
+      new LumenWipeApiError(503, body, new Headers({ "Retry-After": "30" }))
+    );
+    expect(res.status).toBe(503);
+    expect(res.headers.get("Retry-After")).toBe("30");
+    expect(await res.json()).toEqual(body);
+  });
+
+  test("no Retry-After is added where the API sent none", () => {
+    const res = proxyErrorResponse(
+      new LumenWipeApiError(503, { error: { code: "x", message: "m" } })
+    );
+    expect(res.headers.get("Retry-After")).toBeNull();
+  });
 });

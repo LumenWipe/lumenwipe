@@ -108,9 +108,9 @@ test("the step list, progress line and confirmed hash follow each transaction of
   const list = stepList(page);
   await expect(list.locator("li").first()).toContainText("Confirmed", { timeout: 60_000 });
   // The second round is built only now, through the API. A build the service refuses for the
-  // moment (a 503 while its data provider is throttled) stops the close with "temporarily
-  // unavailable" and a Retry, which re-reads the account and builds the round again.
-  const refusal = page.getByRole("alert").filter({ hasText: /temporarily unavailable/ });
+  // moment (a 503 while its data provider is throttled) stops the close saying the service is
+  // busy, with a Retry, which re-reads the account and builds the round again.
+  const refusal = page.getByRole("alert").filter({ hasText: /busy or not answering/ });
   await untilDoneWithOneRetry({
     step: "second transaction's sign request",
     done: () => wallet.signRequests.length === 2,

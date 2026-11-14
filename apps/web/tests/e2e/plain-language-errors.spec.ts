@@ -148,7 +148,7 @@ test.describe("analyze", () => {
     const raw = "BuilderError: tx_bad_seq while assembling plan";
     await page.route("**/api/v1/testnet/close/plan", failWith(500, raw));
     await enterSourceAndAnalyze(page, source.publicKey());
-    await expectPlainCopy(page, /Failed to analyze account/, raw);
+    await expectPlainCopy(page, /temporarily unavailable/, raw);
   });
 });
 
@@ -167,7 +167,7 @@ test.describe("review", () => {
     await page.getByRole("checkbox", { name: /wallet I control/i }).check();
     await begin.click();
 
-    await expectPlainCopy(page, /Failed to verify the destination/, raw);
+    await expectPlainCopy(page, /temporarily unavailable/, raw);
   });
 });
 
@@ -205,6 +205,13 @@ test.describe("execute with a secret key", () => {
       status: 504,
       raw: "upstream request timed out after 30000ms",
       copy: /temporarily unavailable/,
+    },
+    {
+      name: "busy data provider",
+      endpoint: "**/api/v1/testnet/close/transactions",
+      status: 503,
+      raw: "UpstreamError: rate_limited at horizon (upstream-client.ts:1:2)",
+      copy: /busy or not answering right now\. This is not a problem with your connection/,
     },
     {
       name: "service error",

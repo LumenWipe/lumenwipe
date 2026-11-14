@@ -8,11 +8,13 @@ import * as closeClient from "@/lib/api/close-client";
 import * as closeRecord from "@/lib/session/close-record";
 import * as recovery from "@/lib/session/recovery";
 import {
+  ApiRequestError,
   PLAN_FEES_UNREADABLE,
   PLAN_FLOOR_MISSING,
   PLAN_HOLDINGS_CHANGED,
   PLAN_NOT_COMPARABLE,
   PLAN_REFRESH_FAILED,
+  PLAN_REFRESH_UNUSABLE,
   PLAN_REVIEW_LEFT,
 } from "@/lib/utils/user-error";
 import { useDemolishStore } from "@/store/demolish";
@@ -630,7 +632,7 @@ test("a fresh plan of an unexpected shape is a failed refresh, and the button co
 
   await confirm();
 
-  expect(screen.getByText(PLAN_REFRESH_FAILED)).toBeDefined();
+  expect(screen.getByText(PLAN_REFRESH_UNUSABLE)).toBeDefined();
   expect(continueButton().disabled).toBe(false);
   expect(screen.queryByText("Preparing...")).toBeNull();
   expect(save).not.toHaveBeenCalled();
@@ -647,7 +649,107 @@ test.each([
 
   await confirm();
 
-  expect(screen.getByText(PLAN_REFRESH_FAILED)).toBeDefined();
+  expect(screen.getByText(PLAN_REFRESH_UNUSABLE)).toBeDefined();
+  expect(save).not.toHaveBeenCalled();
+  expect(useDemolishStore.getState().planHash).toBe(REVIEWED_HASH);
+});
+
+const BUSY = new ApiRequestError(
+  503,
+  "The data provider is busy right now. Try again in a moment.",
+  undefined,
+  "service_unavailable",
+  30
+);
+
+test.each([
+  ["account read", "readAccount"],
+  ["plan", "fetchClosePlan"],
+] as const)(
+  "a busy provider on the %s says so, not the connection, and the close can be tried again",
+  async (_case, failing) => {
+    const save = spyOn(closeRecord, "saveCloseSession").mockResolvedValue("s");
+    const stubs = stubUnchangedRefresh(
+      freshAccount(SOURCE),
+      freshPlan([STEP], { planHash: REVIEWED_HASH })
+    );
+    stubs[failing].mockRejectedValueOnce(BUSY);
+    await show();
+
+    await confirm();
+
+    const alert = screen.getByText(/busy or not answering/).textContent ?? "";
+    expect(alert).toContain("signing has not started");
+    expect(alert).toContain("Try again in about 30 seconds.");
+    expect(alert).not.toMatch(/check your connection/i);
+    expect(save).not.toHaveBeenCalled();
+    expect(useDemolishStore.getState().planHash).toBe(REVIEWED_HASH);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    });
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(useDemolishStore.getState().phase).toBe("STEP_EXECUTING");
+  }
+);
+
+test("an answer from the service that is not a busy one keeps the connection out of it", async () => {
+  stubUnchangedRefresh(freshAccount(SOURCE), freshPlan([STEP], { planHash: REVIEWED_HASH }));
+  spyOn(closeClient, "fetchClosePlan").mockRejectedValueOnce(new ApiRequestError(500, ""));
+  await show();
+
+  await confirm();
+
+  expect(screen.getByText(PLAN_REFRESH_UNUSABLE)).toBeDefined();
+  expect(useDemolishStore.getState().phase).toBe("PREFLIGHT_COMPLETE");
+});
+
+test("the account and the plan are asked for at once", async () => {
+  stubUnchangedRefresh(freshAccount(SOURCE), freshPlan([STEP], { planHash: REVIEWED_HASH }));
+  spyOn(analyzeClient, "readAccount").mockImplementation(() => new Promise<AccountState>(() => {}));
+  const plan = spyOn(closeClient, "fetchClosePlan").mockImplementation(() => new Promise(() => {}));
+  await show();
+
+  await confirm();
+
+  expect(plan).toHaveBeenCalledTimes(1);
+});
+
+const TOKEN = "C" + "D".repeat(55);
+const holdingToken = (overrides: Partial<AccountState> = {}) =>
+  freshAccount(SOURCE, {
+    sorobanTokens: { tokens: [{ contract: TOKEN, balance: "1" }] } as never,
+    ...overrides,
+  });
+
+function plannedTokens(plan: ReturnType<typeof spyOn>): unknown[] {
+  const body = plan.mock.calls[0]![0] as { decisions: { id: string }[] };
+  return body.decisions.filter((d) => d.id.startsWith("token:")).map((d) => d.id);
+}
+
+test("the plan is asked for with the tokens of the account that was reviewed", async () => {
+  useDemolishStore.getState().setAccountState(holdingToken());
+  const { fetchClosePlan: plan } = stubUnchangedRefresh(
+    holdingToken(),
+    freshPlan([STEP], { planHash: REVIEWED_HASH })
+  );
+  await show();
+
+  await confirm();
+
+  expect(plannedTokens(plan)).toEqual([`token:${TOKEN}`]);
+  expect(useDemolishStore.getState().phase).toBe("STEP_EXECUTING");
+});
+
+test("a token the fresh read finds that the review did not hold is never installed", async () => {
+  const save = spyOn(closeRecord, "saveCloseSession").mockResolvedValue("s");
+  const plan = refreshReads(holdingToken());
+  await show();
+
+  await confirm();
+
+  expect(plannedTokens(plan)).toEqual([]);
+  expect(screen.getByText(PLAN_HOLDINGS_CHANGED)).toBeDefined();
   expect(save).not.toHaveBeenCalled();
   expect(useDemolishStore.getState().planHash).toBe(REVIEWED_HASH);
 });

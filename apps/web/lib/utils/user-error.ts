@@ -42,7 +42,9 @@ export class ApiRequestError extends Error {
     message: string,
     readonly requestId?: string,
     /** The envelope's `error.code`, which the close loop branches on; never shown. */
-    readonly code?: string
+    readonly code?: string,
+    /** The wait the answer's `Retry-After` asked for, when it gave a number of seconds. */
+    readonly retryAfterSeconds?: number
   ) {
     super(message);
     this.name = "ApiRequestError";
@@ -55,8 +57,7 @@ export function isStateChanged(err: unknown): boolean {
 }
 
 const FALLBACKS: Record<ErrorContext, string> = {
-  analyze:
-    "We couldn't analyze this account right now. Please check your connection and try again.",
+  analyze: "We couldn't analyze this account right now. Please try again.",
   review: "We couldn't prepare this step. Please go back, check your details and try again.",
   execute:
     "The close could not be completed. Check your account if you're unsure what happened, then try again - the close picks up where it stopped.",
@@ -150,6 +151,36 @@ const HTTP_MESSAGES: Record<number, string> = {
 };
 
 const UNAVAILABLE = "The service is temporarily unavailable. Please try again in a moment.";
+const PROVIDER_BUSY =
+  "The service LumenWipe reads the Stellar network through is busy or not answering right now. This is not a problem with your connection.";
+const REFRESH_BUSY =
+  "The plan could not be checked again because the service LumenWipe reads the Stellar network through is busy or not answering, so signing has not started. This is not a problem with your connection.";
+
+/** When to try again, from the seconds a `Retry-After` asked for. Never a countdown: the user
+ *  may retry whenever they like. */
+export function retryWhen(seconds: number | undefined): string {
+  if (seconds === undefined || !Number.isFinite(seconds) || seconds <= 0) {
+    return "Try again in a moment.";
+  }
+  if (seconds < 60) return `Try again in about ${seconds} ${seconds === 1 ? "second" : "seconds"}.`;
+  const minutes = Math.ceil(seconds / 60);
+  return `Try again in about ${minutes} ${minutes === 1 ? "minute" : "minutes"}.`;
+}
+
+/** A 503: the API, or a data provider behind it, is rate limited, too slow or unavailable. */
+function isServiceBusy(err: unknown): err is ApiRequestError | LumenWipeApiError {
+  return (err instanceof ApiRequestError || err instanceof LumenWipeApiError) && err.status === 503;
+}
+
+function retryAfterOf(err: ApiRequestError | LumenWipeApiError): number | undefined {
+  if (err instanceof ApiRequestError) return err.retryAfterSeconds;
+  return err.retryAfterMs === undefined ? undefined : Math.ceil(err.retryAfterMs / 1000);
+}
+
+/** The delta-seconds form only: the proxy relays the API's wait in that form. */
+function retryAfterSecondsOf(header: string | null): number | undefined {
+  return header !== null && /^\d+$/.test(header) ? Number(header) : undefined;
+}
 
 function looksPlain(message: string): boolean {
   return (
@@ -190,7 +221,8 @@ export async function readApiError(res: Response, fallback = ""): Promise<ApiReq
     res.status,
     envelopeMessage(body) || fallback,
     apiRequestId(res, body),
-    envelopeField(body, "code") || undefined
+    envelopeField(body, "code") || undefined,
+    retryAfterSecondsOf(res.headers.get("Retry-After"))
   );
 }
 
@@ -261,6 +293,7 @@ export function toUserMessage(err: unknown, context: ErrorContext = "generic"): 
   if (err instanceof CloseTransactionFailedError) {
     return looksPlain(err.message) ? err.message : FALLBACKS[context];
   }
+  if (isServiceBusy(err)) return `${PROVIDER_BUSY} ${retryWhen(retryAfterOf(err))}`;
   if (err instanceof ApiRequestError) return fromStatus(err.status, err.message, context);
   if (err instanceof LumenWipeApiError) return fromStatus(err.status, "", context);
   if (err instanceof LumenWipeTimeoutError) return UNAVAILABLE;
@@ -340,6 +373,8 @@ export const CONFIRM_SAVE_FAILED =
 /** /review checks the plan again before signing; these say why it did not move on. */
 export const PLAN_REFRESH_FAILED =
   "The plan could not be checked again just now, so signing has not started. Check your connection and try again.";
+export const PLAN_REFRESH_UNUSABLE =
+  "The plan could not be checked again just now, so signing has not started. Try again in a moment.";
 export const PLAN_NEEDS_ANSWERS =
   "Something on the account changed and needs an answer before this close can go on. Go back to decide what happens to it.";
 export const PLAN_REVIEW_LEFT =
@@ -352,6 +387,16 @@ export const PLAN_NOT_COMPARABLE =
   "This plan could not be compared with the one you reviewed. Go back to decide, then review it again.";
 export const PLAN_HOLDINGS_CHANGED =
   "What the account holds changed since this plan was prepared, so its choices need to be made again. Go back to decide what happens to each item.";
+
+/** Why /review's check of the plan failed: a busy service, another answer, or no answer at all. */
+export function planRefreshFailure(err: unknown): string {
+  if (isServiceBusy(err)) return `${REFRESH_BUSY} ${retryWhen(retryAfterOf(err))}`;
+  if (err instanceof ApiRequestError || err instanceof LumenWipeApiError) {
+    return PLAN_REFRESH_UNUSABLE;
+  }
+  return PLAN_REFRESH_FAILED;
+}
+
 export const PROGRESS_NOT_SAVED =
   "This browser could not save the progress of this close. Signing goes on, but if this page is lost the start page may not show how far the close got.";
 export const NO_MERGE_CONFIRMED =

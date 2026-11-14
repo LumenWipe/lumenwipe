@@ -1,6 +1,7 @@
 import type { Network } from "@/config/networks";
 import { mediatorAllowedFor } from "@/lib/exchange-registry";
 import { missingRequiredMemoError } from "@/lib/plan/memo-requirement";
+import { readApiError } from "@/lib/utils/user-error";
 import type { MediatorCheckResult } from "@/types/account";
 
 /**
@@ -15,7 +16,7 @@ export async function destinationRefusal(
   memo: string
 ): Promise<string | null> {
   const res = await fetch(`/api/${network}/mediator/check/${destination}`);
-  if (!res.ok) throw new Error(`Relay check failed with status ${res.status}`);
+  if (!res.ok) throw await readApiError(res);
   const check = (await res.json()) as MediatorCheckResult;
   const needsMediator = check.requiresMediator ?? false;
 

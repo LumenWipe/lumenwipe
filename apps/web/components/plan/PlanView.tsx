@@ -92,7 +92,7 @@ import {
 import { expectedReceive, type ExpectedReceive } from "@/lib/plan/expected-receive";
 import { destinationRefusal } from "@/lib/plan/destination-check";
 import { keepDestinationDraft } from "@/lib/session/restore-decisions";
-import { isStateChanged } from "@/lib/utils/user-error";
+import { isStateChanged, toUserMessage } from "@/lib/utils/user-error";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
@@ -622,7 +622,7 @@ export default function PlanView({
         onRefresh();
         return;
       }
-      setError("Failed to verify the destination. Please check your connection and try again.");
+      setError(toUserMessage(err, "analyze"));
     } finally {
       setProceeding(false);
     }

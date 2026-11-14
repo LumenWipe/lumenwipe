@@ -19,6 +19,12 @@ export class ApiNotConfiguredError extends Error {
 /** Headers for a 503: an operator's fault, so the caller learns when to look again. */
 export const NOT_CONFIGURED_HEADERS = { "Retry-After": "30" };
 
+/** The API's `Retry-After`, relayed as whole seconds, so the page can say when to try again. */
+function retryAfterHeaders(retryAfterMs: number | undefined): Record<string, string> | undefined {
+  if (retryAfterMs === undefined || !Number.isFinite(retryAfterMs)) return undefined;
+  return { "Retry-After": String(Math.ceil(retryAfterMs / 1000)) };
+}
+
 /**
  * The response for a failed proxied call: the upstream API's own error body and status relayed
  * verbatim, or, for a failure the proxy hits itself, the API's `{ error: { code, message } }`
@@ -41,7 +47,7 @@ function errorResponseFor(e: unknown): NextResponse {
     // which would relay an error body as a success.
     return NextResponse.json(body, {
       status: e.status || 502,
-      headers: requestIdHeaders(e.requestId),
+      headers: { ...requestIdHeaders(e.requestId), ...retryAfterHeaders(e.retryAfterMs) },
     });
   }
   if (e instanceof LumenWipeTimeoutError) {
