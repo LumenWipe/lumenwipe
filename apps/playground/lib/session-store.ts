@@ -532,24 +532,64 @@ export function createSessionStore(resolveKv: () => SessionKv): SessionStore {
   };
 }
 
-let warnedDevFallback = false;
+/** The environment variable that opts a local server into the file-backed dev session store. */
+export const DEV_FILE_STORE_FLAG = "PLAYGROUND_DEV_FILE_STORE";
 
-// Production fails loudly without Redis instead of silently losing sessions across serverless
-// instances; dev and test fall back to a file.
-function resolveDefaultKv(): SessionKv {
-  if (isRedisConfigured()) return upstashKv();
-  if (process.env.NODE_ENV === "production") throw new PlaygroundStoreUnavailableError();
-  if (!warnedDevFallback) {
-    warnedDevFallback = true;
+type StoreEnv = Readonly<Record<string, string | undefined>>;
+
+/** Whether this process runs as a deployment: a production build, or anywhere on Vercel. */
+export function isDeployedEnv(env: StoreEnv): boolean {
+  return env.NODE_ENV === "production" || Boolean(env.VERCEL);
+}
+
+const warned = { devFile: false, flagIgnored: false, unavailable: false };
+
+/**
+ * Picks the session store: Upstash Redis whenever it is configured; otherwise the dev file store,
+ * only when PLAYGROUND_DEV_FILE_STORE=1 and the process is not a deployment; otherwise none, and
+ * every route answers that the playground is not configured. A deployment without Redis fails
+ * closed even with the flag set: custodial session records never land on a server's disk.
+ */
+export function resolveSessionKv(
+  env: StoreEnv,
+  make: { redis: () => SessionKv; file: () => SessionKv } = {
+    redis: upstashKv,
+    file: () => devFileKv(),
+  }
+): SessionKv {
+  if (isRedisConfigured(env)) return make.redis();
+  const flagged = env[DEV_FILE_STORE_FLAG] === "1";
+  if (flagged && isDeployedEnv(env)) {
+    if (!warned.flagIgnored) {
+      warned.flagIgnored = true;
+      console.error(
+        "[playground] %s is ignored in a deployed environment; configure Upstash Redis",
+        DEV_FILE_STORE_FLAG
+      );
+    }
+    throw new PlaygroundStoreUnavailableError();
+  }
+  if (!flagged) {
+    if (!warned.unavailable && !isDeployedEnv(env)) {
+      warned.unavailable = true;
+      console.warn(
+        "[playground] No session store: configure Upstash Redis, or set %s=1 for a local file store",
+        DEV_FILE_STORE_FLAG
+      );
+    }
+    throw new PlaygroundStoreUnavailableError();
+  }
+  if (!warned.devFile) {
+    warned.devFile = true;
     console.warn(
-      "[playground] Upstash Redis not configured - using a file-backed dev session store (dev/test only); sessions are lost when the file is removed",
+      "[playground] Using the file-backed dev session store (local development only); sessions are lost when the file is removed",
       { file: DEV_STORE_FILE }
     );
   }
-  return devFileKv();
+  return make.file();
 }
 
-export const sessionStore: SessionStore = createSessionStore(resolveDefaultKv);
+export const sessionStore: SessionStore = createSessionStore(() => resolveSessionKv(process.env));
 
 /** When the countdown of a session started at `now` ends, in epoch milliseconds. */
 export function sessionExpiresAt(now: number): number {
