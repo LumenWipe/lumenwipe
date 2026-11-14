@@ -128,7 +128,6 @@ function cost(steps: number, closeGroups: number, xlm: number, subEntries: numbe
     classicTransactions: steps,
     sorobanTransactions: 0,
     seconds: steps * MESS_STEP_SECONDS + closeGroups * CLOSE_GROUP_SECONDS,
-    batchSize: 1,
     subEntries,
   };
 }
@@ -916,7 +915,6 @@ function poolScenario(spec: {
           classicTransactions: 0,
           sorobanTransactions: 1,
           seconds: SOROBAN_STEP_SECONDS + CLOSE_GROUP_SECONDS + SOROBAN_STEP_SECONDS,
-          batchSize: 1,
           subEntries: 0,
         },
       },
@@ -1039,7 +1037,6 @@ const blendSupply: ScenarioDefinition = {
           classicTransactions: 0,
           sorobanTransactions: 1,
           seconds: SOROBAN_STEP_SECONDS + CLOSE_GROUP_SECONDS + exits * SOROBAN_STEP_SECONDS,
-          batchSize: 1,
           subEntries: 0,
         },
       },
@@ -1147,7 +1144,6 @@ const phoenixLp: ScenarioDefinition = {
           sorobanTransactions: seeds,
           seconds:
             seeds * SOROBAN_STEP_SECONDS + CLOSE_GROUP_SECONDS + exits * SOROBAN_STEP_SECONDS,
-          batchSize: 1,
           subEntries: 0,
         },
       },
@@ -1228,7 +1224,6 @@ const allowances: ScenarioDefinition = {
           classicTransactions: 0,
           sorobanTransactions: count,
           seconds: count * 2 * SOROBAN_STEP_SECONDS,
-          batchSize: 1,
           subEntries: 0,
         },
       },

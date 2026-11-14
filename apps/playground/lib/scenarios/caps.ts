@@ -6,4 +6,3 @@ export const MAX_SUB_ENTRIES = 30;
 export const MAX_SESSION_XLM = 50;
 export const MAX_SOROBAN_TRANSACTIONS = 6;
 export const MAX_ESTIMATED_SECONDS = 6 * 60;
-export const MAX_BATCH_SIZE = 3;

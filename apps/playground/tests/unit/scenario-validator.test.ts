@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import {
   ALLOWANCE_FEE_ESTIMATE_XLM,
   BASE_RESERVE_XLM,
-  MAX_BATCH_SIZE,
   MAX_ESTIMATED_SECONDS,
   MAX_SCENARIOS,
   MAX_SESSION_XLM,
@@ -92,7 +91,6 @@ function synthetic(id: ScenarioId, cost: Partial<ScenarioCost>): ScenarioDefinit
           classicTransactions: 1,
           sorobanTransactions: 0,
           seconds: 0,
-          batchSize: 1,
           subEntries: 0,
           ...cost,
         },
@@ -123,11 +121,6 @@ describe("the safety caps", () => {
       { seconds: MAX_ESTIMATED_SECONDS },
       "This selection would take about 7 minutes; a demo is limited to 6.",
     ],
-    [
-      "batch size",
-      { batchSize: MAX_BATCH_SIZE + 1 },
-      `A batch can close at most ${MAX_BATCH_SIZE} accounts.`,
-    ],
   ];
   for (const [name, cost, message] of cases) {
     test(`a selection over the ${name} cap is refused in plain language`, () => {
@@ -143,7 +136,6 @@ describe("the safety caps", () => {
       xlm: MAX_SESSION_XLM - 1,
       sorobanTransactions: MAX_SOROBAN_TRANSACTIONS,
       seconds: MAX_ESTIMATED_SECONDS - 13,
-      batchSize: MAX_BATCH_SIZE,
     });
     const result = validateSelection(pick({ id: "forgotten-signer", params: {} }), {
       registry: [atCap],
