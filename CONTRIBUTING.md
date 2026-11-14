@@ -244,6 +244,12 @@ bun run --filter '@lumenwipe/web' test:a11y
 - **Reduced motion.** The specs run with `prefers-reduced-motion: reduce`, so axe reads each element in its final state rather than halfway through a fade.
 - **Suppressions.** Disabling a rule or excluding a node needs an inline comment with the reason and a link to an open issue, and the PR description lists it. There are none today.
 
+The playground has the same gate in `apps/playground/tests/e2e/a11y/`, run by the `playground accessibility (axe)` job at 360 and 1280 px: the start screen, a set-up demo with its live state and revealed key, a refused key request, the countdown's warning and end, a setup step refused for time, and a finished demo. Its fixtures answer every playground route in the browser against the production build, so nothing is funded or sent, and a route no fixture answers fails the test. The nightly testnet suite skips this folder.
+
+```bash
+bun run --filter '@lumenwipe/playground' test:a11y
+```
+
 ### What to test for a new protocol exit
 
 At minimum:

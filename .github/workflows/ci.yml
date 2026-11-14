@@ -229,6 +229,45 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
 
+  # The same gate for the playground: its own production build, every /api call answered by
+  # fixtures in the browser, so no API, no secret and no testnet. A serious or critical violation
+  # fails it.
+  playground-a11y:
+    name: playground accessibility (axe)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container:
+      image: mcr.microsoft.com/playwright:v1.65.0-noble@sha256:6e3fb709361521eb27161606e6da6d2674e5e89fa16516cb37d6fdd91372273d
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # setup-bun extracts a zip and the image has no unzip; its Node installs Bun instead.
+      - name: Set up Bun
+        run: npm install -g bun@1.4.4
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install Playwright browser
+        run: bunx playwright install chromium
+        working-directory: apps/playground
+
+      - name: Run the accessibility specs
+        run: bun run --filter '@lumenwipe/playground' test:a11y
+
+      - name: Upload the report
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playground-a11y-report
+          path: |
+            apps/playground/playwright-report/
+            apps/playground/test-results/
+          retention-days: 14
+          if-no-files-found: warn
+
   # Formatting is its own required status check (kept separate from the `check` matrix so a
   # style-only failure doesn't get lost inside a package's own type-check/lint/test group).
   prettier:
@@ -735,6 +774,7 @@ jobs:
       [
         check,
         a11y,
+        playground-a11y,
         integration,
         integration-funded,
         docker,
@@ -762,6 +802,10 @@ jobs:
           fi
           if [ "${{ needs.a11y.result }}" != "success" ]; then
             echo "The accessibility specs found a serious or critical axe violation or an unreachable control."
+            exit 1
+          fi
+          if [ "${{ needs.playground-a11y.result }}" != "success" ]; then
+            echo "The playground accessibility specs found a serious or critical axe violation."
             exit 1
           fi
           if [ "${{ needs.integration.result }}" != "success" ]; then
