@@ -12,7 +12,7 @@ import {
 export type PlaygroundMode = "light" | "standard" | "full" | "custom";
 
 export interface PlaygroundCustomConfig {
-  /** 1-5: each level adds the next trustline (LWDEMO, AIRDROP1, RUGPULL, USDC, EURC). */
+  /** 1-5: each level adds the next trustline (LWDEMO, AIRDROP1, RUGPULL, DEMOUSD, DEMOEUR). */
   trustlineCount: number;
   /** 0 up to trustlineCount: each offer trades the token of the trustline at its level. */
   offerCount: number;

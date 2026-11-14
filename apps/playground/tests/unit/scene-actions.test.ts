@@ -184,7 +184,7 @@ describe("the Soroswap position and its pinned asset", () => {
     expect(operationToSceneAction(elsewhere, scene)).toBeNull();
   });
 
-  test("Circle's USDC has its own node, apart from the playground's USDC", () => {
+  test("Circle's USDC is matched by its issuer: a USDC from another issuer is not its node", () => {
     const removal = { ...SAMPLES.change_trust, asset: circle };
     expect(operationToSceneAction(removal, scene)).toEqual({
       type: "destroy",

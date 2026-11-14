@@ -1,5 +1,15 @@
 import "server-only";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { redis } from "./upstash-redis";
 
@@ -97,6 +107,15 @@ export interface RecordIo {
  * await in between, so it is atomic against every other request in the same process.
  */
 export function createRecordKv(io: RecordIo, now: () => number = Date.now): SessionKv {
+  // Every write drops each expired entry, not only the key it touched, so a store nobody reads
+  // back does not keep old sessions' encrypted keys around.
+  const commit = (records: KvRecords): void => {
+    const at = now();
+    for (const [key, entry] of Object.entries(records)) {
+      if (entry.expiresAt <= at) delete records[key];
+    }
+    io.write(records);
+  };
   const live = (records: KvRecords, key: string): RecordEntry | undefined => {
     const entry = records[key];
     if (!entry) return undefined;
@@ -119,47 +138,47 @@ export function createRecordKv(io: RecordIo, now: () => number = Date.now): Sess
     async set(key, value, ttlSeconds) {
       const records = io.read();
       put(records, key, value, ttlSeconds * 1000);
-      io.write(records);
+      commit(records);
     },
     async acquire(lockKey, token, ttlMs) {
       const records = io.read();
       if (live(records, lockKey)) return false;
       put(records, lockKey, token, ttlMs);
-      io.write(records);
+      commit(records);
       return true;
     },
     async setIfLockHeld(lockKey, token, key, value, ttlSeconds) {
       const records = io.read();
       if (live(records, lockKey)?.value !== token) return false;
       put(records, key, value, ttlSeconds * 1000);
-      io.write(records);
+      commit(records);
       return true;
     },
     async delIfLockHeld(lockKey, token, key) {
       const records = io.read();
       if (live(records, lockKey)?.value !== token) return false;
       delete records[key];
-      io.write(records);
+      commit(records);
       return true;
     },
     async releaseIfHeld(lockKey, token) {
       const records = io.read();
       if (live(records, lockKey)?.value !== token) return;
       delete records[lockKey];
-      io.write(records);
+      commit(records);
     },
     async indexAdd(indexKey, member) {
       const records = io.read();
       const members = setMembers(live(records, indexKey));
       if (!members.includes(member)) members.push(member);
       records[indexKey] = { value: members, expiresAt: NEVER };
-      io.write(records);
+      commit(records);
     },
     async indexRemove(indexKey, member) {
       const records = io.read();
       const members = setMembers(live(records, indexKey));
       records[indexKey] = { value: members.filter((m) => m !== member), expiresAt: NEVER };
-      io.write(records);
+      commit(records);
     },
     async indexMembers(indexKey) {
       return setMembers(live(io.read(), indexKey));
@@ -185,7 +204,7 @@ export function memoryKv(now: () => number = Date.now): SessionKv {
   );
 }
 
-// Inside the app's git-ignored node_modules cache, not the shared temp dir, where another local
+// Inside the app's git-ignored node_modules cache, never the shared temp dir, where another local
 // user could predict the path and pre-create or read the file.
 export const DEV_STORE_FILE = join(
   process.cwd(),
@@ -195,22 +214,51 @@ export const DEV_STORE_FILE = join(
   "dev-sessions.json"
 );
 
-// A file, not an in-process Map: Next.js dev compiles each API route as its own module graph, so a
-// module-level Map is not shared between the route that creates a session and the one that uses it.
-// Locks are atomic within the single dev server process, not across several processes.
-export function devFileKv(): SessionKv {
-  return createRecordKv({
-    read() {
-      try {
-        if (!existsSync(DEV_STORE_FILE)) return {};
-        return JSON.parse(readFileSync(DEV_STORE_FILE, "utf8")) as KvRecords;
-      } catch {
-        return {};
-      }
+/**
+ * The file-backed store for local development, used only when PLAYGROUND_DEV_FILE_STORE=1 outside
+ * a deployment (lib/session-store.ts `resolveSessionKv`). Its directory is private to the user
+ * (0700) and every write lands in a new 0600 file renamed over the old one, so the records (which
+ * hold encrypted demo keys) are never readable by anyone else, even when an older file or
+ * directory was created with looser permissions.
+ *
+ * A file, not an in-process Map: Next.js dev compiles each API route as its own module graph, so a
+ * module-level Map is not shared between the route that creates a session and the one that uses
+ * it. Locks are atomic within the single dev server process, not across several processes.
+ */
+export function devFileKv(file: string = DEV_STORE_FILE, now: () => number = Date.now): SessionKv {
+  const dir = dirname(file);
+  return createRecordKv(
+    {
+      read() {
+        try {
+          if (!existsSync(file)) return {};
+          return JSON.parse(readFileSync(file, "utf8")) as KvRecords;
+        } catch {
+          return {};
+        }
+      },
+      write(records) {
+        mkdirSync(dir, { recursive: true, mode: 0o700 });
+        if (lstatSync(dir).isSymbolicLink()) {
+          throw new Error("The playground's dev session store directory is a symbolic link");
+        }
+        chmodSync(dir, 0o700);
+        // A name no one can guess, created exclusively: an existing file at that path fails the
+        // write instead of being written through.
+        const temp = join(dir, `.dev-sessions-${randomBytes(16).toString("hex")}.tmp`);
+        try {
+          writeFileSync(temp, JSON.stringify(records), {
+            encoding: "utf8",
+            mode: 0o600,
+            flag: "wx",
+          });
+          renameSync(temp, file);
+        } catch (err) {
+          rmSync(temp, { force: true });
+          throw err;
+        }
+      },
     },
-    write(records) {
-      mkdirSync(dirname(DEV_STORE_FILE), { recursive: true, mode: 0o700 });
-      writeFileSync(DEV_STORE_FILE, JSON.stringify(records), { encoding: "utf8", mode: 0o600 });
-    },
-  });
+    now
+  );
 }

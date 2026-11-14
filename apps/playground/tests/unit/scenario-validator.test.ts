@@ -300,7 +300,7 @@ describe("what a selection must satisfy", () => {
 
   test("a requirement is met by any one of its alternatives", () => {
     expect(messageOf(pick({ id: "stale-offers", params: { count: 1 } }))).toBe(
-      "Stale DEX offers needs one of these as well: Demo token holding, Junk airdrops, Stablecoin swaps."
+      "Stale DEX offers needs one of these as well: Demo token holding, Junk airdrops, Demo stablecoin swaps."
     );
     for (const provider of ["lwdemo-holding", "junk-airdrops", "stablecoin-swaps"] as const) {
       const ok = validateSelection(
@@ -380,8 +380,8 @@ describe("the resolved plan", () => {
     const plan = resolvePlan(
       pick({ id: "stablecoin-swaps", params: { tokens: 1 } }, { id: "data-entries", params: {} })
     );
-    expect(plan.steps[0]?.action).toMatchObject({ kind: "setup", ephemeralAssets: ["USDC"] });
-    expect(plan.ephemeralAssets).toEqual(["USDC"]);
+    expect(plan.steps[0]?.action).toMatchObject({ kind: "setup", ephemeralAssets: ["DEMOUSD"] });
+    expect(plan.ephemeralAssets).toEqual(["DEMOUSD"]);
   });
 
   test("adds the merge to the close, and the threshold reset only with a signer", () => {

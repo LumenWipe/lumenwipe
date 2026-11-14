@@ -4,8 +4,8 @@ export type AssetCode =
   | "LWDEMO"
   | "AIRDROP1"
   | "RUGPULL"
-  | "USDC"
-  | "EURC"
+  | "DEMOUSD"
+  | "DEMOEUR"
   | "LWCOIN"
   | "LWGEM"
   | "BONUS"
@@ -19,10 +19,13 @@ export const AIRDROP_ASSETS = [
   { code: "RUGPULL", amount: "13.37" },
 ] as const satisfies readonly { code: AssetCode; amount: string }[];
 
-/** Bought on the DEX from their own throwaway issuer's offer, so the demo spends XLM on them. */
+/**
+ * Bought on the DEX from their own throwaway issuer's offer, so the demo spends XLM on them. Named
+ * DEMO* so no one can take them for a real stablecoin (tests/unit/demo-asset-names.test.ts).
+ */
 export const SWAP_ASSETS = [
-  { code: "USDC", amount: "10" },
-  { code: "EURC", amount: "10" },
+  { code: "DEMOUSD", amount: "10" },
+  { code: "DEMOEUR", amount: "10" },
 ] as const satisfies readonly { code: AssetCode; amount: string }[];
 
 export const LWDEMO_AMOUNT = "25";
@@ -136,8 +139,8 @@ export const JUNK_OFFERS = [
   { selling: "native", buying: LWDEMO_CODE, amount: "5", price: "3" },
   { selling: "AIRDROP1", buying: "native", amount: "500000", price: "0.0001" },
   { selling: "RUGPULL", buying: "native", amount: "10", price: "42" },
-  { selling: "USDC", buying: "native", amount: "8", price: "10" },
-  { selling: "EURC", buying: "native", amount: "8", price: "10" },
+  { selling: "DEMOUSD", buying: "native", amount: "8", price: "10" },
+  { selling: "DEMOEUR", buying: "native", amount: "8", price: "10" },
 ] as const satisfies readonly {
   selling: OfferAsset;
   buying: OfferAsset;

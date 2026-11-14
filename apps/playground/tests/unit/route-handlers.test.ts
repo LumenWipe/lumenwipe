@@ -539,10 +539,10 @@ describe("create session", () => {
     const plan = resolvePlan(selection);
     expect(body.messPlan).toEqual(plan.steps);
     expect((await store.loadSession(body.sessionId as string))?.selection).toEqual(plan.selection);
-    // The demo key and the one USDC issuer key the plan needs, nothing more.
+    // The demo key and the one DEMOUSD issuer key the plan needs, nothing more.
     expect(encrypted).toHaveLength(2);
     const accounts = body.accounts as { ephemeral: { code: string }[] };
-    expect(accounts.ephemeral.map((e) => e.code)).toEqual(["USDC"]);
+    expect(accounts.ephemeral.map((e) => e.code)).toEqual(["DEMOUSD"]);
   });
 
   test("a selection the validator refuses is invalid_selection, before any funding or the store", async () => {
@@ -562,7 +562,7 @@ describe("create session", () => {
       ["standard", "The scenario selection could not be read."],
       [
         { scenarios: [{ id: "stale-offers", params: { count: 1 } }] },
-        "Stale DEX offers needs one of these as well: Demo token holding, Junk airdrops, Stablecoin swaps.",
+        "Stale DEX offers needs one of these as well: Demo token holding, Junk airdrops, Demo stablecoin swaps.",
       ],
     ];
     for (const [selection, message] of cases) {
@@ -773,7 +773,7 @@ describe("mess step", () => {
       ephemeralIssuers: [],
     });
     const executed: [MessStepDef, MessContext][] = [];
-    for (const stepId of ["ADD_SIGNER", "TRUST_USDC"]) {
+    for (const stepId of ["ADD_SIGNER", "TRUST_DEMOUSD"]) {
       expect(await outcome(await step(seeded.id, { stepId }, messDeps(store, executed)))).toEqual({
         status: 400,
         body: { error: "step_not_in_plan" },

@@ -1,5 +1,8 @@
-import { test, expect, beforeEach, describe } from "bun:test";
-import { memoryKv } from "@/lib/kv";
+import { test, expect, afterEach, beforeEach, describe } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { devFileKv, memoryKv } from "@/lib/kv";
 import { runMessStep } from "@/lib/session-actions";
 import {
   BATCH_SCHEMA_VERSION,
@@ -11,7 +14,6 @@ import {
   SESSION_SCHEMA_VERSION,
   SessionLockLostError,
   sessionExpiresAt,
-  sessionStore,
   type PlaygroundBatch,
   type PlaygroundSession,
   type SessionStore,
@@ -21,27 +23,38 @@ import { fakeClock, memoryStore, newSessionData } from "./session-fixtures";
 
 const SID = "0b9d6a52-7c41-4e8f-a3b2-5c6d7e8f9a01";
 
+// The dev file store in a fresh private directory per test (mkdtemp: an unpredictable name, mode
+// 0700), never the app's own store file.
+let storeDir: string;
+let fileStore: SessionStore;
+
 beforeEach(() => {
   delete process.env.UPSTASH_REDIS_REST_URL;
   delete process.env.UPSTASH_REDIS_REST_TOKEN;
   process.env.NODE_ENV = "test";
+  storeDir = mkdtempSync(join(tmpdir(), "lw-session-store-"));
+  fileStore = createSessionStore(() => devFileKv(join(storeDir, "dev-sessions.json")));
+});
+
+afterEach(() => {
+  rmSync(storeDir, { recursive: true, force: true });
 });
 
 test("create → load round-trips the session in the dev file fallback store", async () => {
-  const session = await sessionStore.createSession(newSessionData());
-  const loaded = await sessionStore.loadSession(session.id);
+  const session = await fileStore.createSession(newSessionData());
+  const loaded = await fileStore.loadSession(session.id);
   expect(loaded?.demoPublic).toBe("GDEMO");
 });
 
 test("the dev file fallback store keeps the lock and the lock-held update working", async () => {
-  const session = await sessionStore.createSession(newSessionData());
-  const lock = await sessionStore.acquireLock(session.id);
+  const session = await fileStore.createSession(newSessionData());
+  const lock = await fileStore.acquireLock(session.id);
   expect(lock).not.toBeNull();
-  expect(await sessionStore.acquireLock(session.id)).toBeNull();
-  await sessionStore.updateSession(lock!, () => ({ completedMessSteps: ["SETUP"] }));
-  await sessionStore.releaseLock(lock!);
-  expect((await sessionStore.loadSession(session.id))?.completedMessSteps).toEqual(["SETUP"]);
-  expect(await sessionStore.acquireLock(session.id)).not.toBeNull();
+  expect(await fileStore.acquireLock(session.id)).toBeNull();
+  await fileStore.updateSession(lock!, () => ({ completedMessSteps: ["SETUP"] }));
+  await fileStore.releaseLock(lock!);
+  expect((await fileStore.loadSession(session.id))?.completedMessSteps).toEqual(["SETUP"]);
+  expect(await fileStore.acquireLock(session.id)).not.toBeNull();
 });
 
 test("loading an unknown id returns null", async () => {
@@ -141,14 +154,14 @@ test("the record outlives the visitor's countdown, and the countdown is still on
 });
 
 test("the index survives in the dev file store, where an entry never expires", async () => {
-  const a = await sessionStore.createSession(newSessionData());
-  const b = await sessionStore.createSession(newSessionData());
-  const ids = await sessionStore.indexedSessionIds();
+  const a = await fileStore.createSession(newSessionData());
+  const b = await fileStore.createSession(newSessionData());
+  const ids = await fileStore.indexedSessionIds();
   expect(ids).toContain(a.id);
   expect(ids).toContain(b.id);
-  await sessionStore.unindexSession(a.id);
-  expect(await sessionStore.indexedSessionIds()).not.toContain(a.id);
-  await sessionStore.unindexSession(b.id);
+  await fileStore.unindexSession(a.id);
+  expect(await fileStore.indexedSessionIds()).not.toContain(a.id);
+  await fileStore.unindexSession(b.id);
 });
 
 test("a lease is exclusive until released, and the faucet failure reads back", async () => {
@@ -244,6 +257,17 @@ describe("schema version", () => {
     expect(await (await stored(v8)).loadSession(SID)).toBeNull();
     // Even with the field present: an older record is never read as the current shape.
     expect(await (await stored({ ...current(), schemaVersion: 8 })).loadSession(SID)).toBeNull();
+  });
+
+  test("a version 10 session, saved with the swap assets named USDC and EURC, reads as expired", async () => {
+    const v10 = {
+      ...current(),
+      schemaVersion: 10,
+      ephemeralIssuers: [{ assetCode: "USDC", publicKey: "GISSUER", encSecret: "enc" }],
+      completedMessSteps: ["SETUP", "TRUST_USDC"],
+    };
+    expect(await (await stored(v10)).loadSession(SID)).toBeNull();
+    expect(await (await stored({ ...current(), schemaVersion: 10 })).loadSession(SID)).toBeNull();
   });
 
   test("a session's exchange loads only as the bundled stand-in with an id memo", async () => {

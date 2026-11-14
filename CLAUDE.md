@@ -56,7 +56,7 @@ The full close needs **both** services. The web reaches the API only through its
 
 - `apps/api/.env.local` needs `API_KEYS` (label=key) and the read endpoints (RPC / Horizon-compatible `PATH_ROUTING` / mediator secret for exchange closes). All gitignored.
 - `apps/web/.env.local` needs `LUMENWIPE_API_URL` + `LUMENWIPE_API_KEY` (server-side, injected by the proxy), and the Upstash Redis REST pair for the proxy rate limit. The web needs no mediator configuration: `MEDIATOR_PUBLIC_*`, `MEDIATOR_SECRET_*` and `FEE_ACCOUNT_SECRET_*` are API-side only (see below).
-- `apps/playground/.env.local` (only when working on the playground - a third service, `bun run dev:playground`) needs its own `LUMENWIPE_API_URL` + `LUMENWIPE_API_KEY` under a distinct `API_KEYS` label, `PLAYGROUND_ENCRYPTION_KEY`, the testnet issuer/market-maker secrets, and its own Upstash Redis credentials - never `apps/web`'s. See `apps/playground/.env.example`.
+- `apps/playground/.env.local` (only when working on the playground - a third service, `bun run dev:playground`) needs its own `LUMENWIPE_API_URL` + `LUMENWIPE_API_KEY` under a distinct `API_KEYS` label, `PLAYGROUND_ENCRYPTION_KEY`, the testnet issuer/market-maker secrets, and its own Upstash Redis credentials - never `apps/web`'s - or, for local development only, `PLAYGROUND_DEV_FILE_STORE=1` (a private file store a production build and Vercel ignore; without either, no session is created). See `apps/playground/.env.example`.
 
 ## Architecture
 

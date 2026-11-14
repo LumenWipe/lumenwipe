@@ -74,6 +74,8 @@ async function main(): Promise<void> {
       CRON_SECRET: randomBytes(32).toString("hex"),
       UPSTASH_REDIS_REST_URL: "",
       UPSTASH_REDIS_REST_TOKEN: "",
+      // No Redis for a test run: the local file store, which `next dev` uses only when asked.
+      PLAYGROUND_DEV_FILE_STORE: "1",
     },
   });
   for (const signal of ["SIGINT", "SIGTERM"] as const) {
