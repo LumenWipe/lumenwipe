@@ -190,7 +190,7 @@ describe("the setup step sends only what it has to do", () => {
     step.action.kind === "setup" ? step.action.fundingXlm : "";
   const ctx: MessContext = {
     demo,
-    ephemeralIssuers: new Map([["USDC", usdc]]),
+    ephemeralIssuers: new Map([["DEMOUSD", usdc]]),
     persistentIssuer: Keypair.random(),
     mmPublic: mm,
     transferRecipient: null,

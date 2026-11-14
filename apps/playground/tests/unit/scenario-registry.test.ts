@@ -27,8 +27,8 @@ const ALL_ASSETS = [
   "LWDEMO",
   "AIRDROP1",
   "RUGPULL",
-  "USDC",
-  "EURC",
+  "DEMOUSD",
+  "DEMOEUR",
   "LWCOIN",
   "LWGEM",
   "BONUS",
@@ -276,6 +276,6 @@ test("scene nodes carry readable labels", () => {
   expect(label("offer:0")).toBe("Sell XLM → LWDEMO");
   expect(label("offer:1")).toBe("Sell AIRDROP1 → XLM");
   expect(label("signer:extra")).toBe("Forgotten co-signer");
-  expect(label("tl:USDC")).toBe("USDC");
+  expect(label("tl:DEMOUSD")).toBe("DEMOUSD");
   expect(label("data:kyc_status")).toBe("kyc_status");
 });

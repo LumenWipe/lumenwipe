@@ -86,8 +86,8 @@ const TRUST_STEP: Partial<Record<AssetCode, MessStepId>> = {
   AIRDROP1: "TRUST_AIRDROP1",
   RUGPULL: "TRUST_RUGPULL",
   LWDEMO: "TRUST_LWDEMO",
-  USDC: "TRUST_USDC",
-  EURC: "TRUST_EURC",
+  DEMOUSD: "TRUST_DEMOUSD",
+  DEMOEUR: "TRUST_DEMOEUR",
   LWCOIN: "TRUST_LWCOIN",
   LWGEM: "TRUST_LWGEM",
   BONUS: "TRUST_BONUS",
@@ -98,8 +98,8 @@ const TRUST_ORDER: readonly AssetCode[] = [
   "AIRDROP1",
   "RUGPULL",
   "LWDEMO",
-  "USDC",
-  "EURC",
+  "DEMOUSD",
+  "DEMOEUR",
   "LWCOIN",
   "LWGEM",
   "BONUS",
@@ -232,15 +232,16 @@ const junkAirdrops: ScenarioDefinition = {
 };
 
 const FUND_SWAP_STEP: Record<(typeof SWAP_ASSETS)[number]["code"], MessStepId> = {
-  USDC: "FUND_USDC",
-  EURC: "FUND_EURC",
+  DEMOUSD: "FUND_DEMOUSD",
+  DEMOEUR: "FUND_DEMOEUR",
 };
 
 const stablecoinSwaps: ScenarioDefinition = {
   id: "stablecoin-swaps",
   featureSet: "classic",
-  label: "Stablecoin swaps",
-  description: "Stablecoins bought with XLM on the DEX, left sitting on their trustlines.",
+  label: "Demo stablecoin swaps",
+  description:
+    "DEMOUSD and DEMOEUR, test tokens issued for this demo alone, bought with XLM on the DEX and left on their trustlines.",
   params: { tokens: { label: "Tokens", min: 1, max: SWAP_ASSETS.length, default: 2 } },
   heldAssets: ({ tokens }) => SWAP_ASSETS.slice(0, tokens).map((a) => a.code),
   requiresAnyOf: [],

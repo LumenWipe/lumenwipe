@@ -37,8 +37,8 @@ const FORGOTTEN_SIGNER = key(4);
 const EPHEMERAL = [
   { assetCode: "AIRDROP1", publicKey: key(5), balance: "1000000.0000000" },
   { assetCode: "RUGPULL", publicKey: key(6), balance: "13.3700000" },
-  { assetCode: "USDC", publicKey: key(7), balance: "10.0000000" },
-  { assetCode: "EURC", publicKey: key(8), balance: "10.0000000" },
+  { assetCode: "DEMOUSD", publicKey: key(7), balance: "10.0000000" },
+  { assetCode: "DEMOEUR", publicKey: key(8), balance: "10.0000000" },
 ];
 const LWDEMO_BALANCE = "25.0000000";
 const DATA_KEYS = ["promo_code", "legacy_app_state", "airdrop_claim", "referral_id", "kyc_status"];

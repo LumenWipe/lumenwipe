@@ -6,12 +6,12 @@ export const MESS_STEP_IDS = [
   "TRUST_AIRDROP1",
   "TRUST_RUGPULL",
   "TRUST_LWDEMO",
-  "TRUST_USDC",
-  "TRUST_EURC",
+  "TRUST_DEMOUSD",
+  "TRUST_DEMOEUR",
   "FUND_RARE",
   "FUND_LWDEMO",
-  "FUND_USDC",
-  "FUND_EURC",
+  "FUND_DEMOUSD",
+  "FUND_DEMOEUR",
   "DATA_ENTRIES",
   "OFFERS",
   "ADD_SIGNER",
@@ -78,9 +78,9 @@ export type StepAction =
   | { kind: "pinned_trust"; asset: PinnedAssetId; amount: string; maxXlm: string }
   /** Buys `amount` of a pinned asset with at most `maxXlm`, after a quote shows a route for it. */
   | { kind: "pinned_buy"; asset: PinnedAssetId; amount: string; maxXlm: string }
-  /** Pairs the demo's USDC with XLM in the pinned Soroswap pair, through the router. */
+  /** Pairs the demo's Circle USDC with XLM in the pinned Soroswap pair, through the router. */
   | { kind: "soroswap_deposit"; usdc: string; maxXlm: string }
-  /** Pairs the demo's USDC with XLM in the pinned Aquarius pool, through the router. */
+  /** Pairs the demo's Circle USDC with XLM in the pinned Aquarius pool, through the router. */
   | { kind: "aquarius_deposit"; usdc: string; maxXlm: string }
   /** Supplies XLM to the pinned Blend pool as collateral and, in the borrow variant, borrows XLM
    *  against it, in one `submit`. `borrowXlm` is null when nothing is borrowed. */

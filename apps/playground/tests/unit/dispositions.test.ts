@@ -23,7 +23,7 @@ describe("the catalog", () => {
   test("the persistent assets are LWDEMO and the disposition assets", () => {
     expect([...PERSISTENT_ASSETS]).toEqual(["LWDEMO", "LWCOIN", "LWGEM"]);
     for (const code of PERSISTENT_ASSETS) expect(isPersistentAsset(code)).toBe(true);
-    for (const code of ["AIRDROP1", "RUGPULL", "USDC", "EURC", "native", "lwcoin"]) {
+    for (const code of ["AIRDROP1", "RUGPULL", "DEMOUSD", "DEMOEUR", "native", "lwcoin"]) {
       expect(isPersistentAsset(code)).toBe(false);
     }
   });

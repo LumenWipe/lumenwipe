@@ -36,8 +36,10 @@ export const EXTENSION_WINDOW_SECONDS = 300;
  */
 export const SESSION_RECORD_TTL_SECONDS = 72 * 3600;
 
-/** Bumped whenever the stored shape changes; a session of any other version reads as expired. */
-export const SESSION_SCHEMA_VERSION = 10;
+/** Bumped whenever the stored shape changes; a session of any other version reads as expired.
+ *  11: the swap assets and their step ids were renamed from USDC and EURC to DEMOUSD and DEMOEUR,
+ *  so a version 10 record's issuers and completed steps name assets the plan no longer has. */
+export const SESSION_SCHEMA_VERSION = 11;
 
 /** Longer than any route's maxDuration, so a request the platform kills frees its session soon after. */
 export const SESSION_LOCK_TTL_MS = 150_000;

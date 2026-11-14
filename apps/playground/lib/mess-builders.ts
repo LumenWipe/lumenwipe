@@ -345,7 +345,7 @@ const scAddress = (address: string): xdr.ScVal => new Address(address).toScVal()
 const scI128 = (stroops: bigint): xdr.ScVal => nativeToScVal(stroops, { type: "i128" });
 
 /**
- * The router call that pairs the demo's USDC with XLM: `add_liquidity(token_a, token_b,
+ * The router call that pairs the demo's Circle USDC with XLM: `add_liquidity(token_a, token_b,
  * amount_a_desired, amount_b_desired, amount_a_min, amount_b_min, to, deadline)`, in the pair's
  * own token order. The router takes all the USDC and only the XLM the pool's price needs, or the
  * other way round if the price moved, so the minimums are one stroop: this is the demo's own
@@ -377,7 +377,7 @@ export function soroswapDepositCall(
 const scU128 = (stroops: bigint): xdr.ScVal => nativeToScVal(stroops, { type: "u128" });
 
 /**
- * The router call that pairs the demo's USDC with XLM in the pinned Aquarius pool:
+ * The router call that pairs the demo's Circle USDC with XLM in the pinned Aquarius pool:
  * `deposit(user, tokens, pool_index, desired_amounts, min_shares)`, with the tokens and the
  * amounts in the pool's own order. The pool takes all the USDC and only the XLM its price needs,
  * or the other way round if the price moved, so the minimum share is one unit: this is the demo's

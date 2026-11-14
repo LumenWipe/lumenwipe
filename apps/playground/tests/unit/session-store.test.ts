@@ -246,6 +246,17 @@ describe("schema version", () => {
     expect(await (await stored({ ...current(), schemaVersion: 8 })).loadSession(SID)).toBeNull();
   });
 
+  test("a version 10 session, saved with the swap assets named USDC and EURC, reads as expired", async () => {
+    const v10 = {
+      ...current(),
+      schemaVersion: 10,
+      ephemeralIssuers: [{ assetCode: "USDC", publicKey: "GISSUER", encSecret: "enc" }],
+      completedMessSteps: ["SETUP", "TRUST_USDC"],
+    };
+    expect(await (await stored(v10)).loadSession(SID)).toBeNull();
+    expect(await (await stored({ ...current(), schemaVersion: 10 })).loadSession(SID)).toBeNull();
+  });
+
   test("a session's exchange loads only as the bundled stand-in with an id memo", async () => {
     const exchange = {
       destination: EXCHANGE_STAND_IN.address,

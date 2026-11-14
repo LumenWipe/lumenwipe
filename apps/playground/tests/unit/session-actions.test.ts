@@ -689,7 +689,7 @@ describe("the session's own plan decides which step may run", () => {
     const store = memoryStore();
     const session = await store.createSession(newSessionData());
     const executed: string[] = [];
-    for (const stepId of ["ADD_SIGNER", "TRUST_USDC", "OFFERS", "FUND_RARE"] as const) {
+    for (const stepId of ["ADD_SIGNER", "TRUST_DEMOUSD", "OFFERS", "FUND_RARE"] as const) {
       const result = await runMessStep(store, session.id, stepId, {
         executeStep: async (step) => {
           executed.push(step.id);

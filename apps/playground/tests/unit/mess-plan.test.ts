@@ -55,17 +55,40 @@ const sha256 = (value: unknown): string =>
 
 const OLD_SETUP_LABEL = "Fund demo account & spawn rogue issuers";
 
+/** The demo's swap assets before they were renamed so they cannot pass for real stablecoins. */
+const OLD_ASSET_NAMES: readonly (readonly [string, string])[] = [
+  ["DEMOUSD", "USDC"],
+  ["DEMOEUR", "EURC"],
+];
+
+/** A shape with every string the rename touched (step ids, labels, node ids, codes) put back. */
+function withOldAssetNames<T>(shape: T): T {
+  return JSON.parse(
+    OLD_ASSET_NAMES.reduce(
+      (json, [current, old]) => json.split(current).join(old),
+      JSON.stringify(shape)
+    )
+  ) as T;
+}
+
 test("all 243 modes and custom configs build exactly what they built before the registry", () => {
   const shapes = allModes().map(([mode, custom]) => legacyShape(mode, custom));
   expect(shapes).toHaveLength(243);
-  // The pre-registry plans with one intended change: a plan with no throwaway issuer no longer
-  // says it spawns them. Putting the old label back gives the old hash, below.
+  // The pre-registry plans with two intended changes: a plan with no throwaway issuer no longer
+  // says it spawns them, and the swap assets are DEMOUSD and DEMOEUR. Putting the old label and
+  // the old names back gives the old hash, below.
+  expect(sha256(shapes)).toBe("fdf50575ba412bcc820cd92756abc5945eddec40f6bca984dd777151ce6f3990");
+});
+
+test("the DEMOUSD and DEMOEUR rename is the only change from the plans before it", () => {
+  const shapes = allModes().map(([mode, custom]) => withOldAssetNames(legacyShape(mode, custom)));
+  // The hash this test pinned before the rename, at 932d548.
   expect(sha256(shapes)).toBe("3556b52e6b6eeda4b4463eaf9f97ea9c645509052aa6690fb94d107d826b2bf0");
 });
 
-test("the SETUP label is the only change from the plans before the registry", () => {
+test("the SETUP label and the asset names are the only changes from the plans before the registry", () => {
   const relabelled = allModes().map(([mode, custom]) => {
-    const shape = legacyShape(mode, custom);
+    const shape = withOldAssetNames(legacyShape(mode, custom));
     return {
       ...shape,
       steps: shape.steps.map(([id, label, ...rest]) => [
@@ -114,7 +137,7 @@ test("light, standard and full keep their step order and counts", () => {
   ]);
   expect(legacyShape("standard").counts).toEqual({ offerCount: 3, dataEntryCount: 3 });
   expect(legacyShape("full").counts).toEqual({ offerCount: 5, dataEntryCount: 3 });
-  expect(legacyShape("full").ephemeral).toEqual(["AIRDROP1", "RUGPULL", "USDC", "EURC"]);
+  expect(legacyShape("full").ephemeral).toEqual(["AIRDROP1", "RUGPULL", "DEMOUSD", "DEMOEUR"]);
 });
 
 test("every mode and custom config is a valid selection", () => {
