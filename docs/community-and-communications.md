@@ -23,7 +23,7 @@ Anyone can read the code, file an issue, or propose a change. Because the tool p
 
 The project commits to a regular, public update rhythm so the community can follow progress.
 
-- Per tranche: a written milestone update when each tranche's acceptance criteria are met, posted publicly and linked from the repository.
+- Per phase: a written update when each phase milestone closes, posted publicly and linked from the repository.
 - Monthly: a short progress note covering what shipped, what is in flight, and any blockers.
 - Continuous: a public changelog and release notes on each release, and an open issue tracker and roadmap.
 - Protocol-coverage review: a periodic note on which DeFi protocol versions are covered and which were added, since DeFi contracts change over time.
@@ -32,12 +32,12 @@ The project commits to a regular, public update rhythm so the community can foll
 
 The project maintains a presence across both standard ecosystem channels and decentralized, open networks.
 
-| Channel           | Type                       | Use                                                                                                                 |
-| ----------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| GitHub            | Open source                | Code, issues, roadmap, releases, changelog. The primary source of truth.                                            |
-| LumenWipe Discord | Community                  | Community chat, user support, and project discussion. Invite: https://discord.gg/hDCNaW6xn                          |
-| Matrix            | Decentralized, open source | A public room for project discussion, bridged where useful. Open-protocol, self-hostable, no single platform owner. |
-| Telegram          | Community                  | Real-time community chat, user support, and announcements.                                                          |
+| Channel           | Type                       | Use                                                                                                                                                                 |
+| ----------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GitHub            | Open source                | Code, issues, roadmap, releases, changelog. The primary source of truth.                                                                                            |
+| LumenWipe Discord | Community                  | Community chat, user support, and project discussion. Invite: https://discord.gg/hDCNaW6xn                                                                          |
+| Matrix            | Decentralized, open source | A public room for project discussion, bridged where useful. Open-protocol, self-hostable, no single platform owner. Room: https://matrix.to/#/#lumenwipe:matrix.org |
+| Telegram          | Community                  | Real-time community chat, user support, and announcements. Channel: https://t.me/lumenwipe                                                                          |
 
 The reasoning behind the decentralized channels is consistency with the project's own values. A non-custodial, open-source tool should not anchor its public communication to a single proprietary platform. Matrix is an open protocol that no single company controls, which matches the tool's design and reduces single-platform risk for the community that depends on it.
 
@@ -65,4 +65,4 @@ The architecture is built so that the parts most likely to change are the parts 
 - Critical security issues are patched on a short, published timeline after disclosure.
 - The contract registry is updated promptly after a supported protocol deploys a new version.
 - The repository accepts community contributions under published contribution guidelines.
-- The community update rhythm in section 3 continues past the funded tranches.
+- The community update rhythm in section 3 continues after launch.

@@ -33,7 +33,7 @@ Analyze the account, generate a deterministic ordered plan, execute it step by s
 ## What it covers
 
 - The full account wind-down: sponsorship and multisig checks, signer and threshold normalization, trustline, data entry, offer, and DeFi position removal, claimable balances, asset conversion, and merge with the mediator flow.
-- Consumes a funded DeFi Position API recipient, OctoPos, behind a pluggable adapter with an explicit degraded mode.
+- Consumes an existing DeFi Position API, OctoPos, behind a pluggable adapter with an explicit degraded mode.
 - Open source under Apache 2.0, with a REST API and TypeScript SDK so wallets and platforms can integrate the same wind-down.
 
 ## Roadmap

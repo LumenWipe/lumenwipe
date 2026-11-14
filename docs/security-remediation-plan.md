@@ -5,14 +5,14 @@ description: "Results of the dependency audit, static analysis, and secret scan 
 icon: "clipboard-check"
 ---
 
-> This document is the third and final security commitment of epic #166, alongside the adversarial
+> This document completes the security work of epic #166, alongside the adversarial
 > test suite (running in CI since #191) and the [STRIDE threat model](/threat-model) (#170). It
-> records what three security tools found against the codebase on **2026-09-02** and, per the
-> commitment, gives every critical, high, and medium finding a resolution or an explicit
-> accepted-risk rationale - never a silent backlog entry.
+> records what three security tools found against the codebase on **2026-09-02** and gives
+> every critical, high, and medium finding a resolution or an explicit accepted-risk
+> rationale, never a silent backlog entry.
 
-> **Status as of 2026-10-13, checked against commit `d1ab2cb`.** Sections 1 to 6 record the 2026-09-02 pass,
-> Section 7 the 2026-09-29 refresh and Section 8 the 2026-10-13 pass; findings, counts and versions are as of
+> **Status as of 2026-10-30.** Sections 1 to 6 record the 2026-09-02 pass, Section 7 the 2026-09-29
+> refresh, Section 8 the 2026-10-13 pass (commit `d1ab2cb`) and Section 9 the 2026-10-30 dependency refresh; findings, counts and versions are as of
 > those dates, not live. **Next refresh:** see Section 10.
 
 ## 1. Scope and method
@@ -34,7 +34,7 @@ ship to a browser, the production bundle was inspected directly for its presence
 method the [threat model](/threat-model) uses for its own residual-risk table (now Section 11) - a
 mitigation or an acceptance is only as good as the evidence behind it.
 
-Out of scope: a third-party penetration test or formal audit, deferred by epic #166 itself.
+Out of scope: a third-party penetration test or formal audit, which has not been done.
 
 ## 2. Dependency audit
 
@@ -176,7 +176,7 @@ disabled when this run started. All three are now **enabled** (confirmed via
 
 ## 5. Cross-reference against the STRIDE threat model
 
-Per the epic's instruction, every accepted risk above was checked against the four surfaces
+Every accepted risk above was checked against the four surfaces
 [the threat model](/threat-model) already identifies as sensitive: client-side key handling, the
 client-side session layer, API transaction construction, and the two backend signing keys
 (mediator co-sign, fee-bump sponsor). None of this run's findings touch those surfaces:
@@ -205,9 +205,9 @@ What this run changed beyond code, and what's still open:
    runs Semgrep with the same four rule packs as Section 3, gitleaks over the full history as in
    Section 4, and CodeQL (`javascript-typescript` and `actions`, `security-extended` queries), all
    feeding the required `type-check · lint · test` gate. A Semgrep or gitleaks finding fails the
-   PR; CodeQL findings land in the repository's Security tab. The dependency audit is not a gate:
-   the accepted-risk advisories in Sections 2 and 7 would fail it, so it stays a manual pass,
-   refreshed in Section 7.
+   PR; CodeQL findings land in the repository's Security tab. The dependency audit is a gate too:
+   the `audit` job fails on any high or critical advisory not in `scripts/audit-allowlist.json`,
+   where each accepted entry carries a reason and an expiry.
 4. **Test fixtures never use a real, checksum-valid secret key** - even a publicly-known one, per
    the finding in Section 4 - is now a standing convention in `CLAUDE.md`, so this class of finding
    doesn't recur.

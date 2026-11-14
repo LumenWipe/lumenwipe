@@ -47,7 +47,7 @@ If you are planning a large change - a new protocol integration, a significant r
 
 ## 3. Development setup
 
-**Requirements:** [Bun](https://bun.sh) 1.3+, Node.js 20+
+**Requirements:** [Bun](https://bun.sh) 1.4.4 (the version in `packageManager`), Node.js 22.12 or later
 
 ```bash
 # Fork and clone the repository
@@ -57,11 +57,14 @@ cd lumenwipe
 # Install dependencies
 bun install
 
-# Copy environment file and configure
-cp .env.example .env.local
-# Edit .env.local - at minimum set STELLAR_RPC_URL to a testnet RPC endpoint
+# Copy each app's environment file and configure it
+cp apps/api/.env.example apps/api/.env.local
+cp apps/web/.env.example apps/web/.env.local
+# In apps/api/.env.local set at least STELLAR_RPC_TESTNET and API_KEYS;
+# in apps/web/.env.local set LUMENWIPE_API_KEY to one of those keys
 
-# Start the development server (testnet by default)
+# Start the API (port 3001) and the web app (port 3000), in two terminals
+bun run dev:api
 bun dev
 ```
 
@@ -115,7 +118,7 @@ Write comments only when the **why** is non-obvious - a hidden constraint, a sub
 
 ### Transaction builder
 
-The transaction builder (`lib/stellar/tx-builder/`) is a pure module: account state in, unsigned transaction envelopes out, no network side effects. Keep it that way - it makes it directly unit-testable and auditable.
+The transaction builder (`apps/api/src/lib/stellar/tx-builder/`) is a pure module: account state in, unsigned transaction envelopes out, no network side effects. Keep it that way - it makes it directly unit-testable and auditable.
 
 ---
 
@@ -206,7 +209,7 @@ The test suite has two tiers. Automated tests **never touch mainnet**.
 
 ### Unit tests (`tests/unit/`)
 
-Run with `bun test`. Test pure logic with deterministic fixtures: transaction construction, fee estimation, reserve math, routing parameter derivation, state machine transitions, input validation, batching. The transaction builder (`lib/stellar/tx-builder/`) is the highest-coverage module and new logic there must be unit-tested.
+Run with `bun test`. Test pure logic with deterministic fixtures: transaction construction, fee estimation, reserve math, routing parameter derivation, state machine transitions, input validation, batching. The transaction builder (`apps/api/src/lib/stellar/tx-builder/`) is the highest-coverage module and new logic there must be unit-tested.
 
 ```bash
 bun test              # run all unit tests
@@ -256,11 +259,12 @@ At minimum:
 
 ### Integration tests (`tests/integration/`)
 
-Run manually with `bun run test:integration` (apps/api only) - not part of `bun test`
-or CI, since it makes real Friendbot/testnet Horizon calls. For server-side-only logic
-with no UI to drive through Playwright (e.g. account-state enumeration), this is the
-tier that actually touches testnet, matching the integration tier docs/architecture.md
-§17 already describes but that had no directory on disk until this tier existed.
+Run with `bun run test:integration` from `apps/api`. It is not part of `bun test`, but CI
+runs it on every PR and every push to `main`: the read-only tests in the `integration (live RPC)`
+job, and the tests that fund testnet accounts in the `integration (funded)` job. For
+server-side-only logic with no UI to drive through Playwright (e.g. account-state enumeration),
+this is the tier that actually touches testnet, matching the integration tier
+docs/architecture.md §17 describes.
 
 ---
 

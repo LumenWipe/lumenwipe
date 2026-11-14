@@ -113,7 +113,7 @@ Exchanges don't support `ACCOUNT_MERGE`. LumenWipe routes the merge through a sh
 
 The mediator is a persistent account funded once by the operator and reused for every close. You recover essentially all of your XLM; only standard network fees apply. The API builds the transaction, `verify()` confirms the merge goes to the shared mediator, and your browser signs the merge half. The API co-signs only the mediator's forward payment, after validating the exact transaction shape, and cannot alter the destination or amount. Known exchange destinations are validated against a registry that enforces the correct memo type - a missing memo blocks submission.
 
-Availability by network (as of 2026-10-10): the mediator flow is available on testnet; mainnet availability follows the deployment status in the [monitoring plan](docs/monitoring-plan.md).
+Availability by network (as of 2026-11-14): the mediator flow is available on testnet; mainnet availability follows the deployment status in the [monitoring plan](docs/monitoring-plan.md).
 
 ---
 
@@ -175,7 +175,7 @@ The codebase undergoes internal security reviews as part of the development proc
 | Network access | Stellar RPC                                         | Live reads, simulation, submission, events                                                               |
 | Enumeration    | Existing indexer, set by configuration              | See architecture section 5                                                                               |
 | Routing        | Soroswap API + SDEX paths                           | Best routes across Soroban and classic venues                                                            |
-| DeFi detection | OctoPos                                             | Funded DeFi Position API, behind a pluggable adapter                                                     |
+| DeFi detection | OctoPos                                             | An existing DeFi Position API, behind a pluggable adapter                                                |
 | State          | Zustand + IndexedDB                                 | Resumable sessions, never persists keys                                                                  |
 | Testing        | Bun test runner (unit), Playwright (E2E on testnet) | Automated tests do not use mainnet; per-package CI across the monorepo                                   |
 
