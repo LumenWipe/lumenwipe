@@ -1,5 +1,12 @@
 import { test, expect } from "bun:test";
-import { blockerCopy, errorCopy, GENERIC_BLOCKER_COPY, GENERIC_ERROR_COPY } from "@/lib/error-copy";
+import {
+  blockerCopy,
+  CREDENTIALS_UNAVAILABLE_COPY,
+  credentialsErrorCopy,
+  errorCopy,
+  GENERIC_BLOCKER_COPY,
+  GENERIC_ERROR_COPY,
+} from "@/lib/error-copy";
 
 const CODES = [
   "session_not_found",
@@ -34,6 +41,9 @@ const CODES = [
   "invalid_json",
   "cleanup_failed",
   "network_error",
+  "session_expired",
+  "extension_used",
+  "extension_not_yet",
 ];
 
 test("every route error code maps to its own copy", () => {
@@ -73,4 +83,18 @@ test("each blocker the playground plans a fix for has its own copy; any other ge
   for (const copy of copies) expect(copy).not.toBe(GENERIC_BLOCKER_COPY);
   expect(blockerCopy("subentries_unenumerated")).toBe(GENERIC_BLOCKER_COPY);
   expect(blockerCopy("toString")).toBe(GENERIC_BLOCKER_COPY);
+});
+
+test("a failed key request says why: limited, time up, gone, or unavailable", () => {
+  const limited = credentialsErrorCopy("rate_limited");
+  const timeUp = credentialsErrorCopy("session_expired");
+  const gone = credentialsErrorCopy("session_not_found");
+  expect(new Set([limited, timeUp, gone, CREDENTIALS_UNAVAILABLE_COPY]).size).toBe(4);
+  expect(timeUp).toContain("still close the account here");
+  for (const code of ["not_configured", "network_error", "toString", null]) {
+    expect(credentialsErrorCopy(code)).toBe(CREDENTIALS_UNAVAILABLE_COPY);
+  }
+  for (const copy of [limited, timeUp, gone, CREDENTIALS_UNAVAILABLE_COPY]) {
+    expect(copy).not.toMatch(/_|\b(410|429|503)\b/);
+  }
 });

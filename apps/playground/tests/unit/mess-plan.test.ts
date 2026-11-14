@@ -50,16 +50,49 @@ function legacyShape(mode: PlaygroundMode, custom?: PlaygroundCustomConfig) {
   };
 }
 
+const sha256 = (value: unknown): string =>
+  createHash("sha256").update(JSON.stringify(value)).digest("hex");
+
+const OLD_SETUP_LABEL = "Fund demo account & spawn rogue issuers";
+
 test("all 243 modes and custom configs build exactly what they built before the registry", () => {
   const shapes = allModes().map(([mode, custom]) => legacyShape(mode, custom));
   expect(shapes).toHaveLength(243);
+  // The pre-registry plans with one intended change: a plan with no throwaway issuer no longer
+  // says it spawns them. Putting the old label back gives the old hash, below.
+  expect(sha256(shapes)).toBe("3556b52e6b6eeda4b4463eaf9f97ea9c645509052aa6690fb94d107d826b2bf0");
+});
+
+test("the SETUP label is the only change from the plans before the registry", () => {
+  const relabelled = allModes().map(([mode, custom]) => {
+    const shape = legacyShape(mode, custom);
+    return {
+      ...shape,
+      steps: shape.steps.map(([id, label, ...rest]) => [
+        id,
+        id === "SETUP" ? OLD_SETUP_LABEL : label,
+        ...rest,
+      ]),
+    };
+  });
   // sha256 of the same shape computed from getMessPlanForMode, getNeededEphemeralCodes,
   // getFundRareAssets, getMessCounts and estimateCustomDuration at 47a0e27, with each balance
   // update limited to nodes the plan docks: FUND_RARE used to name tl:RUGPULL even when only
   // AIRDROP1 was trusted, a no-op on a node that never existed.
-  expect(createHash("sha256").update(JSON.stringify(shapes)).digest("hex")).toBe(
+  expect(sha256(relabelled)).toBe(
     "844674a5f66008224311f06083e62fde4d6c252616040991b489001f2808ade0"
   );
+});
+
+test("the SETUP step names throwaway issuers only when the plan has some", () => {
+  for (const [mode, custom] of allModes()) {
+    const plan = resolvePlan(selectionForMode(mode, custom));
+    const setup = plan.steps.find((s) => s.id === "SETUP");
+    expect(setup?.label).toBe(
+      plan.ephemeralAssets.length > 0 ? OLD_SETUP_LABEL : "Fund demo account"
+    );
+  }
+  expect(getMessPlanForMode("light")[0]?.label).toBe("Fund demo account");
 });
 
 test("light, standard and full keep their step order and counts", () => {

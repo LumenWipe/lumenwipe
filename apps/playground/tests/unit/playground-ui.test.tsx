@@ -1,8 +1,8 @@
-import { afterAll, afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, jest, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import type { IntentOperation } from "@lumenwipe/sdk";
-import { blockerCopy, errorCopy } from "@/lib/error-copy";
+import { blockerCopy, credentialsErrorCopy, errorCopy } from "@/lib/error-copy";
 import { getMessPlanForMode } from "@/lib/mess-plan";
 import {
   BLOCKED_MEMBER_SELECTION,
@@ -15,6 +15,7 @@ import {
   generateRandomSelection,
   parseReplayCode,
   resolvePlan,
+  willCreate,
 } from "@/lib/scenarios";
 import { usePlaygroundStore, type PlaygroundPhase } from "@/store/playground";
 import { buildSceneNode, usePlaygroundExecution } from "@/hooks/usePlaygroundExecution";
@@ -26,6 +27,7 @@ import SdkSnippetPanel from "@/components/scene/SdkSnippetPanel";
 import ScenarioPicker from "@/components/scene/ScenarioPicker";
 import OrbitalNode from "@/components/scene/OrbitalNode";
 import PlaygroundClient from "@/app/PlaygroundClient";
+import { TIME_UP_COPY, WARNING_COPY } from "@/components/scene/SessionCountdown";
 import { tick } from "./session-fixtures";
 
 // The playground as the visitor sees it. The scenario picker: presets, toggles, the live totals
@@ -45,6 +47,13 @@ afterAll(async () => {
 });
 
 const SESSION_ID = "0b9d6a52-7c41-4e8f-a3b2-5c6d7e8f9a01";
+/** The account fields the control panel reads, for a demo with only its master key. */
+const ACCOUNT_SHAPE = {
+  numSponsoring: 0,
+  signers: [{ type: "ed25519_public_key", key: "GDEMO", weight: 1 }],
+  thresholds: { low: 0, med: 0, high: 0 },
+  openOffers: [],
+};
 const ISSUER = "GISSUER";
 const EXPLORER_TX = "https://stellarview.acachete.xyz/en/testnet/tx/";
 
@@ -93,7 +102,7 @@ class FakeRoutes {
   ]);
   state: Record<string, unknown> = {
     demoPublic: "GDEMO",
-    accountState: { nativeBalanceLumens: "9999.5", numSubEntries: 1, openOffers: [] },
+    accountState: { ...ACCOUNT_SHAPE, nativeBalanceLumens: "9999.5", numSubEntries: 1 },
     completedMessSteps: [],
     demolishLog: [],
     demolishDone: false,
@@ -164,6 +173,8 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
+/** What the polite status region holds now. */
+const liveStatus = () => document.querySelector('[role="status"][aria-live="polite"]')?.textContent;
 const trustlineNode = () => usePlaygroundStore.getState().nodes.find((n) => n.id === "tl:LWDEMO");
 const txLink = (hash: string) =>
   rtl.screen.queryAllByRole("link").filter((a) => a.getAttribute("href") === EXPLORER_TX + hash);
@@ -614,7 +625,13 @@ describe("the demolish runs round by round", () => {
     });
     expect(trustlineNode()?.status).toBe("destroyed");
     expect(rtl.screen.getByText(REMOVE_TRUSTLINE.summary)).toBeTruthy();
-    expect(rtl.screen.getByText("Closing the account, round 2 of about 2...")).toBeTruthy();
+    // Shown once on screen, and announced once in the polite status region.
+    expect(
+      rtl.screen.getByText("Closing the account, round 2 of about 2...", { ignore: ".sr-only" })
+    ).toBeTruthy();
+    await rtl.waitFor(() =>
+      expect(liveStatus()).toBe("Closing the account, round 2 of about 2...")
+    );
     expect(usePlaygroundStore.getState().phase).toBe("DEMOLISHING");
 
     second.resolve({ status: 200, body: { done: true, confirmed: [MERGE], remainingSteps: 0 } });
@@ -636,7 +653,7 @@ describe("the demolish runs round by round", () => {
     // What the failed round confirmed before it stopped is in the session log.
     routes.state = {
       ...routes.state,
-      accountState: { nativeBalanceLumens: "9999.0", numSubEntries: 0 },
+      accountState: { ...ACCOUNT_SHAPE, nativeBalanceLumens: "9999.0", numSubEntries: 0 },
       demolishLog: [REMOVE_TRUSTLINE],
     };
 
@@ -1118,5 +1135,169 @@ describe("a shared link is applied before the run can start", () => {
     rtl.fireEvent.click(createButton());
     await rtl.waitFor(() => expect(routes.bodies.length).toBe(1));
     expect(JSON.parse(routes.bodies[0]!)).toEqual({ seed: CODE });
+  });
+});
+
+describe("the run explains itself", () => {
+  const CREDENTIALS = `/api/session/${SESSION_ID}/credentials`;
+  const STATE = `/api/session/${SESSION_ID}/state`;
+  const MESS = `/api/session/${SESSION_ID}/mess`;
+  // Not key-shaped on purpose: no strkey and no hex run.
+  const SECRET = "demo-secret-placeholder";
+
+  function createAnswering(expiresAt: number): void {
+    const plan = getMessPlanForMode("light");
+    routes.handlers.set("/api/session", async () => ({
+      status: 200,
+      body: {
+        sessionId: SESSION_ID,
+        demoPublic: "GDEMO",
+        expiresAt,
+        messPlan: plan,
+        accounts: { issuer: ISSUER, mm: "GSINK", lwdemoAsset: `LWDEMO:${ISSUER}`, ephemeral: [] },
+      },
+    }));
+  }
+
+  test("the status region is in the page, empty, before a run starts", () => {
+    rtl.render(<Harness />);
+    const region = document.querySelector('[role="status"][aria-live="polite"]');
+    expect(region).not.toBeNull();
+    expect(region?.textContent).toBe("");
+  });
+
+  test("before the run, the panel lists what it will create and how long the account lives", () => {
+    rtl.render(<Harness />);
+    const list = rtl.screen.getByRole("region", { name: "This will create on testnet" });
+    const lines = [...list.querySelectorAll("li")].map((li) => li.textContent);
+    expect(lines).toEqual(willCreate(resolvePlan(STANDARD_SELECTION).steps));
+    expect(list.textContent).toContain("lives for one hour, with one 30-minute extension");
+  });
+
+  test("the account state is read after every setup step, and shown", async () => {
+    await dirtyAccount();
+    const steps = getMessPlanForMode("light").length;
+    // One read per step, then the one the close starts from.
+    expect(routes.count(`GET ${STATE}`)).toBe(steps + 1);
+    const panel = rtl.screen.getByRole("region", { name: "Demo account right now" });
+    expect(panel.textContent).toContain("1.5 XLM");
+    expect(panel.textContent).toContain("low 0, medium 0, high 0");
+  });
+
+  test("a failed state read between steps leaves the run going", async () => {
+    let reads = 0;
+    routes.handlers.set(STATE, async () => {
+      reads++;
+      return reads === 1
+        ? { status: 502, body: { error: "state_read_failed" } }
+        : { status: 200, body: routes.state };
+    });
+    await dirtyAccount();
+    expect(usePlaygroundStore.getState().phase).toBe("DIRTY");
+  });
+
+  test("each credential failure has its own plain copy", async () => {
+    const answers: [number, string][] = [
+      [429, "rate_limited"],
+      [410, "session_expired"],
+      [404, "session_not_found"],
+      [503, "not_configured"],
+    ];
+    const shown: string[] = [];
+    for (const [status, code] of answers) {
+      rtl.cleanup();
+      routes = new FakeRoutes();
+      globalThis.fetch = Object.assign(routes.fetch, { preconnect: originalFetch.preconnect });
+      usePlaygroundStore.getState().reset();
+      routes.handlers.set(CREDENTIALS, async () => ({ status, body: { error: code } }));
+      await dirtyAccount();
+      rtl.fireEvent.click(rtl.screen.getByRole("button", { name: /Try the demolish flow/ }));
+      const alert = await rtl.screen.findByRole("alert", undefined, { timeout: 5000 });
+      expect(alert.textContent).toBe(credentialsErrorCopy(code));
+      expect(alert.textContent).not.toContain(code);
+      shown.push(alert.textContent ?? "");
+    }
+    // Expired, gone and limited each read differently; only "unavailable" is shared.
+    expect(new Set(shown).size).toBe(4);
+  });
+
+  test("a revealed secret is masked again after thirty seconds", async () => {
+    routes.handlers.set(CREDENTIALS, async () => ({
+      status: 200,
+      body: { publicKey: "GDEMO", secretKey: SECRET },
+    }));
+    await dirtyAccount();
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: /Try the demolish flow/ }));
+    const reveal = await rtl.screen.findByRole("button", { name: "Reveal the secret key" });
+    expect(rtl.screen.getByText(/about to be merged away/)).toBeTruthy();
+    expect(rtl.screen.queryByText(SECRET)).toBeNull();
+
+    jest.useFakeTimers();
+    try {
+      rtl.fireEvent.click(reveal);
+      expect(rtl.screen.getByText(SECRET)).toBeTruthy();
+      for (let s = 0; s < 29; s++) rtl.act(() => jest.advanceTimersByTime(1000));
+      expect(rtl.screen.getByText(SECRET)).toBeTruthy();
+      rtl.act(() => jest.advanceTimersByTime(1000));
+      expect(rtl.screen.queryByText(SECRET)).toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("five minutes before the end, it warns and offers one extension", async () => {
+    const extended = Date.now() + 34 * 60_000;
+    createAnswering(Date.now() + 4 * 60_000);
+    routes.handlers.set(`/api/session/${SESSION_ID}/extend`, async () => ({
+      status: 200,
+      body: { expiresAt: extended, extended: true },
+    }));
+    await dirtyAccount();
+    expect(rtl.screen.getByText(WARNING_COPY, { ignore: ".sr-only" })).toBeTruthy();
+    await rtl.waitFor(() => expect(liveStatus()).toBe(WARNING_COPY));
+
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: /Add 30 minutes/ }));
+    await rtl.waitFor(() => expect(usePlaygroundStore.getState().extended).toBe(true));
+    expect(usePlaygroundStore.getState().expiresAt).toBe(extended);
+    expect(rtl.screen.queryByRole("button", { name: /Add 30 minutes/ })).toBeNull();
+    expect(routes.count(`POST /api/session/${SESSION_ID}/extend`)).toBe(1);
+  });
+
+  test("once time is up the key is withheld, and the close is still offered", async () => {
+    createAnswering(Date.now() - 1000);
+    await dirtyAccount();
+    expect(rtl.screen.getByText(TIME_UP_COPY, { ignore: ".sr-only" })).toBeTruthy();
+    const keys = rtl.screen.getByRole("button", { name: /Try the demolish flow/ });
+    expect((keys as HTMLButtonElement).disabled).toBe(true);
+    const close = rtl.screen.getByRole("button", { name: /Demolish it here/ });
+    expect((close as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  test("a setup step refused for time offers to close what was created", async () => {
+    routes.handlers.set(MESS, async () => ({ status: 410, body: { error: "session_expired" } }));
+    routes.handlers.set(ROUND, async () => ({
+      status: 200,
+      body: { done: true, confirmed: [MERGE], remainingSteps: 0 },
+    }));
+    rtl.render(<Harness />);
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: /Create & trash a demo account/ }));
+    const close = await rtl.screen.findByRole(
+      "button",
+      { name: /Close the demo account now/ },
+      { timeout: 5000 }
+    );
+    expect(usePlaygroundStore.getState().expiredReason).toBe("time_up");
+    rtl.fireEvent.click(close);
+    await rtl.screen.findByText(/demo complete/, undefined, { timeout: 5000 });
+    expect(routes.count(`POST ${ROUND}`)).toBe(1);
+  });
+
+  test("a session whose record is gone offers only a new one", async () => {
+    routes.handlers.set(MESS, async () => ({ status: 404, body: { error: "session_not_found" } }));
+    rtl.render(<Harness />);
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: /Create & trash a demo account/ }));
+    await rtl.screen.findByRole("button", { name: /Start a new session/ }, { timeout: 5000 });
+    expect(rtl.screen.queryByRole("button", { name: /Close the demo account now/ })).toBeNull();
+    expect(usePlaygroundStore.getState().expiredReason).toBe("gone");
   });
 });

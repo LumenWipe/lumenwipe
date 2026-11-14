@@ -73,7 +73,7 @@ export default function OrbitalNode({ node }: { node: SceneNode }) {
         <span className="hidden max-w-[72px] truncate sm:inline">{node.label}</span>
         {node.balance !== null && (
           <span
-            className={`hidden max-w-[52px] shrink-0 truncate sm:inline ${converting ? "text-value" : "text-white/45"}`}
+            className={`hidden max-w-[52px] shrink-0 truncate sm:inline ${converting ? "text-value" : "text-subtle"}`}
           >
             {Number(node.balance).toLocaleString("en-US", { maximumFractionDigits: 2 })}
           </span>

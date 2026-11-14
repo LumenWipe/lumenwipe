@@ -32,6 +32,8 @@
     --mkt-bg: 197 30% 4.5%;
     --mkt-panel: 198 17% 10.5%;
     --mkt-line: 190 30% 84%;
+    /* Hint text: at least 4.5:1 on the background and on every panel. */
+    --subtle-foreground: 200 8% 64%;
   }
 
   body {
@@ -53,6 +55,10 @@
   .border-stellar {
     border-color: hsl(var(--stellar));
   }
+}
+
+@utility text-subtle {
+  color: hsl(var(--subtle-foreground));
 }
 
 .mkt {

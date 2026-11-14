@@ -27,7 +27,7 @@ function CloseIcon({ close }: { close: BatchMember["close"] }) {
   }
   if (close === "blocked") return <ShieldAlert className="h-3.5 w-3.5 text-value" aria-hidden />;
   if (close === "failed") return <XCircle className="h-3.5 w-3.5 text-destructive" aria-hidden />;
-  return <CircleDashed className="h-3.5 w-3.5 text-white/40" aria-hidden />;
+  return <CircleDashed className="h-3.5 w-3.5 text-subtle" aria-hidden />;
 }
 
 function MemberRow({
@@ -60,11 +60,11 @@ function MemberRow({
       </div>
       <p className="mt-1 text-xs text-white/55">{member.label}</p>
       <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
-        <dt className="text-white/45">Setup</dt>
+        <dt className="text-subtle">Setup</dt>
         <dd>
           {member.messDone} of {member.messPlan.length} steps
         </dd>
-        <dt className="text-white/45">Batch plan</dt>
+        <dt className="text-subtle">Batch plan</dt>
         <dd>
           {member.plan === "unavailable"
             ? "Could not be read"
@@ -79,12 +79,12 @@ function MemberRow({
             </ul>
           )}
         </dd>
-        <dt className="text-white/45">Close</dt>
+        <dt className="text-subtle">Close</dt>
         <dd className="flex items-center gap-1.5">
           <CloseIcon close={member.close} />
           <span>{CLOSE_COPY[member.close]}</span>
           {member.hashes.length > 0 && (
-            <span className="text-white/45">
+            <span className="text-subtle">
               ({member.hashes.length} transaction{member.hashes.length === 1 ? "" : "s"})
             </span>
           )}

@@ -5,6 +5,10 @@ const NOT_CONFIGURED_COPY = "This demo is temporarily unavailable. Please try ag
 const ERROR_COPY = new Map<string, string>(
   Object.entries({
     session_not_found: "This demo session expired. Start a new one.",
+    session_expired:
+      "This demo's time is up, so it takes no more setup steps. The account it created can still be closed here.",
+    extension_used: "This demo has already used its one extension.",
+    extension_not_yet: "Extra time can be added only in the last five minutes.",
     provision_failed: "Could not create the demo account on the test network. Please try again.",
     playground_refilling:
       "This demo is temporarily unavailable while its test funds are topped up. Please try again later.",
@@ -77,6 +81,24 @@ export const GENERIC_BLOCKER_COPY = "The close reported a blocker this demo has 
 /** Plain-language copy for a close blocker code the API reports. */
 export function blockerCopy(code: string): string {
   return BLOCKER_COPY.get(code) ?? GENERIC_BLOCKER_COPY;
+}
+
+const CREDENTIALS_COPY = new Map<string, string>(
+  Object.entries({
+    rate_limited:
+      "This connection has fetched demo keys too many times today. Close the account here instead, or try again tomorrow.",
+    session_expired:
+      "This demo's time is up, so its key is no longer handed out. You can still close the account here.",
+    session_not_found: "This demo no longer exists, so there is no key to show. Start a new one.",
+  })
+);
+
+export const CREDENTIALS_UNAVAILABLE_COPY =
+  "The demo's key cannot be fetched right now. Please try again in a moment.";
+
+/** Plain-language copy for a failed key request, by the code the credentials route answered. */
+export function credentialsErrorCopy(code: string | null): string {
+  return (code === null ? undefined : CREDENTIALS_COPY.get(code)) ?? CREDENTIALS_UNAVAILABLE_COPY;
 }
 
 export function errorCopy(code: string | undefined, status?: number): string {

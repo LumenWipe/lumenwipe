@@ -6,6 +6,7 @@ import {
   PlaygroundApiError,
   playgroundRequest,
   SessionExpiredError,
+  SessionTimeUpError,
   type FetchLike,
 } from "@/lib/playground-api";
 
@@ -96,4 +97,19 @@ test("a round stopped on a blocker carries its codes, and only the resolvable on
   expect(err.blockers).toEqual(["sponsorship_unaffordable", "subentries_unenumerated"]);
   expect(err.resolvable).toEqual(["sponsorship_unaffordable"]);
   expect(err.message).toBe(errorCopy("demolish_blocked"));
+});
+
+test("a session_expired 410 is a countdown that ended, not a session that is gone", async () => {
+  const err = await failure(respond(410, { error: "session_expired" }));
+  expect(err).toBeInstanceOf(SessionTimeUpError);
+  expect(err).not.toBeInstanceOf(SessionExpiredError);
+  expect((err as PlaygroundApiError).message).toBe(errorCopy("session_expired"));
+  expect((err as PlaygroundApiError).code).toBe("session_expired");
+});
+
+test("every failure carries the route's code beside its copy", async () => {
+  const err = await failure(respond(429, { error: "rate_limited" }));
+  expect((err as PlaygroundApiError).code).toBe("rate_limited");
+  const bare = await failure(respond(500, undefined));
+  expect((bare as PlaygroundApiError).code).toBeNull();
 });

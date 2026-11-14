@@ -19,6 +19,9 @@ export type SceneNodeKind = PlannedNodeKind | "generic";
 export type PlaygroundPhase =
   "IDLE" | "MESSING" | "DIRTY" | "DEMOLISHING" | "COMPLETE" | "EXPIRED" | "ERROR";
 
+/** Why the session ended: its record is gone, or its countdown ran out and its account remains. */
+export type ExpiredReason = "gone" | "time_up";
+
 export type SceneNodeStatus = "incoming" | "docked" | "converting" | "destroyed";
 
 export interface SceneNode {
@@ -103,6 +106,10 @@ interface PlaygroundState {
   sessionId: string | null;
   demoPublic: string | null;
   expiresAt: number | null;
+  /** Whether the session's one extension has been used. */
+  extended: boolean;
+  /** Set with the EXPIRED phase. */
+  expiredReason: ExpiredReason | null;
   accounts: PlaygroundAccounts | null;
   messPlan: MessStepDef[];
   currentMessIndex: number;
@@ -135,6 +142,10 @@ interface PlaygroundState {
   linkPending: boolean;
 
   setPhase: (phase: PlaygroundPhase) => void;
+  /** Moves to EXPIRED for `reason`. */
+  setExpired: (reason: ExpiredReason) => void;
+  /** The countdown as the server stored it, after the extension. */
+  setExpiry: (expiresAt: number, extended: boolean) => void;
   startSession: (payload: {
     sessionId: string;
     demoPublic: string;
@@ -172,6 +183,8 @@ const sessionInitialState = {
   sessionId: null,
   demoPublic: null,
   expiresAt: null,
+  extended: false,
+  expiredReason: null as ExpiredReason | null,
   accounts: null,
   messPlan: [],
   currentMessIndex: 0,
@@ -201,6 +214,10 @@ export const usePlaygroundStore = create<PlaygroundState>((set) => ({
   batchSize: 0,
 
   setPhase: (phase) => set({ phase }),
+
+  setExpired: (expiredReason) => set({ phase: "EXPIRED", expiredReason }),
+
+  setExpiry: (expiresAt, extended) => set({ expiresAt, extended }),
 
   startSession: ({ sessionId, demoPublic, expiresAt, accounts, messPlan }) =>
     set((state) => ({
