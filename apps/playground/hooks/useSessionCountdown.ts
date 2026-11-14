@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePlaygroundStore } from "@/store/playground";
 import { PlaygroundApiError, playgroundRequest } from "@/lib/playground-api";
 import { GENERIC_ERROR_COPY } from "@/lib/error-copy";
@@ -24,8 +24,6 @@ export interface SessionCountdown {
   extend: () => void;
 }
 
-const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
-
 /** The session's countdown, ticking every second, and its one extension. */
 export function useSessionCountdown(): SessionCountdown {
   const expiresAt = usePlaygroundStore((s) => s.expiresAt);
@@ -33,6 +31,18 @@ export function useSessionCountdown(): SessionCountdown {
   const [now, setNow] = useState(() => Date.now());
   const [extending, setExtending] = useState(false);
   const [extendError, setExtendError] = useState<string | null>(null);
+  // Once unmounted, a request still in flight sets nothing here and asks no more: only the store,
+  // which outlives the panel, takes its answer.
+  const mounted = useRef(false);
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      if (retryTimer.current !== null) clearTimeout(retryTimer.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (expiresAt === null) return;
@@ -62,13 +72,18 @@ export function useSessionCountdown(): SessionCountdown {
         } catch (err) {
           const busy = err instanceof PlaygroundApiError && err.code === "step_in_progress";
           if (!busy || attempt === EXTEND_ATTEMPTS) throw err;
-          await sleep(EXTEND_RETRY_MS);
+          await new Promise<void>((resolve) => {
+            retryTimer.current = setTimeout(resolve, EXTEND_RETRY_MS);
+          });
+          retryTimer.current = null;
+          if (!mounted.current) return;
         }
       }
     } catch (err) {
+      if (!mounted.current) return;
       setExtendError(err instanceof PlaygroundApiError ? err.message : GENERIC_ERROR_COPY);
     } finally {
-      setExtending(false);
+      if (mounted.current) setExtending(false);
     }
   }, [extending]);
 

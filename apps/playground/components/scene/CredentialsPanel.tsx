@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, ClipboardCopy, ExternalLink, Eye, EyeOff, Loader2 } from "lucide-react";
 import { credentialsErrorCopy } from "@/lib/error-copy";
 import { PlaygroundApiError, playgroundRequest } from "@/lib/playground-api";
@@ -15,10 +15,14 @@ interface Credentials {
 
 function CopyButton({ text, label }: { text: string; label: string }) {
   const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const id = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(id);
+  }, [copied]);
   function handleCopy() {
     void navigator.clipboard.writeText(text);
     setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
   }
   return (
     <button
@@ -55,6 +59,15 @@ export default function CredentialsPanel({
   const [error, setError] = useState<string | null>(null);
   const [revealLeft, setRevealLeft] = useState(0);
   const revealed = revealLeft > 0;
+  // A key that arrives after this panel is gone is dropped, not stored.
+  const mounted = useRef(false);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (revealLeft <= 0) return;
@@ -67,13 +80,16 @@ export default function CredentialsPanel({
     setLoading(true);
     setError(null);
     try {
-      setCredentials(
-        await playgroundRequest<Credentials>(fetch, `/session/${sessionId}/credentials`)
+      const fetched = await playgroundRequest<Credentials>(
+        fetch,
+        `/session/${sessionId}/credentials`
       );
+      if (mounted.current) setCredentials(fetched);
     } catch (err) {
+      if (!mounted.current) return;
       setError(credentialsErrorCopy(err instanceof PlaygroundApiError ? err.code : null));
     } finally {
-      setLoading(false);
+      if (mounted.current) setLoading(false);
     }
   }
 

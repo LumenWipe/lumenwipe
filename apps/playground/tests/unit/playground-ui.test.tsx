@@ -151,6 +151,7 @@ function Harness() {
         progressStatus={batchRun.progressStatus ?? progressStatus}
       />
       <TxLogPanel />
+      <span hidden data-run-idle={String((batchRun.progressStatus ?? progressStatus) === null)} />
     </>
   );
 }
@@ -168,7 +169,12 @@ beforeEach(() => {
   usePlaygroundStore.getState().setSelection(resolvePlan(STANDARD_SELECTION).selection, "classic");
 });
 
-afterEach(() => {
+// A run keeps going after the screen a test waits for: its `finally`, the state read and the best
+// effort snippet fetch land a few ticks later. They are let finish inside act, so React has no
+// work left scheduled when the DOM is unmounted and, after the last test, unregistered.
+afterEach(async () => {
+  await rtl.waitFor(() => expect(document.querySelector('[data-run-idle="false"]')).toBeNull());
+  await rtl.act(tick);
   rtl.cleanup();
   globalThis.fetch = originalFetch;
 });
