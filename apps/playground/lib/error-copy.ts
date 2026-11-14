@@ -50,6 +50,11 @@ const ERROR_COPY = new Map<string, string>(
     step_not_in_plan: "This step is not part of the demo you picked. Start a new demo.",
     step_out_of_order: "The demo steps arrived out of order. Start a new demo.",
     invalid_selection: "That combination of scenarios cannot be run. Change it and try again.",
+    batch_not_found: "This batch expired. Start a new one.",
+    batch_not_ready: "The batch's accounts are still being set up. Wait for them to finish.",
+    batch_plan_failed: "The LumenWipe API could not plan the batch right now. Please try again.",
+    batch_plan_mismatch:
+      "The LumenWipe API's batch plan did not match this batch's accounts, so it is not shown.",
     cleanup_failed: "The demo finished, but its leftover test accounts could not be cleared.",
     network_error: "Could not reach the playground. Check your connection and try again.",
     invalid_json: "The request could not be read. Please try again.",

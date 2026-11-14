@@ -133,6 +133,8 @@ function countingStore(store: SessionStore): { store: SessionStore; calls: () =>
       releaseLease: wrap(store.releaseLease),
       lastFaucetFailure: wrap(store.lastFaucetFailure),
       recordFaucetFailure: wrap(store.recordFaucetFailure),
+      createBatch: wrap(store.createBatch),
+      loadBatch: wrap(store.loadBatch),
     },
     calls: () => calls,
   };

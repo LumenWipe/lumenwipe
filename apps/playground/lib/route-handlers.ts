@@ -23,8 +23,10 @@ import {
   parseSelection,
   resolvePlan,
   validateSelection,
+  type AssetCode,
   type HelperRole,
   type MessStepDef,
+  type ResolvedPlan,
   type ScenarioId,
   type ValidationResult,
 } from "./scenarios";
@@ -66,6 +68,7 @@ import {
 import {
   PlaygroundStoreUnavailableError,
   sessionExpiresAt,
+  type NewSessionData,
   type PlaygroundSession,
   type SessionExchange,
   type SessionStore,
@@ -274,18 +277,21 @@ export function newExchangeMemo(random: (size: number) => Buffer = randomBytes):
 }
 
 /** The plan's demo funding, from its setup step. */
-function setupFundingXlm(steps: readonly MessStepDef[]): string {
+export function setupFundingXlm(steps: readonly MessStepDef[]): string {
   for (const step of steps) if (step.action.kind === "setup") return step.action.fundingXlm;
   throw new Error("A plan with no setup step");
 }
 
 /** A rejection the network answered: the transaction never applied. */
-function isDefinitiveRejection(err: unknown): boolean {
+export function isDefinitiveRejection(err: unknown): boolean {
   return err instanceof TxSubmitError && err.resultCode !== null;
 }
 
 /** Deletes a session whose demo was never created; on failure the reaper finds the demo missing. */
-async function discardSession(store: SessionStore, session: PlaygroundSession): Promise<void> {
+export async function discardSession(
+  store: SessionStore,
+  session: PlaygroundSession
+): Promise<void> {
   try {
     const lock = await store.acquireLock(session.id);
     if (!lock) throw new Error("session lock held");
@@ -303,7 +309,90 @@ async function discardSession(store: SessionStore, session: PlaygroundSession): 
   }
 }
 
-async function refusedForFunds(store: SessionStore): Promise<NextResponse> {
+/** The keys a new session holds, before any is encrypted or stored. */
+export interface SessionDraft {
+  plan: ResolvedPlan;
+  demo: Keypair;
+  ephemeral: { assetCode: AssetCode; keypair: Keypair }[];
+  recipient: Keypair | null;
+  helpers: { role: HelperRole; keypair: Keypair }[];
+}
+
+/** A new session's keys for `plan`: always fresh randomness, never derived from the request. */
+export function draftSession(plan: ResolvedPlan): SessionDraft {
+  return {
+    plan,
+    demo: Keypair.random(),
+    ephemeral: plan.ephemeralAssets.map((code) => ({ assetCode: code, keypair: Keypair.random() })),
+    recipient: plan.steps.some((s) => s.action.kind === "open_recipient") ? Keypair.random() : null,
+    helpers: plan.steps.flatMap((s) => {
+      const role = helperRoleOf(s.action);
+      return role ? [{ role, keypair: Keypair.random() }] : [];
+    }),
+  };
+}
+
+/** The record a draft is stored as, with every secret encrypted. */
+export function sessionRecordOf(
+  { plan, demo, ephemeral, recipient, helpers }: SessionDraft,
+  exchange: SessionExchange | null,
+  encrypt: (secret: string) => string
+): NewSessionData {
+  return {
+    demoPublic: demo.publicKey(),
+    encDemoSecret: encrypt(demo.secret()),
+    ephemeralIssuers: ephemeral.map((e) => ({
+      publicKey: e.keypair.publicKey(),
+      encSecret: encrypt(e.keypair.secret()),
+      assetCode: e.assetCode,
+    })),
+    completedMessSteps: [],
+    recordedSigners: [],
+    demolishLog: [],
+    demolishPending: null,
+    demolishDone: false,
+    selection: plan.selection,
+    transferRecipient: recipient && {
+      publicKey: recipient.publicKey(),
+      encSecret: encrypt(recipient.secret()),
+    },
+    helperAccounts: helpers.map(({ role, keypair }) => ({
+      role,
+      publicKey: keypair.publicKey(),
+      encSecret: encrypt(keypair.secret()),
+    })),
+    claimableBalances: [],
+    allowances: [],
+    exchange,
+  };
+}
+
+/** What a session start answers with: public keys and the plan only. */
+export function createdSessionBody(
+  session: PlaygroundSession,
+  { plan, ephemeral, recipient, helpers }: SessionDraft,
+  issuer: Keypair,
+  mm: Keypair,
+  exchange: SessionExchange | null
+) {
+  return {
+    sessionId: session.id,
+    demoPublic: session.demoPublic,
+    expiresAt: sessionExpiresAt(),
+    messPlan: plan.steps,
+    accounts: {
+      issuer: issuer.publicKey(),
+      mm: mm.publicKey(),
+      lwdemoAsset: `${LWDEMO_CODE}:${issuer.publicKey()}`,
+      ephemeral: ephemeral.map((e) => ({ code: e.assetCode, publicKey: e.keypair.publicKey() })),
+      transferRecipient: recipient?.publicKey() ?? null,
+      helpers: helpers.map(({ role, keypair }) => ({ role, publicKey: keypair.publicKey() })),
+      exchange,
+    },
+  };
+}
+
+export async function refusedForFunds(store: SessionStore): Promise<NextResponse> {
   const failure = await store.lastFaucetFailure().catch(() => null);
   const error =
     failure === "rate_limited"
@@ -354,19 +443,7 @@ export async function handleCreateSession(
   }
   if (spendableXlm(mmBalance) < MM_SESSION_FLOOR_XLM) return refusedForFunds(deps.store);
 
-  // Keys are always fresh randomness, never derived from anything in the request.
-  const demo = Keypair.random();
-  const ephemeral = plan.ephemeralAssets.map((code) => ({
-    assetCode: code,
-    keypair: Keypair.random(),
-  }));
-  const recipient = plan.steps.some((s) => s.action.kind === "open_recipient")
-    ? Keypair.random()
-    : null;
-  const helpers = plan.steps.flatMap((s) => {
-    const role = helperRoleOf(s.action);
-    return role ? [{ role, keypair: Keypair.random() }] : [];
-  });
+  const draft = draftSession(plan);
   // The stand-in comes from the bundled registry, and the memo from fresh randomness; nothing in
   // the request chooses either.
   const exchange: SessionExchange | null = closesToExchange(plan.selection)
@@ -377,33 +454,7 @@ export async function handleCreateSession(
   // never a funded account whose key is held nowhere.
   let session: PlaygroundSession;
   try {
-    session = await deps.store.createSession({
-      demoPublic: demo.publicKey(),
-      encDemoSecret: deps.encrypt(demo.secret()),
-      ephemeralIssuers: ephemeral.map((e) => ({
-        publicKey: e.keypair.publicKey(),
-        encSecret: deps.encrypt(e.keypair.secret()),
-        assetCode: e.assetCode,
-      })),
-      completedMessSteps: [],
-      recordedSigners: [],
-      demolishLog: [],
-      demolishPending: null,
-      demolishDone: false,
-      selection: plan.selection,
-      transferRecipient: recipient && {
-        publicKey: recipient.publicKey(),
-        encSecret: deps.encrypt(recipient.secret()),
-      },
-      helperAccounts: helpers.map(({ role, keypair }) => ({
-        role,
-        publicKey: keypair.publicKey(),
-        encSecret: deps.encrypt(keypair.secret()),
-      })),
-      claimableBalances: [],
-      allowances: [],
-      exchange,
-    });
+    session = await deps.store.createSession(sessionRecordOf(draft, exchange, deps.encrypt));
   } catch (err) {
     if (err instanceof PlaygroundConfigError || err instanceof PlaygroundStoreUnavailableError) {
       return notConfiguredResponse();
@@ -418,7 +469,7 @@ export async function handleCreateSession(
       async () => {
         // Under the market maker's lock, so two sessions never both create the stand-in.
         if (exchange) await deps.ensureExchangeAccount(mm, exchange.destination);
-        await deps.provisionDemo(mm, demo.publicKey(), setupFundingXlm(plan.steps));
+        await deps.provisionDemo(mm, draft.demo.publicKey(), setupFundingXlm(plan.steps));
       },
       deps.accountLock
     );
@@ -436,21 +487,7 @@ export async function handleCreateSession(
       : NextResponse.json({ error: "provision_failed" }, { status: 502 });
   }
 
-  return NextResponse.json({
-    sessionId: session.id,
-    demoPublic: session.demoPublic,
-    expiresAt: sessionExpiresAt(),
-    messPlan: plan.steps,
-    accounts: {
-      issuer: issuer.publicKey(),
-      mm: mm.publicKey(),
-      lwdemoAsset: `${LWDEMO_CODE}:${issuer.publicKey()}`,
-      ephemeral: ephemeral.map((e) => ({ code: e.assetCode, publicKey: e.keypair.publicKey() })),
-      transferRecipient: recipient?.publicKey() ?? null,
-      helpers: helpers.map(({ role, keypair }) => ({ role, publicKey: keypair.publicKey() })),
-      exchange,
-    },
-  });
+  return NextResponse.json(createdSessionBody(session, draft, issuer, mm, exchange));
 }
 
 export async function handleMess(
