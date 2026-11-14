@@ -1,6 +1,11 @@
 import { memoryKv } from "@/lib/kv";
 import { selectionForMode } from "@/lib/mess-plan";
-import { createSessionStore, type NewSessionData, type SessionStore } from "@/lib/session-store";
+import {
+  createSessionStore,
+  sessionExpiresAt,
+  type NewSessionData,
+  type SessionStore,
+} from "@/lib/session-store";
 
 export interface FakeClock {
   now: () => number;
@@ -16,6 +21,10 @@ export function memoryStore(clock: FakeClock = fakeClock()): SessionStore {
   const kv = memoryKv(clock.now);
   return createSessionStore(() => kv);
 }
+
+/** One expiry for every fixture record, an hour past the run's start: records built apart compare
+ *  equal, and none of them expires while the suite runs. */
+const FIXTURE_EXPIRES_AT = sessionExpiresAt(Date.now());
 
 export function newSessionData(): NewSessionData {
   return {
@@ -33,6 +42,8 @@ export function newSessionData(): NewSessionData {
     claimableBalances: [],
     allowances: [],
     exchange: null,
+    expiresAt: FIXTURE_EXPIRES_AT,
+    extended: false,
   };
 }
 

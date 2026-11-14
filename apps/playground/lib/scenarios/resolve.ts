@@ -98,7 +98,10 @@ function setupStep(ephemeralAssets: AssetCode[], fundingXlm: string): OrderedSte
     order: ORDER.setup,
     step: {
       id: "SETUP",
-      label: "Fund demo account & spawn rogue issuers",
+      label:
+        ephemeralAssets.length > 0
+          ? "Fund demo account & spawn rogue issuers"
+          : "Fund demo account",
       nodes: [],
       balances: [],
       action: {
@@ -228,7 +231,8 @@ export function validateSelection(
   for (const { def, params } of picked) {
     const result = def.build(params, { heldAssets });
     if (!result.ok) return fail(result.message);
-    absorb(result.build);
+    const steps = result.build.steps.map((o) => ({ ...o, step: { ...o.step, scenario: def.id } }));
+    absorb({ ...result.build, steps });
   }
   // What the scenarios spend of a pinned asset is bought once, for all of them together.
   const purchases = purchaseBuild(ordered.map((o) => o.step));

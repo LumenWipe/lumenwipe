@@ -18,10 +18,16 @@ import {
 // Server-only custodial session storage for the testnet playground.
 // Secrets are stored AES-256-GCM-encrypted (see ./crypto). A record expires
 // SESSION_RECORD_TTL_SECONDS after its last write, while the visitor's
-// countdown shows SESSION_COUNTDOWN_SECONDS.
+// countdown ends at the session's stored `expiresAt`.
 
-/** The countdown the visitor sees. */
+/** The countdown a session starts with. */
 export const SESSION_COUNTDOWN_SECONDS = 3600;
+
+/** What the one extension adds to the stored expiry. */
+export const SESSION_EXTENSION_SECONDS = 1800;
+
+/** The extension is offered, and accepted, only this close to the expiry. */
+export const EXTENSION_WINDOW_SECONDS = 300;
 
 /**
  * How long a record outlives its last write, so the reaper can still read the keys of an abandoned
@@ -31,7 +37,7 @@ export const SESSION_COUNTDOWN_SECONDS = 3600;
 export const SESSION_RECORD_TTL_SECONDS = 72 * 3600;
 
 /** Bumped whenever the stored shape changes; a session of any other version reads as expired. */
-export const SESSION_SCHEMA_VERSION = 9;
+export const SESSION_SCHEMA_VERSION = 10;
 
 /** Longer than any route's maxDuration, so a request the platform kills frees its session soon after. */
 export const SESSION_LOCK_TTL_MS = 150_000;
@@ -156,6 +162,11 @@ export interface PlaygroundSession {
   demolishPending: PendingDemolishTx | null;
   demolishDone: boolean;
   createdAt: number;
+  /** When the countdown ends, in epoch milliseconds. From then on the mess and the credentials
+   *  routes refuse the session; its close never does. */
+  expiresAt: number;
+  /** Whether the session's one extension has been used. */
+  extended: boolean;
   /** The validated scenario selection. The plan, the executor's steps and the close expectation
    *  are recomputed from it on every request; nothing the client sends later can change it. */
   selection: ScenarioSelection;
@@ -310,6 +321,9 @@ export function isPlaygroundSession(value: unknown): value is PlaygroundSession 
     (value.demolishPending === null || isPendingDemolishTx(value.demolishPending)) &&
     typeof value.demolishDone === "boolean" &&
     typeof value.createdAt === "number" &&
+    typeof value.expiresAt === "number" &&
+    Number.isFinite(value.expiresAt) &&
+    typeof value.extended === "boolean" &&
     isValidSelection(value.selection) &&
     (value.transferRecipient === null || isSessionAccount(value.transferRecipient)) &&
     Array.isArray(value.helperAccounts) &&
@@ -535,7 +549,15 @@ function resolveDefaultKv(): SessionKv {
 
 export const sessionStore: SessionStore = createSessionStore(resolveDefaultKv);
 
-/** When the visitor's countdown ends, in epoch milliseconds. */
-export function sessionExpiresAt(): number {
-  return Date.now() + SESSION_COUNTDOWN_SECONDS * 1000;
+/** When the countdown of a session started at `now` ends, in epoch milliseconds. */
+export function sessionExpiresAt(now: number): number {
+  return now + SESSION_COUNTDOWN_SECONDS * 1000;
+}
+
+/** Whether the session's countdown has ended. */
+export function isSessionExpired(
+  session: Pick<PlaygroundSession, "expiresAt">,
+  now: number
+): boolean {
+  return now >= session.expiresAt;
 }

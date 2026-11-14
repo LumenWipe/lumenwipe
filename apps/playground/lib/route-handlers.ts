@@ -54,7 +54,9 @@ import {
   readSessionState,
   runCleanup,
   runDemolishRound,
+  runExtend,
   runMessStep,
+  SESSION_EXPIRED,
   runResolve,
   runRevokeAllowance,
   readSessionAllowances,
@@ -67,6 +69,7 @@ import {
 } from "./session-actions";
 import {
   PlaygroundStoreUnavailableError,
+  isSessionExpired,
   sessionExpiresAt,
   type NewSessionData,
   type PlaygroundSession,
@@ -126,6 +129,8 @@ export interface MessDeps extends PlaygroundKeys {
   decrypt: (payload: string) => string;
   /** The step's transaction hash, or null when it had nothing to send. */
   executeMessStep: (step: MessStepDef, ctx: MessContext) => Promise<string | null>;
+  /** The clock the session's expiry is held to; tests set it. */
+  now?: () => number;
 }
 
 export interface DemolishRouteDeps extends PlaygroundKeys {
@@ -174,6 +179,14 @@ export interface CredentialsDeps {
   store: SessionStore;
   rateLimit: RateLimit;
   decrypt: (payload: string) => string;
+  /** The clock the session's expiry is held to; tests set it. */
+  now?: () => number;
+}
+
+export interface ExtendRouteDeps {
+  store: SessionStore;
+  /** The clock the session's expiry is held to; tests set it. */
+  now?: () => number;
 }
 
 export interface SdkSnippetRouteDeps {
@@ -336,9 +349,12 @@ export function draftSession(plan: ResolvedPlan): SessionDraft {
 export function sessionRecordOf(
   { plan, demo, ephemeral, recipient, helpers }: SessionDraft,
   exchange: SessionExchange | null,
-  encrypt: (secret: string) => string
+  encrypt: (secret: string) => string,
+  expiresAt: number
 ): NewSessionData {
   return {
+    expiresAt,
+    extended: false,
     demoPublic: demo.publicKey(),
     encDemoSecret: encrypt(demo.secret()),
     ephemeralIssuers: ephemeral.map((e) => ({
@@ -378,7 +394,7 @@ export function createdSessionBody(
   return {
     sessionId: session.id,
     demoPublic: session.demoPublic,
-    expiresAt: sessionExpiresAt(),
+    expiresAt: session.expiresAt,
     messPlan: plan.steps,
     accounts: {
       issuer: issuer.publicKey(),
@@ -454,7 +470,9 @@ export async function handleCreateSession(
   // never a funded account whose key is held nowhere.
   let session: PlaygroundSession;
   try {
-    session = await deps.store.createSession(sessionRecordOf(draft, exchange, deps.encrypt));
+    session = await deps.store.createSession(
+      sessionRecordOf(draft, exchange, deps.encrypt, sessionExpiresAt(Date.now()))
+    );
   } catch (err) {
     if (err instanceof PlaygroundConfigError || err instanceof PlaygroundStoreUnavailableError) {
       return notConfiguredResponse();
@@ -514,6 +532,7 @@ export async function handleMess(
   if (!issuer || !mm) return notConfiguredResponse();
 
   const result = await runMessStep(deps.store, id, stepId, {
+    now: deps.now,
     executeStep: (step, session, recordSigner, recordClaimableBalances, recordAllowance) =>
       deps.executeMessStep(step, {
         demo: Keypair.fromSecret(deps.decrypt(session.encDemoSecret)),
@@ -877,6 +896,8 @@ export async function handleCredentials(
 
   const session = await loadSessionOrErrorResponse(deps.store, id);
   if (session instanceof NextResponse) return session;
+  // A key is handed out only while the countdown runs; the close itself is never refused.
+  if (isSessionExpired(session, (deps.now ?? Date.now)())) return actionResponse(SESSION_EXPIRED);
 
   try {
     const secretKey = deps.decrypt(session.encDemoSecret);
@@ -887,6 +908,11 @@ export async function handleCredentials(
     }
     throw err;
   }
+}
+
+/** Uses the session's one extension (lib/session-actions.ts `runExtend`). */
+export async function handleExtend(id: string, deps: ExtendRouteDeps): Promise<NextResponse> {
+  return actionResponse(await runExtend(deps.store, [id], deps.now ?? Date.now));
 }
 
 export async function handleState(id: string, deps: StateRouteDeps): Promise<NextResponse> {

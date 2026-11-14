@@ -10,6 +10,7 @@
     "type-check": "bun run --filter '@lumenwipe/verify' build && tsc --noEmit && tsc -p tests/tsconfig.json --noEmit",
     "test": "bun run --filter '@lumenwipe/verify' build:js && bun test tests/unit",
     "test:e2e": "bun run --filter '@lumenwipe/verify' build:js && playwright test",
+    "test:a11y": "bun run build && playwright test -c playwright.a11y.config.ts",
     "test:integration": "LUMENWIPE_RUN_INTEGRATION=1 bun test tests/integration"
   },
   "dependencies": {
@@ -27,6 +28,7 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
     "@happy-dom/global-registrator": "^21.0.4",
     "@playwright/test": "^1.64.0",
     "@tailwindcss/postcss": "^4.3.3",

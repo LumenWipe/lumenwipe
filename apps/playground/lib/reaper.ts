@@ -19,7 +19,8 @@ import type { PlaygroundSession, SessionStore } from "./session-store";
 // day and does not retry a failed run, so every step is idempotent and a session it cannot finish
 // is simply tried again the next day.
 
-/** A session younger than this may still have a visitor on it: twice the on-screen countdown. */
+/** A session younger than this may still have a visitor on it: the longest countdown, one hour
+ *  plus its one extension, ends at least half an hour before it. */
 export const REAP_AFTER_MS = 2 * 3600 * 1000;
 /** Most close rounds the reaper runs for one session in one run. */
 export const MAX_ROUNDS_PER_SESSION = 12;

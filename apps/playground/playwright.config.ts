@@ -16,6 +16,8 @@ const mediator = Keypair.fromSecret(process.env.PLAYGROUND_E2E_MEDIATOR_SECRET);
 // API's close loop), so this suite runs nightly and on manual dispatch, never per pull request.
 export default defineConfig({
   testDir: "./tests/e2e",
+  // Run per pull request by playwright.a11y.config.ts, with every route answered in the browser.
+  testIgnore: "a11y/**",
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,

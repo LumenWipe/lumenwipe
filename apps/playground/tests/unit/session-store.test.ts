@@ -127,11 +127,8 @@ test("the record outlives the visitor's countdown, and the countdown is still on
   const clock = fakeClock();
   const store = memoryStore(clock);
   const session = await store.createSession(newSessionData());
-  const before = Date.now();
-  const expiresAt = sessionExpiresAt();
   expect(SESSION_COUNTDOWN_SECONDS).toBe(3600);
-  expect(expiresAt - before).toBeGreaterThanOrEqual(3600 * 1000);
-  expect(expiresAt - before).toBeLessThan(3600 * 1000 + 1000);
+  expect(sessionExpiresAt(clock.now()) - clock.now()).toBe(3600 * 1000);
 
   clock.advance(24 * 3600 * 1000);
   expect(await store.loadSession(session.id)).not.toBeNull();

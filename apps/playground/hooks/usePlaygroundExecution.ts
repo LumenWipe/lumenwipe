@@ -8,7 +8,12 @@ import {
   type SceneNodeKind,
 } from "@/store/playground";
 import { operationToSceneAction } from "@/lib/scene-actions";
-import { SCENE_NODE_KINDS, type MessStepDef, type SceneNodeSpec } from "@/lib/scenarios";
+import {
+  SCENE_NODE_KINDS,
+  messProgress,
+  type MessStepDef,
+  type SceneNodeSpec,
+} from "@/lib/scenarios";
 import type { AccountState, IntentOperation } from "@lumenwipe/sdk";
 import { GENERIC_ERROR_COPY } from "@/lib/error-copy";
 import {
@@ -17,6 +22,7 @@ import {
   PlaygroundApiError,
   playgroundRequest,
   SessionExpiredError,
+  SessionTimeUpError,
 } from "@/lib/playground-api";
 
 export interface SessionResponse {
@@ -193,8 +199,8 @@ export function usePlaygroundExecution(): UsePlaygroundExecutionResult {
 
   const fail = useCallback((err: unknown) => {
     const store = usePlaygroundStore.getState();
-    if (err instanceof SessionExpiredError) {
-      store.setPhase("EXPIRED");
+    if (err instanceof SessionExpiredError || err instanceof SessionTimeUpError) {
+      store.setExpired(err instanceof SessionTimeUpError ? "time_up" : "gone");
       return;
     }
     if (!(err instanceof PlaygroundApiError)) console.error("[playground] unexpected error:", err);
@@ -249,7 +255,8 @@ export function usePlaygroundExecution(): UsePlaygroundExecutionResult {
         const step = session.messPlan[i];
         const s = usePlaygroundStore.getState();
         s.setCurrentMessIndex(i);
-        setProgressStatus(step.label);
+        const { label, detail } = messProgress(session.messPlan, i);
+        setProgressStatus(`${label} (${detail})`);
 
         const { txHash } = await api<{ txHash: string | null }>(
           `/session/${session.sessionId}/mess`,
@@ -270,9 +277,8 @@ export function usePlaygroundExecution(): UsePlaygroundExecutionResult {
         }
         applyBalanceUpdates(step);
 
-        if (step.id === "SETUP") {
-          await refreshState();
-        }
+        // Best effort: the live state is only shown, and the read after the last step is checked.
+        await refreshState().catch(() => null);
       }
 
       setProgressStatus("Reading the account state...");

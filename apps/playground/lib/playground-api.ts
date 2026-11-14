@@ -1,9 +1,21 @@
 import { errorCopy } from "./error-copy";
 
-/** An error whose message is already plain-language copy, safe to show as is. */
-export class PlaygroundApiError extends Error {}
+/** An error whose message is already plain-language copy, safe to show as is. `code` is the
+ *  route's machine code, for a caller that words the same failure its own way. */
+export class PlaygroundApiError extends Error {
+  constructor(
+    message: string,
+    readonly code: string | null = null
+  ) {
+    super(message);
+  }
+}
 
+/** The session's record is gone: nothing is left to close. */
 export class SessionExpiredError extends PlaygroundApiError {}
+
+/** The session's countdown ended: it takes no more setup steps, but its account can be closed. */
+export class SessionTimeUpError extends PlaygroundApiError {}
 
 /** The close stopped before building because the API asked for decisions the demo cannot make. */
 export class DecisionBlockedError extends PlaygroundApiError {
@@ -62,13 +74,16 @@ export async function playgroundRequest<T>(
       ...init,
     });
   } catch {
-    throw new PlaygroundApiError(errorCopy("network_error"));
+    throw new PlaygroundApiError(errorCopy("network_error"), "network_error");
   }
   if (res.ok) return (await res.json()) as T;
   const body: unknown = await res.json().catch(() => null);
   const code = errorCode(body);
   if (res.status === 404 && (code === "session_not_found" || code === "batch_not_found")) {
-    throw new SessionExpiredError(errorCopy(code));
+    throw new SessionExpiredError(errorCopy(code), code);
+  }
+  if (res.status === 410 && code === "session_expired") {
+    throw new SessionTimeUpError(errorCopy(code), code);
   }
   if (code === "demolish_decision_unanswerable") {
     throw new DecisionBlockedError(errorCopy(code), stringsAt(body, "decisions"));
@@ -78,5 +93,5 @@ export async function playgroundRequest<T>(
     const resolvable = stringsAt(body, "resolvable").filter((c) => blockers.includes(c));
     throw new PlanBlockedError(errorCopy(code), blockers, resolvable);
   }
-  throw new PlaygroundApiError(errorCopy(code, res.status));
+  throw new PlaygroundApiError(errorCopy(code, res.status), code ?? null);
 }

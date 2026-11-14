@@ -14,6 +14,7 @@ import {
   PlanBlockedError,
   PlaygroundApiError,
   SessionExpiredError,
+  SessionTimeUpError,
 } from "@/lib/playground-api";
 import {
   api,
@@ -109,8 +110,8 @@ export function useBatchExecution(): UseBatchExecutionResult {
 
   const fail = useCallback((err: unknown) => {
     const store = usePlaygroundStore.getState();
-    if (err instanceof SessionExpiredError) {
-      store.setPhase("EXPIRED");
+    if (err instanceof SessionExpiredError || err instanceof SessionTimeUpError) {
+      store.setExpired(err instanceof SessionTimeUpError ? "time_up" : "gone");
       return;
     }
     if (!(err instanceof PlaygroundApiError)) console.error("[playground] unexpected error:", err);

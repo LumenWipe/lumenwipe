@@ -8,7 +8,7 @@ const SV_EXPLORER_TESTNET = "https://stellarview.acachete.xyz/en/testnet";
 const KIND_META = {
   mess: { Icon: PlusCircle, className: "text-value" },
   demolish: { Icon: Flame, className: "text-stellar" },
-  info: { Icon: Info, className: "text-white/40" },
+  info: { Icon: Info, className: "text-subtle" },
 } as const;
 
 export default function TxLogPanel() {

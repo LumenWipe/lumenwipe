@@ -40,7 +40,7 @@ function Counter({
   onChange: (v: number) => void;
 }) {
   const step =
-    "flex h-6 w-6 items-center justify-center rounded border border-white/15 text-white/40 hover:border-white/30 hover:text-white/70 disabled:opacity-30 transition-colors";
+    "flex h-6 w-6 items-center justify-center rounded border border-white/15 text-subtle hover:border-white/30 hover:text-white/70 disabled:opacity-30 transition-colors";
   return (
     <div className="flex items-center justify-between gap-2">
       <span className="text-xs text-white/60">{label}</span>
@@ -221,7 +221,7 @@ export default function ScenarioPicker() {
             >
               <span className="font-semibold">{set.label}</span>
               {!available && (
-                <span id={reasonId} className="mt-0.5 block text-[10px] text-white/35">
+                <span id={reasonId} className="mt-0.5 block text-[10px] text-subtle">
                   {NO_SCENARIOS_REASON}
                 </span>
               )}
@@ -276,7 +276,7 @@ export default function ScenarioPicker() {
           aria-invalid={replayError}
           aria-describedby={replayError ? "replay-seed-error" : undefined}
           maxLength={16}
-          className="min-w-0 flex-1 rounded-md border border-white/10 bg-white/[0.03] px-2.5 py-1.5 mkt-mono text-[11px] text-white/80 placeholder:text-white/30"
+          className="min-w-0 flex-1 rounded-md border border-white/10 bg-white/[0.03] px-2.5 py-1.5 mkt-mono text-[11px] text-white/80 placeholder:text-subtle"
         />
         <button
           type="submit"
@@ -296,7 +296,7 @@ export default function ScenarioPicker() {
         if (scenarios.length === 0) return null;
         return (
           <fieldset key={set.id} className="space-y-1.5">
-            <legend className="mkt-eyebrow mb-1 text-[0.6rem] text-white/40">{set.label}</legend>
+            <legend className="mkt-eyebrow mb-1 text-[0.6rem] text-subtle">{set.label}</legend>
             {scenarios.map((def) => {
               const on = selected.has(def.id);
               const reason = unavailable.get(def.id);
@@ -314,9 +314,7 @@ export default function ScenarioPicker() {
                     <span className={`text-xs ${on ? "text-white" : "text-white/60"}`}>
                       {def.label}
                     </span>
-                    <span className="text-[10px] leading-tight text-white/40">
-                      {def.description}
-                    </span>
+                    <span className="text-[10px] leading-tight text-subtle">{def.description}</span>
                   </button>
                   {reason !== undefined && (
                     <p id={reasonId} className="px-3 pb-2 text-[10px] text-value">
@@ -375,15 +373,15 @@ export default function ScenarioPicker() {
           <>
             <dl className="grid grid-cols-3 gap-2 mkt-mono text-[10px]">
               <div>
-                <dt className="text-white/35">XLM at risk</dt>
+                <dt className="text-subtle">XLM at risk</dt>
                 <dd className="text-white/80">{result.plan.cost.xlm}</dd>
               </div>
               <div>
-                <dt className="text-white/35">Transactions</dt>
+                <dt className="text-subtle">Transactions</dt>
                 <dd className="text-white/80">{result.plan.steps.length}</dd>
               </div>
               <div>
-                <dt className="text-white/35">Estimated</dt>
+                <dt className="text-subtle">Estimated</dt>
                 <dd className="text-white/80">{durationLabel(result.plan.cost.seconds)}</dd>
               </div>
             </dl>

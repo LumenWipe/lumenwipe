@@ -204,6 +204,8 @@ export interface MessStepDef {
   /** Already-docked nodes whose balance this step sets. */
   balances: { nodeId: string; balance: string }[];
   action: StepAction;
+  /** The scenario that planned this step; absent for the setup and a purchase shared by several. */
+  scenario?: ScenarioId;
   /**
    * The pinned asset this step spends, and the most XLM its purchase may cost. The plan buys it
    * once for every step that spends it (lib/scenarios/prerequisites.ts), so two scenarios that

@@ -47,7 +47,7 @@ export default function CoreAccount() {
             <span className="mt-0.5 sm:mt-1 font-display text-base sm:text-xl lg:text-2xl text-white tabular-nums">
               <motion.span>{display}</motion.span>
             </span>
-            <span className="text-[8px] sm:text-[10px] uppercase tracking-widest text-white/40">
+            <span className="text-[8px] sm:text-[10px] uppercase tracking-widest text-subtle">
               XLM
             </span>
             {accountState && accountState.numSubEntries > 0 && (
@@ -56,7 +56,7 @@ export default function CoreAccount() {
               </span>
             )}
             {demoPublic && (
-              <span className="mt-1 hidden text-[9px] mkt-mono text-white/30 sm:block">
+              <span className="mt-1 hidden text-[9px] mkt-mono text-subtle sm:block">
                 {demoPublic.slice(0, 6)}…{demoPublic.slice(-4)}
               </span>
             )}
