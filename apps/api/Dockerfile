@@ -1,10 +1,16 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1.27.1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 # Production image for @lumenwipe/api (NestJS) built from the Bun monorepo.
 # Build context = repo root:  docker build -f apps/api/Dockerfile -t lumenwipe-api .
 # Runtime target = Google Cloud Run (listens on $PORT / 0.0.0.0, SIGTERM-aware).
+#
+# Every base image and the syntax frontend are pinned by version AND digest, so the same commit
+# builds from the same bases on any day. Renovate moves the tag and the digest together. The Bun tag
+# is the Bun in .tool-versions and CI, and the Node tag is the Node in .tool-versions;
+# scripts/check-image-pins.ts fails CI when either drifts or a pin loses its digest. dumb-init is the
+# one input left to the Debian archive at build time; the SBOM CI writes records its version.
 
 # ── Stage 1: builder - Bun on Debian/glibc (ABI-matches node:24-slim runtime) ──
-FROM oven/bun:1.4 AS builder
+FROM oven/bun:1.4.4@sha256:1d22548f177f4ff38e0c15baa3c2c46c6c2060ba2d1bc573bb4720b407548f1d AS builder
 WORKDIR /app
 # bun install --frozen-lockfile needs EVERY workspace manifest present, even when
 # building a single app. Copy the root lockfile + all workspace package.json first
@@ -30,7 +36,7 @@ COPY apps/api/ apps/api/
 RUN bun run --filter '@lumenwipe/api' build
 
 # ── Stage 2: prod-deps - production-only dependencies (no devDependencies) ──
-FROM oven/bun:1.4 AS prod-deps
+FROM oven/bun:1.4.4@sha256:1d22548f177f4ff38e0c15baa3c2c46c6c2060ba2d1bc573bb4720b407548f1d AS prod-deps
 WORKDIR /app
 COPY package.json bun.lock ./
 COPY apps/api/package.json apps/api/
@@ -45,7 +51,7 @@ COPY tools/lab/package.json tools/lab/
 RUN bun install --frozen-lockfile --production --filter '@lumenwipe/api'
 
 # ── Stage 3: runtime - Node (matches start:prod), glibc slim, non-root ──
-FROM node:26-slim AS runtime
+FROM node:26.13.1-slim@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d1856b8820bc AS runtime
 ENV NODE_ENV=production
 # dumb-init as PID 1 forwards Cloud Run's SIGTERM to node so Nest's shutdown hooks
 # run within the grace window (can't pass `docker run --init` on Cloud Run).

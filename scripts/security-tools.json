@@ -12,5 +12,13 @@
     "ignore": ".gitleaksignore",
     "logOpts": "HEAD",
     "flags": ["--redact", "--no-banner"]
+  },
+  "syft": {
+    "version": "1.57.1",
+    "linuxSha256": "bf52519eb57f675d47c07d43213cb6dff6449f3d6d1147ff6701ed91f44eef0c"
+  },
+  "grype": {
+    "version": "0.121.3",
+    "linuxSha256": "e9da18cc1429e786722e32161288103600efffd8e483c90761f90485bd1bec85"
   }
 }

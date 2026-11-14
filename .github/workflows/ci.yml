@@ -298,16 +298,35 @@ jobs:
   # image whose CMD then cannot find dist/main.js. So this job builds AND boots - the build
   # catches the first, /health catches the second. Same flags as deploy-api.yml so this stays
   # the same command; nothing is pushed, deploy-api.yml still builds and pushes the real image.
+  #
+  # The image is then inventoried and scanned: Syft writes an SPDX SBOM (uploaded as the
+  # api-image-sbom artifact) and Grype matches that same SBOM against its vulnerability database,
+  # so what was scanned is exactly what was inventoried. scripts/image-scan-gate.ts fails on a high
+  # or critical finding that scripts/image-scan-allowlist.json does not cover (a reason and an expiry
+  # at most 92 days out, as for the dependency audit). Like the audit, the database moves
+  # independently of this repo, so a new advisory can turn this red on an unchanged image, and an
+  # unreachable database fails the job.
   docker:
     name: api image
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       contents: read
     env:
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+      GRYPE_CHECK_FOR_APP_UPDATE: "false"
+      SYFT_CHECK_FOR_APP_UPDATE: "false"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.4
+
+      # Before the build, so an unpinned base or a Bun or Node drift fails in seconds.
+      - name: Require digest-pinned bases that agree with .tool-versions
+        run: bun scripts/check-image-pins.ts
 
       - name: Log in to Docker Hub
         if: ${{ env.DOCKERHUB_TOKEN != '' }}
@@ -344,6 +363,59 @@ jobs:
             echo "/ reports gitSha ${reported}, expected ${GITHUB_SHA}"
             exit 1
           fi
+
+      - name: Read the Syft and Grype pins
+        id: pins
+        run: |
+          {
+            echo "syft-version=$(jq -er .syft.version scripts/security-tools.json)"
+            echo "syft-sha256=$(jq -er .syft.linuxSha256 scripts/security-tools.json)"
+            echo "grype-version=$(jq -er .grype.version scripts/security-tools.json)"
+            echo "grype-sha256=$(jq -er .grype.linuxSha256 scripts/security-tools.json)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Install Syft
+        uses: ./.github/actions/release-binary
+        with:
+          name: syft
+          version: ${{ steps.pins.outputs.syft-version }}
+          sha256: ${{ steps.pins.outputs.syft-sha256 }}
+          url: https://github.com/anchore/syft/releases/download/v${{ steps.pins.outputs.syft-version }}/syft_${{ steps.pins.outputs.syft-version }}_linux_amd64.tar.gz
+          member: syft
+
+      - name: Install Grype
+        uses: ./.github/actions/release-binary
+        with:
+          name: grype
+          version: ${{ steps.pins.outputs.grype-version }}
+          sha256: ${{ steps.pins.outputs.grype-sha256 }}
+          url: https://github.com/anchore/grype/releases/download/v${{ steps.pins.outputs.grype-version }}/grype_${{ steps.pins.outputs.grype-version }}_linux_amd64.tar.gz
+          member: grype
+
+      - name: Write the SBOM
+        run: |
+          mkdir -p image-report
+          ./syft scan docker:lumenwipe-api:ci --quiet \
+            -o spdx-json=image-report/sbom.spdx.json -o syft-json=image-report/sbom.syft.json
+
+      # One retry: the database host can blip. A real outage still fails both times.
+      - name: Fetch the vulnerability database
+        run: ./grype db update || { sleep 10; ./grype db update; }
+
+      - name: Scan the SBOM
+        run: ./grype sbom:image-report/sbom.syft.json --quiet -o json --file image-report/grype.json
+
+      - name: Fail on a high or critical finding that is not allowlisted
+        run: bun scripts/image-scan-gate.ts image-report/grype.json
+
+      - name: Upload the SBOM and the scan report
+        if: ${{ always() && hashFiles('image-report/sbom.spdx.json') != '' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: api-image-sbom
+          path: image-report/
+          retention-days: 30
+          if-no-files-found: error
 
   # The version only moves in a release PR (RELEASING.md), so a change to what a published package
   # ships records itself under [Unreleased] instead (scripts/package-release.ts, changelog mode).
@@ -582,6 +654,12 @@ jobs:
       - name: Test the migration check
         run: bun test scripts/migration-check.test.ts
 
+      - name: Test the API image pin check
+        run: bun test scripts/check-image-pins.test.ts
+
+      - name: Test the API image scan gate
+        run: bun test scripts/image-scan-gate.test.ts
+
       - name: Audit dependencies
         run: bun run scripts/audit-gate.ts
 
@@ -618,7 +696,8 @@ jobs:
 
   # The docs job runs on a PR only, so nothing on main would ever cache lychee and each docs PR
   # would still fetch it from the release host. This keeps the entry in main's cache, which every PR
-  # can read. It is not part of the aggregate gate: a release host outage here only marks this job.
+  # can read, and does the same for the api image job's Syft and Grype. It is not part of the
+  # aggregate gate: a release host outage here only marks this job.
   release-binary-cache:
     name: release binary cache
     runs-on: ubuntu-24.04
@@ -638,6 +717,34 @@ jobs:
           url: https://github.com/lycheeverse/lychee/releases/download/lychee-v${{ env.LYCHEE_VERSION }}/lychee-x86_64-unknown-linux-gnu.tar.gz
           member: lychee-x86_64-unknown-linux-gnu/lychee
           strip-components: "1"
+
+      - name: Read the Syft and Grype pins
+        id: pins
+        run: |
+          {
+            echo "syft-version=$(jq -er .syft.version scripts/security-tools.json)"
+            echo "syft-sha256=$(jq -er .syft.linuxSha256 scripts/security-tools.json)"
+            echo "grype-version=$(jq -er .grype.version scripts/security-tools.json)"
+            echo "grype-sha256=$(jq -er .grype.linuxSha256 scripts/security-tools.json)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Cache Syft
+        uses: ./.github/actions/release-binary
+        with:
+          name: syft
+          version: ${{ steps.pins.outputs.syft-version }}
+          sha256: ${{ steps.pins.outputs.syft-sha256 }}
+          url: https://github.com/anchore/syft/releases/download/v${{ steps.pins.outputs.syft-version }}/syft_${{ steps.pins.outputs.syft-version }}_linux_amd64.tar.gz
+          member: syft
+
+      - name: Cache Grype
+        uses: ./.github/actions/release-binary
+        with:
+          name: grype
+          version: ${{ steps.pins.outputs.grype-version }}
+          sha256: ${{ steps.pins.outputs.grype-sha256 }}
+          url: https://github.com/anchore/grype/releases/download/v${{ steps.pins.outputs.grype-version }}/grype_${{ steps.pins.outputs.grype-version }}_linux_amd64.tar.gz
+          member: grype
 
   # The docs site and the diagrams embedded in it have no other guard: a broken link, a page that
   # never reaches the sidebar, a failing Mintlify build or a diagram edited without re-rendering
@@ -817,7 +924,7 @@ jobs:
             exit 1
           fi
           if [ "${{ needs.docker.result }}" != "success" ]; then
-            echo "The API image failed to build."
+            echo "The API image failed to build, boot, or pass its pin check or vulnerability scan."
             exit 1
           fi
           if [ "${{ needs.prettier.result }}" != "success" ]; then
