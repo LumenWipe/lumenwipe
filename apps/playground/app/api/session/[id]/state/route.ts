@@ -1,9 +1,11 @@
 import { NextRequest } from "next/server";
-import { LumenWipeClient } from "@lumenwipe/sdk";
+import { readClient } from "@/lib/api-clients";
 import { sessionStore } from "@/lib/session-store";
 import { handleState } from "@/lib/route-handlers";
 
-export const maxDuration = 30;
+// Two reads at the SDK's timeout and the wait between them (READ_RETRY_ROUTE_BUDGET_MS), under
+// the session lock's TTL.
+export const maxDuration = 125;
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -14,7 +16,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       apiKey: process.env.LUMENWIPE_API_KEY,
     }),
     accountReader: (baseUrl, apiKey) => {
-      const client = new LumenWipeClient({ baseUrl, apiKey, network: "testnet" });
+      const client = readClient(baseUrl, apiKey);
       return (publicKey) => client.getAccount(publicKey);
     },
   });

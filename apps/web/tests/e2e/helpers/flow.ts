@@ -77,21 +77,28 @@ export const TESTNET_STEP_TIMEOUT = 30_000;
 const API_REQUEST_DEADLINE = 40_000;
 
 /**
- * Budget for the account read the analyze page makes on arrival: one request at the API's
- * deadline, plus room for the page to render what it read. Normal on testnet is 4.5 to 7.3 s;
- * the deadline is what a slow upstream is allowed to take.
+ * The longest the page waits after a busy answer (a 503) before its one automatic retry:
+ * `BUSY_RETRY_MAX_WAIT_SECONDS` in apps/web/lib/api/busy-retry.ts, the API's own `Retry-After`.
  */
-export const TESTNET_ANALYZE_TIMEOUT = API_REQUEST_DEADLINE + 20_000;
+export const BUSY_RETRY_WAIT = 30_000;
+
+/**
+ * Budget for the account read and plan the analyze page makes on arrival: a busy answer at the
+ * API's deadline, the wait, and the retry at the deadline, plus room for the page to render what
+ * it read. Normal on testnet is 4.5 to 7.3 s; the deadline is what a slow upstream is allowed to
+ * take, and a busy answer has so far come within 7 s.
+ */
+export const TESTNET_ANALYZE_TIMEOUT = 2 * API_REQUEST_DEADLINE + BUSY_RETRY_WAIT + 10_000;
 
 /**
  * Budget for a step that waits on two sequential API requests: analyze -> review (the
  * destination check, then the plan), and review -> execute, where `refreshReviewedPlan` reads the
- * account and then plans again before the page moves on. Two requests at the 40 s deadline is
- * 80 s; the rest is navigation and render. Normal on testnet is 6.4 to 7.5 s for analyze ->
- * review and about 11 s for review -> execute, so this only matters when an upstream is slow -
- * and then the 30 s step budget failed while the API was still inside its own deadline.
+ * account and plans again before the page moves on. Two requests at the 40 s deadline is 80 s,
+ * and one busy answer in the step adds the wait and one more request; the rest is navigation and
+ * render. Normal on testnet is 6.4 to 7.5 s for analyze -> review and about 11 s for review ->
+ * execute, so this only matters when an upstream is slow or busy.
  */
-export const TESTNET_PLAN_TIMEOUT = 2 * API_REQUEST_DEADLINE + 10_000;
+export const TESTNET_PLAN_TIMEOUT = 3 * API_REQUEST_DEADLINE + BUSY_RETRY_WAIT + 10_000;
 
 /**
  * Where a finished testnet close lands: its saved receipt, or the completion page when the

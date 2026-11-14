@@ -27,6 +27,12 @@ const SEQUENCE = "100";
  *  during render and the network error boundary takes over. */
 export const UNRENDERABLE_ACCOUNT = Keypair.random().publicKey();
 
+/** An account whose read is always busy, asking for 30 seconds: the page waits, then says so. */
+export const BUSY_ACCOUNT = Keypair.random().publicKey();
+
+/** An account whose first read is busy for a second and whose next read answers. */
+export const BUSY_ONCE_ACCOUNT = Keypair.random().publicKey();
+
 /** An account holding one Soroban token whose only quote is flagged for its price impact, so
  *  the analyze page shows the conversion's warning and its confirmation checkbox. */
 export const FLAGGED_TOKEN_ACCOUNT = Keypair.random().publicKey();
@@ -391,8 +397,27 @@ function delivered(query: URLSearchParams): CloseDeliveredResponse {
   };
 }
 
-function json(route: Route, body: unknown, status = 200): Promise<void> {
-  return route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
+function json(
+  route: Route,
+  body: unknown,
+  status = 200,
+  headers?: Record<string, string>
+): Promise<void> {
+  return route.fulfill({
+    status,
+    headers,
+    contentType: "application/json",
+    body: JSON.stringify(body),
+  });
+}
+
+function busy(route: Route, retryAfter: string): Promise<void> {
+  return json(
+    route,
+    { error: { code: "service_unavailable", message: "The service is temporarily unavailable." } },
+    503,
+    { "Retry-After": retryAfter }
+  );
 }
 
 function txHash(signedXdr: string): string {
@@ -425,6 +450,7 @@ export const ESTIMATE: RecoveryEstimate = {
 
 export async function installApiFixtures(page: Page): Promise<{ expectAllAnswered(): void }> {
   const unanswered: string[] = [];
+  let busyOnceReads = 0;
 
   await page.route(WALLET_CONNECT_HOSTS, (route) => route.abort());
   await page.routeWebSocket(WALLET_CONNECT_HOSTS, (socket) => socket.close());
@@ -443,6 +469,8 @@ export async function installApiFixtures(page: Page): Promise<{ expectAllAnswere
       if (address === FLAGGED_TOKEN_ACCOUNT) return json(route, flaggedTokenAccount(address));
       if (address === OUTCOMES_ACCOUNT) return json(route, outcomesAccount(address));
       if (address === COSIGN_ACCOUNT) return json(route, cosignAccount(address));
+      if (address === BUSY_ACCOUNT) return busy(route, "30");
+      if (address === BUSY_ONCE_ACCOUNT && busyOnceReads++ === 0) return busy(route, "1");
       return json(route, accountState(address));
     }
     if (method === "POST" && pathname === "/api/v1/testnet/close/plan") {

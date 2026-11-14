@@ -3,6 +3,7 @@ import type { Network } from "@/config/networks";
 import type { AccountState } from "@/types/account";
 import type { ClaimableBalanceSelection } from "@/types/plan";
 import { readApiError, UserFacingError } from "@/lib/utils/user-error";
+import { retryOnceWhenBusy, type BusyRetryOptions } from "@/lib/api/busy-retry";
 
 /** The claim answers the analysis carries, keyed by claimable-balance id. */
 export type ClaimAnswers = Record<string, ClaimableBalanceSelection>;
@@ -27,17 +28,22 @@ export interface Analysis {
   plan: PlanResponse;
 }
 
-/** The one account read of an analysis. A rejection is shown through `toUserMessage`. */
+/** The one account read of an analysis. A rejection is shown through `toUserMessage`. With
+ *  `busy`, a busy answer is waited out and the read made once more. */
 export async function readAccount(
   network: Network,
   source: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  busy?: BusyRetryOptions
 ): Promise<AccountState> {
-  const res = await fetch(`/api/${network}/account/${source}`, { signal }).catch(() => {
-    throw new UserFacingError("Failed to connect to the Stellar network. Please try again.");
-  });
-  if (!res.ok) throw await readApiError(res);
-  return (await res.json()) as AccountState;
+  const once = async (): Promise<AccountState> => {
+    const res = await fetch(`/api/${network}/account/${source}`, { signal }).catch(() => {
+      throw new UserFacingError("Failed to connect to the Stellar network. Please try again.");
+    });
+    if (!res.ok) throw await readApiError(res);
+    return (await res.json()) as AccountState;
+  };
+  return busy ? retryOnceWhenBusy(once, busy) : once();
 }
 
 /**

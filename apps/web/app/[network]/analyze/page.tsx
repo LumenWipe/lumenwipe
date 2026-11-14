@@ -12,6 +12,9 @@ import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import { fetchClosePlan } from "@/lib/api/close-client";
 import { loadAnalysis, readAccount, type ClaimAnswers } from "@/lib/api/analyze-client";
+import type { BusyRetryOptions } from "@/lib/api/busy-retry";
+import { useBusyWait } from "@/hooks/useBusyWait";
+import BusyRetryNotice from "@/components/plan/BusyRetryNotice";
 import {
   claimAnswersKey,
   claimableSelectionsToDecisions,
@@ -144,9 +147,26 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
   const knownTokens = useRef<string[] | null>(null);
   const plannedAnswers = useRef<string | null>(null);
   const readTarget = useRef<string | null>(null);
+  const { seconds: busySeconds, reporter, stopSignal, stop: stopWaiting } = useBusyWait();
+  // A newer request of the same kind ends the older one's wait for a busy service. A re-plan
+  // leaves a reload's alone: that reload still reads the account.
+  const reloadWait = useRef<AbortController | null>(null);
+  const replanWait = useRef<AbortController | null>(null);
+  const waitFor = useCallback(
+    (owner: AbortController): BusyRetryOptions => ({
+      signal: owner.signal,
+      stop: stopSignal(),
+      onWait: reporter(),
+    }),
+    [reporter, stopSignal]
+  );
 
   const requestPlan = useCallback(
-    (answers: ClaimAnswers, tokens: readonly string[] = []): Promise<PlanResponse> => {
+    (
+      answers: ClaimAnswers,
+      tokens: readonly string[] = [],
+      busy?: BusyRetryOptions
+    ): Promise<PlanResponse> => {
       const state = useDemolishStore.getState();
       plannedAnswers.current = planAnswersKey(state);
       const planSource = effectiveSource as string;
@@ -167,7 +187,9 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
             ...positionsLeftBehindToDecisions(state.positionsLeftBehind, planSource),
           ],
         },
-        routeNetwork
+        routeNetwork,
+        undefined,
+        busy
       );
     },
     [effectiveSource, routeNetwork]
@@ -231,6 +253,10 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
     const seq = ++fetchSeq.current;
     const isStale = () => fetchSeq.current !== seq;
     const reading = ++accountSeq.current;
+    replanWait.current?.abort();
+    reloadWait.current?.abort();
+    const waits = new AbortController();
+    reloadWait.current = waits;
 
     // Set when the account read itself failed, so its own message survives the catch below
     // instead of being flattened into the generic one.
@@ -239,10 +265,12 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
     try {
       const { plan } = await loadAnalysis({
         fetchAccount: () =>
-          readAccount(routeNetwork, effectiveSource).catch((err: unknown) => {
-            accountError = toUserMessage(err, "analyze");
-            throw err;
-          }),
+          readAccount(routeNetwork, effectiveSource, undefined, waitFor(waits)).catch(
+            (err: unknown) => {
+              accountError = toUserMessage(err, "analyze");
+              throw err;
+            }
+          ),
         // The API derives blockers and per-asset convertibility (via server-side path
         // finding) from a plan built with no destination yet. The final plan is requested
         // with the destination + decisions when the user asks to review the full plan.
@@ -259,7 +287,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
         // `tokens` is empty on the first call - it runs alongside the account read, so nothing
         // is known yet - and carries what the account turned out to hold on the re-plan
         // loadAnalysis makes when the first plan could not have known about them.
-        fetchPlan: requestPlan,
+        fetchPlan: (answers, tokens) => requestPlan(answers, tokens, waitFor(waits)),
         // Loaded here, not at signing time: verify() is synchronous and runs immediately before
         // the signature, so it cannot await a fetch at that moment. A failure leaves the bundled
         // floor in place; whether that floor may be relied on is decided separately by its own
@@ -315,7 +343,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
         loadedSource.current = effectiveSource;
       }
     }
-  }, [effectiveSource, routeNetwork, router, setAccountState, requestPlan, showPlan]);
+  }, [effectiveSource, routeNetwork, router, setAccountState, requestPlan, showPlan, waitFor]);
 
   const replan = useCallback(
     async (tokens: readonly string[]) => {
@@ -324,10 +352,14 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
       setError(null);
       const seq = ++fetchSeq.current;
       const isStale = () => fetchSeq.current !== seq;
+      replanWait.current?.abort();
+      const waits = new AbortController();
+      replanWait.current = waits;
       try {
         const plan = await requestPlan(
           useDemolishStore.getState().claimableBalanceSelections,
-          tokens
+          tokens,
+          waitFor(waits)
         );
         if (isStale()) return;
         showPlan(plan);
@@ -341,7 +373,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
         if (!isStale()) setReplanning(false);
       }
     },
-    [requestPlan, showPlan]
+    [requestPlan, showPlan, waitFor]
   );
 
   // This tab's saved inputs for the account go back in before the plan is requested, so the first
@@ -384,10 +416,13 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
 
   if (loading) {
     return (
-      <div role="status" className="max-w-2xl mx-auto px-4 py-20 flex flex-col items-center gap-4">
-        <Loader2 aria-hidden="true" className="h-8 w-8 animate-spin text-accent" />
-        <p className="text-fg-muted text-sm">Analyzing account...</p>
-        <p className="text-xs text-fg-muted/60 font-mono truncate max-w-xs">{effectiveSource}</p>
+      <div className="max-w-2xl mx-auto px-4 py-20 flex flex-col items-center gap-4">
+        <div role="status" className="flex flex-col items-center gap-4">
+          <Loader2 aria-hidden="true" className="h-8 w-8 animate-spin text-accent" />
+          <p className="text-fg-muted text-sm">Analyzing account...</p>
+          <p className="text-xs text-fg-muted/60 font-mono truncate max-w-xs">{effectiveSource}</p>
+        </div>
+        <BusyRetryNotice seconds={busySeconds} onStop={stopWaiting} />
       </div>
     );
   }
@@ -404,12 +439,24 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
           title="Analysis failed"
           className="flex-col items-center p-6 text-center"
           action={
-            <Link
-              href={`/${routeNetwork}`}
-              className="inline-flex items-center gap-1.5 text-sm text-accent hover:underline"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" /> Go back
-            </Link>
+            <div className="flex flex-wrap items-center justify-center gap-4">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  loadedSource.current = null;
+                  void reload();
+                }}
+              >
+                Try again
+              </Button>
+              <Link
+                href={`/${routeNetwork}`}
+                className="inline-flex items-center gap-1.5 text-sm text-accent hover:underline"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" /> Go back
+              </Link>
+            </div>
           }
         >
           {error}
@@ -471,6 +518,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
           {planChangedNotice}
         </Callout>
       )}
+      <BusyRetryNotice seconds={busySeconds} onStop={stopWaiting} />
       {/* Kept through a retry, which clears the error: the plan is stale until one succeeds. */}
       {staleFrom !== null ? (
         <Callout

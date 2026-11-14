@@ -167,6 +167,12 @@ export function retryWhen(seconds: number | undefined): string {
   return `Try again in about ${minutes} ${minutes === 1 ? "minute" : "minutes"}.`;
 }
 
+/** Shown while the page waits out a busy answer before asking once more on its own. */
+export function busyRetryNotice(seconds: number): string {
+  const when = seconds <= 0 ? "now" : `in about ${seconds} ${seconds === 1 ? "second" : "seconds"}`;
+  return `${PROVIDER_BUSY} LumenWipe will try again on its own ${when}.`;
+}
+
 /** A 503: the API, or a data provider behind it, is rate limited, too slow or unavailable. */
 function isServiceBusy(err: unknown): err is ApiRequestError | LumenWipeApiError {
   return (err instanceof ApiRequestError || err instanceof LumenWipeApiError) && err.status === 503;
