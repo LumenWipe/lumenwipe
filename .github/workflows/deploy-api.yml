@@ -62,13 +62,58 @@ jobs:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ env.DOCKERHUB_TOKEN }}
 
-      - name: Build and push image
+      - name: Build image
         run: |
-          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
           # Cloud Run needs a plain linux/amd64 image manifest: --provenance=false
           # avoids BuildKit's OCI image-index + attestation manifest that Cloud Run rejects.
+          # The SBOM is written by Syft in the steps below instead of as a BuildKit attestation,
+          # so the pushed manifest stays the plain one.
           docker build --platform linux/amd64 --provenance=false --build-arg GIT_SHA="$GITHUB_SHA" -f apps/api/Dockerfile -t "$IMAGE" .
+
+      # Every deployed image is inventoried: the SBOM is written from the image just built, before it
+      # is pushed, and a failure here stops the deploy rather than shipping an image with no record.
+      # Syft comes from main's Actions cache (ci.yml, release binary cache). No vulnerability gate
+      # here: CI already scanned this commit, and an advisory published since must not block a fix.
+      - name: Read the Syft pin
+        id: pins
+        run: |
+          {
+            echo "syft-version=$(jq -er .syft.version scripts/security-tools.json)"
+            echo "syft-sha256=$(jq -er .syft.linuxSha256 scripts/security-tools.json)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Install Syft
+        uses: ./.github/actions/release-binary
+        with:
+          name: syft
+          version: ${{ steps.pins.outputs.syft-version }}
+          sha256: ${{ steps.pins.outputs.syft-sha256 }}
+          url: https://github.com/anchore/syft/releases/download/v${{ steps.pins.outputs.syft-version }}/syft_${{ steps.pins.outputs.syft-version }}_linux_amd64.tar.gz
+          member: syft
+
+      - name: Write the SBOM
+        env:
+          SYFT_CHECK_FOR_APP_UPDATE: "false"
+        run: |
+          mkdir -p image-report
+          ./syft scan "docker:${IMAGE}" --quiet -o spdx-json=image-report/sbom.spdx.json
+
+      - name: Push image
+        run: |
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
           docker push "$IMAGE"
+          # The registry digest is what Cloud Run resolves the tag to, so it is what the SBOM describes.
+          digest="$(docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE")"
+          echo "$digest" > image-report/digest.txt
+          echo "Pushed \`${digest}\`; its SBOM is the api-image-sbom-${GITHUB_SHA} artifact." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the SBOM
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: api-image-sbom-${{ github.sha }}
+          path: image-report/
+          retention-days: 90
+          if-no-files-found: error
 
       # Deploys the image as a revision with no traffic, smoke tests it on its tagged URL and only
       # then promotes it; see RELEASING.md (apps/api) for each outcome and the manual rollback.

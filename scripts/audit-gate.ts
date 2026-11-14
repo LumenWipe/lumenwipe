@@ -108,6 +108,24 @@ function toDay(value: string): number {
 }
 
 export function evaluate(report: AuditReport, allowlist: AllowlistEntry[], today: string): Verdict {
+  const findings: Finding[] = Object.entries(report).flatMap(([pkg, list]) =>
+    list.map((a) => ({
+      package: pkg,
+      advisory: advisoryId(a.url),
+      severity: a.severity,
+      title: a.title,
+    }))
+  );
+  return evaluateFindings(findings, allowlist, today);
+}
+
+// The allowlist rules on their own, so another scanner's findings (scripts/image-scan-gate.ts) go
+// through the same review window, expiry and stale-entry checks as the dependency audit's.
+export function evaluateFindings(
+  findings: Finding[],
+  allowlist: AllowlistEntry[],
+  today: string
+): Verdict {
   const verdict: Verdict = {
     failures: [],
     allowed: [],
@@ -118,15 +136,6 @@ export function evaluate(report: AuditReport, allowlist: AllowlistEntry[], today
   };
   const now = toDay(today);
   const live = new Set<string>();
-
-  const findings: Finding[] = Object.entries(report).flatMap(([pkg, list]) =>
-    list.map((a) => ({
-      package: pkg,
-      advisory: advisoryId(a.url),
-      severity: a.severity,
-      title: a.title,
-    }))
-  );
   for (const f of findings) live.add(`${f.package}|${f.advisory}`);
 
   for (const entry of allowlist) {
@@ -194,6 +203,22 @@ function print(title: string, findings: Finding[]): void {
     console.log(`  ${f.severity.padEnd(8)} ${f.package}  ${f.advisory}  ${f.title}`);
 }
 
+// Prints a verdict and returns whether the gate passed. Shared with scripts/image-scan-gate.ts.
+export function printVerdict(verdict: Verdict, gate: string, subject: string): boolean {
+  print(`Blocking ${subject} (high or critical, not allowlisted)`, verdict.failures);
+  print(`Allowlisted ${subject} (reviewed, with expiry)`, verdict.allowed);
+  print("Below the gate threshold (informational)", verdict.informational);
+  for (const e of verdict.expired)
+    console.log(`\nExpired allowlist entry: ${e.package} ${e.advisory} (${e.expires})`);
+  for (const e of verdict.stale)
+    console.log(`\nStale allowlist entry, remove it: ${e.package} ${e.advisory}`);
+  for (const message of verdict.invalid) console.log(`\nInvalid allowlist entry: ${message}`);
+
+  const passed = isPassing(verdict);
+  console.log(`\n${gate} ${passed ? "passed" : "failed"}.`);
+  return passed;
+}
+
 function main(): number {
   const dir = dirname(fileURLToPath(import.meta.url));
   const allowlist = parseAllowlist(readFileSync(join(dir, "audit-allowlist.json"), "utf8"));
@@ -206,22 +231,7 @@ function main(): number {
     return 1;
   }
   const verdict = evaluate(report, allowlist, new Date().toISOString().slice(0, 10));
-
-  print("Blocking advisories (high or critical, not allowlisted)", verdict.failures);
-  print("Allowlisted advisories (reviewed, with expiry)", verdict.allowed);
-  print("Below the gate threshold (informational)", verdict.informational);
-  for (const e of verdict.expired)
-    console.log(`\nExpired allowlist entry: ${e.package} ${e.advisory} (${e.expires})`);
-  for (const e of verdict.stale)
-    console.log(`\nStale allowlist entry, remove it: ${e.package} ${e.advisory}`);
-  for (const message of verdict.invalid) console.log(`\nInvalid allowlist entry: ${message}`);
-
-  if (isPassing(verdict)) {
-    console.log("\nAudit gate passed.");
-    return 0;
-  }
-  console.log("\nAudit gate failed.");
-  return 1;
+  return printVerdict(verdict, "Audit gate", "advisories") ? 0 : 1;
 }
 
 if (import.meta.main) process.exit(main());

@@ -42,6 +42,17 @@ needed for an emergency rollback - it's already built.
 touches `apps/api/**`, `packages/**`, or root workspace config. Like web, this is continuous: there
 is no version-triggered gate, and a merge to `main` is a deploy.
 
+The image is built from pinned inputs: `apps/api/Dockerfile` names its syntax frontend and both
+base images as `name:version@sha256:...`, the Bun and Node versions are the ones in
+`.tool-versions`, and Renovate moves tag and digest together (`scripts/check-image-pins.ts` fails CI
+on any drift). CI's `api image` job writes an SPDX SBOM of the image with Syft and fails on a high or
+critical Grype finding not covered by `scripts/image-scan-allowlist.json`, whose entries carry a
+reason and expire within 92 days. Each deploy run writes the SBOM of the image it pushes, before the
+push, and records its registry digest, as the `api-image-sbom-<commit>` artifact; it does not scan
+again. Two builds of one commit install the same Debian packages and byte-identical files under
+`/app`; their layer digests still differ, because the build records file times, so the image is
+reproducible in content, not bit for bit.
+
 Two different "versions" exist for the API and they answer different questions:
 
 - **`API_VERSION`** (`apps/api/src/openapi.ts`) - a human-readable marker shown in the OpenAPI
