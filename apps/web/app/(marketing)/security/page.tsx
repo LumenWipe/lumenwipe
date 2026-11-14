@@ -9,24 +9,32 @@ import {
   Network,
   ShieldCheck,
 } from "lucide-react";
+import {
+  CHECK_STATEMENT,
+  KEY_STATEMENT,
+  SERVER_KEYS,
+  SERVER_KEYS_INTRO,
+  serverKeyScope,
+  VERIFY_SOURCE_URL,
+} from "@/lib/site/trust";
 
 export const metadata: Metadata = {
   title: "Security - LumenWipe",
   description:
-    "LumenWipe builds transactions that drain accounts irreversibly, so the design starts from that fact. Keys are created and used only in your browser; the read-only backend can never move your funds.",
+    "How LumenWipe keeps your key in your browser, what its API builds, what your browser checks before you sign, and the two server keys and what each may sign.",
 };
 
 const LAYERS = [
   {
     label: "Your browser",
-    sub: "Wallet · transaction builder · signing · session",
-    note: "keys live here",
+    sub: "Wallet · transaction check · signing · session",
+    note: "your key stays here",
     key: true,
   },
   {
-    label: "Read-only backend",
-    sub: "Account analysis · DeFi adapters · routing · cache",
-    note: "co-sign only · no custody",
+    label: "LumenWipe API",
+    sub: "Account reads · DeFi adapters · builds unsigned transactions · relay and fee-sponsor keys",
+    note: "never holds your key",
   },
   {
     label: "Stellar network & data",
@@ -53,8 +61,8 @@ const GUARANTEES = [
   },
   {
     icon: Server,
-    title: "Backend compromise",
-    body: "Its only key is the shared relay account, which can't sign for your account or divert funds (the forwarding payment is atomic and validated). Wrong read data is caught by simulation and confirmations.",
+    title: "API compromise",
+    body: "It holds no key that can sign for your account, and your browser checks the operations and destination of every transaction it builds before you sign. Figures your browser can only take from the API's own reads, such as a conversion quote, are shown for you to accept.",
   },
   {
     icon: Network,
@@ -76,9 +84,19 @@ export default function SecurityPage() {
         </h1>
         <p className="mt-5 text-body leading-relaxed text-white/70">
           LumenWipe builds transactions that drain accounts irreversibly, so the design starts from
-          that fact. Your keys are created and used only in your browser and never reach a server.
-          The backend can&apos;t touch your account: its one signing key is the shared exchange
-          relay account, which can only co-sign a forwarding payment you already authorized.
+          that fact. {KEY_STATEMENT} {CHECK_STATEMENT}
+        </p>
+        <p className="mt-4 text-body leading-relaxed text-white/70">
+          The check is open source:{" "}
+          <a
+            href={VERIFY_SOURCE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-accent underline underline-offset-4"
+          >
+            read verify.ts on GitHub<span className="sr-only"> (opens in a new tab)</span>
+          </a>
+          .
         </p>
       </div>
 
@@ -107,7 +125,8 @@ export default function SecurityPage() {
             </div>
           ))}
           <p className="mkt-mono flex items-center gap-2 pt-2 text-caption text-fg-subtle">
-            <ShieldCheck className="h-3.5 w-3.5 text-accent" />0 servers can move your funds
+            <ShieldCheck className="h-3.5 w-3.5 text-accent" aria-hidden="true" />
+            Your key stays in your browser
           </p>
         </div>
 
@@ -127,6 +146,21 @@ export default function SecurityPage() {
             </li>
           ))}
         </ul>
+      </div>
+
+      <div className="mt-12 max-w-3xl">
+        <h2 className="mkt-display text-2xl font-bold text-white">Keys on the server</h2>
+        <p className="mt-3 text-body leading-relaxed text-white/70">{SERVER_KEYS_INTRO}</p>
+        <dl className="mt-5 space-y-4">
+          {SERVER_KEYS.map((key) => (
+            <div key={key.name} className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
+              <dt className="text-sm font-semibold text-white">{key.name}</dt>
+              <dd className="mt-1 text-sm leading-relaxed text-fg-muted">
+                {key.statement} {serverKeyScope(key)}
+              </dd>
+            </div>
+          ))}
+        </dl>
       </div>
 
       <div className="mt-12 flex flex-wrap items-center gap-3">

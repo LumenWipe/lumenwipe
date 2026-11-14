@@ -2,17 +2,18 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Check } from "lucide-react";
+import { BASE_RESERVE_XLM, MINIMUM_BALANCE_RESERVES } from "@/lib/site/reserve";
 
 type Row = { n: string; label: string; amount: number };
 
-// Reserve released per step (step 04 is the swap, it frees no reserve itself).
+// Reserve released per step of an example account (step 04 is the swap, it frees no reserve).
 const ROWS: Row[] = [
-  { n: "01", label: "Normalize signers", amount: 0.5 },
-  { n: "02", label: "Clear data entries", amount: 0.5 },
-  { n: "03", label: "Cancel open offers", amount: 1.0 },
+  { n: "01", label: "Normalize signers", amount: 1 * BASE_RESERVE_XLM },
+  { n: "02", label: "Clear data entries", amount: 1 * BASE_RESERVE_XLM },
+  { n: "03", label: "Cancel open offers", amount: 2 * BASE_RESERVE_XLM },
   { n: "04", label: "Convert assets to XLM", amount: 0 },
-  { n: "05", label: "Remove trustlines", amount: 2.0 },
-  { n: "06", label: "Merge to destination", amount: 1.0 },
+  { n: "05", label: "Remove trustlines", amount: 4 * BASE_RESERVE_XLM },
+  { n: "06", label: "Merge to destination", amount: MINIMUM_BALANCE_RESERVES * BASE_RESERVE_XLM },
 ];
 
 const TOTAL = ROWS.reduce((s, r) => s + r.amount, 0);
@@ -128,9 +129,8 @@ export default function HeroConsole() {
               style={{ width: `${pct}%` }}
             />
           </div>
-          <p className="mt-3 text-label leading-normal text-fg-subtle">
-            {active} of {ROWS.length} steps · {TOTAL.toFixed(2)} XLM total · 0 servers can move
-            funds
+          <p className="mt-3 text-label leading-normal text-fg-muted">
+            Example account · {active} of {ROWS.length} steps · {TOTAL.toFixed(2)} XLM total
           </p>
         </div>
       </div>

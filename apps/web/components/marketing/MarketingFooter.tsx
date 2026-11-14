@@ -54,7 +54,7 @@ export default function MarketingFooter() {
             <Logo />
             <p className="mt-4 max-w-xs text-sm leading-relaxed text-white/65">
               Close any Stellar account cleanly and recover the XLM locked in its reserves.
-              Non-custodial, client-side, open source.
+              Non-custodial, signed in your browser, open source.
             </p>
             <div className="mt-5 flex items-center gap-2">
               <a
@@ -94,8 +94,8 @@ export default function MarketingFooter() {
         </div>
 
         <div className="mt-12 flex flex-col items-start justify-between gap-3 border-t border-white/8 pt-6 text-xs text-fg-muted sm:flex-row sm:items-center">
-          <p>© {2026} LumenWipe · Open source under Apache 2.0.</p>
-          <p className="mkt-mono">Non-custodial · Client-side signing</p>
+          <p>© {new Date().getUTCFullYear()} LumenWipe · Open source under Apache 2.0.</p>
+          <p className="mkt-mono">Non-custodial · Signed in your browser</p>
         </div>
       </div>
     </footer>

@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import Reveal from "@/components/marketing/Reveal";
 import Faq from "@/components/marketing/Faq";
+import { LIVE_EXIT_PROTOCOLS } from "@/lib/site/status";
 
 export const metadata: Metadata = {
   title: "How it works",
@@ -73,9 +74,9 @@ const STEPS = [
   },
   {
     icon: Layers,
-    title: "Exit AMM & DeFi positions",
-    body: "Withdraw from classic liquidity pools and every supported Soroban protocol, repaying loans and unstaking first where needed, via each protocol's own adapter.",
-    op: "LiquidityPoolWithdraw · Blend · Aquarius · Soroswap · Phoenix · FxDAO",
+    title: "Exit DeFi positions",
+    body: "Exit every supported Soroban protocol position, repaying loans and unstaking first where needed, via each protocol's own adapter. Classic AMM pool shares are reported as a blocker to withdraw elsewhere first.",
+    op: `InvokeHostFunction · ${LIVE_EXIT_PROTOCOLS.map((p) => p.name).join(" · ")}`,
   },
   {
     icon: ArrowLeftRight,
@@ -323,19 +324,19 @@ export default function HowItWorksPage() {
               {[
                 {
                   l: "Browser",
-                  s: "UI · wallet · tx builder · session",
-                  note: "keys never leave",
+                  s: "UI · wallet · transaction check · signing · session",
+                  note: "your key stays here",
                   tone: true,
                 },
                 {
-                  l: "Read-only backend",
-                  s: "analysis · DeFi adapters · routing · cache",
-                  note: "no custody",
+                  l: "LumenWipe API",
+                  s: "reads · DeFi adapters · routing · builds unsigned transactions",
+                  note: "never holds your key",
                 },
                 {
                   l: "Stellar network",
                   s: "Stellar RPC · stellar.expert · Soroswap",
-                  note: "read-only",
+                  note: "read · submit",
                 },
               ].map((row) => (
                 <div
