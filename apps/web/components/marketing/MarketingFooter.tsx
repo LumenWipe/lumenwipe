@@ -94,7 +94,7 @@ export default function MarketingFooter() {
         </div>
 
         <div className="mt-12 flex flex-col items-start justify-between gap-3 border-t border-white/8 pt-6 text-xs text-fg-muted sm:flex-row sm:items-center">
-          <p>© {2026} LumenWipe · Open source under Apache 2.0.</p>
+          <p>© {new Date().getUTCFullYear()} LumenWipe · Open source under Apache 2.0.</p>
           <p className="mkt-mono">Non-custodial · Signed in your browser</p>
         </div>
       </div>

@@ -65,8 +65,8 @@ export default function StatsHero({ feed }: { feed: FeedData | null }) {
   const testnetCount = feed?.totals.testnet ?? 0;
   const xlmStroops = feed?.totals.mainnetXlmStroops ?? "0";
 
-  const closedCount = useCountUp(mainnetCount + testnetCount);
   const mainnetClosedCount = useCountUp(mainnetCount);
+  const testnetClosedCount = useCountUp(testnetCount);
 
   const xlmNum = feed ? parseFloat(stroopsToXlm(xlmStroops || "0")) : 0;
   const xlmAnimated = useCountUp(Math.round(xlmNum));
@@ -77,9 +77,11 @@ export default function StatsHero({ feed }: { feed: FeedData | null }) {
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
       <StatCard
-        label="Accounts closed"
-        value={feed ? closedCount.toLocaleString() : null}
-        sub={feed ? `${mainnetClosedCount.toLocaleString()} on mainnet` : undefined}
+        label="Accounts closed on mainnet"
+        value={feed ? mainnetClosedCount.toLocaleString() : null}
+        sub={
+          feed ? `Testnet, counted separately: ${testnetClosedCount.toLocaleString()}` : undefined
+        }
       />
       <StatCard
         label="XLM recovered on mainnet"
@@ -90,7 +92,7 @@ export default function StatsHero({ feed }: { feed: FeedData | null }) {
       <StatCard
         label="Avg per mainnet close"
         value={feed ? (avg ? `${avg} XLM` : "-") : null}
-        sub="Median reserve released per merge"
+        sub="Mean XLM recovered per mainnet close"
       />
     </div>
   );

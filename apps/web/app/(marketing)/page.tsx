@@ -14,6 +14,7 @@ import Faq from "@/components/marketing/Faq";
 import Reveal from "@/components/marketing/Reveal";
 import HeroConsole from "@/components/marketing/HeroConsole";
 import HeroAccountInput from "@/components/marketing/HeroAccountInput";
+import { RESERVE_EXAMPLE, RESERVE_EXAMPLE_TOTAL, STATS, monthYear } from "@/lib/site/numbers";
 import {
   feature,
   LIVE_EXIT_PROTOCOLS,
@@ -44,20 +45,6 @@ const FEATURE_ICONS: Record<(typeof CARD_IDS)[number], LucideIcon> = {
 
 const APP = "/mainnet";
 const TESTNET = "/testnet";
-
-const STATS = [
-  { n: "10M+", l: "accounts on Stellar mainnet" },
-  { n: "1 + 0.5n", l: "XLM locked per account" },
-  { n: "7", l: "DeFi protocols mapped" },
-  { n: "0", l: "servers that can move your funds" },
-];
-
-const RESERVE = [
-  { label: "Account minimum", xlm: "1.00", w: 20 },
-  { label: "4 trustlines", xlm: "2.00", w: 40 },
-  { label: "2 open offers", xlm: "1.00", w: 20 },
-  { label: "1 data entry · 1 signer", xlm: "1.00", w: 20 },
-];
 
 const TRUTHS = [
   {
@@ -142,17 +129,37 @@ export default function LandingPage() {
 
       {/* ============================ STAT BAND ============================ */}
       <div className="border-y border-white/[0.07]">
-        <div className="mx-auto grid max-w-6xl grid-cols-2 divide-white/[0.07] px-5 lg:grid-cols-4 lg:divide-x lg:px-8">
+        <dl className="mx-auto grid max-w-6xl grid-cols-1 divide-white/[0.07] px-5 sm:grid-cols-3 sm:divide-x lg:px-8">
           {STATS.map((s, i) => (
             <div
-              key={s.l}
-              className={`px-4 py-6 ${i >= 2 ? "border-t border-white/[0.07] lg:border-t-0" : ""}`}
+              key={s.label}
+              className={`flex flex-col px-4 py-6 ${i > 0 ? "border-t border-white/[0.07] sm:border-t-0" : ""}`}
             >
-              <div className="mkt-display text-2xl font-bold text-value sm:text-3xl">{s.n}</div>
-              <div className="mt-1 text-label leading-snug text-fg-muted">{s.l}</div>
+              <dt className="order-2 mt-1 text-label leading-snug text-fg-muted">{s.label}</dt>
+              <dd className="order-1 mkt-display text-2xl font-bold text-value sm:text-3xl">
+                {s.value}
+              </dd>
+              <dd className="order-3 mt-2 mkt-mono text-caption text-fg-muted">
+                {s.source.kind === "external" ? (
+                  <>
+                    As of {monthYear(s.source.asOf)} ·{" "}
+                    <a
+                      href={s.source.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline underline-offset-4 hover:text-white"
+                    >
+                      Source: {s.source.label}
+                      <span className="sr-only"> (opens in a new tab)</span>
+                    </a>
+                  </>
+                ) : (
+                  "From the contract registry"
+                )}
+              </dd>
             </div>
           ))}
-        </div>
+        </dl>
       </div>
 
       {/* ============================ PROBLEM ============================ */}
@@ -173,19 +180,19 @@ export default function LandingPage() {
           <Reveal className="mkt-card p-6">
             <div className="flex items-center justify-between">
               <span className="mkt-eyebrow text-fg-subtle">Locked reserve</span>
-              <span className="mkt-mono text-xs text-fg-subtle">example account</span>
+              <span className="mkt-mono text-caption text-fg-muted">Example account</span>
             </div>
             <div className="mt-5 space-y-3.5">
-              {RESERVE.map((r) => (
+              {RESERVE_EXAMPLE.map((r) => (
                 <div key={r.label}>
                   <div className="flex items-baseline justify-between text-sm">
                     <span className="text-white/75">{r.label}</span>
-                    <span className="mkt-mono text-value tabular-nums">{r.xlm}</span>
+                    <span className="mkt-mono text-value tabular-nums">{r.xlm.toFixed(2)}</span>
                   </div>
                   <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-white/[0.08]">
                     <div
                       className="h-full rounded-full bg-value"
-                      style={{ width: `${r.w * 2}%` }}
+                      style={{ width: `${(r.xlm / RESERVE_EXAMPLE_TOTAL) * 100}%` }}
                     />
                   </div>
                 </div>
@@ -194,7 +201,8 @@ export default function LandingPage() {
             <div className="mt-5 flex items-baseline justify-between border-t border-white/10 pt-4">
               <span className="text-sm font-semibold text-white">Total locked</span>
               <span className="mkt-display text-2xl font-bold text-value tabular-nums">
-                5.00 <span className="text-sm font-normal text-fg-subtle">XLM</span>
+                {RESERVE_EXAMPLE_TOTAL.toFixed(2)}{" "}
+                <span className="text-sm font-normal text-fg-muted">XLM</span>
               </span>
             </div>
           </Reveal>
