@@ -91,6 +91,8 @@ import {
 } from "@/lib/plan/open-items";
 import { expectedReceive, type ExpectedReceive } from "@/lib/plan/expected-receive";
 import { destinationRefusal } from "@/lib/plan/destination-check";
+import { useBusyWait } from "@/hooks/useBusyWait";
+import BusyRetryNotice from "./BusyRetryNotice";
 import { keepDestinationDraft } from "@/lib/session/restore-decisions";
 import { isStateChanged, toUserMessage } from "@/lib/utils/user-error";
 import { Button } from "@/components/ui/button";
@@ -167,6 +169,7 @@ export default function PlanView({
   const [memoTypeChosenFor, setMemoTypeChosenFor] = useState<string | null>(null);
   const [proceeding, setProceeding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const busyWait = useBusyWait();
 
   // Auto-set convertible assets to "convert" so they feed the builder without user action -
   // but only when the user has not answered yet.
@@ -533,7 +536,11 @@ export default function PlanView({
     setError(null);
 
     try {
-      const refusal = await destinationRefusal(network, destination, memoState.normalized);
+      const stop = busyWait.stopSignal();
+      const refusal = await destinationRefusal(network, destination, memoState.normalized, {
+        stop,
+        onWait: busyWait.reporter(),
+      });
       if (refusal !== null) {
         setError(refusal);
         return;
@@ -561,7 +568,9 @@ export default function PlanView({
       );
       const plan = await fetchClosePlan(
         { source: account.address, destination, decisions },
-        network
+        network,
+        undefined,
+        { stop, onWait: busyWait.reporter() }
       );
       // Blockers on THIS plan, not the one fetched on page load. The load-time plan is
       // requested with no decisions at all, so it structurally cannot contain a transfer
@@ -746,6 +755,7 @@ export default function PlanView({
             {error}
           </Callout>
         )}
+        <BusyRetryNotice seconds={busyWait.seconds} onStop={busyWait.stop} />
 
         {openItems.length > 0 && (
           <Button

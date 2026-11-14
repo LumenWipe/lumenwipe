@@ -92,9 +92,18 @@ afterEach(() => {
   mock.restore();
 });
 
+/** A busy answer is waited out once on its own; stopping the wait shows the answer now. */
+async function stopTheWait(): Promise<void> {
+  const stop = await screen.findByRole("button", { name: "Stop waiting" });
+  await act(async () => {
+    fireEvent.click(stop);
+  });
+}
+
 async function proceed(
   plan: () => Response,
-  check?: () => Response
+  check?: () => Response,
+  waits = false
 ): Promise<{ refreshes: () => number }> {
   stubFetch(plan, undefined, check);
   useDemolishStore.setState({ destinationAddress: DEST, destinationAcknowledgedFor: DEST });
@@ -114,6 +123,7 @@ async function proceed(
     );
   });
   fireEvent.click(screen.getByRole("button", { name: /review the full plan/i }));
+  if (waits) await stopTheWait();
   await waitFor(() => expect(screen.getAllByRole("alert").length).toBe(2));
   return { refreshes: () => refreshes };
 }
@@ -142,7 +152,7 @@ test("any other refusal of the final plan reads through the shared copy and does
 });
 
 test("a busy provider on the final plan says so, not the connection", async () => {
-  const { refreshes } = await proceed(busy);
+  const { refreshes } = await proceed(busy, undefined, true);
 
   expect(refusal()).toMatch(BUSY);
   expect(refusal()).not.toContain(STALE);
@@ -150,7 +160,7 @@ test("a busy provider on the final plan says so, not the connection", async () =
 });
 
 test("a busy provider on the destination check says so, not the connection", async () => {
-  await proceed(() => Response.json({}), busy);
+  await proceed(() => Response.json({}), busy, true);
 
   expect(refusal()).toMatch(BUSY);
 });
@@ -161,11 +171,16 @@ test("no answer at all on the final plan still names the connection", async () =
   expect(refusal()).toMatch(/check your connection/);
 });
 
-async function analyze(plan: () => Response, read?: () => Response): Promise<string | null> {
+async function analyze(
+  plan: () => Response,
+  read?: () => Response,
+  waits = false
+): Promise<string | null> {
   stubFetch(plan, read);
   await act(async () => {
     render(<AnalyzePage params={settled({ network: "testnet" as const })} />);
   });
+  if (waits) await stopTheWait();
   return (await screen.findByRole("alert")).textContent;
 }
 
@@ -185,14 +200,14 @@ test("any other refusal of the analyze plan reads through the shared copy", asyn
 });
 
 test("a busy provider on the analyze plan says so, not the connection", async () => {
-  const message = await analyze(busy);
+  const message = await analyze(busy, undefined, true);
 
   expect(message).toMatch(BUSY);
   expect(message).not.toContain(ANALYZE_FAILED);
 });
 
 test("a busy provider on the analyze account read says so, not the connection", async () => {
-  expect(await analyze(() => Response.json({}), busy)).toMatch(BUSY);
+  expect(await analyze(() => Response.json({}), busy, true)).toMatch(BUSY);
 });
 
 test("no answer at all on the analyze plan still names the connection", async () => {

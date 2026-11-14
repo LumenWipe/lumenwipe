@@ -18,6 +18,8 @@ import {
   CONFIRM_UNCHECKED,
 } from "@/lib/utils/user-error";
 import { refreshReviewedPlan, type RefreshOutcome } from "@/lib/plan/refresh-plan";
+import BusyRetryNotice from "@/components/plan/BusyRetryNotice";
+import { useBusyWait } from "@/hooks/useBusyWait";
 import { describeChange, preparedAgo } from "@/lib/plan/plan-freshness";
 import { goBackToAnalyze } from "@/lib/plan/confirm-plan";
 import { formatStroops } from "@/lib/api/plan-adapters";
@@ -129,6 +131,7 @@ export default function ReviewView({ network }: ReviewViewProps) {
   // what it started, and aborts what it is still fetching.
   const mounted = useRef(true);
   const inFlight = useRef<AbortController | null>(null);
+  const busyWait = useBusyWait();
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -228,7 +231,10 @@ export default function ReviewView({ network }: ReviewViewProps) {
     const controller = new AbortController();
     inFlight.current = controller;
     try {
-      return await refreshReviewedPlan(network, controller.signal);
+      return await refreshReviewedPlan(network, controller.signal, {
+        stop: busyWait.stopSignal(),
+        reporter: busyWait.reporter,
+      });
     } finally {
       if (inFlight.current === controller) inFlight.current = null;
     }
@@ -429,6 +435,7 @@ export default function ReviewView({ network }: ReviewViewProps) {
       >
         {confirming ? "Preparing..." : "Continue to signing"}
       </Button>
+      <BusyRetryNotice seconds={busyWait.seconds} onStop={busyWait.stop} />
       {!acknowledged && (
         <p id={CONSENT_REQUIRED_ID} className="text-sm text-fg">
           Tick the box to continue

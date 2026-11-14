@@ -2,6 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { Account, Keypair, Networks, Operation, TransactionBuilder } from "@stellar/stellar-sdk";
 import { confirmDestinationControl } from "./helpers/destination";
 import {
+  BUSY_RETRY_WAIT,
   enterSourceAddress,
   openTestnetHome,
   TESTNET_ANALYZE_TIMEOUT,
@@ -116,7 +117,7 @@ async function reachReviewWithoutConfirming(
 }
 
 test("begin execution lands on the review gate, not directly on execute", async ({ page }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(120_000 + BUSY_RETRY_WAIT);
 
   const source = Keypair.random();
   const destination = Keypair.random();
@@ -161,7 +162,7 @@ test("begin execution lands on the review gate, not directly on execute", async 
 test("back to analyze preserves the entered destination without discarding it", async ({
   page,
 }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(120_000 + BUSY_RETRY_WAIT);
 
   const source = Keypair.random();
   const destination = Keypair.random();
@@ -186,7 +187,7 @@ test("back to analyze preserves the entered destination without discarding it", 
 test("a reload on the review gate rebuilds the plan through analyze with the choices kept", async ({
   page,
 }) => {
-  test.setTimeout(150_000);
+  test.setTimeout(150_000 + BUSY_RETRY_WAIT);
 
   const source = Keypair.random();
   const destination = Keypair.random();
@@ -223,7 +224,7 @@ test("a reload on the review gate rebuilds the plan through analyze with the cho
 });
 
 test("no resumable session is persisted while sitting on the review gate", async ({ page }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(120_000 + BUSY_RETRY_WAIT);
 
   const source = Keypair.random();
   const destination = Keypair.random();

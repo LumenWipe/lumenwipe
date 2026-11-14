@@ -2,6 +2,7 @@ import type { Network } from "@/config/networks";
 import { mediatorAllowedFor } from "@/lib/exchange-registry";
 import { missingRequiredMemoError } from "@/lib/plan/memo-requirement";
 import { readApiError } from "@/lib/utils/user-error";
+import { retryOnceWhenBusy, type BusyRetryOptions } from "@/lib/api/busy-retry";
 import type { MediatorCheckResult } from "@/types/account";
 
 /**
@@ -13,11 +14,15 @@ import type { MediatorCheckResult } from "@/types/account";
 export async function destinationRefusal(
   network: Network,
   destination: string,
-  memo: string
+  memo: string,
+  busy?: BusyRetryOptions
 ): Promise<string | null> {
-  const res = await fetch(`/api/${network}/mediator/check/${destination}`);
-  if (!res.ok) throw await readApiError(res);
-  const check = (await res.json()) as MediatorCheckResult;
+  const once = async (): Promise<MediatorCheckResult> => {
+    const res = await fetch(`/api/${network}/mediator/check/${destination}`);
+    if (!res.ok) throw await readApiError(res);
+    return (await res.json()) as MediatorCheckResult;
+  };
+  const check = await (busy ? retryOnceWhenBusy(once, busy) : once());
   const needsMediator = check.requiresMediator ?? false;
 
   // The browser decides the hand-off from its own bundled registry; an answer that disagrees

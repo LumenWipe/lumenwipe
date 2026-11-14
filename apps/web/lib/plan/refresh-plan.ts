@@ -1,5 +1,6 @@
 import type { Network } from "@/config/networks";
 import { readAccount } from "@/lib/api/analyze-client";
+import type { BusyWaitHooks } from "@/lib/api/busy-retry";
 import { fetchClosePlan } from "@/lib/api/close-client";
 import { closeDecisions } from "@/lib/api/close-decisions";
 import {
@@ -63,7 +64,8 @@ function answersOf(
  */
 export async function refreshReviewedPlan(
   network: Network,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  busy?: BusyWaitHooks
 ): Promise<RefreshOutcome> {
   const start = useDemolishStore.getState();
   const { sourceAddress: source, destinationAddress: destination, planSignature } = start;
@@ -78,19 +80,32 @@ export async function refreshReviewedPlan(
   const tokens = (start.accountState?.sorobanTokens?.tokens ?? []).map((t) => t.contract);
   let account;
   let plan;
+  // Each read waits out one busy answer on its own; once either fails, the other's wait and
+  // request end with it, since the refresh has already failed.
+  const both = new AbortController();
+  const leave = (): void => both.abort();
+  signal?.addEventListener("abort", leave, { once: true });
+  if (signal?.aborted) both.abort();
+  const retry = () => ({ signal: both.signal, stop: busy?.stop, onWait: busy?.reporter?.() });
   try {
     // The account is read again too: its balances, signers and sponsorships can change without
     // the sequence the plan hash covers, and the plan response carries none of them.
     [account, plan] = await Promise.all([
-      readAccount(network, source, signal),
+      readAccount(network, source, both.signal, retry()),
       fetchClosePlan(
         { source, destination, decisions: closeDecisions(start, source, destination, tokens) },
         network,
-        signal
+        both.signal,
+        retry()
       ),
-    ]);
+    ]).catch((err: unknown) => {
+      both.abort();
+      throw err;
+    });
   } catch (err) {
     return { kind: "failed", message: planRefreshFailure(err) };
+  } finally {
+    signal?.removeEventListener("abort", leave);
   }
 
   const now = useDemolishStore.getState();
