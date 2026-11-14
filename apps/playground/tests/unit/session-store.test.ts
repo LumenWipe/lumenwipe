@@ -2,6 +2,7 @@ import { test, expect, beforeEach, describe } from "bun:test";
 import { memoryKv } from "@/lib/kv";
 import { runMessStep } from "@/lib/session-actions";
 import {
+  BATCH_SCHEMA_VERSION,
   createSessionStore,
   isSessionId,
   SESSION_COUNTDOWN_SECONDS,
@@ -11,6 +12,7 @@ import {
   SessionLockLostError,
   sessionExpiresAt,
   sessionStore,
+  type PlaygroundBatch,
   type PlaygroundSession,
   type SessionStore,
 } from "@/lib/session-store";
@@ -440,4 +442,63 @@ test("isSessionId accepts only a lowercase uuid v4", () => {
   ]) {
     expect(isSessionId(bad)).toBe(false);
   }
+});
+
+describe("batch records", () => {
+  const IDS = [
+    "1a2b3c4d-1111-4222-8333-444455556666",
+    "1a2b3c4d-2222-4333-8444-555566667777",
+    "1a2b3c4d-3333-4444-8555-666677778888",
+  ];
+
+  test("a batch round-trips its member ids under a fresh id, apart from every session", async () => {
+    const store = memoryStore();
+    const batch = await store.createBatch(IDS);
+    expect(isSessionId(batch.id)).toBe(true);
+    expect(IDS).not.toContain(batch.id);
+    expect(await store.loadBatch(batch.id)).toEqual(batch);
+    expect(batch).toEqual({
+      schemaVersion: BATCH_SCHEMA_VERSION,
+      id: batch.id,
+      memberIds: IDS,
+      createdAt: batch.createdAt,
+    });
+
+    // A member's id names its session, never a batch, and a batch id names no session.
+    const member = await store.createSession(newSessionData());
+    expect(await store.loadBatch(member.id)).toBeNull();
+    expect(await store.loadSession(batch.id)).toBeNull();
+  });
+
+  test("createBatch refuses one or four members, a repeated one, or a malformed id", async () => {
+    const store = memoryStore();
+    for (const ids of [IDS.slice(0, 1), [...IDS, SID], [IDS[0]!, IDS[0]!], [IDS[0]!, "../x"]]) {
+      await expect(store.createBatch(ids)).rejects.toThrow();
+    }
+  });
+
+  test("a stored batch of another shape or version reads as none", async () => {
+    const kv = memoryKv();
+    const store = createSessionStore(() => kv);
+    const valid: PlaygroundBatch = {
+      schemaVersion: BATCH_SCHEMA_VERSION,
+      id: SID,
+      memberIds: IDS,
+      createdAt: 1,
+    };
+    const variants: unknown[] = [
+      { ...valid, schemaVersion: BATCH_SCHEMA_VERSION + 1 },
+      { ...valid, memberIds: IDS.slice(0, 1) },
+      { ...valid, memberIds: [...IDS, IDS[0]] },
+      { ...valid, memberIds: [IDS[0], SID] },
+      { ...valid, id: IDS[0] },
+      { ...valid, encDemoSecret: undefined, memberIds: "all" },
+    ];
+    for (const value of variants) {
+      await kv.set(`playground:batch:${SID}`, value, 60);
+      expect(await store.loadBatch(SID)).toBeNull();
+    }
+    await kv.set(`playground:batch:${SID}`, valid, 60);
+    expect(await store.loadBatch(SID)).toEqual(valid);
+  });
 });

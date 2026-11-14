@@ -1,5 +1,4 @@
 import {
-  MAX_BATCH_SIZE,
   MAX_ESTIMATED_SECONDS,
   MAX_SCENARIOS,
   MAX_SESSION_XLM,
@@ -125,9 +124,6 @@ function capMessage(cost: ScenarioCost): string | null {
   if (cost.seconds > MAX_ESTIMATED_SECONDS) {
     return `This selection would take about ${Math.ceil(cost.seconds / 60)} minutes; a demo is limited to ${MAX_ESTIMATED_SECONDS / 60}.`;
   }
-  if (cost.batchSize > MAX_BATCH_SIZE) {
-    return `A batch can close at most ${MAX_BATCH_SIZE} accounts.`;
-  }
   return null;
 }
 
@@ -206,7 +202,6 @@ export function validateSelection(
     classicTransactions: 1,
     sorobanTransactions: 0,
     seconds: MESS_STEP_SECONDS + CLOSE_GROUP_SECONDS,
-    batchSize: 1,
     subEntries: 0,
   };
   const absorb = (build: ScenarioBuild): void => {
@@ -228,7 +223,6 @@ export function validateSelection(
     cost.classicTransactions += build.cost.classicTransactions;
     cost.sorobanTransactions += build.cost.sorobanTransactions;
     cost.seconds += build.cost.seconds;
-    cost.batchSize = Math.max(cost.batchSize, build.cost.batchSize);
     cost.subEntries += build.cost.subEntries;
   };
   for (const { def, params } of picked) {

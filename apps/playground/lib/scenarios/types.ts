@@ -277,8 +277,6 @@ export interface ScenarioCost {
   classicTransactions: number;
   sorobanTransactions: number;
   seconds: number;
-  /** Accounts closed in one batch, for a scenario that closes several. */
-  batchSize: number;
   subEntries: number;
 }
 

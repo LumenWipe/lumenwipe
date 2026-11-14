@@ -75,7 +75,6 @@ function builds(def: ScenarioDefinition): ScenarioBuild[] {
         classicTransactions: sum("classicTransactions"),
         sorobanTransactions: sum("sorobanTransactions"),
         seconds: sum("seconds"),
-        batchSize: Math.max(own.cost.batchSize, shared.cost.batchSize),
         subEntries: sum("subEntries"),
       },
     };
@@ -122,7 +121,6 @@ describe.each(SCENARIOS.map((def) => [def.id, def] as const))("%s", (_id, def) =
         continue;
       }
       expect(cost.xlm).toBeGreaterThan(0);
-      expect(cost.batchSize).toBeGreaterThanOrEqual(1);
     }
   });
 

@@ -35,7 +35,7 @@ const isCreateSession = (res: Response): boolean => {
   );
 };
 
-async function operationsOf(account: string): Promise<HorizonOperation[]> {
+export async function operationsOf(account: string): Promise<HorizonOperation[]> {
   const res = await fetch(`${HORIZON}/accounts/${account}/operations?order=asc&limit=200`);
   if (!res.ok) return [];
   const body = (await res.json()) as { _embedded: { records: HorizonOperation[] } };

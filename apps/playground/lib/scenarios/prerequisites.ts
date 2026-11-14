@@ -113,7 +113,6 @@ export function purchaseBuild(steps: readonly MessStepDef[]): ScenarioBuild | nu
       classicTransactions: 2 * assets,
       sorobanTransactions: 0,
       seconds: 2 * assets * MESS_STEP_SECONDS,
-      batchSize: 1,
       subEntries: assets,
     },
   };

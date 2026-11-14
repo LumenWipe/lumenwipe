@@ -5,6 +5,9 @@ import type { IntentOperation } from "@lumenwipe/sdk";
 import { blockerCopy, errorCopy } from "@/lib/error-copy";
 import { getMessPlanForMode } from "@/lib/mess-plan";
 import {
+  BLOCKED_MEMBER_SELECTION,
+  DEFAULT_BATCH_MEMBERS,
+  LIGHT_SELECTION,
   SCENARIOS,
   STANDARD_SELECTION,
   decodeSelection,
@@ -15,6 +18,8 @@ import {
 } from "@/lib/scenarios";
 import { usePlaygroundStore, type PlaygroundPhase } from "@/store/playground";
 import { buildSceneNode, usePlaygroundExecution } from "@/hooks/usePlaygroundExecution";
+import { useBatchExecution } from "@/hooks/useBatchExecution";
+import BatchPanel from "@/components/scene/BatchPanel";
 import PlaygroundControls from "@/components/scene/PlaygroundControls";
 import TxLogPanel from "@/components/scene/TxLogPanel";
 import SdkSnippetPanel from "@/components/scene/SdkSnippetPanel";
@@ -124,13 +129,17 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
 
 function Harness() {
   const { start, demolish, resolve, progressStatus } = usePlaygroundExecution();
+  const batchRun = useBatchExecution();
   return (
     <>
+      <BatchPanel onResolve={batchRun.resolveMember} />
       <PlaygroundControls
         start={start}
         demolish={demolish}
         resolve={resolve}
-        progressStatus={progressStatus}
+        startBatch={batchRun.startBatch}
+        closeBatch={batchRun.closeBatch}
+        progressStatus={batchRun.progressStatus ?? progressStatus}
       />
       <TxLogPanel />
     </>
@@ -145,6 +154,7 @@ beforeEach(() => {
   originalFetch = globalThis.fetch;
   globalThis.fetch = Object.assign(routes.fetch, { preconnect: originalFetch.preconnect });
   usePlaygroundStore.getState().reset();
+  usePlaygroundStore.getState().setBatchSize(0);
   // The picked scenarios survive reset by design; each test starts from the classic preset.
   usePlaygroundStore.getState().setSelection(resolvePlan(STANDARD_SELECTION).selection, "classic");
 });
@@ -165,6 +175,167 @@ async function dirtyAccount(): Promise<void> {
   await rtl.screen.findByRole("button", { name: /Demolish it here/ }, { timeout: 5000 });
   expect(trustlineNode()?.status).toBe("docked");
 }
+
+describe("a batch close", () => {
+  const BATCH_ID = "4f1c2d3e-5a6b-4c7d-8e9f-0a1b2c3d4e5f";
+  const MEMBER_IDS = [
+    "1a2b3c4d-1111-4222-8333-444455556666",
+    "1a2b3c4d-2222-4333-8444-555566667777",
+    "1a2b3c4d-3333-4444-8555-666677778888",
+  ];
+  const BLOCKER = "sponsorship_claimable_balance_unrevocable";
+  const lightPlan = resolvePlan(LIGHT_SELECTION).steps;
+  const blockedPlan = resolvePlan(BLOCKED_MEMBER_SELECTION).steps;
+
+  function batchRoutes(size: 2 | 3): void {
+    const ids = MEMBER_IDS.slice(0, size);
+    const blockedId = ids[size - 1]!;
+    routes.handlers.set("/api/batch", async () => ({
+      status: 200,
+      body: {
+        batchId: BATCH_ID,
+        blockedIndex: size - 1,
+        expiresAt: Date.now() + 3_600_000,
+        members: ids.map((sessionId, i) => ({
+          sessionId,
+          demoPublic: `GDEMO${i + 1}`,
+          expiresAt: Date.now() + 3_600_000,
+          messPlan: i === size - 1 ? blockedPlan : lightPlan,
+          accounts: { issuer: ISSUER, mm: "GSINK", lwdemoAsset: `LWDEMO:${ISSUER}`, ephemeral: [] },
+          label: i === size - 1 ? "Claimable balances" : "Demo token holding",
+        })),
+      },
+    }));
+    routes.handlers.set(`/api/batch/${BATCH_ID}/plan`, async () => ({
+      status: 200,
+      body: {
+        results: ids.map((_, i) => ({
+          index: i,
+          address: `GDEMO${i + 1}`,
+          status: i === size - 1 ? "blocked" : "needs_decisions",
+          blockers: i === size - 1 ? [{ code: BLOCKER, message: "api text" }] : [],
+          estimatedTransactionCount: 1,
+        })),
+      },
+    }));
+    let resolved = false;
+    for (const id of ids) {
+      routes.handlers.set(`/api/session/${id}/mess`, async () => ({
+        status: 200,
+        body: { txHash: "c".repeat(64) },
+      }));
+      routes.handlers.set(`/api/session/${id}/cleanup`, async () => ({
+        status: 200,
+        body: { ok: true },
+      }));
+      routes.handlers.set(`/api/session/${id}/demolish/round`, async () =>
+        id === blockedId && !resolved
+          ? {
+              status: 422,
+              body: { error: "demolish_blocked", blockers: [BLOCKER], resolvable: [BLOCKER] },
+            }
+          : { status: 200, body: { done: true, confirmed: [MERGE], remainingSteps: null } }
+      );
+    }
+    routes.handlers.set(`/api/session/${blockedId}/resolve`, async () => {
+      resolved = true;
+      return { status: 200, body: { ok: true } };
+    });
+  }
+
+  async function plannedBatch(size: 2 | 3): Promise<void> {
+    batchRoutes(size);
+    rtl.render(<Harness />);
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: `A batch of ${size}` }));
+    rtl.fireEvent.click(
+      rtl.screen.getByRole("button", { name: `Create & trash ${size} demo accounts` })
+    );
+    await rtl.screen.findByRole("button", { name: "Close every account" }, { timeout: 5000 });
+  }
+
+  test("creates the batch with the default accounts, runs each mess, then plans them in one call", async () => {
+    await plannedBatch(3);
+    expect(JSON.parse(routes.bodies[0]!)).toEqual({ members: DEFAULT_BATCH_MEMBERS[3] });
+    for (const id of MEMBER_IDS) {
+      expect(routes.calls.filter((c) => c === `POST /api/session/${id}/mess`).length).toBe(
+        id === MEMBER_IDS[2] ? blockedPlan.length : lightPlan.length
+      );
+    }
+    expect(routes.count(`GET /api/batch/${BATCH_ID}/plan`)).toBe(1);
+    const blocked = rtl.screen.getByRole("listitem", { name: "Account 3" });
+    expect(blocked.textContent).toContain("blocked on purpose");
+    expect(blocked.textContent).toContain(blockerCopy(BLOCKER));
+    expect(rtl.screen.getByRole("listitem", { name: "Account 1" }).textContent).toContain(
+      "Ready once the playground answers its questions"
+    );
+  });
+
+  test("closes every account in turn, reports the blocked one, and resolving it closes it too", async () => {
+    await plannedBatch(3);
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: "Close every account" }));
+    await rtl.screen.findByText(
+      /Batch complete: 2 of 3 accounts merged away, 1 reported/,
+      undefined,
+      {
+        timeout: 5000,
+      }
+    );
+    const rounds = routes.calls.filter((c) => c.endsWith("/demolish/round"));
+    expect(rounds).toEqual(MEMBER_IDS.map((id) => `POST /api/session/${id}/demolish/round`));
+    expect(routes.count(`POST /api/session/${MEMBER_IDS[2]}/cleanup`)).toBe(0);
+    const blocked = rtl.screen.getByRole("listitem", { name: "Account 3" });
+    expect(blocked.textContent).toContain("Not closed: blocked");
+
+    rtl.fireEvent.click(rtl.within(blocked).getByRole("button", { name: "Resolve it" }));
+    await rtl.waitFor(() =>
+      expect(usePlaygroundStore.getState().batch?.members[2]?.close).toBe("closed")
+    );
+    expect(routes.count(`POST /api/session/${MEMBER_IDS[2]}/resolve`)).toBe(1);
+    expect(routes.count(`POST /api/session/${MEMBER_IDS[2]}/cleanup`)).toBe(1);
+  });
+
+  test("a batch plan that cannot be read still leaves every account to close", async () => {
+    batchRoutes(3);
+    routes.handlers.set(`/api/batch/${BATCH_ID}/plan`, async () => ({
+      status: 502,
+      body: { error: "batch_plan_failed" },
+    }));
+    rtl.render(<Harness />);
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: "A batch of 3" }));
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: "Create & trash 3 demo accounts" }));
+    await rtl.screen.findByRole("button", { name: "Close every account" }, { timeout: 5000 });
+    expect(usePlaygroundStore.getState().phase).toBe("DIRTY");
+    expect(
+      rtl.screen.getByText(
+        "The batch plan could not be read, but every account can still be closed."
+      )
+    ).toBeTruthy();
+    for (const n of [1, 2, 3]) {
+      expect(rtl.screen.getByRole("listitem", { name: `Account ${n}` }).textContent).toContain(
+        "Could not be read"
+      );
+    }
+
+    rtl.fireEvent.click(rtl.screen.getByRole("button", { name: "Close every account" }));
+    await rtl.screen.findByText(/Batch complete: 2 of 3 accounts merged away/, undefined, {
+      timeout: 5000,
+    });
+    expect(routes.calls.filter((c) => c.endsWith("/demolish/round"))).toEqual(
+      MEMBER_IDS.map((id) => `POST /api/session/${id}/demolish/round`)
+    );
+  });
+
+  test("a batch link opens on a batch of that size", async () => {
+    window.history.replaceState(null, "", "/?batch=2");
+    try {
+      rtl.render(<PlaygroundClient />);
+      await rtl.waitFor(() => expect(usePlaygroundStore.getState().batchSize).toBe(2));
+      expect(rtl.screen.getByRole("button", { name: "A batch of 2", pressed: true })).toBeTruthy();
+    } finally {
+      window.history.replaceState(null, "", "/");
+    }
+  });
+});
 
 describe("allowances are revoked before the close", () => {
   const ALLOWANCES = `/api/session/${SESSION_ID}/allowances`;

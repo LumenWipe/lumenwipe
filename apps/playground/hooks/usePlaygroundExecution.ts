@@ -19,7 +19,7 @@ import {
   SessionExpiredError,
 } from "@/lib/playground-api";
 
-interface SessionResponse {
+export interface SessionResponse {
   sessionId: string;
   demoPublic: string;
   expiresAt: number;
@@ -27,7 +27,7 @@ interface SessionResponse {
   accounts: PlaygroundAccounts;
 }
 
-interface DemolishLogEntry {
+export interface DemolishLogEntry {
   txId: string;
   hash: string;
   summary: string;
@@ -68,7 +68,7 @@ interface UsePlaygroundExecutionResult {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
-function api<T>(path: string, init?: RequestInit): Promise<T> {
+export function api<T>(path: string, init?: RequestInit): Promise<T> {
   return playgroundRequest<T>(fetch, path, init);
 }
 

@@ -19,6 +19,7 @@ import {
 import { usePlaygroundStore } from "@/store/playground";
 import { errorCopy, GENERIC_ERROR_COPY } from "@/lib/error-copy";
 import { FEATURE_SETS, validateSelection } from "@/lib/scenarios";
+import { BatchSizeField } from "./BatchPanel";
 import BlockerCard from "./BlockerCard";
 import ScenarioPicker from "./ScenarioPicker";
 
@@ -65,11 +66,15 @@ export default function PlaygroundControls({
   start,
   demolish,
   resolve,
+  startBatch,
+  closeBatch,
   progressStatus,
 }: {
   start: () => void;
   demolish: () => void;
   resolve: (blocker: string) => void;
+  startBatch: () => void;
+  closeBatch: () => void;
   progressStatus: string | null;
 }) {
   const phase = usePlaygroundStore((s) => s.phase);
@@ -86,6 +91,8 @@ export default function PlaygroundControls({
   const reset = usePlaygroundStore((s) => s.reset);
   const demolishFailed = usePlaygroundStore((s) => s.demolishFailed);
   const linkPending = usePlaygroundStore((s) => s.linkPending);
+  const batchSize = usePlaygroundStore((s) => s.batchSize);
+  const batch = usePlaygroundStore((s) => s.batch);
 
   // "Start over" after a close stopped part way asks first: the account is abandoned on testnet.
   const [confirmingAbandon, setConfirmingAbandon] = useState(false);
@@ -122,6 +129,11 @@ export default function PlaygroundControls({
     <span className="mt-1 block mkt-mono text-[11px] text-white/50">Replay code {seed}</span>
   ) : null;
   const runnable = !linkPending && validateSelection(selection, { unavailable }).ok;
+  // A batch run, or a batch about to start: its members are the batch defaults, not the picker's.
+  const batchMode = batch !== null || batchSize > 0;
+  const startRun = batchMode ? startBatch : start;
+  const closedCount = batch?.members.filter((m) => m.close === "closed").length ?? 0;
+  const stoppedCount = batch ? batch.members.length - closedCount : 0;
 
   return (
     <div className="mkt-panel mkt-ticks relative rounded-lg p-5">
@@ -134,7 +146,8 @@ export default function PlaygroundControls({
 
       {phase === "IDLE" && (
         <>
-          <ScenarioPicker />
+          <BatchSizeField />
+          {batchSize === 0 && <ScenarioPicker />}
 
           <div className="my-4 flex items-start gap-2 rounded-md border border-white/10 bg-white/[0.03] px-3 py-2.5 text-xs text-white/45">
             <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-stellar/60" />
@@ -146,11 +159,13 @@ export default function PlaygroundControls({
 
           <button
             className={`${primaryButton} bg-stellar text-black hover:opacity-90`}
-            onClick={start}
-            disabled={!runnable}
+            onClick={startRun}
+            disabled={batchSize > 0 ? linkPending : !runnable}
           >
             <FlaskConical className="h-4 w-4" />
-            Create & trash a demo account
+            {batchSize > 0
+              ? `Create & trash ${batchSize} demo accounts`
+              : "Create & trash a demo account"}
           </button>
         </>
       )}
@@ -162,7 +177,42 @@ export default function PlaygroundControls({
         </div>
       )}
 
-      {phase === "DIRTY" && (
+      {phase === "DIRTY" && batch && (
+        <button
+          className={`${primaryButton} bg-value text-black hover:opacity-90`}
+          onClick={closeBatch}
+        >
+          <Bomb className="h-4 w-4" />
+          Close every account
+        </button>
+      )}
+
+      {phase === "COMPLETE" && batch && (
+        <>
+          <div className="mb-4 rounded-md border border-stellar/30 bg-[hsl(var(--stellar)/0.07)] px-4 py-3 text-sm text-white/75">
+            Batch complete: {closedCount} of {batch.members.length} accounts merged away
+            {stoppedCount > 0 ? `, ${stoppedCount} reported and left open` : ""} - each row shows
+            how its close went.
+          </div>
+          <div className="flex flex-col gap-2">
+            <button
+              className={`${primaryButton} bg-stellar text-black hover:opacity-90`}
+              onClick={startBatch}
+            >
+              <RotateCcw className="h-4 w-4" />
+              Run another batch
+            </button>
+            <button
+              className={`${primaryButton} border border-white/15 text-white/70 hover:bg-white/5`}
+              onClick={reset}
+            >
+              Change the setup
+            </button>
+          </div>
+        </>
+      )}
+
+      {phase === "DIRTY" && !batch && (
         <>
           <div className="mb-4 rounded-md border border-value/30 bg-[hsl(var(--value)/0.07)] px-4 py-3 text-sm text-white/75">
             The account is now a mess:{" "}
@@ -256,7 +306,7 @@ export default function PlaygroundControls({
         </>
       )}
 
-      {phase === "COMPLETE" && (
+      {phase === "COMPLETE" && !batch && (
         <>
           <div className="mb-4 rounded-md border border-stellar/30 bg-[hsl(var(--stellar)/0.07)] px-4 py-3 text-sm text-white/75">
             {demoLabel} demo complete. The account was merged away
@@ -305,7 +355,7 @@ export default function PlaygroundControls({
           </div>
           <button
             className={`${primaryButton} bg-stellar text-black hover:opacity-90`}
-            onClick={start}
+            onClick={startRun}
           >
             <FlaskConical className="h-4 w-4" />
             Start a new session
@@ -335,7 +385,7 @@ export default function PlaygroundControls({
               </span>
             </div>
           )}
-          {demolishFailed ? (
+          {demolishFailed && !batchMode ? (
             <div className="flex flex-col gap-2">
               <button
                 className={`${primaryButton} bg-stellar text-black hover:opacity-90`}
@@ -387,7 +437,7 @@ export default function PlaygroundControls({
           ) : (
             <button
               className={`${primaryButton} border border-white/15 text-white hover:bg-white/5`}
-              onClick={start}
+              onClick={startRun}
             >
               <RotateCcw className="h-4 w-4" />
               Start over

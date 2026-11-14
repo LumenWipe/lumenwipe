@@ -42,6 +42,43 @@ export interface LogEntry {
   at: number;
 }
 
+/** Where one batch member's close stands. */
+export type BatchCloseStatus = "waiting" | "closing" | "closed" | "blocked" | "failed";
+
+/** The API's read-only plan for one member, as the batch plan route answers it. */
+export interface BatchPlanLine {
+  status: "ready" | "needs_decisions" | "blocked" | "complete";
+  blockers: { code: string; message: string }[];
+}
+
+export interface BatchMember {
+  sessionId: string;
+  demoPublic: string;
+  /** What the member's mess holds, in a few words. */
+  label: string;
+  messPlan: MessStepDef[];
+  messDone: number;
+  /** The API's plan; "unavailable" when the batch plan could not be read, null before it is. */
+  plan: BatchPlanLine | "unavailable" | null;
+  close: BatchCloseStatus;
+  /** Why the close stopped, for a blocked member, with the blockers its session can resolve. */
+  stop: StoppedClose | null;
+  /** Plain-language copy for a blocked or failed close. */
+  message: string | null;
+  /** Hashes of the member's confirmed close transactions. */
+  hashes: string[];
+}
+
+/** A batch run: its members in creation order, and which one the close reports blocked. */
+export interface BatchRun {
+  batchId: string;
+  blockedIndex: number;
+  members: BatchMember[];
+}
+
+/** One account (0), or a batch of two or three. */
+export type BatchSize = 0 | 2 | 3;
+
 /** Why the close stopped before building: decisions it could not answer, or blockers the API
  *  reported, with the ones the session can resolve. */
 export interface StoppedClose {
@@ -89,6 +126,10 @@ interface PlaygroundState {
   seed: string | null;
   /** Scenarios this deployment cannot run (GET /api/scenarios), with their reasons. */
   unavailable: ReadonlyMap<ScenarioId, string>;
+  /** One account, or the size of the batch to start; survives resets like the selection. */
+  batchSize: BatchSize;
+  /** The batch being run, if the session is one. */
+  batch: BatchRun | null;
   /** A shared link (`?seed=` or `?selection=`) is still being applied: the run cannot start yet,
    *  or it would start with the selection the link is about to replace. */
   linkPending: boolean;
@@ -118,6 +159,9 @@ interface PlaygroundState {
   ) => void;
   setUnavailable: (unavailable: ReadonlyMap<ScenarioId, string>) => void;
   setLinkPending: (linkPending: boolean) => void;
+  setBatchSize: (batchSize: BatchSize) => void;
+  startBatch: (batch: BatchRun, expiresAt: number) => void;
+  updateBatchMember: (index: number, patch: Partial<BatchMember>) => void;
   /** Binds each offer node to the chain offer trading its pair. */
   bindOffers: (offers: readonly { id: string; selling: string; buying: string }[]) => void;
   reset: () => void;
@@ -139,6 +183,7 @@ const sessionInitialState = {
   recoveredXlm: null,
   demolishFailed: false,
   sdkSnippet: null,
+  batch: null as BatchRun | null,
 };
 
 let logCounter = 0;
@@ -153,6 +198,7 @@ export const usePlaygroundStore = create<PlaygroundState>((set) => ({
   seed: null,
   unavailable: new Map(),
   linkPending: false,
+  batchSize: 0,
 
   setPhase: (phase) => set({ phase }),
 
@@ -213,6 +259,33 @@ export const usePlaygroundStore = create<PlaygroundState>((set) => ({
   setUnavailable: (unavailable) => set({ unavailable }),
 
   setLinkPending: (linkPending) => set({ linkPending }),
+
+  setBatchSize: (batchSize) => set({ batchSize }),
+
+  startBatch: (batch, expiresAt) =>
+    set((state) => ({
+      ...sessionInitialState,
+      phase: "MESSING",
+      expiresAt,
+      batch,
+      selection: state.selection,
+      preset: state.preset,
+      seed: state.seed,
+      unavailable: state.unavailable,
+      batchSize: state.batchSize,
+    })),
+
+  updateBatchMember: (index, patch) =>
+    set((state) =>
+      state.batch
+        ? {
+            batch: {
+              ...state.batch,
+              members: state.batch.members.map((m, i) => (i === index ? { ...m, ...patch } : m)),
+            },
+          }
+        : {}
+    ),
 
   bindOffers: (offers) =>
     set((state) => ({

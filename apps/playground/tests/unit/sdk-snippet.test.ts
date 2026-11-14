@@ -4,10 +4,12 @@ import path from "node:path";
 import ts from "typescript";
 import { Keypair, StrKey, hash } from "@stellar/stellar-sdk";
 import {
+  buildBatchSdkSnippet,
   buildSdkSnippet,
   codeLiteral,
   SdkSnippetInputError,
   snippetInputFromExpectation,
+  type SdkBatchSnippetInput,
   type SdkSnippetInput,
   type SnippetClose,
 } from "@/lib/sdk-snippet";
@@ -504,5 +506,98 @@ describe("a playground session's snippet", () => {
 
     const unconfigured = await handleSdkSnippet(session.id, { store, publicAccounts: () => null });
     expect(unconfigured.status).toBe(503);
+  });
+});
+
+describe("a batch's snippet", () => {
+  const sinkAddress = account();
+  const into = (overrides: Partial<SnippetClose> = {}): SnippetClose =>
+    close({ destination: { kind: "account", address: sinkAddress }, ...overrides });
+  const batchCosigners = [Keypair.random(), Keypair.random()];
+  const batch: SdkBatchSnippetInput = {
+    network: "testnet",
+    closes: [
+      into({
+        decisions: [{ kind: "return_to_issuer", asset: { code: "LWDEMO", issuer: account() } }],
+      }),
+      into({
+        signers: batchCosigners.map((k) => ({
+          type: "ed25519_public_key" as const,
+          key: k.publicKey(),
+        })),
+      }),
+      into({ signers: [{ type: "hash_x", key: hashX }] }),
+    ],
+  };
+
+  test("type-checks against the SDK and verifier public types, with no diagnostic", () => {
+    const two: SdkBatchSnippetInput = { network: "testnet", closes: batch.closes.slice(0, 2) };
+    expect(diagnostics([buildBatchSdkSnippet(batch), buildBatchSdkSnippet(two)])).toEqual([[], []]);
+  });
+
+  test("plans every address with one batchPlan call into the shared destination", () => {
+    const text = buildBatchSdkSnippet(batch);
+    expect(text.match(/client\.batchPlan\(/g)).toHaveLength(1);
+    expect(text).toContain(
+      `const addresses = [\n${batch.closes.map((c) => `  "${c.source}",`).join("\n")}\n];`
+    );
+    expect(text).toContain(`client.batchPlan({ addresses, destination: "${sinkAddress}" })`);
+    expect(text.match(/await runClose\(/g)).toHaveLength(3);
+  });
+
+  test("each account signs from its own variable, co-signers and preimages included", () => {
+    const text = buildBatchSdkSnippet(batch);
+    for (const n of [1, 2, 3]) {
+      expect(text).toContain(
+        `const signer = Keypair.fromSecret(process.env.LUMENWIPE_ACCOUNT_${n}_SIGNING_SECRET ?? "");`
+      );
+    }
+    expect(text).not.toContain("LUMENWIPE_SIGNING_SECRET");
+    batchCosigners.forEach((k, i) => {
+      expect(text).toContain(
+        `secret: process.env["LUMENWIPE_ACCOUNT_2_COSIGNER_${i + 1}_SECRET"],`
+      );
+      expect(text).toContain(k.publicKey());
+    });
+    expect(text).toContain(`preimage: process.env["LUMENWIPE_ACCOUNT_3_HASHX_PREIMAGE_1"]`);
+  });
+
+  test("a close that cannot run is reported, and the next account still runs", () => {
+    const text = buildBatchSdkSnippet(batch);
+    expect(text.match(/^try \{$/gm)).toHaveLength(3);
+    expect(text).toContain("console.log(`Account 1 not closed: ${error instanceof Error");
+  });
+
+  test("holds no secret", () => {
+    const text = buildBatchSdkSnippet(batch);
+    expect(text).not.toMatch(STRKEY_SECRET);
+    for (const k of batchCosigners) expect(text).not.toContain(k.secret());
+    expect(text).not.toContain(preimage.toString("hex"));
+  });
+
+  test("refuses anything but two or three distinct accounts into one account destination", () => {
+    const refused = (closes: SnippetClose[]): string => {
+      try {
+        buildBatchSdkSnippet({ network: "testnet", closes });
+      } catch (err) {
+        if (err instanceof SdkSnippetInputError) return err.field;
+        throw err;
+      }
+      throw new Error("expected a refusal");
+    };
+    const [a, b] = batch.closes as [SnippetClose, SnippetClose];
+    expect(refused([a])).toBe("batch size");
+    expect(refused([a, b, into(), into()])).toBe("batch size");
+    expect(refused([a, close()])).toBe("batch destination");
+    expect(
+      refused([
+        a,
+        into({
+          destination: { kind: "exchange", address: sinkAddress, memo: "1", memoType: "id" },
+        }),
+      ])
+    ).toBe("batch destination");
+    expect(refused([a, { ...b, source: a.source }])).toBe("batch source");
+    expect(refused([a, { ...b, source: Keypair.random().secret() }])).toBe("source");
   });
 });
