@@ -65,8 +65,12 @@ describe("no surface overstates the trust model", () => {
     for (const meta of [landingMeta, securityMeta, howMeta, faqMeta]) {
       expect(overclaims(String(meta.description))).toEqual([]);
     }
-    const layout = readFileSync(join(WEB, "app", "layout.tsx"), "utf8");
-    expect(overclaims(layout)).toEqual([]);
+    for (const file of [
+      ["app", "layout.tsx"],
+      ["lib", "site", "root-metadata.ts"],
+    ]) {
+      expect(overclaims(readFileSync(join(WEB, ...file), "utf8"))).toEqual([]);
+    }
   });
 
   test("llms.txt and the README make none", () => {

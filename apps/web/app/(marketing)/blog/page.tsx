@@ -1,25 +1,16 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/site/pages";
 import Link from "next/link";
 import { getAllPostMetas } from "@/lib/blog";
 import PostCard from "@/components/blog/PostCard";
 import { Button } from "@/components/ui/button";
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "";
-
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
+  path: "/blog",
   title: "Blog",
   description:
     "Technical deep dives, project updates, and guides on Stellar account management, trustline removal, reserve recovery, and non-custodial DeFi tooling.",
-  openGraph: {
-    title: "Blog | LumenWipe",
-    description: "Technical deep dives, project updates, and guides on Stellar account management.",
-    url: `${APP_URL}/blog`,
-    type: "website",
-  },
-  alternates: {
-    canonical: `${APP_URL}/blog`,
-  },
-};
+});
 
 export default function BlogPage() {
   const posts = getAllPostMetas();

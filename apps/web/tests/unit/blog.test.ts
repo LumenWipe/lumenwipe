@@ -1,7 +1,7 @@
 import { test, expect, beforeAll, afterAll } from "bun:test";
 import fs from "fs";
 import path from "path";
-import { getAllPostMetas, getAllSlugs, getPost } from "@/lib/blog";
+import { getAllPostMetas, getAllSlugs, getPost, resolveUpdatedAt } from "@/lib/blog";
 
 const CONTENT_DIR = path.join(process.cwd(), "content/blog");
 const DRAFT_SLUG = "test-draft-fixture";
@@ -44,5 +44,29 @@ test("getPost › throws for a draft post instead of returning unpublished conte
 test("getAllPostMetas › every listed post has a publishedAt that parses to a valid date", () => {
   for (const post of getAllPostMetas()) {
     expect(Number.isNaN(new Date(post.publishedAt).getTime())).toBe(false);
+  }
+});
+
+test("resolveUpdatedAt › a post never edited after publishing is last modified when published", () => {
+  expect(resolveUpdatedAt("p", "2026-06-02", undefined)).toBe("2026-06-02");
+});
+
+test("resolveUpdatedAt › an edit date on or after publishing is the last modification", () => {
+  expect(resolveUpdatedAt("p", "2026-06-02", "2026-06-02")).toBe("2026-06-02");
+  expect(resolveUpdatedAt("p", "2026-06-02", "2026-11-10")).toBe("2026-11-10");
+});
+
+test("resolveUpdatedAt › refuses an edit date before publishing or not written as YYYY-MM-DD", () => {
+  for (const bad of ["2026-06-01", "June 3, 2026", "2026-6-3", new Date("2026-11-10"), 20261110]) {
+    expect(() => resolveUpdatedAt("p", "2026-06-02", bad)).toThrow(
+      'Post "p" has an invalid updatedAt'
+    );
+  }
+});
+
+test("getAllPostMetas › every post's updatedAt is a date no earlier than its publishedAt", () => {
+  for (const post of getAllPostMetas()) {
+    expect(post.updatedAt >= post.publishedAt).toBe(true);
+    expect(getPost(post.slug).updatedAt).toBe(post.updatedAt);
   }
 });

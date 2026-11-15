@@ -1,33 +1,26 @@
 ---
 title: "Logo usage"
-description: "The LumenWipe mark and wordmark as they exist today, where they may be placed, and how they may not be changed."
+description: "The LumenWipe mark and wordmark, where to get every variant, where they may be placed, and how they may not be changed."
 ---
 
-The logo is two files in `docs/logo`: `docs/logo/dark.svg` for dark backgrounds and `docs/logo/light.svg` for light ones. Each is the mark followed by the wordmark, 172 by 36 units. Use the files as they are; do not redraw or re-export them.
+The logo is the mark followed by the wordmark, 172 by 36 units: `docs/logo/dark.svg` for dark backgrounds and `docs/logo/light.svg` for light ones. Every variant (the mark alone, side by side and stacked, light and dark, one-color white and black, and a square avatar) is in SVG and PNG in the [brand asset set](https://github.com/LumenWipe/lumenwipe/tree/main/apps/web/brand). All of them, the favicon and the app icons are generated from one source; use the files as they are and do not redraw them.
 
 ## The mark and the wordmark
 
 The mark is a rounded square outline with a four-pointed star above a short arc. The wordmark sets "Lumen" in the light or dark neutral and "Wipe" in cyan, in Bricolage Grotesque Bold.
 
-| File                  | For               | Outline and star                   | Arc                                | "Lumen"               | "Wipe"    |
-| --------------------- | ----------------- | ---------------------------------- | ---------------------------------- | --------------------- | --------- |
-| `docs/logo/dark.svg`  | Dark backgrounds  | `#00B0F0`, the `--accent` token    | `#FAB623`                          | `#FFFFFF`             | `#00B0F0` |
-| `docs/logo/light.svg` | Light backgrounds | `#0098D6`, a darker cyan for white | `#E0961A`, a darker gold for white | `#0B0B14`, near black | `#0098D6` |
+| File                  | For               | Outline and star                   | Arc                                | "Lumen"            | "Wipe"    |
+| --------------------- | ----------------- | ---------------------------------- | ---------------------------------- | ------------------ | --------- |
+| `docs/logo/dark.svg`  | Dark backgrounds  | `#00B0F0`, the `--accent` token    | `#FAB623`                          | `#FFFFFF`          | `#00B0F0` |
+| `docs/logo/light.svg` | Light backgrounds | `#0098D6`, a darker cyan for white | `#E0961A`, a darker gold for white | `#080D0F`, the ink | `#0098D6` |
 
 The arc gold in `docs/logo/dark.svg` is one step off the `--value` token (`#FBB623`). The difference is not visible; it is recorded so nobody "fixes" one to match the other without deciding to.
 
-The wordmark is live SVG text, not outlined paths. It renders in Bricolage Grotesque only where that font is loaded, as on the docs site and the web app. Where it is not loaded, for example when the file is opened on its own, it falls back to the system sans-serif font. The favicon (`docs/favicon.svg`) is the mark alone on its own dark fill. Unifying the favicon, the app manifest and a downloadable asset set is separate work; this page documents the files as they are.
+The wordmark is Bricolage Grotesque Bold outlined to paths, so it looks the same wherever the file is opened, with or without the font. The favicon (`docs/favicon.svg`) is the mark alone on the ink fill, `#080D0F`, the same value as the page background, the app manifest and the browser theme color.
 
 ## Clear space and minimum size
 
-<Note>
-  The clear space and minimum sizes below are defined on this page. They were not written down
-  before, and existing pages have not been checked against them.
-</Note>
-
-- **Clear space.** Keep an empty margin on every side of the logo of at least half the height of the mark. At the native 36px height that is 16px. No text, edge or other graphic enters that margin.
-- **Minimum size, full logo.** 24px tall (about 115px wide). Below that the wordmark stops being legible.
-- **Minimum size, mark alone.** 16px. Below that the arc and the star merge. Use the mark alone only where the full logo does not fit.
+The clear space around the logo and its minimum sizes are in the [usage note next to the assets](https://github.com/LumenWipe/lumenwipe/blob/main/apps/web/brand/README.md).
 
 ## Backgrounds
 
@@ -37,8 +30,8 @@ The wordmark is live SVG text, not outlined paths. It renders in Bricolage Grote
 
 ## Never
 
-- Recolor the logo, or any part of it, including to a single color.
+- Recolor the logo, or any part of it. The only single-color versions are the white and black ones in the asset set.
 - Swap the colors of "Lumen" and "Wipe", or set the wordmark in another font.
 - Stretch, rotate, outline, add a shadow or glow to, or animate the logo.
-- Separate the mark from the wordmark and rearrange them, or put the wordmark on its own.
+- Rearrange the mark and the wordmark other than as in the side-by-side and stacked files, or put the wordmark on its own.
 - Use the mark's cyan and gold as a reason to use those colors elsewhere. Their meaning in the product is set in [color meaning](/brand/color).

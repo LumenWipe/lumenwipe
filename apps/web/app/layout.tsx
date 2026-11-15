@@ -3,20 +3,19 @@ import { headers } from "next/headers";
 import { Toaster } from "sonner";
 import RedactedAnalytics from "@/components/analytics/RedactedAnalytics";
 import { UMAMI_BEFORE_SEND, UMAMI_BEFORE_SEND_SCRIPT } from "@/lib/analytics/redact";
+import { ROOT_METADATA, ROOT_VIEWPORT, SITE_DESCRIPTION } from "@/lib/site/root-metadata";
+import { siteOrigin } from "@/lib/site/url";
 import { siteFontVars } from "./fonts";
 import "./globals.css";
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "";
-
-const description =
-  "Close your Stellar account safely. Recover locked XLM reserves, remove trustlines, cancel open offers, and exit Soroban DeFi positions in one non-custodial workflow.";
+const APP_URL = siteOrigin();
 
 const jsonLd = {
   "@context": "https://schema.org",
   "@type": "WebApplication",
   name: "LumenWipe",
   url: APP_URL,
-  description,
+  description: SITE_DESCRIPTION,
   applicationCategory: "FinanceApplication",
   operatingSystem: "Web Browser",
   featureList: [
@@ -28,44 +27,9 @@ const jsonLd = {
   ],
 };
 
-export const viewport: Viewport = {
-  themeColor: "#080d0f",
-  colorScheme: "dark",
-};
+export const viewport: Viewport = ROOT_VIEWPORT;
 
-export const metadata: Metadata = {
-  title: {
-    default: "LumenWipe - Close a Stellar Account",
-    template: "%s | LumenWipe",
-  },
-  description,
-  keywords: [
-    "Stellar",
-    "XLM",
-    "Lumens",
-    "account merge",
-    "non-custodial",
-    "Soroban",
-    "DeFi",
-    "trustline",
-    "blockchain",
-    "LumenWipe",
-  ],
-  metadataBase: APP_URL ? new URL(APP_URL) : undefined,
-  openGraph: {
-    title: "LumenWipe - Close a Stellar Account",
-    description,
-    url: APP_URL,
-    siteName: "LumenWipe",
-    type: "website",
-    locale: "en_US",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "LumenWipe - Close a Stellar Account",
-    description,
-  },
-};
+export const metadata: Metadata = ROOT_METADATA;
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const nonce = (await headers()).get("x-nonce") ?? undefined;
@@ -73,11 +37,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en" className="dark">
       <head>
-        <link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
-        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-        <link rel="shortcut icon" href="/favicon.ico" />
-        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-        <link rel="manifest" href="/site.webmanifest" />
         <script
           type="application/ld+json"
           nonce={nonce}

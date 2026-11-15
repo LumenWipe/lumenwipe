@@ -1,14 +1,16 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/site/pages";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import Faq from "@/components/marketing/Faq";
 import { Button } from "@/components/ui/button";
 
-export const metadata: Metadata = {
-  title: "FAQ - LumenWipe",
+export const metadata: Metadata = pageMetadata({
+  path: "/faq",
+  title: "FAQ",
   description:
     "Answers to the common questions about closing a Stellar account with LumenWipe: non-custodial signing, irreversibility, exchange merges, Soroban DeFi, supported wallets and resumable sessions.",
-};
+});
 
 export default function FaqPage() {
   return (

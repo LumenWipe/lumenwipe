@@ -12,6 +12,9 @@ export interface PostMeta {
   title: string;
   description: string;
   publishedAt: string;
+  /** The last content change: the `updatedAt` front matter, or `publishedAt` when it was never
+   *  edited after publishing. */
+  updatedAt: string;
   category: Category;
   tags: string[];
   readingTime: string;
@@ -46,6 +49,19 @@ export function extractToc(content: string): TocEntry[] {
   });
 }
 
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** The post's `updatedAt`: a `YYYY-MM-DD` date no earlier than `publishedAt`, which it defaults to. */
+export function resolveUpdatedAt(slug: string, publishedAt: string, updatedAt: unknown): string {
+  if (updatedAt === undefined) return publishedAt;
+  if (typeof updatedAt !== "string" || !DATE.test(updatedAt) || updatedAt < publishedAt) {
+    throw new Error(
+      `Post "${slug}" has an invalid updatedAt: use a YYYY-MM-DD date no earlier than publishedAt`
+    );
+  }
+  return updatedAt;
+}
+
 export function getAllPostMetas(): PostMeta[] {
   if (!fs.existsSync(CONTENT_DIR)) return [];
   return fs
@@ -62,6 +78,7 @@ export function getAllPostMetas(): PostMeta[] {
           title: data.title as string,
           description: data.description as string,
           publishedAt: data.publishedAt as string,
+          updatedAt: resolveUpdatedAt(slug, data.publishedAt as string, data.updatedAt),
           category: data.category as Category,
           tags: (data.tags as string[]) ?? [],
           readingTime: readingTime(content).text,
@@ -83,6 +100,7 @@ export function getPost(slug: string): Post {
     title: data.title as string,
     description: data.description as string,
     publishedAt: data.publishedAt as string,
+    updatedAt: resolveUpdatedAt(slug, data.publishedAt as string, data.updatedAt),
     category: data.category as Category,
     tags: (data.tags as string[]) ?? [],
     readingTime: readingTime(content).text,

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/site/pages";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -24,11 +25,12 @@ import Faq from "@/components/marketing/Faq";
 import { LIVE_EXIT_PROTOCOLS } from "@/lib/site/status";
 import { Button } from "@/components/ui/button";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
+  path: "/how-it-works",
   title: "How it works",
   description:
     "How LumenWipe closes a Stellar account: a deterministic ordered plan, per-step simulation and confirmation, the CEX relay flow, and resumable sessions reconciled against on-chain state.",
-};
+});
 
 function Eyebrow({ children }: { children: React.ReactNode }) {
   return (

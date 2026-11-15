@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { HOME_TITLE, pageMetadata } from "@/lib/site/pages";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -32,10 +33,11 @@ import {
   type FeatureId,
 } from "@/lib/site/status";
 
-export const metadata: Metadata = {
-  title: "LumenWipe: Recover the XLM locked in your Stellar account",
+export const metadata: Metadata = pageMetadata({
+  path: "/",
+  title: HOME_TITLE,
   description: `LumenWipe closes a Stellar account end to end and recovers the XLM locked in its reserves. Unwind trustlines, offers, data entries and Soroban DeFi positions, then merge out to ${feature("exchange-close").status === "live" ? "your wallet or exchange" : "your wallet"}. Non-custodial, open source.`,
-};
+});
 
 const CARD_IDS = [
   "allowance-inspector",

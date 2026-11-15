@@ -1,13 +1,15 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/site/pages";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export const metadata: Metadata = {
-  title: "Playground - LumenWipe",
+export const metadata: Metadata = pageMetadata({
+  path: "/playground",
+  title: "Playground",
   description:
     "Try the exact same close flow as the app on a disposable Stellar testnet account - no wallet, no real funds.",
-};
+});
 
 export default function PlaygroundPage() {
   return (

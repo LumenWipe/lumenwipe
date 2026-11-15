@@ -1,3 +1,4 @@
+import { MARK } from "@/brand/tokens";
 import { cn } from "@/lib/utils/cn";
 
 interface LogoProps {
@@ -18,30 +19,27 @@ export default function Logo({
 }: LogoProps) {
   return (
     <span className="inline-flex items-center gap-2.5">
-      <svg viewBox="0 0 32 32" fill="none" className={className} aria-hidden="true" role="img">
+      <svg viewBox="0 0 32 32" fill="none" className={className} aria-hidden="true">
         <rect
-          x="1"
-          y="1"
-          width="30"
-          height="30"
-          rx="8"
+          x={MARK.outline.x}
+          y={MARK.outline.y}
+          width={MARK.outline.size}
+          height={MARK.outline.size}
+          rx={MARK.outline.radius}
           stroke="hsl(var(--accent))"
           strokeOpacity="0.35"
           strokeWidth="1.25"
         />
         {/* sweep arc */}
         <path
-          d="M7 22c4.5 3 13.5 3 18 0"
+          d={MARK.arc}
           stroke="hsl(var(--value))"
           strokeOpacity="0.9"
           strokeWidth="1.5"
           strokeLinecap="round"
         />
         {/* four-point spark */}
-        <path
-          d="M16 6.5c.7 4.2 2.3 5.8 6.5 6.5-4.2.7-5.8 2.3-6.5 6.5-.7-4.2-2.3-5.8-6.5-6.5 4.2-.7 5.8-2.3 6.5-6.5Z"
-          fill="hsl(var(--accent))"
-        />
+        <path d={MARK.spark} fill="hsl(var(--accent))" />
       </svg>
       {showWord && (
         <span

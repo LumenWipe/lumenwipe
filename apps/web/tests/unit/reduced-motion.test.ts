@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import fs from "fs";
 import path from "path";
+import { ROOT_VIEWPORT } from "@/lib/site/root-metadata";
 
 const css = fs.readFileSync(path.join(process.cwd(), "app/globals.css"), "utf8");
 const layout = fs.readFileSync(path.join(process.cwd(), "app/layout.tsx"), "utf8");
@@ -84,8 +85,8 @@ describe("dark color scheme", () => {
 
   test("the root layout exports a dark viewport whose themeColor equals the page background token", () => {
     const bg = css.match(/--bg:\s*([^;]+);/)?.[1].trim() ?? "";
-    expect(layout).toContain("export const viewport");
-    expect(layout).toMatch(/colorScheme:\s*"dark"/);
-    expect(layout.match(/themeColor:\s*"(#[0-9a-f]{6})"/)?.[1]).toBe(hslToHex(bg));
+    expect(layout).toContain("export const viewport: Viewport = ROOT_VIEWPORT;");
+    expect(ROOT_VIEWPORT.colorScheme).toBe("dark");
+    expect(String(ROOT_VIEWPORT.themeColor).toLowerCase()).toBe(hslToHex(bg));
   });
 });

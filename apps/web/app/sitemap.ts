@@ -1,34 +1,21 @@
 import type { MetadataRoute } from "next";
 import { getAllPostMetas } from "@/lib/blog";
-
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL!;
+import { INDEXED_PAGES } from "@/lib/site/pages";
+import { siteUrl } from "@/lib/site/url";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const posts = getAllPostMetas();
+  const pages: MetadataRoute.Sitemap = INDEXED_PAGES.map((page) => ({
+    url: siteUrl(page.path),
+    changeFrequency: page.changeFrequency,
+    priority: page.priority,
+  }));
 
-  const blogEntries: MetadataRoute.Sitemap = posts.map((post) => ({
-    url: `${APP_URL}/blog/${post.slug}`,
-    lastModified: new Date(post.publishedAt),
-    changeFrequency: "monthly" as const,
+  const posts: MetadataRoute.Sitemap = getAllPostMetas().map((post) => ({
+    url: siteUrl(`/blog/${post.slug}`),
+    lastModified: new Date(post.updatedAt),
+    changeFrequency: "monthly",
     priority: 0.7,
   }));
 
-  return [
-    {
-      url: `${APP_URL}/mainnet`,
-      changeFrequency: "monthly",
-      priority: 1,
-    },
-    {
-      url: `${APP_URL}/testnet`,
-      changeFrequency: "monthly",
-      priority: 0.8,
-    },
-    {
-      url: `${APP_URL}/blog`,
-      changeFrequency: "weekly",
-      priority: 0.9,
-    },
-    ...blogEntries,
-  ];
+  return [...pages, ...posts];
 }

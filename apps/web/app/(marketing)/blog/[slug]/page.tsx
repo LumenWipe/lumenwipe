@@ -6,6 +6,7 @@ import { Calendar, Clock, ArrowLeft } from "lucide-react";
 import { MDXRemote } from "next-mdx-remote/rsc";
 import remarkGfm from "remark-gfm";
 import { getAllSlugs, getPost, extractToc, slugify } from "@/lib/blog";
+import { pageMetadata, postShareImage } from "@/lib/site/pages";
 import CategoryBadge from "@/components/blog/CategoryBadge";
 import BlogToc from "@/components/blog/BlogToc";
 import YouTubeEmbed from "@/components/blog/YouTubeEmbed";
@@ -25,25 +26,19 @@ export async function generateMetadata({
   try {
     const post = getPost(slug);
     return {
-      title: post.title,
-      description: post.description,
+      ...pageMetadata({
+        path: `/blog/${slug}`,
+        title: post.title,
+        description: post.description,
+        shareImage: postShareImage(slug, post.title),
+        openGraph: {
+          type: "article",
+          publishedTime: post.publishedAt,
+          modifiedTime: post.updatedAt,
+          tags: post.tags,
+        },
+      }),
       keywords: post.tags,
-      openGraph: {
-        title: post.title,
-        description: post.description,
-        url: `${APP_URL}/blog/${slug}`,
-        type: "article",
-        publishedTime: post.publishedAt,
-        tags: post.tags,
-      },
-      twitter: {
-        card: "summary_large_image",
-        title: post.title,
-        description: post.description,
-      },
-      alternates: {
-        canonical: `${APP_URL}/blog/${slug}`,
-      },
     };
   } catch {
     return {};
