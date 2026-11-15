@@ -6,8 +6,6 @@ import { Button } from "@/components/ui/button";
 export const NOT_FOUND_METADATA: Metadata = {
   title: "404 - Page Not Found",
   description: "This page doesn't exist on the ledger.",
-  // Replaces the root layout's index, follow, which would otherwise sit beside Next's own noindex.
-  robots: { index: false, follow: true },
 };
 
 export const REPORT_BROKEN_LINK_URL =

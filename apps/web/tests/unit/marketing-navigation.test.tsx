@@ -5,7 +5,7 @@ import MarketingNav from "@/components/marketing/MarketingNav";
 import MarketingFooter from "@/components/marketing/MarketingFooter";
 import Faq from "@/components/marketing/Faq";
 import NotFoundView, { REPORT_BROKEN_LINK_URL } from "@/components/marketing/NotFoundView";
-import MarketingNotFound, { metadata as notFoundMetadata } from "@/app/(marketing)/not-found";
+import MarketingNotFound from "@/app/(marketing)/not-found";
 import BlogPage from "@/app/(marketing)/blog/page";
 import * as blog from "@/lib/blog";
 import { expectSameElement } from "./fixtures/focus";
@@ -188,10 +188,6 @@ describe("not found", () => {
       .map((l) => l.getAttribute("href"));
     expect(hrefs).toEqual(["/content", "/how-it-works", "/playground", REPORT_BROKEN_LINK_URL]);
     expect(screen.getByRole("link", { name: /Back to home/ }).getAttribute("href")).toBe("/");
-  });
-
-  test("its metadata replaces the site's index, follow with noindex", () => {
-    expect(notFoundMetadata.robots).toEqual({ index: false, follow: true });
   });
 
   test("a missing marketing page, such as a blog slug, renders the same view", () => {
