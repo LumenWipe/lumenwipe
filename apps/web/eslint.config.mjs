@@ -67,6 +67,11 @@ const MARKETING = [
   "components/blog/**/*.{ts,tsx}",
 ];
 
+const marketingTextFloor = bannedClass(
+  "text-white\\/(?:5[6-9]|6[0-9])(?![\\w\\/\\[-])",
+  "Marketing body text is white at 70 percent or more on the ink. Dimmer text, such as a caption, uses text-fg-muted or text-fg-subtle, the caption floor."
+);
+
 const goldFill = bannedClass(
   "text-value-fg(?![\\w-])",
   "text-value-fg is the text on a gold fill, and marketing has no gold control. Use Button for an action."
@@ -128,7 +133,14 @@ const config = [
   {
     files: MARKETING,
     rules: {
-      "no-restricted-syntax": ["error", ...dimWhiteText, ...rawStyling, ...goldAction, ...goldFill],
+      "no-restricted-syntax": [
+        "error",
+        ...dimWhiteText,
+        ...marketingTextFloor,
+        ...rawStyling,
+        ...goldAction,
+        ...goldFill,
+      ],
     },
   },
   {

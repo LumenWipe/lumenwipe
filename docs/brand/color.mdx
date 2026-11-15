@@ -47,6 +47,10 @@ The examples below are taken from the current product. Each "do not" is a place 
 
 **Do not.** On the plan screen, an asset set to be swapped to XLM shows its swap arrow in green, before anything has been signed or submitted (`apps/web/components/plan/AssetDispositionCard.tsx`). A planned conversion is neutral until it is confirmed.
 
+## Text on the marketing pages
+
+Body text on the ink is white at 70 percent or more. Anything dimmer, such as a caption or a source line, uses `--fg-muted` or `--fg-subtle`, the caption floor; `--fg-subtle` measures 6.43:1 on `--bg` and 5.63:1 on `--surface-raised`. A `no-restricted-syntax` rule in `apps/web/eslint.config.mjs` rejects white below 70 percent on the marketing pages, and `apps/web/tests/unit/marketing-contrast.test.ts` fails on any marketing text color under 4.5:1 on the ink or on a card.
+
 ## The logo is not a color example
 
 The mark uses cyan and gold together. It is a fixed asset and is never recolored or used as a source of meaning; see [logo usage](/brand/logo).

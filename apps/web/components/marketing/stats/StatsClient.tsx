@@ -25,7 +25,7 @@ export default function StatsClient() {
             <h1 className="mkt-display mt-3 text-3xl font-bold text-white sm:text-4xl">
               Real numbers. Verifiable on Stellar.
             </h1>
-            <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/65">
+            <p className="mt-3 max-w-xl text-sm leading-relaxed text-fg-muted">
               Every transaction on this page is an{" "}
               <code className="rounded bg-white/5 px-1 py-0.5 mkt-mono text-label text-white/75">
                 ACCOUNT_MERGE

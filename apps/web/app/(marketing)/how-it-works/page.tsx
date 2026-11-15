@@ -201,8 +201,8 @@ export default function HowItWorksPage() {
                     <h3 className="text-base font-semibold text-white">{s.title}</h3>
                   </div>
                   <p className="mt-2 text-sm leading-relaxed text-white/85">{s.body}</p>
-                  <div className="mt-3 inline-flex items-center gap-2 rounded-lg border border-white/8 bg-black/30 px-2.5 py-1 mkt-mono text-caption text-white/65">
-                    <span className="text-accent/70">op</span>
+                  <div className="mt-3 inline-flex items-center gap-2 rounded-lg border border-white/8 bg-black/30 px-2.5 py-1 mkt-mono text-caption text-fg-muted">
+                    <span className="text-fg-muted">op</span>
                     {s.op}
                   </div>
                 </div>
@@ -249,7 +249,7 @@ export default function HowItWorksPage() {
                     >
                       <ArrowRight className="hidden h-4 w-4 sm:block" />
                       <ArrowDown className="h-4 w-4 sm:hidden" />
-                      <span className="mkt-mono text-caption uppercase tracking-wider text-accent/70">
+                      <span className="mkt-mono text-caption uppercase tracking-wider text-fg-muted">
                         {node.op}
                       </span>
                     </div>
@@ -268,7 +268,7 @@ export default function HowItWorksPage() {
                   )
                 )}
               </div>
-              <p className="mt-6 text-center text-sm text-white/65">
+              <p className="mt-6 text-center text-sm text-fg-muted">
                 The ~1 XLM that stays as the relay account&apos;s base reserve is disclosed upfront.
                 Known exchanges are validated against a registry that enforces the correct memo
                 type.

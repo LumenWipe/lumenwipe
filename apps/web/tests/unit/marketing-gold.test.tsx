@@ -5,7 +5,7 @@ import SecurityPage from "@/app/(marketing)/security/page";
 import HowItWorksPage from "@/app/(marketing)/how-it-works/page";
 import FaqPage from "@/app/(marketing)/faq/page";
 import PlaygroundPage from "@/app/(marketing)/playground/page";
-import NotFound from "@/app/not-found";
+import NotFoundView from "@/components/marketing/NotFoundView";
 import { renderMarketing } from "./fixtures/marketing";
 
 const PAGES: Record<string, () => ReactElement> = {
@@ -14,7 +14,7 @@ const PAGES: Record<string, () => ReactElement> = {
   "how it works": () => <HowItWorksPage />,
   faq: () => <FaqPage />,
   playground: () => <PlaygroundPage />,
-  "not found": () => <NotFound />,
+  "not found": () => <NotFoundView />,
 };
 
 const GOLD = /(?:^|\s)(?:[a-z-]+:)*(?:bg|text|border)-value(?:\/\S+)?(?=\s|$)/;

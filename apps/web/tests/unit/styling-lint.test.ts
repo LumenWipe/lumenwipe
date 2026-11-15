@@ -125,3 +125,27 @@ describe("gold is never an action", () => {
     }
   }, 30_000);
 });
+
+describe("marketing text alpha floor", () => {
+  const FLOOR = /white at 70 percent or more/;
+
+  test("white below 70 is flagged on every marketing surface and nowhere else", async () => {
+    const code = 'export const a = "text-white/65";\nexport const b = "hover:text-white/56";\n';
+    for (const file of [
+      "app/(marketing)/fixture/page.tsx",
+      "app/not-found.tsx",
+      "components/marketing/Fixture.tsx",
+      "components/blog/Fixture.tsx",
+    ]) {
+      const messages = await syntaxMessages(code, file);
+      expect(messages).toHaveLength(2);
+      for (const message of messages) expect(message).toMatch(FLOOR);
+    }
+    expect(await syntaxMessages(code, "components/plan/Fixture.tsx")).toEqual([]);
+  }, 30_000);
+
+  test("the body floor and the caption tokens pass", async () => {
+    const code = 'export const a = "text-white/70 text-white/85 text-fg-muted text-fg-subtle";\n';
+    expect(await syntaxMessages(code, "components/marketing/Fixture.tsx")).toEqual([]);
+  }, 30_000);
+});

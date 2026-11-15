@@ -143,7 +143,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
         {/* Breadcrumb */}
         <Link
           href="/blog"
-          className="inline-flex items-center gap-1.5 mkt-mono text-xs text-white/65 hover:text-white transition-colors mb-8"
+          className="inline-flex items-center gap-1.5 mkt-mono text-xs text-fg-muted hover:text-white transition-colors mb-8"
         >
           <ArrowLeft className="h-3 w-3" />
           All articles

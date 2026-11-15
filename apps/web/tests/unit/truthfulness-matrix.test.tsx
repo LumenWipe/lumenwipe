@@ -811,7 +811,7 @@ const SANCTIONED: Record<string, Partial<Record<ClaimKey, Site>>> = {
     "may-be-sent": { count: 1, shownBy: "route error page" },
     "nothing-sent": { count: 1, shownBy: "route error page" },
   },
-  "app/not-found.tsx": {
+  "components/marketing/NotFoundView.tsx": {
     "account-closed": { count: 1, shownBy: OUTSIDE.notFound },
   },
   "components/complete/CompletionReceipt.tsx": {

@@ -148,6 +148,7 @@ test("the hero refuses a checksum typo the shape check used to pass", () => {
   expect(screen.getAllByRole("alert")).toHaveLength(1);
   expect(screen.getByRole("alert").textContent).toContain("checksum");
   expect(describedText(screen.getByRole("textbox"))).toContain("checksum");
+  expect(screen.getByRole("textbox").getAttribute("aria-invalid")).toBe("true");
 });
 
 test("the hero sends a pasted address on, trimmed, to the same route", () => {

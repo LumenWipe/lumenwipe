@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { getAllPostMetas } from "@/lib/blog";
 import PostCard from "@/components/blog/PostCard";
+import { Button } from "@/components/ui/button";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
@@ -45,7 +47,21 @@ export default function BlogPage() {
           ))}
         </div>
       ) : (
-        <div className="text-center py-20 text-white/65 text-sm">No articles published yet.</div>
+        <div className="mkt-card flex flex-col items-center gap-4 px-6 py-14 text-center">
+          <p className="text-body font-semibold text-white">No articles published yet.</p>
+          <p className="max-w-md text-sm leading-relaxed text-fg-muted">
+            The first guides are on the way. Until then, watch the walkthrough videos or read how a
+            close works, step by step.
+          </p>
+          <div className="flex flex-wrap justify-center gap-3">
+            <Button asChild>
+              <Link href="/content">Watch the videos</Link>
+            </Button>
+            <Button asChild variant="secondary">
+              <Link href="/how-it-works">How it works</Link>
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   );
