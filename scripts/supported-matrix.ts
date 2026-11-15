@@ -166,7 +166,7 @@ function walletsBlock(): string {
     return [name, "Always enabled", "Both, set by the app's network"];
   });
   const envVar = constant(
-    "apps/web/lib/wallet-kit/modules.ts",
+    "apps/web/lib/wallet-kit/wallet-connect-config.ts",
     /process\.env\.(NEXT_PUBLIC_STELLAR_WALLET_CONNECT_PROJECT_ID)/,
     "the WalletConnect variable"
   );
