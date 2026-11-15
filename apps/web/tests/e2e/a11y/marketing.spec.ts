@@ -32,7 +32,11 @@ for (const [name, path] of [
     const response = await page.goto(path);
     expect(response?.status()).toBe(404);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(/This page has\s*been closed/);
-    await expect(page.locator('meta[name="robots"][content*="noindex"]')).not.toHaveCount(0);
+    const robots = await page
+      .locator('meta[name="robots"], meta[name="googlebot"]')
+      .evaluateAll((tags) => tags.map((t) => t.getAttribute("content") ?? ""));
+    expect(robots.length).toBeGreaterThan(0);
+    for (const content of robots) expect(content).toContain("noindex");
     await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible();
     const next = page.getByRole("navigation", { name: "Where to go next" });
     for (const link of ["Guides", "How it works", "Try the playground", /Report a broken link/]) {
