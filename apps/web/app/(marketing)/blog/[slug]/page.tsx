@@ -1,16 +1,16 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { headers } from "next/headers";
 import Link from "next/link";
 import { Calendar, Clock, ArrowLeft } from "lucide-react";
 import { MDXRemote } from "next-mdx-remote/rsc";
 import remarkGfm from "remark-gfm";
 import { getAllSlugs, getPost, extractToc, slugify } from "@/lib/blog";
+import { pageMetadata, postShareImage } from "@/lib/site/pages";
+import { postJsonLd } from "@/lib/site/structured-data";
+import JsonLd from "@/components/seo/JsonLd";
 import CategoryBadge from "@/components/blog/CategoryBadge";
 import BlogToc from "@/components/blog/BlogToc";
 import YouTubeEmbed from "@/components/blog/YouTubeEmbed";
-
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
 export async function generateStaticParams() {
   return getAllSlugs().map((slug) => ({ slug }));
@@ -25,25 +25,19 @@ export async function generateMetadata({
   try {
     const post = getPost(slug);
     return {
-      title: post.title,
-      description: post.description,
+      ...pageMetadata({
+        path: `/blog/${slug}`,
+        title: post.title,
+        description: post.description,
+        shareImage: postShareImage(slug, post.title),
+        openGraph: {
+          type: "article",
+          publishedTime: post.publishedAt,
+          modifiedTime: post.updatedAt,
+          tags: post.tags,
+        },
+      }),
       keywords: post.tags,
-      openGraph: {
-        title: post.title,
-        description: post.description,
-        url: `${APP_URL}/blog/${slug}`,
-        type: "article",
-        publishedTime: post.publishedAt,
-        tags: post.tags,
-      },
-      twitter: {
-        card: "summary_large_image",
-        title: post.title,
-        description: post.description,
-      },
-      alternates: {
-        canonical: `${APP_URL}/blog/${slug}`,
-      },
     };
   } catch {
     return {};
@@ -94,7 +88,6 @@ const mdxComponents = {
 
 export default async function BlogPostPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const nonce = (await headers()).get("x-nonce") ?? undefined;
 
   let post;
   try {
@@ -111,33 +104,9 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
     timeZone: "UTC",
   });
 
-  const jsonLd = {
-    "@context": "https://schema.org",
-    "@type": "Article",
-    headline: post.title,
-    description: post.description,
-    datePublished: post.publishedAt,
-    author: {
-      "@type": "Organization",
-      name: "LumenWipe",
-      url: APP_URL,
-    },
-    publisher: {
-      "@type": "Organization",
-      name: "LumenWipe",
-      url: APP_URL,
-    },
-    keywords: post.tags.join(", "),
-  };
-
   return (
     <>
-      <script
-        type="application/ld+json"
-        nonce={nonce}
-        suppressHydrationWarning
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-      />
+      <JsonLd data={postJsonLd(post)} />
 
       <div className="max-w-5xl mx-auto px-5 lg:px-8 py-12">
         {/* Breadcrumb */}

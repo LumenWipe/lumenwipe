@@ -1,24 +1,15 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/site/pages";
 import { getAllPostMetas } from "@/lib/blog";
 import PostCard from "@/components/blog/PostCard";
 import { Play } from "lucide-react";
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "";
-
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
+  path: "/content",
   title: "Content",
   description:
     "Videos, guides, and technical deep dives on LumenWipe - closing Stellar accounts, recovering XLM reserves, and DeFi position unwinding.",
-  openGraph: {
-    title: "Content | LumenWipe",
-    description: "Videos and articles on Stellar account management and reserve recovery.",
-    url: `${APP_URL}/content`,
-    type: "website",
-  },
-  alternates: {
-    canonical: `${APP_URL}/content`,
-  },
-};
+});
 
 type Video = {
   id: string;

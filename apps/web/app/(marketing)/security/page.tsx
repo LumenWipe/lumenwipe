@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/site/pages";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -19,11 +20,12 @@ import {
 } from "@/lib/site/trust";
 import { Button } from "@/components/ui/button";
 
-export const metadata: Metadata = {
-  title: "Security - LumenWipe",
+export const metadata: Metadata = pageMetadata({
+  path: "/security",
+  title: "Security",
   description:
     "How LumenWipe keeps your key in your browser, what its API builds, what your browser checks before you sign, and the two server keys and what each may sign.",
-};
+});
 
 const LAYERS = [
   {
