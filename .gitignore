@@ -7,6 +7,10 @@ node_modules
 # testing
 coverage
 
+# Lighthouse CI runs (apps/web/lighthouserc.json)
+.lighthouseci/
+lighthouse-report/
+
 # Stryker mutation testing report
 reports/
 

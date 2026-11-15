@@ -253,6 +253,10 @@ The playground has the same gate in `apps/playground/tests/e2e/a11y/`, run by th
 bun run --filter '@lumenwipe/playground' test:a11y
 ```
 
+### Lighthouse report
+
+On a PR that changes what the web app is built from, the `web accessibility (axe)` job also runs Lighthouse against its production build: `/`, `/how-it-works`, one blog post and `/mainnet`, three mobile runs each on the fixed profile in `apps/web/lighthouserc.json`, with every host but localhost unresolvable. The medians and any third-party request a page attempted are in the job summary, and the reports are in the `lighthouse-report` artifact. It reports only and never fails the job. Compare against the [web performance baseline](docs/web-performance-baseline.mdx).
+
 ### What to test for a new protocol exit
 
 At minimum:

@@ -1,0 +1,70 @@
+---
+title: "Web performance baseline"
+sidebarTitle: "Performance baseline"
+description: "The first Lighthouse measurement of the web app's landing, how-it-works, article and entry routes: the values, the profile they were measured on, and the commit."
+icon: "chart-line"
+---
+
+This page records the first Lighthouse measurement of four web routes. It is a reference point to compare later runs against, not a budget: no number here is a target, and the CI job that produces them asserts nothing. Budgets are proposed in a later issue, once a few more runs exist.
+
+## How it is measured
+
+On every pull request that changes what the web app is built from, the `web accessibility (axe)` CI job runs Lighthouse against the production build it has just tested (`next start`). Which changes count comes from `WATCHED.web` in `scripts/vercel-ignore.mjs`, the same list that decides whether Vercel builds a preview. The job writes the medians to its summary and uploads the full reports as the `lighthouse-report` artifact. See `apps/web/lighthouserc.json` and `apps/web/scripts/lighthouse-report.ts`.
+
+| Setting    | Value                                                                                                       |
+| ---------- | ----------------------------------------------------------------------------------------------------------- |
+| Tool       | `@lhci/cli` 0.16.1, Lighthouse 13.6.0, Playwright's Chromium                                                |
+| Category   | Performance only                                                                                            |
+| Device     | Mobile emulation, 412 x 823 at 1.75x (Lighthouse's Moto G Power)                                            |
+| Throttling | Simulated: 150 ms RTT, 1638.4 Kbps down, 4x CPU slowdown                                                    |
+| Runs       | 3 per route; each value below is the median of the three                                                    |
+| Network    | Every host except `localhost` is unresolvable (`--host-resolver-rules`), so no run depends on a third party |
+| Runner     | GitHub-hosted `ubuntu-latest` in the Playwright container; Lighthouse benchmark index 1840 to 2072          |
+
+Fonts are part of the build: `next/font/google` downloads them at build time and the app serves them from `/_next/static/media`, so a page load never contacts a font host.
+
+## What was measured
+
+- **Commit.** `d254396d` on pull request #918. The app code there is identical to `main` at `600ea45f`: the pull request adds only the CI job, its configuration and script, and documentation.
+- **Date.** 2026-11-15.
+- **Runs.** The same commit was measured twice, in [run 1](https://github.com/LumenWipe/lumenwipe/actions/runs/43769800275/job/132982938661) and in a [re-run of that job](https://github.com/LumenWipe/lumenwipe/actions/runs/43769800275/job/132985130400).
+- **Build.** The a11y job's production build, with a placeholder WalletConnect project ID and no analytics configured.
+
+## Results
+
+Run 1 medians, with run 2 after the slash where it differed. Transferred JS is the compressed size of every script the page loaded.
+
+| Route                                          | Performance | LCP            | CLS | TBT          | Transferred JS |
+| ---------------------------------------------- | ----------- | -------------- | --- | ------------ | -------------- |
+| `/`                                            | 96 / 95     | 1219 / 1217 ms | 0   | 235 / 266 ms | 301.7 KB       |
+| `/how-it-works`                                | 96 / 95     | 1218 ms        | 0   | 236 / 265 ms | 296.4 KB       |
+| `/blog/how-do-i-remove-a-trustline-on-stellar` | 95          | 1215 / 1218 ms | 0   | 240 / 245 ms | 296.1 KB       |
+| `/mainnet`                                     | 57 / 56     | 6529 / 6551 ms | 0   | 860 / 881 ms | 637.6 KB       |
+
+### Spread between the two runs
+
+| Route                                          | Performance | LCP   | CLS | TBT   | Transferred JS |
+| ---------------------------------------------- | ----------- | ----- | --- | ----- | -------------- |
+| `/`                                            | 1 point     | 2 ms  | 0   | 31 ms | 0              |
+| `/how-it-works`                                | 1 point     | 0 ms  | 0   | 29 ms | 0              |
+| `/blog/how-do-i-remove-a-trustline-on-stellar` | 0           | 3 ms  | 0   | 5 ms  | 0              |
+| `/mainnet`                                     | 1 point     | 22 ms | 0   | 21 ms | 0              |
+
+LCP and transferred JS are stable from run to run. Total blocking time is the noisiest metric, moving by up to about 30 ms on the same commit, so a TBT change smaller than that says little on its own.
+
+## What the numbers say
+
+- The three marketing routes are close to each other. LCP is the first paint, around 1.2 s, and about 300 KB of JavaScript is shared across them.
+- `/mainnet`, the entry page, loads more than twice as much JavaScript (638 KB). Its LCP is 6.5 s, and its blocking time is about 3.5 times that of the marketing routes. The wallet kit is the main difference between the two kinds of page.
+
+### Known third-party request
+
+`/mainnet` requests `https://api.web3modal.org/appkit/v1/project-limits` on load, before the user has asked to connect a wallet. It comes from the wallet kit's WalletConnect module. The CI job blocks it, and the summary lists it as blocked. Loading no wallet-kit code until the user chooses to connect (#536) should remove the request from the entry page. When it does, the summary's third-party list for this route should be empty.
+
+No other route attempted a third-party request.
+
+## What the baseline leaves out
+
+- **Analytics.** Production also loads the Umami script (deferred, only when `NEXT_PUBLIC_UMAMI_WEBSITE_ID` is set) and Vercel Analytics. Neither is configured in CI.
+- **Hosting.** These are lab numbers from a local `next start` on a shared CI runner, not field data from the Vercel deployment and its CDN.
+- **Network.** Third-party hosts are unreachable by design, so a page's cost of waiting on them is not measured.

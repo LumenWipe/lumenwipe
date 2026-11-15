@@ -1,0 +1,40 @@
+{
+  "ci": {
+    "collect": {
+      "startServerCommand": "bun run start",
+      "startServerReadyPattern": "Ready in",
+      "url": [
+        "http://localhost:3000/",
+        "http://localhost:3000/how-it-works",
+        "http://localhost:3000/blog/how-do-i-remove-a-trustline-on-stellar",
+        "http://localhost:3000/mainnet"
+      ],
+      "numberOfRuns": 3,
+      "settings": {
+        "onlyCategories": ["performance"],
+        "formFactor": "mobile",
+        "screenEmulation": {
+          "mobile": true,
+          "width": 412,
+          "height": 823,
+          "deviceScaleFactor": 1.75,
+          "disabled": false
+        },
+        "throttlingMethod": "simulate",
+        "throttling": {
+          "rttMs": 150,
+          "throughputKbps": 1638.4,
+          "requestLatencyMs": 562.5,
+          "downloadThroughputKbps": 1474.56,
+          "uploadThroughputKbps": 675,
+          "cpuSlowdownMultiplier": 4
+        },
+        "chromeFlags": "--headless=new --no-sandbox --disable-dev-shm-usage --host-resolver-rules=\"MAP * ~NOTFOUND, EXCLUDE localhost\""
+      }
+    },
+    "upload": {
+      "target": "filesystem",
+      "outputDir": "lighthouse-report"
+    }
+  }
+}

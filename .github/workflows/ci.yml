@@ -192,6 +192,13 @@ jobs:
   # reachability on entry and analyze. Every /api call is answered by fixtures in the browser, so
   # it needs no API, no secret and no testnet, and runs against the production build. A serious
   # or critical violation fails it. See CONTRIBUTING.md, "Accessibility gate".
+  #
+  # On a PR that changes what the web app is built from (the list scripts/vercel-ignore.mjs watches),
+  # the job then runs Lighthouse against the same build: four routes, three mobile runs each on a
+  # fixed simulated throttling profile (apps/web/lighthouserc.json), with every host but localhost
+  # unresolvable so no run depends on a third party. It reports only: the medians go to the job
+  # summary and the reports to an artifact, every Lighthouse step is continue-on-error, and nothing
+  # is asserted. About three minutes. Baseline: docs/web-performance-baseline.mdx.
   a11y:
     name: web accessibility (axe)
     runs-on: ubuntu-latest
@@ -201,8 +208,13 @@ jobs:
       image: mcr.microsoft.com/playwright:v1.65.0-noble@sha256:6e3fb709361521eb27161606e6da6d2674e5e89fa16516cb37d6fdd91372273d
     permissions:
       contents: read
+    env:
+      # renovate: datasource=npm depName=@lhci/cli
+      LHCI_VERSION: 0.16.1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       # setup-bun extracts a zip and the image has no unzip; its Node installs Bun instead.
       - name: Set up Bun
@@ -226,6 +238,51 @@ jobs:
           path: |
             apps/web/playwright-report/
             apps/web/test-results/
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Detect web changes
+        id: web
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        working-directory: apps/web
+        # The container runs as root on a workspace the runner user owns, so git refuses it unless
+        # told otherwise; bash's pipefail turns a refused diff into a failed step, not a silent false.
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          run=$(git -c safe.directory="$GITHUB_WORKSPACE" diff --name-only "origin/${BASE_REF}...HEAD" |
+            bun scripts/lighthouse-report.ts gate)
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          echo "Web app changed: $run"
+
+      - name: Measure with Lighthouse
+        id: lighthouse
+        if: steps.web.outputs.run == 'true'
+        continue-on-error: true
+        working-directory: apps/web
+        run: |
+          CHROME_PATH=$(bun -e 'console.log(require("@playwright/test").chromium.executablePath())')
+          export CHROME_PATH
+          npx --yes "@lhci/cli@${LHCI_VERSION}" collect
+          npx --yes "@lhci/cli@${LHCI_VERSION}" upload
+
+      - name: Summarize the Lighthouse runs
+        if: steps.lighthouse.outcome == 'success'
+        continue-on-error: true
+        working-directory: apps/web
+        env:
+          COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
+        run: bun scripts/lighthouse-report.ts summary lighthouse-report "$COMMIT_SHA" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the Lighthouse reports
+        if: steps.web.outputs.run == 'true'
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lighthouse-report
+          path: apps/web/lighthouse-report/
           retention-days: 14
           if-no-files-found: warn
 
