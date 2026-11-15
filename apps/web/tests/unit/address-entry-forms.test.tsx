@@ -151,6 +151,17 @@ test("the hero refuses a checksum typo the shape check used to pass", () => {
   expect(screen.getByRole("textbox").getAttribute("aria-invalid")).toBe("true");
 });
 
+test("the hero refuses an address of the wrong length in plain language", () => {
+  render(<HeroAccountInput />);
+  fireEvent.change(screen.getByRole("textbox"), { target: { value: VALID.slice(0, -2) } });
+  fireEvent.click(screen.getByRole("button", { name: "Analyze account" }));
+
+  expect(push).not.toHaveBeenCalled();
+  expect(screen.getByRole("alert").textContent).toContain(
+    "A Stellar account address has 56 characters."
+  );
+});
+
 test("the hero sends a pasted address on, trimmed, to the same route", () => {
   render(<HeroAccountInput />);
   fireEvent.change(screen.getByRole("textbox"), { target: { value: ` ${VALID}\n` } });

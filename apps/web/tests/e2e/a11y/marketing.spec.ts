@@ -94,3 +94,53 @@ test("the Developers group opens from the keyboard and Escape returns focus", as
   await expect(developers).toBeFocused();
   await expect(developers).toHaveAttribute("aria-expanded", "false");
 });
+
+for (const width of [360, 320]) {
+  test(`at ${width}px the hero input spans the column and the header keeps Open the app`, async ({
+    page,
+  }, testInfo) => {
+    test.skip(
+      testInfo.project.name !== "phone",
+      "the phone layout is checked from the phone project"
+    );
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto("/");
+    const input = page.getByRole("textbox", { name: "Stellar account address" });
+    const submit = page.getByRole("button", { name: "Analyze account" });
+    const [field, button] = [await input.boundingBox(), await submit.boundingBox()];
+    expect(field && button).toBeTruthy();
+    expect(button!.y).toBeGreaterThan(field!.y + field!.height - 1);
+    expect(field!.width).toBeGreaterThan(width - 80);
+
+    const header = page.getByRole("banner");
+    await expect(header.getByRole("link", { name: "Open the app" })).toBeInViewport();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      width
+    );
+  });
+}
+
+test("screenshots of landing, security and a 404 at 1280, 360 and 320", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "one run captures every width");
+  for (const width of [1280, 360, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const [name, path] of [
+      ["landing", "/"],
+      ["security", "/security"],
+      ["404", "/no-such-page"],
+    ]) {
+      await page.goto(path);
+      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+        `${name} at ${width}px has no horizontal scroll`
+      ).toBeLessThanOrEqual(width);
+      await testInfo.attach(`${name}-${width}`, {
+        body: await page.screenshot({ fullPage: name !== "landing" }),
+        contentType: "image/png",
+      });
+    }
+  }
+});

@@ -181,7 +181,7 @@ export default function MarketingNav() {
         className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 lg:px-8"
       >
         <Link href="/" aria-label="LumenWipe home" className="shrink-0">
-          <Logo />
+          <Logo wordClassName="max-[359px]:sr-only" />
         </Link>
 
         <div className="hidden items-center gap-7 lg:flex">
@@ -221,7 +221,7 @@ export default function MarketingNav() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button asChild variant="secondary" size="sm" className="hidden sm:inline-flex">
+          <Button asChild variant="secondary" size="sm" className="whitespace-nowrap">
             <Link href={APP_HREF}>Open the app</Link>
           </Button>
           <button
@@ -260,11 +260,6 @@ export default function MarketingNav() {
             pathname={pathname}
             onNavigate={() => setOpen(false)}
           />
-          <Button asChild variant="secondary" className="mt-2">
-            <Link href={APP_HREF} onClick={() => setOpen(false)}>
-              Open the app
-            </Link>
-          </Button>
         </div>
       </div>
     </header>

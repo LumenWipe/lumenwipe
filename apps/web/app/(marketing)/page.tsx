@@ -15,6 +15,7 @@ import Reveal from "@/components/marketing/Reveal";
 import HeroConsole from "@/components/marketing/HeroConsole";
 import HeroAccountInput from "@/components/marketing/HeroAccountInput";
 import { Button } from "@/components/ui/button";
+import { BASE_RESERVE_XLM, MINIMUM_BALANCE_RESERVES } from "@/lib/site/reserve";
 import { RESERVE_EXAMPLE, RESERVE_EXAMPLE_TOTAL, STATS, monthYear } from "@/lib/site/numbers";
 import {
   feature,
@@ -51,12 +52,12 @@ const TRUTHS = [
   {
     icon: RefreshCw,
     title: "One mistake and it all reverts",
-    body: "A single leftover subentry makes the final ACCOUNT_MERGE fail. Every offer, position, asset and entry must clear in the right order first.",
+    body: "A single leftover entry makes the final merge fail. Every offer, position, asset and entry must clear in the right order first.",
   },
   {
     icon: Building2,
     title: "Exchanges can't merge",
-    body: "No major exchange supports ACCOUNT_MERGE. Send your XLM to a CEX address and the 1 XLM minimum stays frozen forever.",
+    body: `No major exchange accepts an account merge as a deposit. Pay your XLM out to an exchange instead and the ${MINIMUM_BALANCE_RESERVES * BASE_RESERVE_XLM} XLM minimum stays locked in the account.`,
   },
   {
     icon: Layers,
@@ -86,11 +87,11 @@ export default function LandingPage() {
       <section className="mx-auto max-w-6xl px-5 pb-10 pt-16 text-center lg:px-8 lg:pt-20">
         {/* Label - typographic, not a status pill */}
         <div className="mb-8 flex items-center justify-center gap-4">
-          <span className="h-px w-12 bg-white/15" />
+          <span className="hidden h-px w-12 bg-white/15 sm:block" />
           <span className="mkt-mono text-caption uppercase tracking-[0.18em] text-fg-subtle">
-            Stellar Account Closer
+            Recover your locked XLM
           </span>
-          <span className="h-px w-12 bg-white/15" />
+          <span className="hidden h-px w-12 bg-white/15 sm:block" />
         </div>
 
         <h1 className="mkt-display mx-auto max-w-[15ch] text-display font-extrabold leading-[0.95] text-white sm:text-6xl lg:text-hero">
@@ -98,8 +99,10 @@ export default function LandingPage() {
         </h1>
 
         <p className="mx-auto mt-6 max-w-xl text-body leading-relaxed text-white/70">
-          Unwind trustlines, offers, data entries, signers and Soroban positions, convert the
-          leftovers, and merge out. You sign every transaction in your browser.
+          Get back the {MINIMUM_BALANCE_RESERVES * BASE_RESERVE_XLM} XLM every account must hold,
+          plus {BASE_RESERVE_XLM} XLM for each trustline, offer, data entry and signer. LumenWipe
+          clears them, exits your DeFi positions, converts what is left to XLM and sends it all to
+          your wallet. You sign every transaction in your browser.
         </p>
 
         {/* Inline account analyzer */}
@@ -107,16 +110,20 @@ export default function LandingPage() {
           <HeroAccountInput />
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
-          <Button asChild size="lg" className="group">
-            <Link href={APP}>
-              Open the app
-              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-            </Link>
-          </Button>
-          <Button asChild size="lg" variant="secondary">
-            <Link href="/how-it-works">See how it works</Link>
-          </Button>
+        <div className="mt-3 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm">
+          <Link
+            href={APP}
+            className="group inline-flex items-center gap-1 font-semibold text-accent underline-offset-4 hover:underline"
+          >
+            Open the app
+            <ArrowRight
+              aria-hidden
+              className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5"
+            />
+          </Link>
+          <Link href="/how-it-works" className="text-accent underline-offset-4 hover:underline">
+            See how it works
+          </Link>
         </div>
 
         {/* animated scan console */}

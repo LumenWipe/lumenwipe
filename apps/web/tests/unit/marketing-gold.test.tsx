@@ -47,11 +47,15 @@ describe("gold on marketing pages", () => {
     });
   }
 
-  test("the landing actions are Button classes, not a hand-rolled fill", () => {
+  test("the landing actions are Button classes or cyan text links, not a hand-rolled fill", () => {
     const root = renderMarketing(<LandingPage />);
     const open = [...root.querySelectorAll("a")].filter((a) => a.textContent === "Open the app");
     expect(open.length).toBeGreaterThan(0);
-    for (const a of open) expect(a.className).toMatch(/\bbg-accent\b|\bborder-line-strong\b/);
+    for (const a of open) {
+      const button = /\bbg-accent\b|\bborder-line-strong\b/.test(a.className);
+      const textLink = /\btext-accent\b/.test(a.className) && !/(?:^|\s)bg-/.test(a.className);
+      expect(button || textLink).toBe(true);
+    }
     const submit = [...root.querySelectorAll("button")].find(
       (b) => b.textContent === "Analyze account"
     );
