@@ -16,7 +16,13 @@ import HeroConsole from "@/components/marketing/HeroConsole";
 import HeroAccountInput from "@/components/marketing/HeroAccountInput";
 import { Button } from "@/components/ui/button";
 import { BASE_RESERVE_XLM, MINIMUM_BALANCE_RESERVES } from "@/lib/site/reserve";
-import { RESERVE_EXAMPLE, RESERVE_EXAMPLE_TOTAL, STATS, monthYear } from "@/lib/site/numbers";
+import {
+  heroOutcome,
+  RESERVE_EXAMPLE,
+  RESERVE_EXAMPLE_TOTAL,
+  STATS,
+  monthYear,
+} from "@/lib/site/numbers";
 import {
   feature,
   LIVE_EXIT_PROTOCOLS,
@@ -99,10 +105,7 @@ export default function LandingPage() {
         </h1>
 
         <p className="mx-auto mt-6 max-w-xl text-body leading-relaxed text-white/70">
-          Get back the {MINIMUM_BALANCE_RESERVES * BASE_RESERVE_XLM} XLM every account must hold,
-          plus {BASE_RESERVE_XLM} XLM for each trustline, offer, data entry and signer. LumenWipe
-          clears them, exits your DeFi positions, converts what is left to XLM and sends it all to
-          your wallet. You sign every transaction in your browser.
+          {heroOutcome()}
         </p>
 
         {/* Inline account analyzer */}

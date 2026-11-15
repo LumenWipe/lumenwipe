@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import { cleanup, within } from "@testing-library/react";
 import LandingPage from "@/app/(marketing)/page";
+import { heroOutcome } from "@/lib/site/numbers";
 import { feature } from "@/lib/site/status";
 import { renderMarketing } from "./fixtures/marketing";
 
@@ -36,6 +37,21 @@ describe("landing copy", () => {
     expect(section.textContent).toMatch(
       /Get back the 1 XLM every account must hold,\s*plus 0.5 XLM/
     );
+  });
+});
+
+describe("hero outcome line", () => {
+  test("claims DeFi exits only while the registry has them live", () => {
+    expect(heroOutcome("live")).toContain("exits your DeFi positions");
+    for (const status of ["testnet-only", "soon"] as const) {
+      expect(heroOutcome(status)).not.toMatch(/DeFi|position/i);
+      expect(heroOutcome(status)).toContain("LumenWipe clears them, converts leftover tokens");
+    }
+  });
+
+  test("the landing page renders the line for the registry's current DeFi status", () => {
+    const section = hero(renderMarketing(<LandingPage />));
+    expect(section.textContent).toContain(heroOutcome(feature("defi-exits").status));
   });
 });
 
