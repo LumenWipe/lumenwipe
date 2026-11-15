@@ -1,6 +1,6 @@
 import registry from "@registry/contract-registry.json";
 import { BASE_RESERVE_XLM, MINIMUM_BALANCE_RESERVES } from "@/lib/site/reserve";
-import { LIVE_EXIT_PROTOCOLS } from "@/lib/site/status";
+import { feature, LIVE_EXIT_PROTOCOLS, type SiteStatus } from "@/lib/site/status";
 
 export type StatSource =
   | { kind: "registry"; file: string }
@@ -63,3 +63,15 @@ export const RESERVE_EXAMPLE: readonly ReserveRow[] = [
 ];
 
 export const RESERVE_EXAMPLE_TOTAL = RESERVE_EXAMPLE.reduce((sum, r) => sum + r.xlm, 0);
+
+/** The landing hero's outcome line. It claims DeFi exits only while the registry has them live. */
+export function heroOutcome(defi: SiteStatus = feature("defi-exits").status): string {
+  const minimum = MINIMUM_BALANCE_RESERVES * BASE_RESERVE_XLM;
+  const exits = defi === "live" ? "exits your DeFi positions, " : "";
+  return (
+    `Get back the ${minimum} XLM every account must hold, plus ${BASE_RESERVE_XLM} XLM for each ` +
+    `trustline, offer, data entry and signer. LumenWipe clears them, ${exits}converts leftover ` +
+    "tokens to XLM and merges the balance into your wallet. You sign every transaction in your " +
+    "browser."
+  );
+}

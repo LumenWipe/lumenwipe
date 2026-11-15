@@ -27,7 +27,7 @@ The examples below are taken from the current product. Each "do not" is a place 
 
 **Do.** On the plan screen, the amount under "Estimated received at destination" is gold, because it is the XLM the user gets back (`apps/web/components/plan/AccountSummaryCard.tsx`). On the landing page headline, "Close the account. Keep the lumens.", only the word "lumens." is gold, because it names the value (`apps/web/app/(marketing)/page.tsx`).
 
-**Do not.** The landing hero shows two solid gold buttons, "Analyze account" in the address field and "Open the app" below it (`apps/web/components/marketing/HeroAccountInput.tsx`, `apps/web/app/(marketing)/page.tsx`), and on wider screens the marketing navigation bar above them adds a third, also "Open the app" (`apps/web/components/marketing/MarketingNav.tsx`). The same solid gold button appears on the FAQ, security, how it works, playground and not found pages. A button is interactive, so it is cyan, and only one per screen is solid.
+**Do not.** Fill a button or color a link gold, even one that leads to the money, such as "Open the app". A button or link is interactive, so it is cyan, and only one per screen is solid. Every marketing action uses `Button` (`apps/web/components/ui/button.tsx`), and a `no-restricted-syntax` rule in `apps/web/eslint.config.mjs` rejects a gold class on the class name of any button or link in the web app.
 
 ## Red is irreversible or error
 
@@ -46,6 +46,10 @@ The examples below are taken from the current product. Each "do not" is a place 
 **Do.** In the execution sidebar, a step turns green with a check mark only once its transaction is confirmed (`apps/web/components/execution/PlanSidebar.tsx`).
 
 **Do not.** On the plan screen, an asset set to be swapped to XLM shows its swap arrow in green, before anything has been signed or submitted (`apps/web/components/plan/AssetDispositionCard.tsx`). A planned conversion is neutral until it is confirmed.
+
+## Text on the marketing pages
+
+Body text on the ink is white at 70 percent or more. Anything dimmer, such as a caption or a source line, uses `--fg-muted` or `--fg-subtle`, the caption floor; `--fg-subtle` measures 6.43:1 on `--bg` and 5.63:1 on `--surface-raised`. A `no-restricted-syntax` rule in `apps/web/eslint.config.mjs` rejects white below 70 percent on the marketing pages, and `apps/web/tests/unit/marketing-contrast.test.ts` fails on any marketing text color under 4.5:1 on the ink or on a card.
 
 ## The logo is not a color example
 

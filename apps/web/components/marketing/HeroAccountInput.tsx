@@ -2,9 +2,11 @@
 
 import { useCallback, useState, type FormEvent } from "react";
 import dynamic from "next/dynamic";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
 import { AddressField } from "@/components/ui/address-field";
+import { Button } from "@/components/ui/button";
 import { addressErrorMessage } from "@/lib/utils/validation";
 
 // Loaded only when a visitor asks for an estimate, so the landing page's first load carries none
@@ -60,16 +62,18 @@ export default function HeroAccountInput() {
           }}
           error={error}
           placeholder="Paste a Stellar account address - G…"
-          groupClassName="rounded-2xl border border-line-strong bg-white/[0.04] p-2 transition-colors has-[input[aria-invalid=true]]:border-danger has-[input:focus-visible]:outline has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-focus"
-          inputClassName="border-0 bg-transparent px-0 pr-2 text-label text-white focus-visible:outline-none"
-          leading={<Search className="ml-2 h-4 w-4 shrink-0 text-fg-disabled" />}
+          groupClassName="flex-col items-stretch sm:flex-row sm:items-center rounded-2xl border border-line-strong bg-white/[0.04] p-2 transition-colors has-[input[aria-invalid=true]]:border-danger has-[input:focus-visible]:outline has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-focus"
+          inputClassName="border-0 bg-transparent px-2 sm:px-0 sm:pr-2 text-label text-white focus-visible:outline-none"
+          leading={
+            <Search
+              aria-hidden
+              className="ml-2 hidden h-4 w-4 shrink-0 text-fg-disabled sm:block"
+            />
+          }
           trailing={
-            <button
-              type="submit"
-              className="shrink-0 rounded-xl bg-value px-5 py-2.5 text-sm font-semibold text-value-fg transition-all hover:bg-value/90 hover:shadow-[0_8px_24px_-8px_hsl(var(--value)/0.6)]"
-            >
+            <Button type="submit" className="w-full shrink-0 sm:w-auto">
               Analyze account
-            </button>
+            </Button>
           }
         />
       </form>
@@ -83,6 +87,14 @@ export default function HeroAccountInput() {
         >
           Estimate recovery
         </button>
+      </p>
+
+      <p className="mt-2 text-center text-xs text-fg-muted">
+        Not ready yet?{" "}
+        <Link href="/playground" className="font-semibold text-accent underline underline-offset-2">
+          Try the playground
+        </Link>{" "}
+        with a throwaway testnet account, no wallet needed.
       </p>
 
       {/* Present before any estimate, so its content changes are announced. */}

@@ -1,15 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export const metadata: Metadata = {
   title: "Playground - LumenWipe",
   description:
     "Try the exact same close flow as the app on a disposable Stellar testnet account - no wallet, no real funds.",
 };
-
-const btnGold =
-  "inline-flex items-center gap-2 rounded-xl bg-value px-5 py-3 text-sm font-semibold text-value-fg transition-all hover:bg-value/90 hover:shadow-[0_12px_30px_-14px_hsl(var(--value)/0.7)]";
 
 export default function PlaygroundPage() {
   return (
@@ -23,15 +21,12 @@ export default function PlaygroundPage() {
         trustlines, offers, data entries, signers, the merge - against a disposable testnet account
         we hand you. No wallet, no real funds, nothing to lose.
       </p>
-      <a
-        href="https://playground.lumenwipe.com"
-        target="_blank"
-        rel="noopener noreferrer"
-        className={`group mt-8 ${btnGold}`}
-      >
-        Open the playground
-        <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-      </a>
+      <Button asChild size="lg" className="group mt-8">
+        <a href="https://playground.lumenwipe.com" target="_blank" rel="noopener noreferrer">
+          Open the playground
+          <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+        </a>
+      </Button>
       <div className="mt-6">
         <Link
           href="/testnet"

@@ -81,3 +81,71 @@ describe("raw styling lint", () => {
     }
   }, 30_000);
 });
+
+describe("gold is never an action", () => {
+  const GOLD = /Gold is recovered value only/;
+  const FILL = /text on a gold fill/;
+
+  test("a gold class on a button or link is flagged anywhere in the web", async () => {
+    const code = [
+      'import Link from "next/link";',
+      'export const A = () => <Link href="/" className="bg-value text-white">a</Link>;',
+      "export const B = () => <button className={`flex hover:bg-value/90`}>b</button>;",
+      'export const C = () => <a href="/" className="text-value">c</a>;',
+      'export const D = () => <Button asChild className="border-value/40">d</Button>;',
+      "",
+    ].join("\n");
+    for (const file of [
+      "components/marketing/Fixture.tsx",
+      "app/(marketing)/fixture/page.tsx",
+      "components/plan/Fixture.tsx",
+      "components/ui/fixture.tsx",
+    ]) {
+      const messages = await syntaxMessages(code, file);
+      expect(messages.filter((m) => GOLD.test(m))).toHaveLength(4);
+    }
+  }, 30_000);
+
+  test("a gold amount inside a link and a gold reserve bar pass", async () => {
+    const code = [
+      'import Link from "next/link";',
+      'export const A = () => <Link href="/" className="text-accent"><span className="text-value">1 XLM</span></Link>;',
+      'export const B = () => <div className="h-full bg-value" />;',
+      "",
+    ].join("\n");
+    expect(await syntaxMessages(code, "components/marketing/Fixture.tsx")).toEqual([]);
+  }, 30_000);
+
+  test("the text of a gold fill is flagged on marketing pages, even held in a constant", async () => {
+    const code = 'export const btn = "rounded-xl px-5 text-value-fg";\n';
+    for (const file of ["components/marketing/Fixture.tsx", "app/not-found.tsx"]) {
+      const messages = await syntaxMessages(code, file);
+      expect(messages).toHaveLength(1);
+      expect(messages[0]).toMatch(FILL);
+    }
+  }, 30_000);
+});
+
+describe("marketing text alpha floor", () => {
+  const FLOOR = /white at 70 percent or more/;
+
+  test("white below 70 is flagged on every marketing surface and nowhere else", async () => {
+    const code = 'export const a = "text-white/65";\nexport const b = "hover:text-white/56";\n';
+    for (const file of [
+      "app/(marketing)/fixture/page.tsx",
+      "app/not-found.tsx",
+      "components/marketing/Fixture.tsx",
+      "components/blog/Fixture.tsx",
+    ]) {
+      const messages = await syntaxMessages(code, file);
+      expect(messages).toHaveLength(2);
+      for (const message of messages) expect(message).toMatch(FLOOR);
+    }
+    expect(await syntaxMessages(code, "components/plan/Fixture.tsx")).toEqual([]);
+  }, 30_000);
+
+  test("the body floor and the caption tokens pass", async () => {
+    const code = 'export const a = "text-white/70 text-white/85 text-fg-muted text-fg-subtle";\n';
+    expect(await syntaxMessages(code, "components/marketing/Fixture.tsx")).toEqual([]);
+  }, 30_000);
+});

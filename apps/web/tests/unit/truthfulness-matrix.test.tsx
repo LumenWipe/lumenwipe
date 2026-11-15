@@ -811,7 +811,7 @@ const SANCTIONED: Record<string, Partial<Record<ClaimKey, Site>>> = {
     "may-be-sent": { count: 1, shownBy: "route error page" },
     "nothing-sent": { count: 1, shownBy: "route error page" },
   },
-  "app/not-found.tsx": {
+  "components/marketing/NotFoundView.tsx": {
     "account-closed": { count: 1, shownBy: OUTSIDE.notFound },
   },
   "components/complete/CompletionReceipt.tsx": {
@@ -850,9 +850,6 @@ const SANCTIONED: Record<string, Partial<Record<ClaimKey, Site>>> = {
     "sent-only-when-signed": { count: 1, shownBy: "review next steps" },
     "more-sent-only-when-signed": { count: 1, shownBy: "review next steps" },
     "resume-after-stop": { count: 1, shownBy: "review next steps" },
-  },
-  "components/marketing/ExecutionPlanDemo.tsx": {
-    "account-closed": { count: 1, shownBy: OUTSIDE.marketing },
   },
   "hooks/useCloseExecution.ts": {
     "may-be-sent": { count: 1, shownBy: "execute failure panel" },

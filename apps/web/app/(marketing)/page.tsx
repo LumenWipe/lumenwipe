@@ -14,7 +14,15 @@ import Faq from "@/components/marketing/Faq";
 import Reveal from "@/components/marketing/Reveal";
 import HeroConsole from "@/components/marketing/HeroConsole";
 import HeroAccountInput from "@/components/marketing/HeroAccountInput";
-import { RESERVE_EXAMPLE, RESERVE_EXAMPLE_TOTAL, STATS, monthYear } from "@/lib/site/numbers";
+import { Button } from "@/components/ui/button";
+import { BASE_RESERVE_XLM, MINIMUM_BALANCE_RESERVES } from "@/lib/site/reserve";
+import {
+  heroOutcome,
+  RESERVE_EXAMPLE,
+  RESERVE_EXAMPLE_TOTAL,
+  STATS,
+  monthYear,
+} from "@/lib/site/numbers";
 import {
   feature,
   LIVE_EXIT_PROTOCOLS,
@@ -50,12 +58,12 @@ const TRUTHS = [
   {
     icon: RefreshCw,
     title: "One mistake and it all reverts",
-    body: "A single leftover subentry makes the final ACCOUNT_MERGE fail. Every offer, position, asset and entry must clear in the right order first.",
+    body: "A single leftover entry makes the final merge fail. Every offer, position, asset and entry must clear in the right order first.",
   },
   {
     icon: Building2,
     title: "Exchanges can't merge",
-    body: "No major exchange supports ACCOUNT_MERGE. Send your XLM to a CEX address and the 1 XLM minimum stays frozen forever.",
+    body: `No major exchange accepts an account merge as a deposit. Pay your XLM out to an exchange instead and the ${MINIMUM_BALANCE_RESERVES * BASE_RESERVE_XLM} XLM minimum stays locked in the account.`,
   },
   {
     icon: Layers,
@@ -78,11 +86,6 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
   );
 }
 
-const btnGold =
-  "inline-flex items-center gap-2 rounded-xl bg-value px-5 py-3 text-sm font-semibold text-value-fg transition-all hover:bg-value/90 hover:shadow-[0_12px_30px_-14px_hsl(var(--value)/0.7)]";
-const btnGhost =
-  "inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/[0.02] px-5 py-3 text-sm font-semibold text-white/85 transition-colors hover:border-white/30 hover:text-white";
-
 export default function LandingPage() {
   return (
     <>
@@ -90,11 +93,11 @@ export default function LandingPage() {
       <section className="mx-auto max-w-6xl px-5 pb-10 pt-16 text-center lg:px-8 lg:pt-20">
         {/* Label - typographic, not a status pill */}
         <div className="mb-8 flex items-center justify-center gap-4">
-          <span className="h-px w-12 bg-white/15" />
+          <span className="hidden h-px w-12 bg-white/15 sm:block" />
           <span className="mkt-mono text-caption uppercase tracking-[0.18em] text-fg-subtle">
-            Stellar Account Closer
+            Recover your locked XLM
           </span>
-          <span className="h-px w-12 bg-white/15" />
+          <span className="hidden h-px w-12 bg-white/15 sm:block" />
         </div>
 
         <h1 className="mkt-display mx-auto max-w-[15ch] text-display font-extrabold leading-[0.95] text-white sm:text-6xl lg:text-hero">
@@ -102,8 +105,7 @@ export default function LandingPage() {
         </h1>
 
         <p className="mx-auto mt-6 max-w-xl text-body leading-relaxed text-white/70">
-          Unwind trustlines, offers, data entries, signers and Soroban positions, convert the
-          leftovers, and merge out. You sign every transaction in your browser.
+          {heroOutcome()}
         </p>
 
         {/* Inline account analyzer */}
@@ -111,12 +113,18 @@ export default function LandingPage() {
           <HeroAccountInput />
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
-          <Link href={APP} className={`group ${btnGold}`}>
+        <div className="mt-3 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm">
+          <Link
+            href={APP}
+            className="group inline-flex items-center gap-1 font-semibold text-accent underline-offset-4 hover:underline"
+          >
             Open the app
-            <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+            <ArrowRight
+              aria-hidden
+              className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5"
+            />
           </Link>
-          <Link href="/how-it-works" className={btnGhost}>
+          <Link href="/how-it-works" className="text-accent underline-offset-4 hover:underline">
             See how it works
           </Link>
         </div>
@@ -136,7 +144,7 @@ export default function LandingPage() {
               className={`flex flex-col px-4 py-6 ${i > 0 ? "border-t border-white/[0.07] sm:border-t-0" : ""}`}
             >
               <dt className="order-2 mt-1 text-label leading-snug text-fg-muted">{s.label}</dt>
-              <dd className="order-1 mkt-display text-2xl font-bold text-value sm:text-3xl">
+              <dd className="order-1 mkt-display text-2xl font-bold text-white sm:text-3xl">
                 {s.value}
               </dd>
               <dd className="order-3 mt-2 mkt-mono text-caption text-fg-muted">
@@ -234,12 +242,12 @@ export default function LandingPage() {
 
         <div className="mt-11 grid gap-4 lg:grid-cols-3">
           <Reveal className="lg:col-span-2">
-            <div className="mkt-card h-full p-6 [border-color:hsl(var(--value)/0.25)]">
+            <div className="mkt-card h-full p-6 [border-color:hsl(var(--accent)/0.25)]">
               <div className="flex items-start justify-between gap-4">
-                <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-value/30 bg-value/10 text-value">
+                <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] text-accent">
                   <Layers className="h-5 w-5" />
                 </span>
-                <span className="rounded-full border border-value/40 px-2.5 py-1 mkt-mono text-caption uppercase tracking-wider text-value">
+                <span className="rounded-full border border-accent/40 px-2.5 py-1 mkt-mono text-caption uppercase tracking-wider text-accent">
                   {STATUS_LABEL[DEFI.status]}
                 </span>
               </div>
@@ -275,7 +283,7 @@ export default function LandingPage() {
                     className={`flex h-10 w-10 items-center justify-center rounded-lg border ${
                       f.status === "live"
                         ? "border-white/10 bg-white/[0.03] text-accent"
-                        : "border-value/30 bg-value/10 text-value"
+                        : "border-white/10 bg-white/[0.03] text-fg-muted"
                     }`}
                   >
                     <f.icon className="h-5 w-5" />
@@ -284,7 +292,7 @@ export default function LandingPage() {
                     className={`mkt-mono rounded-full border px-2.5 py-1 text-caption uppercase tracking-wider ${
                       f.status === "live"
                         ? "border-accent/40 text-accent"
-                        : "border-value/40 text-value"
+                        : "border-line-strong text-fg-muted"
                     }`}
                   >
                     {STATUS_LABEL[f.status]}
@@ -330,7 +338,7 @@ export default function LandingPage() {
             href="https://docs.lumenwipe.com"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-value underline-offset-4 hover:underline"
+            className="text-accent underline-offset-4 hover:underline"
           >
             Read the full documentation
           </a>
@@ -350,13 +358,15 @@ export default function LandingPage() {
               real close.
             </p>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-              <Link href={APP} className={`group ${btnGold}`}>
-                Open the app
-                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-              </Link>
-              <Link href={TESTNET} className={btnGhost}>
-                Try on testnet
-              </Link>
+              <Button asChild size="lg" className="group">
+                <Link href={APP}>
+                  Open the app
+                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                </Link>
+              </Button>
+              <Button asChild size="lg" variant="secondary">
+                <Link href={TESTNET}>Try on testnet</Link>
+              </Button>
             </div>
             <div className="mt-7 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 mkt-mono text-caption text-fg-muted">
               <span className="inline-flex items-center gap-1.5">

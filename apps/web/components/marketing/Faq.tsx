@@ -46,10 +46,10 @@ export const ITEMS: readonly FaqItem[] = [
     q: "Is closing an account reversible?",
     a: (
       <>
-        No. <span className="mkt-mono text-white/80">ACCOUNT_MERGE</span> permanently removes the
-        source account from the Stellar ledger. Because the action is irreversible, LumenWipe shows
-        the complete plan up front, simulates each step, and asks for explicit confirmation (with
-        the raw XDR available to review) before every signature.
+        No. The final merge permanently removes the account from the Stellar ledger. Because the
+        action is irreversible, LumenWipe shows the complete plan up front, simulates each step, and
+        asks for explicit confirmation (with the raw transaction available to review) before every
+        signature.
       </>
     ),
   },
@@ -69,9 +69,9 @@ export const ITEMS: readonly FaqItem[] = [
     q: "Can I send the recovered XLM straight to an exchange?",
     a: (
       <>
-        {EXCHANGE_LIVE ? "Yes." : "On testnet today."} Exchanges don&apos;t support{" "}
-        <span className="mkt-mono text-white/80">ACCOUNT_MERGE</span>, so LumenWipe routes the final
-        merge through a shared relay account in one atomic transaction and pays out to your deposit
+        {EXCHANGE_LIVE ? "Yes." : "On testnet today."} Exchanges don&apos;t accept an account merge
+        as a deposit, so LumenWipe routes the final merge through a relay account: a shared account
+        that receives the merge and, in the same transaction, pays the balance out to your deposit
         address with the correct memo. Known exchanges are validated against a registry that
         enforces the required memo type, so deposits don&apos;t go missing.
         {EXCHANGE_LIVE
@@ -96,7 +96,8 @@ export const ITEMS: readonly FaqItem[] = [
           </>
         )}
         . Classic order-book offers are cancelled as part of every close. Classic AMM pool shares
-        are not unwound: they are reported as a blocker, so withdraw them with another tool first.
+        are not unwound: they are reported as a blocker, so withdraw your liquidity from the pool
+        first.
       </>
     ),
   },
@@ -104,12 +105,11 @@ export const ITEMS: readonly FaqItem[] = [
     q: "Which wallets are supported?",
     a: (
       <>
-        Any SEP-43 wallet through{" "}
-        <span className="mkt-mono text-white/80">stellar-wallets-kit</span>: Varial (formerly
-        Freighter), xBull, Albedo, LOBSTR, Hana, WalletConnect and more. Power users can also use an
-        advanced secret-key mode where the key is held in memory only for the duration of the close,
-        never persisted and never sent to a server, and cleared when you finish, abort, navigate
-        away, or click &quot;Forget key&quot;.
+        Any wallet that Stellar Wallets Kit connects: Varial (formerly Freighter), xBull, Albedo,
+        LOBSTR, Hana, WalletConnect and more. Power users can also use an advanced secret-key mode
+        where the key is held in memory only for the duration of the close, never persisted and
+        never sent to a server, and cleared when you finish, abort, navigate away, or click
+        &quot;Forget key&quot;.
       </>
     ),
   },

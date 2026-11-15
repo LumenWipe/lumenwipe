@@ -65,14 +65,6 @@ export const metadata: Metadata = {
     title: "LumenWipe - Close a Stellar Account",
     description,
   },
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: {
-      index: true,
-      follow: true,
-    },
-  },
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
