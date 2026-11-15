@@ -4,6 +4,7 @@ import path from "path";
 import { getAllPostMetas, getPost } from "@/lib/blog";
 import { INDEXED_PAGES } from "@/lib/site/pages";
 import { contentStatusRows } from "@/lib/site/content-status";
+import { FEATURES, PROTOCOLS } from "@/lib/site/status";
 
 const APP_ROUTES = ["/mainnet/analyze", "/mainnet/review", "/mainnet/allowances"];
 const EM_DASH = String.fromCharCode(0x2014);
@@ -28,7 +29,33 @@ function brokenLinks(content: string, slugs: readonly string[]): string[] {
   return internalLinks(content).filter((link) => !known.has(link));
 }
 
+/** The table rows in `content` that mark something the status registry does not list as live
+ *  as available. */
+function availableButNotLive(content: string): string[] {
+  const notLive = [
+    ...FEATURES.filter((f) => f.status !== "live").flatMap((f) => [f.title, f.noun]),
+    ...PROTOCOLS.filter((p) => p.status !== "live").map((p) => p.name),
+  ].map((name) => name.toLowerCase());
+  return content
+    .split("\n")
+    .filter((line) => /^\|.*\|\s*$/.test(line) && /\bAvailable\b/.test(line))
+    .filter((line) => notLive.some((name) => line.toLowerCase().includes(name)));
+}
+
 describe("blog content", () => {
+  test("flags a row marking a testnet-only feature as available", () => {
+    expect(availableButNotLive("| Sponsored fees (fee-bump) | ✓ Available |")).toHaveLength(1);
+    expect(availableButNotLive("| Sponsored fees (fee-bump) | Testnet only |")).toEqual([]);
+    expect(availableButNotLive("| Account merge | ✓ Available |")).toEqual([]);
+  });
+
+  test("no post marks a feature or protocol that is not live as available", () => {
+    const found = posts.flatMap((p) =>
+      availableButNotLive(p.content).map((l) => `${p.slug}: ${l}`)
+    );
+    expect(found).toEqual([]);
+  });
+
   test("finds a broken link, an unknown route and a missing post", () => {
     expect(
       brokenLinks('[a](/mainnet) [b](/public) [c](/blog/gone#x) <a href="/faq">d</a>', ["here"])
