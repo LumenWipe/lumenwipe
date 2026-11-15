@@ -169,7 +169,7 @@ describe("the sitemap", () => {
     const file = join(MARKETING, "..", "..", "content", "blog", `${slug}.mdx`);
     writeFileSync(
       file,
-      `---\ntitle: "Updated fixture"\ndescription: "Used only by seo-routes.test.ts."\npublishedAt: "2026-01-02"\nupdatedAt: "2026-03-04"\ncategory: "Updates"\ntags: []\n---\n\nBody.\n`
+      `---\ntitle: "Updated fixture"\ndescription: "Used only by seo-routes.test.ts."\npublishedAt: "2026-01-02"\nupdatedAt: "2026-03-04"\ncategory: "Updates"\ntags: ["fixture"]\n---\n\nBody.\n`
     );
     try {
       const entry = sitemap().find((e) => e.url === siteUrl(`/blog/${slug}`));

@@ -1,5 +1,6 @@
 import type { FaqItem } from "@/components/marketing/FaqAccordion";
 import type { Post, PostMeta } from "@/lib/blog";
+import { postTimestamp } from "@/lib/blog-date";
 import { nodeText } from "@/lib/site/node-text";
 import { GITHUB_URL } from "@/lib/site/navigation";
 import { postShareImage, SITE_NAME } from "@/lib/site/pages";
@@ -115,8 +116,8 @@ export function blogJsonLd(posts: readonly PostMeta[]): JsonLdDocument {
         "@type": "BlogPosting",
         headline: post.title,
         url: siteUrl(`/blog/${post.slug}`),
-        datePublished: post.publishedAt,
-        dateModified: post.updatedAt,
+        datePublished: postTimestamp(post.publishedAt),
+        dateModified: postTimestamp(post.updatedAt),
       })),
     },
     breadcrumbs(BLOG_TRAIL)
@@ -131,8 +132,8 @@ export function postJsonLd(post: Post): JsonLdDocument {
       "@type": "Article",
       headline: post.title,
       description: post.description,
-      datePublished: post.publishedAt,
-      dateModified: post.updatedAt,
+      datePublished: postTimestamp(post.publishedAt),
+      dateModified: postTimestamp(post.updatedAt),
       image: [siteUrl(postShareImage(post.slug, post.title).url)],
       mainEntityOfPage: { "@type": "WebPage", "@id": url },
       url,

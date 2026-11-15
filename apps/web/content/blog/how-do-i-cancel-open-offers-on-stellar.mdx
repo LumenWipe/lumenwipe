@@ -1,0 +1,56 @@
+---
+title: "How Do I Cancel Open Offers on Stellar Before Closing My Account?"
+description: "What an open offer on the Stellar DEX is, how it holds a subentry and part of your balance, why it stops an account merge, and how cancelling it works."
+publishedAt: "2026-11-15"
+category: "Guides"
+tags: ["account-blockers", "offers", "dex", "account-merge", "stellar"]
+cta: "Enter the account to see how many open offers it has and where their cancellation sits in the plan before anything is signed."
+---
+
+An offer you placed on the Stellar DEX years ago can still be open today. If nobody has taken it at that price, it is still sitting on the ledger, and the account cannot be merged until it is gone.
+
+This guide is one of five on the things that keep a Stellar account open. The others cover [claimable balances](/blog/why-cant-i-merge-my-stellar-account-claimable-balances), [trustlines](/blog/how-do-i-remove-a-trustline-on-stellar), [extra signers](/blog/cant-merge-a-stellar-account-because-of-extra-signers) and [data entries](/blog/what-are-stellar-data-entries).
+
+## What an offer is
+
+Stellar has an exchange built into the network, often called the DEX. An offer is an order on it: sell this much of one asset for another asset at this price. Once created, an offer stays open until it is filled completely or cancelled. A partial fill reduces the amount left on the offer and leaves the rest open.
+
+Offers are made with `ManageSellOffer`, `ManageBuyOffer` or `CreatePassiveSellOffer`. Wallets and trading apps create them for you, so it is easy to have one open without remembering it.
+
+## What an offer holds
+
+An open offer is one of the account's subentries, so it locks one base reserve of <BaseReserve /> in the account's minimum balance (checked on <BaseReserveCheckedOn />).
+
+It also holds liabilities. The amount the offer is selling is reserved as a selling liability, and that part of your balance cannot be sent or sold elsewhere while the offer is open. What the offer would buy is reserved as a buying liability, which takes up room under the limit of the trustline that would receive it.
+
+## Why an offer stops the merge
+
+The network refuses to merge an account that still has subentries, and every open offer is one. The failed merge reports `op_has_sub_entries`, which does not tell you that an offer is the entry left over.
+
+An offer also gets in the way of the steps before the merge. A trustline cannot be removed while it holds a balance, and the part of the balance an offer has reserved cannot be moved out of it. A buying liability keeps the trustline's limit from being set to zero, which is how a trustline is removed. So the offers have to go before the trustlines can.
+
+## How cancelling works
+
+There is no separate cancel operation. You cancel an offer by updating it to an amount of zero: a `ManageSellOffer` that names the offer's ID, repeats the asset it sells and the asset it buys, and sets the amount to `0`. The network deletes the offer, releases its liabilities and frees its reserve.
+
+Nothing has to come back to you when an offer is cancelled. An offer on Stellar does not move your assets into escrow: the amount it was selling never left your account, it was only reserved. Once the offer is deleted, that amount is an ordinary part of your balance again, and you can sell, send or return it like the rest.
+
+Cancelling is final for that offer. If you want to trade the asset later, you place a new one.
+
+## How LumenWipe handles it
+
+The analyze screen shows how many open offers the account has. Offers need no decision from you: every open offer is cancelled as part of the close.
+
+On the review screen the plan shows a step called "Cancel open DEX offers", with the number of offers it cancels. Each offer becomes one `ManageSellOffer` with the offer's ID, the same selling and buying assets as the offer, and an amount of zero. A transaction holds at most 100 operations, so an account with a very large number of offers is cancelled in batches, shown as separate steps.
+
+The order is the same for every account. If no single key of the account can sign every step, the extra signers are removed first, in a transaction of their own. Any claimable balances you chose to claim come next, in their own transaction, with any trustline a claim needs added just before it. Once those are confirmed, LumenWipe builds the close itself, which removes the extra signers if that did not happen first, then clears data entries, cancels open offers, converts, returns or sends each remaining balance, removes the trustlines and merges the account last. A close with more than 100 operations is split into several transactions in that same order.
+
+Inside the close, offers are cancelled before any balance is handled, so every balance is free of liabilities when it is moved, and every trustline can be removed after it.
+
+## Doing it by hand
+
+If you cancel offers yourself, find each open offer on the account, which any account explorer or wallet with DEX support lists, and submit a `ManageSellOffer` with its ID, the same selling and buying assets, and an amount of zero. An offer created as a buy offer is cancelled the same way: give its ID, the asset it pays with as the selling asset and the asset it buys as the buying asset. When the account shows no open offers, they are no longer in the way of the merge.
+
+## Start a close
+
+Open [LumenWipe](/mainnet) and enter the account. The [review screen](/mainnet/review) lists the offer cancellations in the plan before you sign anything.

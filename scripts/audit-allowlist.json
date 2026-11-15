@@ -3,7 +3,7 @@
     "advisory": "GHSA-mrhx-c7xc-m3w5",
     "package": "zod",
     "severity": "high",
-    "reason": "The only affected copies left are zod 3.22.4 under @reown/appkit-wallet and 3.25.76 under @coinbase/cdp-sdk, pinned by the wallet kit. No 3.x release is patched, and forcing 4.x onto them risks the signing flow for a dependency that does not ship: next build output contains no zod in the client or server chunks, and the API does not depend on either copy.",
+    "reason": "The only affected copies left are zod 3.22.4 under @reown/appkit-wallet and 3.25.76 under @coinbase/cdp-sdk, pinned by the wallet kit. No 3.x release is patched, and forcing 4.x onto them risks the signing flow for a dependency that does not ship: next build output contains no zod 3.x in the client or server chunks (the only zod it bundles is 4.6.7, server-side, for the blog front matter check), and the API does not depend on either copy.",
     "added": "2026-10-30",
     "expires": "2027-01-28"
   }

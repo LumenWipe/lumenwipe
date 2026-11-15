@@ -6,7 +6,24 @@ import HowItWorksPage from "@/app/(marketing)/how-it-works/page";
 import FaqPage from "@/app/(marketing)/faq/page";
 import PlaygroundPage from "@/app/(marketing)/playground/page";
 import NotFoundView from "@/components/marketing/NotFoundView";
+import PostDates from "@/components/blog/PostDates";
+import PostNextStep from "@/components/blog/PostNextStep";
+import RelatedPosts from "@/components/blog/RelatedPosts";
+import ContentStatusTable from "@/components/blog/ContentStatusTable";
+import { contentStatusRows } from "@/lib/site/content-status";
+import type { PostMeta } from "@/lib/blog";
 import { renderMarketing } from "./fixtures/marketing";
+
+const POST: PostMeta = {
+  slug: "fixture",
+  title: "Fixture",
+  description: "A post.",
+  publishedAt: "2026-06-02",
+  updatedAt: "2026-11-15",
+  category: "Guides",
+  tags: ["stellar"],
+  readingTime: "1 min read",
+};
 
 const PAGES: Record<string, () => ReactElement> = {
   landing: () => <LandingPage />,
@@ -15,6 +32,14 @@ const PAGES: Record<string, () => ReactElement> = {
   faq: () => <FaqPage />,
   playground: () => <PlaygroundPage />,
   "not found": () => <NotFoundView />,
+  "blog post template": () => (
+    <>
+      <PostDates post={POST} />
+      <PostNextStep />
+      <RelatedPosts posts={[POST]} />
+      <ContentStatusTable rows={contentStatusRows([POST])} />
+    </>
+  ),
 };
 
 const GOLD = /(?:^|\s)(?:[a-z-]+:)*(?:bg|text|border)-value(?:\/\S+)?(?=\s|$)/;

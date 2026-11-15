@@ -22,7 +22,7 @@ test("the home page carries no noindex", async ({ page }) => {
   await expect(page.locator('meta[name="robots"][content*="noindex"]')).toHaveCount(0);
 });
 
-for (const path of ["/faq", "/security"]) {
+for (const path of ["/faq", "/security", "/blog/how-do-i-remove-a-trustline-on-stellar"]) {
   test(`${path} has no serious accessibility violations`, async ({ page }) => {
     await page.goto(path);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
@@ -49,6 +49,13 @@ for (const [name, path] of [
     await expectNoAxeViolations(page, name);
   });
 }
+
+test("the content hub lists published and planned articles in a table", async ({ page }) => {
+  await page.goto("/content");
+  const table = page.getByRole("table", { name: "Published and planned articles" });
+  await expect(table.getByRole("cell", { name: "Planned" }).first()).toBeVisible();
+  await expect(table.getByRole("cell", { name: "Published" }).first()).toBeVisible();
+});
 
 test("the skip link is the first stop and moves focus to the content", async ({ page }) => {
   await page.goto("/security");

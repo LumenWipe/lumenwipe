@@ -1,0 +1,61 @@
+---
+title: "How Do I Remove a Trustline on Stellar?"
+description: "Why every trustline has to go before a Stellar account can be merged, why a trustline only comes off at a zero balance, and what to do with the balance it still holds."
+publishedAt: "2026-11-15"
+category: "Guides"
+tags: ["account-blockers", "trustlines", "account-merge", "reserves", "stellar"]
+cta: "Enter the account to see each trustline, choose what happens to its balance, and check the order of the removals before anything is signed."
+---
+
+A Stellar account cannot be merged while it still has a trustline, and most accounts collect several over the years: a stablecoin you used once, an airdropped token, an asset an app added for you. Each one has to be removed before the account can be merged, and a trustline only comes off when it holds nothing.
+
+This guide is one of five on the things that keep a Stellar account open. The others cover [claimable balances](/blog/why-cant-i-merge-my-stellar-account-claimable-balances), [extra signers](/blog/cant-merge-a-stellar-account-because-of-extra-signers), [open offers](/blog/how-do-i-cancel-open-offers-on-stellar) and [data entries](/blog/what-are-stellar-data-entries).
+
+## What a trustline is
+
+On Stellar, an account can hold XLM from the start. To hold any other asset, such as a stablecoin or a token, it first has to add a trustline for that asset. The trustline names the asset and its issuer, the account that created it, and it records how much of the asset the account holds and the most it is willing to hold.
+
+A trustline is one of the account's subentries, the entries that belong to the account and live on the ledger with it. Each subentry raises the account's minimum balance by one base reserve. Today the base reserve is <BaseReserve /> per entry (checked against the network on <BaseReserveCheckedOn />). The base reserve is a network setting that validators can vote to change, so the figure can move.
+
+That XLM is not lost. It stays locked in your account while the trustline exists, and it comes back as spendable XLM when the trustline is removed.
+
+## Why a trustline stops the merge
+
+`AccountMerge` sends the account's XLM to another account and deletes the account from the ledger. The network refuses it while the account still has subentries. Every trustline is a subentry, so every trustline must come off first.
+
+You remove a trustline by setting its limit to zero with a `ChangeTrust` operation. The network refuses that while the trustline still holds a balance, so the balance has to be emptied first. An open offer that sells the asset also reserves part of that balance, and the reserved part cannot be sent or sold until the offer is cancelled. Removal is therefore the last thing that happens to a trustline.
+
+## What to do with the balance
+
+Before a trustline can go, its balance has to reach zero. You have three ways to get there, and the right one depends on whether you want to keep the value.
+
+1. Convert it to XLM. If there is a market for the asset on the Stellar DEX, you sell the whole balance for XLM. The XLM stays in the account and goes to your destination with the merge.
+2. Return it to the issuer. You send the balance back to the account that issued the asset. You receive nothing for it. This is the usual way out for an asset with no market, or one too small to sell.
+3. Transfer it to another account. You send the balance, as the same asset, to an account you name. That account must already hold a trustline for the asset, or the payment fails.
+
+Some balances cannot be moved at all. If the issuer has withdrawn its authorization for your trustline, the balance can be neither sent nor sold, and the trustline cannot be removed. Only the issuer can restore the authorization.
+
+Liquidity pool shares are a special case. A pool share trustline is removed only after you withdraw from the pool, which you do outside the close.
+
+## How LumenWipe handles it
+
+LumenWipe counts the account's trustlines on the analyze screen and asks you what to do with each one that holds a balance.
+
+- When a route to XLM exists, the card recommends a swap to XLM on the DEX and shows the quote: about how much XLM you get, and the least you will accept. It also offers to return the balance to the issuer or send it to another account. The swap is built with a minimum: it refuses to deliver less XLM than the minimum the plan shows.
+- When no route exists, or the balance is too small to swap, the card says so and offers to return the balance to the issuer or send it to another account.
+- When you choose to send a balance to another account, LumenWipe reads that account from the network before the close is built. It refuses the transfer when the account holds no trustline for the asset, when its trustline is not authorized by the issuer, or when the amount does not fit under its trustline limit, and tells you which.
+- A trustline the issuer has deauthorized or limited while it still holds a balance shows as a blocker that names the asset. Pool shares show as a blocker too, telling you to withdraw from the pool first.
+
+The order is the same for every account. If no single key of the account can sign every step, the extra signers are removed first, in a transaction of their own. Any claimable balances you chose to claim come next, in their own transaction, with any trustline a claim needs added just before it. Once those are confirmed, LumenWipe builds the close itself, which removes the extra signers if that did not happen first, then clears data entries, cancels open offers, converts, returns or sends each remaining balance, removes the trustlines and merges the account last. A close with more than 100 operations is split into several transactions in that same order.
+
+Claims run before the close because a claim adds to the balance a trustline holds. Inside the close, offers are cancelled before any balance is handled, so no offer still reserves part of a balance when it is moved, and the trustlines come off only after their balances are gone. The review screen lists these steps before you sign.
+
+When a trustline holds nothing, it needs no decision: it is removed with the others. A trustline the plan adds to claim a balance is removed in the same close.
+
+## Doing it by hand
+
+If you prefer to remove a trustline yourself, the steps are the same, in the same order. Cancel any open offers that buy or sell the asset. Sell, return or send the balance until it is zero. Then submit `ChangeTrust` with a limit of zero. If the network refuses it, the trustline still holds a balance or an open offer still buys the asset.
+
+## Start a close
+
+Open [LumenWipe](/mainnet) and enter the account. The [analyze screen](/mainnet/analyze) lists each trustline and its choices, and the [review screen](/mainnet/review) lists the steps that empty and remove them before you sign anything.
