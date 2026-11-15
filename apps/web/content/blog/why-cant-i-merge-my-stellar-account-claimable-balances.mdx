@@ -1,0 +1,65 @@
+---
+title: "Why Can't I Merge My Stellar Account? Claimable Balances Explained"
+description: "What a claimable balance is, when one stops a Stellar account merge and when it does not, and what you can do with each balance before you close the account."
+publishedAt: "2026-11-15"
+category: "Guides"
+tags: ["account-blockers", "claimable-balances", "account-merge", "stellar"]
+cta: "Enter the account to see the claimable balances waiting for it and choose what happens to each one before anything is signed."
+---
+
+You open your wallet to close an old Stellar account and find a list of claimable balances you never asked for. Some are airdrops, some are payments from an exchange, some are tokens you have never heard of. Before you merge the account, you need to know which of them matter, because a merge cannot be undone.
+
+This guide is one of five on the things that keep a Stellar account open. The others cover [trustlines](/blog/how-do-i-remove-a-trustline-on-stellar), [extra signers](/blog/cant-merge-a-stellar-account-because-of-extra-signers), [open offers](/blog/how-do-i-cancel-open-offers-on-stellar) and [data entries](/blog/what-are-stellar-data-entries).
+
+## What a claimable balance is
+
+A claimable balance is a payment that waits on the ledger until someone claims it. The sender creates it, names one or more claimants, and attaches a condition to each claimant, called a claim predicate. A predicate can say "any time", or it can open and close a window ("not before this date" or "only before that date").
+
+The balance is its own ledger entry. It does not sit inside your account. The account that created it pays its reserve, so the reserve is locked in the sender's account, not yours, until the balance is claimed.
+
+To claim a balance in an asset other than XLM, your account needs a trustline for that asset. A trustline is the entry that lets an account hold a given asset, and each one locks a reserve of its own.
+
+## Does it stop the merge?
+
+It depends on which side of the balance your account is on.
+
+If your account is a claimant, the network does not refuse the merge because of it. A balance addressed to you is not one of your account's entries, so `AccountMerge` succeeds with the balance still on the ledger. The catch is what happens after: once the account is gone, it can no longer claim anything. Whatever was waiting for it stays out of reach of that account for good.
+
+If your account created the balance, it is sponsoring that balance's reserve, and the network refuses to merge an account that is still sponsoring entries. That sponsorship cannot be moved unless another account agrees to take it over, so it ends only when a claimant claims the balance.
+
+In the common case, then, the merge goes through and the decision is yours to make beforehand, while the account can still claim.
+
+## What you can do with each balance
+
+You have three options, depending on the balance.
+
+1. Claim it. If the predicate allows it now and your account can hold the asset, claiming moves the amount into your account. From there it is handled like any other balance you hold before the close.
+2. Add a trustline, then claim it. If the balance is in an asset your account has no trustline for, you add the trustline first. That needs enough XLM above your current minimum balance to cover one more reserve.
+3. Leave it. You can choose not to claim it. Once the account is merged, the balance can no longer be claimed by it.
+
+Some balances cannot be claimed in this close at all, for example when the window opens at a later date or has already closed for your account. For those, leaving it is the only answer.
+
+## How LumenWipe handles it
+
+LumenWipe reads the claimable balances that name the account and asks you about each one on the analyze screen. The choices it offers depend on the balance:
+
+- A balance the account can claim now offers "Claim it" (the default) or "Leave it unclaimed".
+- A balance in an asset the account has no trustline for offers to add a trustline for that asset and claim it ("Add a USDC trustline and claim it." for a USDC balance), or "Leave it unclaimed". If the account cannot afford the extra reserve, leaving it is the only choice, and the screen says how much XLM is missing.
+- A balance outside its claim window offers only "Leave it unclaimed", with the date it becomes claimable when there is one.
+- When two or more balances cannot be claimed now, one answer can leave all of them at once. It never touches the ones you can claim.
+
+When you leave a balance, the plan carries a warning that names the amount and says it will be inaccessible once the account is merged.
+
+If the account itself sponsors a claimable balance, LumenWipe shows that as a blocker. The close cannot move that sponsorship, so the blocker stays until a claimant claims the balance.
+
+The order is fixed. Trustlines needed for a claim are added first, then the balances are claimed, in a transaction of their own that runs before the rest of the close. After that come the usual steps: each asset you now hold is converted, returned to its issuer or sent to another account, its trustline is removed, and the account is merged. A trustline the plan added only to claim a balance is removed in the same close, so the merge is not stopped by an entry the plan created.
+
+## What to check before you start
+
+- Look at who sent each balance. An unexpected token is often spam, and you can leave it.
+- Check the amount of any XLM balance. Claiming it adds to what you receive at the merge.
+- If you need a trustline to claim, keep enough XLM for its reserve until the claim is done.
+
+## Start a close
+
+Open [LumenWipe](/mainnet) and enter the account. The [analyze screen](/mainnet/analyze) lists each claimable balance with the choices above. Nothing is signed until you have reviewed the full plan.

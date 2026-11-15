@@ -22,7 +22,7 @@ test("the home page carries no noindex", async ({ page }) => {
   await expect(page.locator('meta[name="robots"][content*="noindex"]')).toHaveCount(0);
 });
 
-for (const path of ["/faq", "/security"]) {
+for (const path of ["/faq", "/security", "/blog/how-do-i-remove-a-trustline-on-stellar"]) {
   test(`${path} has no serious accessibility violations`, async ({ page }) => {
     await page.goto(path);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();

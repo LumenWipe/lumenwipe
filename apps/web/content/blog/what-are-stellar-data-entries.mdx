@@ -1,0 +1,54 @@
+---
+title: "What Are Stellar Data Entries and How Do I Remove Them?"
+description: "What a Stellar data entry is, who creates them, why each one locks a reserve and stops an account merge, and how deleting one works."
+publishedAt: "2026-11-15"
+category: "Guides"
+tags: ["account-blockers", "data-entries", "reserves", "account-merge", "stellar"]
+cta: "Enter the account to see how many data entries it holds and where their removal sits in the plan before anything is signed."
+---
+
+You may find data entries on your Stellar account that you do not remember creating. They look harmless, a name and a short value, but each one keeps part of your XLM locked and each one stops the account from being merged.
+
+This guide is one of five on the things that keep a Stellar account open. The others cover [claimable balances](/blog/why-cant-i-merge-my-stellar-account-claimable-balances), [trustlines](/blog/how-do-i-remove-a-trustline-on-stellar), [extra signers](/blog/cant-merge-a-stellar-account-because-of-extra-signers) and [open offers](/blog/how-do-i-cancel-open-offers-on-stellar).
+
+## What a data entry is
+
+A data entry is a small piece of information stored on the account itself: a name of up to 64 bytes and a value of up to 64 bytes. The network does not interpret it. It is kept with the account until someone changes or deletes it.
+
+Data entries are written with the `ManageData` operation. Only a transaction from the account itself can add, change or delete its own entries, and it needs the account's medium threshold, which on most accounts means the master key's signature.
+
+## Who creates them
+
+Wallets, apps and services can write data entries to keep a setting, a reference or a marker on the account. The operation goes inside a transaction you sign, often for some other purpose, which is how entries appear that you never set out to create. If the tool that wrote an entry is gone, nothing removes the entry for you.
+
+You can read an account's data entries in an account explorer or through Horizon, which returns each value encoded as base64.
+
+## Why each one locks a reserve and stops a merge
+
+A data entry is one of the account's subentries, the same as a trustline, an offer or an extra signer. Each one raises the account's minimum balance by one base reserve, <BaseReserve /> per entry today (checked against the network on <BaseReserveCheckedOn />). That XLM stays locked until the entry is deleted.
+
+The network also refuses to merge an account that still has subentries. A merge attempted with a data entry left on the account fails with `op_has_sub_entries`, and that result does not tell you which entry is left. Every data entry has to be deleted before the merge.
+
+## How deleting works
+
+You delete a data entry with a `ManageData` operation that names the entry and gives no value. The network removes the entry and its reserve is freed. One operation deletes one entry, so an account with several entries needs one operation each, all of which can go in the same transaction.
+
+## Is it safe to delete them?
+
+Deleting a data entry changes only the account's own data. It moves no funds and touches no other account. The one thing to check is whether a service you still use reads that entry from this account: once it is deleted, that service can no longer find it. When you are closing the account, that question has already been answered, because the account itself will be gone after the merge.
+
+## How LumenWipe handles it
+
+The analyze screen shows how many data entries the account holds. They need no decision from you: every data entry is removed as part of the close.
+
+On the review screen the plan shows a step called "Remove data entries", which says how many entries it clears. Each entry becomes one `ManageData` operation with the entry's name and no value. A transaction holds at most 100 operations, so an account with more entries than that is cleared in batches, shown as separate steps.
+
+The order is fixed. Data entries are removed after the extra signers, and before open offers are cancelled and any asset is handled. Trustline removal and the merge come after that, so when the merge runs, no data entry is left on the account.
+
+## Doing it by hand
+
+If you remove data entries yourself, list them in an account explorer, then sign a transaction from the account with one `ManageData` operation per entry name and no value. If your wallet has no option for it, you need a tool that can build a custom transaction, and you sign it with a key that meets the medium threshold.
+
+## Start a close
+
+Open [LumenWipe](/mainnet) and enter the account. The [review screen](/mainnet/review) shows the data entry removals in the plan, in the order they run, before you sign anything.

@@ -1,0 +1,69 @@
+---
+title: "Can't Merge a Stellar Account Because of Extra Signers?"
+description: "What an extra signer is, why a Stellar account merge fails while one is attached, how weights and thresholds decide who can sign, and what a multisig close needs from you."
+publishedAt: "2026-11-15"
+category: "Guides"
+tags: ["account-blockers", "signers", "multisig", "account-merge", "stellar"]
+cta: "Enter the account to see its extra signers and, for a multisig account, how many keys have to sign before anything is built."
+---
+
+A wallet or another tool may have added a second key to your Stellar account. Years later you try to merge that account, and the merge fails with a result code such as `op_has_sub_entries` that says nothing about signers. The extra signer is still there, and it is one of the reasons.
+
+This guide is one of five on the things that keep a Stellar account open. The others cover [claimable balances](/blog/why-cant-i-merge-my-stellar-account-claimable-balances), [trustlines](/blog/how-do-i-remove-a-trustline-on-stellar), [open offers](/blog/how-do-i-cancel-open-offers-on-stellar) and [data entries](/blog/what-are-stellar-data-entries).
+
+## What an extra signer is
+
+Every Stellar account starts with one signer, its master key: the key pair whose public key is the account address. A `SetOptions` operation can add more signers, each with a weight. Most are ordinary keys, the kind a wallet holds. There are also special kinds: a hash(x) signer, which is satisfied by revealing a secret value; a pre-authorized transaction signer, which allows one exact transaction; and a signed-payload signer.
+
+Each extra signer is a subentry of the account, like a trustline or an offer, and locks one base reserve of <BaseReserve /> while it exists (checked on <BaseReserveCheckedOn />).
+
+## Weights and thresholds
+
+An account has three thresholds: low, medium and high. Every operation belongs to one of them. A transaction is authorized when the signers who signed it add up to at least the threshold its operations need.
+
+The two operations that matter for a close both need the high threshold: `SetOptions` when it changes signers or thresholds, and `AccountMerge` itself.
+
+On a fresh account the master key has weight 1 and every threshold is 0, so the master key alone can do anything. A multisig setup raises the thresholds and adds signers so that no single key is enough. For example, three keys of weight 1 with a high threshold of 2 means any two of them must sign a merge.
+
+## Why the merge fails
+
+There are two separate reasons.
+
+First, the network refuses to merge an account that still has subentries, and every extra signer is one. That is the `op_has_sub_entries` result: it does not say which subentry is left, and an extra signer is easy to forget because no wallet balance shows it.
+
+Second, if the thresholds were raised, the merge needs enough signing weight. A merge signed by the master key alone fails when the master key's weight is below the high threshold.
+
+So before a merge, the extra signers have to be removed, and removing them needs the signatures the account currently requires.
+
+## How LumenWipe handles it
+
+The analyze screen shows how many extra signers the account has. When it has any, or when its medium or high threshold is above 1, the plan includes a step called "Remove extra signers". That step sets each other signer's weight to 0, which removes it, and then resets the thresholds to 0, 1 and 1, so the master key alone can authorize what follows. Removal comes first among the classic steps, before any data entry, offer or trustline is touched, and the merge comes last.
+
+When no single key of the account reaches every threshold, the signer removal runs as a transaction of its own, before any other step. The master key must be one of the keys that sign it. After it is confirmed, the master key alone signs the rest of the close. That transaction does not close the account: if a later step is refused, the account stays open under its master key alone. The step says this on the plan, so you see it before you sign.
+
+For a multisig account, the review screen says how many of the account's keys must sign and on how many transactions. Those keys must sign in the same browser, during the close. While you sign, the signing screen shows the weight collected so far, the weight still needed and which signers have not signed yet.
+
+The special signer types each have a rule:
+
+- A hash(x) signer is satisfied by entering its secret value in the browser, only on the step that removes that signer.
+- A pre-authorized transaction signer is used by submitting that exact transaction in the browser. It is not a signature.
+- A signed-payload signer cannot sign in LumenWipe, and its weight does not count toward the threshold.
+
+## When LumenWipe stops
+
+LumenWipe does not build a removal it knows cannot be authorized. The analyze screen shows a blocker instead in two cases.
+
+- The master key has weight 0. Removing the other signers would leave no key able to authorize anything on the account, ever, so LumenWipe refuses to do it.
+- The signers that can sign in LumenWipe do not add up to the high threshold. The blocker states the weight they can reach and the weight the high threshold requires.
+
+In both cases the account's current signers have to change its setup first, outside LumenWipe, for example by giving the master key weight or lowering the high threshold.
+
+## Before you start
+
+- Find out who added each extra signer. If it belongs to a service you still use, closing the account takes away the access that signer gave.
+- Gather the keys you will need before you open the close. The review screen tells you how many.
+- If you hold only the master key and the thresholds are above its weight, you cannot close the account alone.
+
+## Start a close
+
+Open [LumenWipe](/mainnet) and enter the account. The [analyze screen](/mainnet/analyze) lists the extra signers and any blocker, and the review screen shows how many keys have to sign before anything is built.

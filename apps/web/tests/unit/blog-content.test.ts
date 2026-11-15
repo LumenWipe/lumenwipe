@@ -50,6 +50,28 @@ describe("blog content", () => {
     expect(found.map((p) => p.slug)).toEqual([]);
   });
 
+  test("each blocker article links to the other four and ends on the account entry page", () => {
+    const blockers = posts.filter((p) => p.tags.includes("account-blockers"));
+    expect(blockers).toHaveLength(5);
+    for (const post of blockers) {
+      const links = new Set(internalLinks(post.content));
+      const missing = blockers
+        .filter((other) => other.slug !== post.slug && !links.has(`/blog/${other.slug}`))
+        .map((other) => other.slug);
+      expect({ post: post.slug, missing }).toEqual({ post: post.slug, missing: [] });
+      expect(links.has("/mainnet")).toBe(true);
+    }
+  });
+
+  test("a blocker article states the reserve through the shared figure, never as a copied number", () => {
+    for (const post of posts.filter((p) => p.tags.includes("account-blockers"))) {
+      expect({ post: post.slug, copied: /\d+(\.\d+)?\s*XLM/.test(post.content) }).toEqual({
+        post: post.slug,
+        copied: false,
+      });
+    }
+  });
+
   test("no planned article is already published", () => {
     expect(() => contentStatusRows(getAllPostMetas())).not.toThrow();
   });
