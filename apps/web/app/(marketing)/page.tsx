@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import JsonLd from "@/components/seo/JsonLd";
 import { HOME_TITLE, pageMetadata } from "@/lib/site/pages";
+import { homeJsonLd } from "@/lib/site/structured-data";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -33,10 +35,12 @@ import {
   type FeatureId,
 } from "@/lib/site/status";
 
+const DESCRIPTION = `LumenWipe closes a Stellar account end to end and recovers the XLM locked in its reserves. Unwind trustlines, offers, data entries and Soroban DeFi positions, then merge out to ${feature("exchange-close").status === "live" ? "your wallet or exchange" : "your wallet"}. Non-custodial, open source.`;
+
 export const metadata: Metadata = pageMetadata({
   path: "/",
   title: HOME_TITLE,
-  description: `LumenWipe closes a Stellar account end to end and recovers the XLM locked in its reserves. Unwind trustlines, offers, data entries and Soroban DeFi positions, then merge out to ${feature("exchange-close").status === "live" ? "your wallet or exchange" : "your wallet"}. Non-custodial, open source.`,
+  description: DESCRIPTION,
 });
 
 const CARD_IDS = [
@@ -91,6 +95,7 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
 export default function LandingPage() {
   return (
     <>
+      <JsonLd data={homeJsonLd(DESCRIPTION)} />
       {/* ============================ HERO ============================ */}
       <section className="mx-auto max-w-6xl px-5 pb-10 pt-16 text-center lg:px-8 lg:pt-20">
         {/* Label - typographic, not a status pill */}

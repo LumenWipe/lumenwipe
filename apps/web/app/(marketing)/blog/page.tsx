@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import JsonLd from "@/components/seo/JsonLd";
 import { pageMetadata } from "@/lib/site/pages";
+import { blogJsonLd } from "@/lib/site/structured-data";
 import Link from "next/link";
 import { getAllPostMetas } from "@/lib/blog";
 import PostCard from "@/components/blog/PostCard";
@@ -17,6 +19,7 @@ export default function BlogPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-5 lg:px-8 py-14 lg:py-20">
+      <JsonLd data={blogJsonLd(posts)} />
       <div className="mb-12">
         <span className="mkt-eyebrow inline-flex items-center gap-2 text-accent/90">
           <span className="h-px w-6 bg-accent/50" />

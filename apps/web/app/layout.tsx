@@ -3,29 +3,9 @@ import { headers } from "next/headers";
 import { Toaster } from "sonner";
 import RedactedAnalytics from "@/components/analytics/RedactedAnalytics";
 import { UMAMI_BEFORE_SEND, UMAMI_BEFORE_SEND_SCRIPT } from "@/lib/analytics/redact";
-import { ROOT_METADATA, ROOT_VIEWPORT, SITE_DESCRIPTION } from "@/lib/site/root-metadata";
-import { siteOrigin } from "@/lib/site/url";
+import { ROOT_METADATA, ROOT_VIEWPORT } from "@/lib/site/root-metadata";
 import { siteFontVars } from "./fonts";
 import "./globals.css";
-
-const APP_URL = siteOrigin();
-
-const jsonLd = {
-  "@context": "https://schema.org",
-  "@type": "WebApplication",
-  name: "LumenWipe",
-  url: APP_URL,
-  description: SITE_DESCRIPTION,
-  applicationCategory: "FinanceApplication",
-  operatingSystem: "Web Browser",
-  featureList: [
-    "Non-custodial Stellar account merge",
-    "Trustline removal",
-    "Open offer cancellation",
-    "Soroban DeFi position exit",
-    "XLM reserve recovery",
-  ],
-};
 
 export const viewport: Viewport = ROOT_VIEWPORT;
 
@@ -37,12 +17,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="en" className="dark">
       <head>
-        <script
-          type="application/ld+json"
-          nonce={nonce}
-          suppressHydrationWarning
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-        />
         {process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID && (
           <>
             <script

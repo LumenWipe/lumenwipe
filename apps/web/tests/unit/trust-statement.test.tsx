@@ -61,13 +61,14 @@ describe("no surface overstates the trust model", () => {
     });
   }
 
-  test("page metadata and the structured data block make none", () => {
+  test("page metadata and the structured data make none", () => {
     for (const meta of [landingMeta, securityMeta, howMeta, faqMeta]) {
       expect(overclaims(String(meta.description))).toEqual([]);
     }
     for (const file of [
       ["app", "layout.tsx"],
       ["lib", "site", "root-metadata.ts"],
+      ["lib", "site", "structured-data.ts"],
     ]) {
       expect(overclaims(readFileSync(join(WEB, ...file), "utf8"))).toEqual([]);
     }

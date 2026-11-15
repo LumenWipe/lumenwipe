@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import { pageMetadata } from "@/lib/site/pages";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import Faq from "@/components/marketing/Faq";
+import Faq, { ITEMS } from "@/components/marketing/Faq";
+import JsonLd from "@/components/seo/JsonLd";
+import { faqJsonLd } from "@/lib/site/structured-data";
 import { Button } from "@/components/ui/button";
 
 export const metadata: Metadata = pageMetadata({
@@ -15,6 +17,7 @@ export const metadata: Metadata = pageMetadata({
 export default function FaqPage() {
   return (
     <section className="mx-auto max-w-3xl px-5 py-20 lg:px-8 lg:py-24">
+      <JsonLd data={faqJsonLd(ITEMS)} />
       <div className="text-center">
         <span className="mkt-eyebrow inline-flex items-center gap-2 text-fg-muted">
           <span className="h-px w-5 bg-accent/60" />
