@@ -46,7 +46,9 @@ LumenWipe counts the account's trustlines on the analyze screen and asks you wha
 - When you choose to send a balance to another account, LumenWipe reads that account from the network before the close is built. It refuses the transfer when the account holds no trustline for the asset, when its trustline is not authorized by the issuer, or when the amount does not fit under its trustline limit, and tells you which.
 - A trustline the issuer has deauthorized or limited while it still holds a balance shows as a blocker that names the asset. Pool shares show as a blocker too, telling you to withdraw from the pool first.
 
-The order is the same on every close, and you can see it on the review screen. Offers are cancelled before anything touches a trustline, so no offer still reserves part of a balance. Any claimable balances you chose to claim are claimed next, because a claim adds to the balance a trustline holds. Then each balance is swapped, returned or transferred, and only after that are the trustlines removed. The merge comes last.
+The order is the same for every account. If no single key of the account can sign every step, the extra signers are removed first, in a transaction of their own. Any claimable balances you chose to claim come next, in their own transaction, with any trustline a claim needs added just before it. Once those are confirmed, LumenWipe builds the close itself, which removes the extra signers if that did not happen first, then clears data entries, cancels open offers, converts, returns or sends each remaining balance, removes the trustlines and merges the account last. A close with more than 100 operations is split into several transactions in that same order.
+
+Claims run before the close because a claim adds to the balance a trustline holds. Inside the close, offers are cancelled before any balance is handled, so no offer still reserves part of a balance when it is moved, and the trustlines come off only after their balances are gone. The review screen lists these steps before you sign.
 
 When a trustline holds nothing, it needs no decision: it is removed with the others. A trustline the plan adds to claim a balance is removed in the same close.
 
@@ -56,4 +58,4 @@ If you prefer to remove a trustline yourself, the steps are the same, in the sam
 
 ## Start a close
 
-Open [LumenWipe](/mainnet) and enter the account. The [analyze screen](/mainnet/analyze) lists each trustline and its choices, and the [review screen](/mainnet/review) shows the order in which they are emptied and removed before you sign anything.
+Open [LumenWipe](/mainnet) and enter the account. The [analyze screen](/mainnet/analyze) lists each trustline and its choices, and the [review screen](/mainnet/review) lists the steps that empty and remove them before you sign anything.

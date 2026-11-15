@@ -31,7 +31,7 @@ An offer also gets in the way of the steps before the merge. A trustline cannot 
 
 ## How cancelling works
 
-There is no separate cancel operation. You cancel an offer by updating it to an amount of zero: a `ManageSellOffer` that names the offer's ID with an amount of `0`. The network deletes the offer, releases its liabilities and frees its reserve.
+There is no separate cancel operation. You cancel an offer by updating it to an amount of zero: a `ManageSellOffer` that names the offer's ID, repeats the asset it sells and the asset it buys, and sets the amount to `0`. The network deletes the offer, releases its liabilities and frees its reserve.
 
 Nothing has to come back to you when an offer is cancelled. An offer on Stellar does not move your assets into escrow: the amount it was selling never left your account, it was only reserved. Once the offer is deleted, that amount is an ordinary part of your balance again, and you can sell, send or return it like the rest.
 
@@ -41,14 +41,16 @@ Cancelling is final for that offer. If you want to trade the asset later, you pl
 
 The analyze screen shows how many open offers the account has. Offers need no decision from you: every open offer is cancelled as part of the close.
 
-On the review screen the plan shows a step called "Cancel open DEX offers", with the number of offers it cancels. Each offer becomes one `ManageSellOffer` with the offer's ID and an amount of zero. A transaction holds at most 100 operations, so an account with a very large number of offers is cancelled in batches, shown as separate steps.
+On the review screen the plan shows a step called "Cancel open DEX offers", with the number of offers it cancels. Each offer becomes one `ManageSellOffer` with the offer's ID, the same selling and buying assets as the offer, and an amount of zero. A transaction holds at most 100 operations, so an account with a very large number of offers is cancelled in batches, shown as separate steps.
 
-The order is fixed. Signer removal and data entry removal come before it. Then the offers are cancelled, before any claimable balance is claimed and before any asset is swapped, returned or sent. That way every balance is free of liabilities when it is handled, and every trustline can be removed after it. The merge comes last.
+The order is the same for every account. If no single key of the account can sign every step, the extra signers are removed first, in a transaction of their own. Any claimable balances you chose to claim come next, in their own transaction, with any trustline a claim needs added just before it. Once those are confirmed, LumenWipe builds the close itself, which removes the extra signers if that did not happen first, then clears data entries, cancels open offers, converts, returns or sends each remaining balance, removes the trustlines and merges the account last. A close with more than 100 operations is split into several transactions in that same order.
+
+Inside the close, offers are cancelled before any balance is handled, so every balance is free of liabilities when it is moved, and every trustline can be removed after it.
 
 ## Doing it by hand
 
-If you cancel offers yourself, find each open offer on the account, which any account explorer or wallet with DEX support lists, and submit a `ManageSellOffer` with its ID and an amount of zero. An offer created as a buy offer can be cancelled the same way, by its ID. When the account shows no open offers, they are no longer in the way of the merge.
+If you cancel offers yourself, find each open offer on the account, which any account explorer or wallet with DEX support lists, and submit a `ManageSellOffer` with its ID, the same selling and buying assets, and an amount of zero. An offer created as a buy offer is cancelled the same way: give its ID, the asset it pays with as the selling asset and the asset it buys as the buying asset. When the account shows no open offers, they are no longer in the way of the merge.
 
 ## Start a close
 
-Open [LumenWipe](/mainnet) and enter the account. The [review screen](/mainnet/review) shows the offer cancellations in the plan, in the order they run, before you sign anything.
+Open [LumenWipe](/mainnet) and enter the account. The [review screen](/mainnet/review) lists the offer cancellations in the plan before you sign anything.

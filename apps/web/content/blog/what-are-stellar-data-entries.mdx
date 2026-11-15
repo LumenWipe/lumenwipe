@@ -43,7 +43,7 @@ The analyze screen shows how many data entries the account holds. They need no d
 
 On the review screen the plan shows a step called "Remove data entries", which says how many entries it clears. Each entry becomes one `ManageData` operation with the entry's name and no value. A transaction holds at most 100 operations, so an account with more entries than that is cleared in batches, shown as separate steps.
 
-The order is fixed. Data entries are removed after the extra signers, and before open offers are cancelled and any asset is handled. Trustline removal and the merge come after that, so when the merge runs, no data entry is left on the account.
+The order is the same for every account. If no single key of the account can sign every step, the extra signers are removed first, in a transaction of their own. Any claimable balances you chose to claim come next, in their own transaction, with any trustline a claim needs added just before it. Once those are confirmed, LumenWipe builds the close itself, which removes the extra signers if that did not happen first, then clears data entries, cancels open offers, converts, returns or sends each remaining balance, removes the trustlines and merges the account last. A close with more than 100 operations is split into several transactions in that same order. When the merge runs, no data entry is left on the account.
 
 ## Doing it by hand
 
@@ -51,4 +51,4 @@ If you remove data entries yourself, list them in an account explorer, then sign
 
 ## Start a close
 
-Open [LumenWipe](/mainnet) and enter the account. The [review screen](/mainnet/review) shows the data entry removals in the plan, in the order they run, before you sign anything.
+Open [LumenWipe](/mainnet) and enter the account. The [review screen](/mainnet/review) lists the data entry removals in the plan before you sign anything.
