@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { act, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { Keypair, Networks } from "@stellar/stellar-sdk";
-import { KitEventType } from "@creit-tech/stellar-wallets-kit/types";
+import { KitEventType, LocalStorageKeys } from "@creit-tech/stellar-wallets-kit/types";
 import * as walletKitClient from "@/lib/wallet-kit/client";
+import { WALLET_KIT_LOAD_FAILED, WalletKitLoadError } from "@/lib/wallet-kit/loader";
 import {
   RECHECK_INTERVAL_MS,
   useWalletKitConnection,
@@ -26,9 +27,11 @@ let kit: {
   stateListeners: StateListener[];
   authModal: ReturnType<typeof mock>;
   fetchAddress: ReturnType<typeof mock>;
+  disconnect: ReturnType<typeof mock>;
 };
 let silentAnswer: string | null | "unsupported";
 let lookups: ReturnType<typeof mock>;
+let ensure: ReturnType<typeof spyOn>;
 
 function installKit(): void {
   kit = {
@@ -38,7 +41,10 @@ function installKit(): void {
     stateListeners: [],
     authModal: mock(async () => ({ address: saved })),
     fetchAddress: mock(async () => ({ address: saved })),
+    disconnect: mock(async () => {}),
   };
+  // What the kit writes on a connect, and the only thing a restore starts from.
+  localStorage.setItem(LocalStorageKeys.activeAddress, saved);
   const fake = {
     getAddress: async () => {
       if (!kit.saved) throw { code: -1, message: "No wallet has been connected." };
@@ -51,7 +57,7 @@ function installKit(): void {
     },
     authModal: (...args: unknown[]) => kit.authModal(...args),
     fetchAddress: (...args: unknown[]) => kit.fetchAddress(...args),
-    disconnect: async () => {},
+    disconnect: (...args: unknown[]) => kit.disconnect(...args),
     on: (type: KitEventType, listener: StateListener) => {
       if (type === KitEventType.STATE_UPDATED) {
         // The kit reports its saved address once, synchronously, on subscribing.
@@ -61,8 +67,11 @@ function installKit(): void {
       return () => {};
     },
   };
-  spyOn(walletKitClient, "ensureWalletKitInitialized").mockImplementation(
-    () => fake as unknown as ReturnType<typeof walletKitClient.ensureWalletKitInitialized>
+  // The real kit is a class used through its statics, so it is a function, as here.
+  const kitClass = Object.assign(class StandInKit {}, fake);
+  ensure = spyOn(walletKitClient, "ensureWalletKitInitialized").mockImplementation(
+    async () =>
+      kitClass as unknown as Awaited<ReturnType<typeof walletKitClient.ensureWalletKitInitialized>>
   );
   spyOn(walletKitClient, "selectedWalletId").mockImplementation(() => VARIAL_ID);
   silentAnswer = saved;
@@ -79,6 +88,7 @@ function emitState(address: string | undefined): void {
 beforeEach(installKit);
 afterEach(() => {
   mock.restore();
+  localStorage.clear();
 });
 
 async function restored(options?: { recheckOnFocus?: boolean }) {
@@ -314,6 +324,8 @@ test("wallet connection › ten focus events while a lookup is still running joi
       window.dispatchEvent(new Event("focus"));
     });
   }
+  // The lookup starts once the loaded kit is handed over, a microtask after the first event.
+  await act(async () => {});
   expect(lookups).toHaveBeenCalledTimes(2);
   await act(async () => answer(saved));
   await waitFor(() => expect(result.current.checking).toBe(false));
@@ -411,6 +423,7 @@ async function connectWithNetworkReadInFlight(): Promise<{
   settle: () => Promise<void>;
 }> {
   kit.saved = null;
+  localStorage.clear();
   let open: () => void = () => {};
   kit.networkGate = new Promise<void>((resolve) => {
     open = resolve;
@@ -494,4 +507,76 @@ test("wallet connection › with a WalletConnect project id the picker has no su
     render(<WalletConnectPanel connection={disconnected()} />);
     expect(screen.queryByText(NO_WALLET_CONNECT_NOTE)?.textContent ?? null).toBeNull();
   });
+});
+
+function failKitLoad(): void {
+  ensure.mockImplementation(async () => {
+    throw new WalletKitLoadError(new TypeError("Failed to fetch dynamically imported module"));
+  });
+}
+
+test("wallet connection › with no saved session, mounting loads no wallet kit", async () => {
+  localStorage.clear();
+  const { result } = renderHook(() => useWalletKitConnection("testnet", { recheckOnFocus: true }));
+  await act(async () => {
+    window.dispatchEvent(new Event("focus"));
+  });
+  expect(ensure).not.toHaveBeenCalled();
+  expect(kit.stateListeners).toHaveLength(0);
+  expect(result.current.status).toBe("disconnected");
+  expect(result.current.error).toBeNull();
+});
+
+test("wallet connection › connecting loads the kit, then follows its state changes", async () => {
+  localStorage.clear();
+  const { result } = renderHook(() => useWalletKitConnection("testnet"));
+  expect(ensure).not.toHaveBeenCalled();
+  await act(async () => {
+    await result.current.connect();
+  });
+  expect(ensure).toHaveBeenCalledWith("testnet");
+  expect(result.current.status).toBe("connected");
+  await waitFor(() => expect(kit.stateListeners).toHaveLength(1));
+
+  emitState(other);
+  await waitFor(() => expect(result.current.address).toBe(other));
+});
+
+test("wallet connection › a kit that cannot load on connect says so and connects nothing", async () => {
+  localStorage.clear();
+  failKitLoad();
+  const { result } = renderHook(() => useWalletKitConnection("testnet"));
+  await act(async () => {
+    await result.current.connect();
+  });
+  expect(result.current.error).toBe(WALLET_KIT_LOAD_FAILED);
+  expect(result.current.status).toBe("disconnected");
+  expect(result.current.address).toBeNull();
+  expect(kit.authModal).not.toHaveBeenCalled();
+});
+
+test("wallet connection › a saved session whose kit cannot load says so and stays disconnected", async () => {
+  failKitLoad();
+  const { result } = renderHook(() => useWalletKitConnection("testnet"));
+  await waitFor(() => expect(result.current.error).toBe(WALLET_KIT_LOAD_FAILED));
+  expect(result.current.status).toBe("disconnected");
+  expect(result.current.address).toBeNull();
+  expect(lookups).not.toHaveBeenCalled();
+});
+
+test("wallet connection › disconnecting forgets the saved session even when the kit cannot load", async () => {
+  const { result } = await restored();
+  expect(result.current.status).toBe("connected");
+  failKitLoad();
+  await act(async () => {
+    await result.current.disconnect();
+  });
+  expect(result.current.error).toBe(WALLET_KIT_LOAD_FAILED);
+  expect(localStorage.getItem(LocalStorageKeys.activeAddress)).toBeNull();
+
+  ensure.mockClear();
+  const next = renderHook(() => useWalletKitConnection("testnet"));
+  await act(async () => {});
+  expect(ensure).not.toHaveBeenCalled();
+  expect(next.result.current.status).toBe("disconnected");
 });

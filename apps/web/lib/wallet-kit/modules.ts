@@ -5,6 +5,7 @@ import { AlbedoModule, ALBEDO_ID } from "@creit-tech/stellar-wallets-kit/modules
 import { RabetModule, RABET_ID } from "@creit-tech/stellar-wallets-kit/modules/rabet";
 import { HanaModule, HANA_ID } from "@creit-tech/stellar-wallets-kit/modules/hana";
 import type { ModuleInterface } from "@creit-tech/stellar-wallets-kit/types";
+import { walletConnectMetadata, walletConnectProjectId } from "./wallet-connect-config";
 
 /**
  * LOBSTR's own browser-extension module is intentionally excluded: LOBSTR's browser
@@ -43,51 +44,14 @@ export function vettedDefaultModules(): ModuleInterface[] {
   ];
 }
 
-export interface WalletConnectMetadata {
-  name: string;
-  description: string;
-  url: string;
-  icons: string[];
-}
-
-/**
- * Must match the domain the page actually loads from - WalletConnect compares `url` against
- * the real page origin and flags a mismatch to the connecting wallet as a possible phishing
- * signal. The site serves from the www subdomain, so the fallback (used whenever
- * `NEXT_PUBLIC_APP_URL` is unset) has to be that, not the bare apex domain.
- */
-export function walletConnectMetadata(): WalletConnectMetadata {
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.lumenwipe.com";
-  return {
-    name: "LumenWipe",
-    description: "Close your Stellar account safely and recover your XLM.",
-    url: appUrl,
-    icons: [`${appUrl}/favicon-96x96.png`],
-  };
-}
-
-/**
- * Whether this build has a WalletConnect project id. Without one, mobile wallets (LOBSTR
- * included) are unavailable and the wallet picker says so. A production deployment cannot be
- * built without it (`config/wallet-connect-build.mjs`).
- */
-export function walletConnectConfigured(): boolean {
-  return walletConnectProjectId() !== null;
-}
-
-function walletConnectProjectId(): string | null {
-  return process.env.NEXT_PUBLIC_STELLAR_WALLET_CONNECT_PROJECT_ID?.trim() || null;
-}
-
 /**
  * Full module list for `StellarWalletsKit.init`. WalletConnect is included only when
  * a project ID is configured - without it, LOBSTR (reachable only via WalletConnect)
  * is unavailable but the five vetted extension wallets still work.
  *
- * This must never throw: it runs inside a React effect on both the account-entry
- * route and `/execute`, with no error boundary scoped tighter than the whole page
- * in either case, so an uncaught error here would take the rest of that page's UI
- * down too - including the secret-key fallback on the screen where funds get closed.
+ * This must never throw: it runs when the kit first loads, and a throw fails that load,
+ * leaving no wallet at all on the account-entry route or `/execute` (the secret-key
+ * fallback on the screen where funds get closed still works).
  */
 export function walletKitModules(): ModuleInterface[] {
   const projectId = walletConnectProjectId();

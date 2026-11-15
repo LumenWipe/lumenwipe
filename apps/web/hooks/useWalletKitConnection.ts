@@ -12,6 +12,12 @@ import {
   selectedWalletId,
   silentWalletAddress,
 } from "@/lib/wallet-kit/client";
+import {
+  forgetStoredWalletSession,
+  hasStoredWalletSession,
+  WalletKitLoadError,
+  type WalletKit,
+} from "@/lib/wallet-kit/loader";
 
 /** Whether the wallet is on this page's network: "unknown" when it cannot or did not say. */
 export type WalletNetworkCheck = "yes" | "no" | "unknown";
@@ -60,7 +66,8 @@ export interface WalletKitConnectionOptions {
  * the flow is restored here, but shown as connected only once the wallet answers with that same
  * address; the wallet's network is read as yes, no or unknown, and a kit state change (a new
  * address) replaces the session. None of this opens a wallet prompt: a wallet that cannot be read
- * silently is asked to reconnect instead.
+ * silently is asked to reconnect instead. The kit's code loads only when there is a saved session
+ * to restore or the user connects.
  */
 export function useWalletKitConnection(
   network: Network,
@@ -74,6 +81,7 @@ export function useWalletKitConnection(
   const [walletNetwork, setWalletNetworkState] = useState<WalletNetworkCheck>("unknown");
   const [walletId, setWalletIdState] = useState<string | null>(null);
   const [confirmedFor, setConfirmedForState] = useState<string | null>(null);
+  const [kit, setKit] = useState<WalletKit | null>(null);
 
   // The same session state, kept current for a run that is already signing: `beforeSigning` reads
   // it at the moment of each signature, never the render a run started from.
@@ -120,7 +128,7 @@ export function useWalletKitConnection(
     const timer = startSignTimeout(ADDRESS_CHECK_TIMEOUT_MS);
     try {
       const answer = ensureWalletKitInitialized(network)
-        .getNetwork()
+        .then((loaded) => loaded.getNetwork())
         .then(
           ({ networkPassphrase }): WalletNetworkCheck =>
             !networkPassphrase
@@ -186,7 +194,7 @@ export function useWalletKitConnection(
       setChecking(true);
       const work = (async () => {
         const [live, net] = await Promise.all([
-          silentWalletAddress(ensureWalletKitInitialized(network)),
+          ensureWalletKitInitialized(network).then(silentWalletAddress),
           readNetwork(),
         ]);
         if (generation !== generationRef.current) return;
@@ -211,19 +219,22 @@ export function useWalletKitConnection(
 
   // Restores a session kept from earlier in the flow, shown as connected only once checked.
   useEffect(() => {
+    if (!hasStoredWalletSession()) return undefined;
     let cancelled = false;
     (async () => {
-      let kit: ReturnType<typeof ensureWalletKitInitialized>;
+      let loaded: WalletKit;
       let existing: string;
       try {
-        kit = ensureWalletKitInitialized(network);
-        ({ address: existing } = await kit.getAddress());
-      } catch {
+        loaded = await ensureWalletKitInitialized(network);
+        if (!cancelled) setKit(() => loaded);
+        ({ address: existing } = await loaded.getAddress());
+      } catch (err) {
+        if (!cancelled && err instanceof WalletKitLoadError) setError(toUserMessage(err, "wallet"));
         return; // No existing session - nothing to restore.
       }
       if (cancelled || addressRef.current !== null) return;
       newSession(existing);
-      setWalletId(selectedWalletId(kit));
+      setWalletId(selectedWalletId(loaded));
       setStatus("checking");
       await verify("restore");
     })();
@@ -237,12 +248,7 @@ export function useWalletKitConnection(
   // address (its network, its confirmation, the signer built on it) goes with it. The kit reports
   // the saved address once on subscribing; that report is not an answer from the wallet.
   useEffect(() => {
-    let kit: ReturnType<typeof ensureWalletKitInitialized>;
-    try {
-      kit = ensureWalletKitInitialized(network);
-    } catch {
-      return undefined;
-    }
+    if (!kit) return undefined;
     let subscribing = true;
     const offState = kit.on(KitEventType.STATE_UPDATED, (event) => {
       if (subscribing) return;
@@ -266,7 +272,7 @@ export function useWalletKitConnection(
       offState();
       offDisconnect();
     };
-  }, [network, newSession, trackNetworkRead, setStatus, setWalletId]);
+  }, [kit, newSession, trackNetworkRead, setStatus, setWalletId]);
 
   // Checks again when the tab comes back: at most one lookup in flight and one per interval.
   useEffect(() => {
@@ -289,10 +295,11 @@ export function useWalletKitConnection(
     setError(null);
     setConnecting(true);
     try {
-      const kit = ensureWalletKitInitialized(network);
-      const { address: connected } = await kit.authModal();
+      const loaded = await ensureWalletKitInitialized(network);
+      setKit(() => loaded);
+      const { address: connected } = await loaded.authModal();
       newSession(connected);
-      setWalletId(selectedWalletId(kit));
+      setWalletId(selectedWalletId(loaded));
       setStatus("connected");
       await trackNetworkRead();
     } catch (err) {
@@ -304,8 +311,10 @@ export function useWalletKitConnection(
 
   const disconnect = useCallback(async () => {
     setError(null);
+    // The saved address goes first, so a kit that cannot load leaves no session to restore.
+    forgetStoredWalletSession();
     try {
-      await ensureWalletKitInitialized(network).disconnect();
+      await (await ensureWalletKitInitialized(network)).disconnect();
       newSession(null);
       setStatus("disconnected");
     } catch (err) {

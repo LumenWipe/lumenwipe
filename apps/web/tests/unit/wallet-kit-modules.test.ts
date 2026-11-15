@@ -4,10 +4,12 @@ import { FREIGHTER_ID } from "@creit-tech/stellar-wallets-kit/modules/freighter"
 import {
   ALLOWED_DEFAULT_MODULE_IDS,
   vettedDefaultModules,
-  walletConnectConfigured,
-  walletConnectMetadata,
   walletKitModules,
 } from "@/lib/wallet-kit/modules";
+import {
+  walletConnectConfigured,
+  walletConnectMetadata,
+} from "@/lib/wallet-kit/wallet-connect-config";
 
 test("vettedDefaultModules › never includes LOBSTR's own module", () => {
   const ids = vettedDefaultModules().map((m) => m.productId);

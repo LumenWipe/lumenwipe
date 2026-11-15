@@ -3,6 +3,7 @@
 import { use, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import StatusMessage from "@/components/a11y/StatusMessage";
 import { AlertTriangle, ArrowLeft, ShieldCheck, Search } from "lucide-react";
 import { coverageNote, unconfirmedSources } from "@/lib/allowances/empty-result";
@@ -12,11 +13,14 @@ import { useDemolishStore } from "@/store/demolish";
 import { couldBeSecretKey, isValidGAddress } from "@/lib/utils/validation";
 import { apiErrorText } from "@/lib/utils/user-error";
 import AllowanceRow from "@/components/allowances/AllowanceRow";
-import RevokeAllowanceModal from "@/components/allowances/RevokeAllowanceModal";
 import { AddressField } from "@/components/ui/address-field";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { Card } from "@/components/ui/card";
+
+const RevokeAllowanceModal = dynamic(() => import("@/components/allowances/RevokeAllowanceModal"), {
+  ssr: false,
+});
 
 /**
  * The allowance inspector (#163, architecture.md §12): a standalone security utility, reachable

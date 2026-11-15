@@ -1,41 +1,26 @@
-import { StellarWalletsKit } from "@creit-tech/stellar-wallets-kit/sdk";
-import { Networks } from "@creit-tech/stellar-wallets-kit/types";
-import { VARIAL_ID } from "@creit-tech/stellar-wallets-kit/modules/varial";
 import type { Network } from "@/config/networks";
 import { WalletKitSigner } from "@/lib/stellar/signer";
 import { startSignTimeout } from "@/lib/stellar/wallet-timeout";
-import { walletKitModules } from "./modules";
+import { importWalletKit, walletKitLoader, WalletKitLoadError, type WalletKit } from "./loader";
 
-const KIT_NETWORKS: Record<Network, Networks> = {
-  mainnet: Networks.PUBLIC,
-  testnet: Networks.TESTNET,
-};
-
-let initialized = false;
+const kitLoader = walletKitLoader(() => importWalletKit());
 
 /**
- * Initializes the kit's static singleton on first use and keeps its network in
- * sync afterward. Must only be called client-side (inside useEffect or an
- * event handler) - `StellarWalletsKit.init` touches the DOM and preact
- * signals, which do not exist during Next.js's server render pass.
+ * Loads the kit's code on first use, initializes its static singleton once, and keeps its network
+ * in sync afterward. Never at page load: only once a wallet is restored, connected or used. Must
+ * only be called client-side (inside useEffect or an event handler) - `StellarWalletsKit.init`
+ * touches the DOM and preact signals, which do not exist during Next.js's server render pass. A
+ * load that fails rejects with `WalletKitLoadError`.
  */
-export function ensureWalletKitInitialized(network: Network): typeof StellarWalletsKit {
+export function ensureWalletKitInitialized(network: Network): Promise<WalletKit> {
   if (typeof window === "undefined") {
-    throw new Error("The wallet kit can only be used in the browser.");
+    return Promise.reject(new Error("The wallet kit can only be used in the browser."));
   }
-
-  if (!initialized) {
-    StellarWalletsKit.init({ modules: walletKitModules(), network: KIT_NETWORKS[network] });
-    initialized = true;
-  } else {
-    StellarWalletsKit.setNetwork(KIT_NETWORKS[network]);
-  }
-
-  return StellarWalletsKit;
+  return kitLoader.ensure(network);
 }
 
 /** The kit's id of the wallet the user connected, or null when none is selected. */
-export function selectedWalletId(kit: typeof StellarWalletsKit): string | null {
+export function selectedWalletId(kit: WalletKit): string | null {
   try {
     return kit.selectedModule.productId;
   } catch {
@@ -53,14 +38,17 @@ const signers = new Map<string, WalletKitSigner>();
  * again, as when a check of the session briefly fails.
  */
 export function walletKitSigner(network: Network, address: string): WalletKitSigner {
-  const kit = ensureWalletKitInitialized(network);
+  // A usable address only ever comes from the loaded kit, so there is no signer without it.
+  const kit = kitLoader.current();
+  if (!kit) throw new WalletKitLoadError();
   const walletId = selectedWalletId(kit);
   const key = `${network}|${walletId ?? ""}|${address}`;
   let signer = signers.get(key);
   if (!signer) {
     signer = new WalletKitSigner(
       address,
-      (xdr, opts) => ensureWalletKitInitialized(network).signTransaction(xdr, opts),
+      (xdr, opts) =>
+        ensureWalletKitInitialized(network).then((loaded) => loaded.signTransaction(xdr, opts)),
       { walletId }
     );
     signers.set(key, signer);
@@ -77,15 +65,13 @@ export const ADDRESS_CHECK_TIMEOUT_MS = 4_000;
  * extension without a prompt. Every other wallet in the kit opens a popup, a QR pairing or a
  * device prompt to answer `getAddress`, so its session cannot be checked silently.
  */
-const SILENT_ADDRESS_WALLETS: ReadonlySet<string> = new Set([VARIAL_ID]);
+const SILENT_ADDRESS_WALLETS: ReadonlySet<string> = new Set(["varial"]);
 
 /**
  * The account the selected wallet holds right now, read without any prompt: "unsupported" for a
  * wallet that cannot be asked silently, null when it did not answer in time or failed.
  */
-export async function silentWalletAddress(
-  kit: typeof StellarWalletsKit
-): Promise<string | null | "unsupported"> {
+export async function silentWalletAddress(kit: WalletKit): Promise<string | null | "unsupported"> {
   const walletId = selectedWalletId(kit);
   if (!walletId || !SILENT_ADDRESS_WALLETS.has(walletId)) return "unsupported";
   const timer = startSignTimeout(ADDRESS_CHECK_TIMEOUT_MS);
