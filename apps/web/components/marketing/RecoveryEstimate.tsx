@@ -143,7 +143,7 @@ export default function RecoveryEstimate({
         <button
           type="button"
           onClick={onContinue}
-          className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-value hover:underline"
+          className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-accent hover:underline"
         >
           Continue to close
           <ArrowRight className="h-4 w-4" />

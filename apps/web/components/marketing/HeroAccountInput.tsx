@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
 import { AddressField } from "@/components/ui/address-field";
+import { Button } from "@/components/ui/button";
 import { addressErrorMessage } from "@/lib/utils/validation";
 
 // Loaded only when a visitor asks for an estimate, so the landing page's first load carries none
@@ -64,12 +65,9 @@ export default function HeroAccountInput() {
           inputClassName="border-0 bg-transparent px-0 pr-2 text-label text-white focus-visible:outline-none"
           leading={<Search className="ml-2 h-4 w-4 shrink-0 text-fg-disabled" />}
           trailing={
-            <button
-              type="submit"
-              className="shrink-0 rounded-xl bg-value px-5 py-2.5 text-sm font-semibold text-value-fg transition-all hover:bg-value/90 hover:shadow-[0_8px_24px_-8px_hsl(var(--value)/0.6)]"
-            >
+            <Button type="submit" className="shrink-0">
               Analyze account
-            </button>
+            </Button>
           }
         />
       </form>

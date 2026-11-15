@@ -851,9 +851,6 @@ const SANCTIONED: Record<string, Partial<Record<ClaimKey, Site>>> = {
     "more-sent-only-when-signed": { count: 1, shownBy: "review next steps" },
     "resume-after-stop": { count: 1, shownBy: "review next steps" },
   },
-  "components/marketing/ExecutionPlanDemo.tsx": {
-    "account-closed": { count: 1, shownBy: OUTSIDE.marketing },
-  },
   "hooks/useCloseExecution.ts": {
     "may-be-sent": { count: 1, shownBy: "execute failure panel" },
   },

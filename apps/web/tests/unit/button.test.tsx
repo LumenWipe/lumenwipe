@@ -35,6 +35,13 @@ test.each(["sm", "md"] as const)("the %s size is 44px below md and 36px from md"
   expect(list).toContain("md:min-h-9");
 });
 
+test("the lg size keeps a 48px target at every width", () => {
+  render(<Button size="lg">Go</Button>);
+  const list = screen.getByRole("button").className.split(" ");
+  expect(list).toContain("min-h-12");
+  expect(list).not.toContain("md:min-h-9");
+});
+
 test("the icon size is a 24px square target", () => {
   render(<Button size="icon" aria-label="Close" icon={<svg />} />);
   const list = screen.getByRole("button", { name: "Close" }).className.split(" ");

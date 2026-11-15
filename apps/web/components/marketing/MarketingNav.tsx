@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X, ArrowUpRight } from "lucide-react";
 import { GithubIcon } from "@/components/icons/GithubIcon";
+import { Button } from "@/components/ui/button";
 import Logo from "./Logo";
 
 type NavLink = { href: string; label: string; external?: boolean; section?: string };
@@ -150,12 +151,9 @@ export default function MarketingNav() {
           >
             <GithubIcon className="h-4 w-4" />
           </a>
-          <Link
-            href={APP}
-            className="hidden items-center gap-1.5 rounded-lg bg-value px-4 py-2 text-sm font-semibold text-value-fg transition-all hover:bg-value/90 hover:shadow-[0_0_24px_-4px_hsl(var(--value)/0.6)] sm:inline-flex"
-          >
-            Open the app
-          </Link>
+          <Button asChild variant="secondary" size="sm" className="hidden sm:inline-flex">
+            <Link href={APP}>Open the app</Link>
+          </Button>
           <button
             onClick={() => setOpen((v) => !v)}
             aria-label="Toggle menu"
@@ -194,13 +192,11 @@ export default function MarketingNav() {
                 </Link>
               );
             })}
-            <Link
-              href={APP}
-              onClick={() => setOpen(false)}
-              className="mt-2 flex items-center justify-center gap-1.5 rounded-lg bg-value px-4 py-2.5 text-sm font-semibold text-value-fg"
-            >
-              Open the app
-            </Link>
+            <Button asChild variant="secondary" className="mt-2">
+              <Link href={APP} onClick={() => setOpen(false)}>
+                Open the app
+              </Link>
+            </Button>
           </div>
         </div>
       )}

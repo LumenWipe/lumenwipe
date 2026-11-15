@@ -17,6 +17,7 @@ import {
   serverKeyScope,
   VERIFY_SOURCE_URL,
 } from "@/lib/site/trust";
+import { Button } from "@/components/ui/button";
 
 export const metadata: Metadata = {
   title: "Security - LumenWipe",
@@ -106,7 +107,7 @@ export default function SecurityPage() {
             <div
               key={layer.label}
               className={`flex items-center justify-between gap-3 rounded-xl border p-3.5 ${
-                layer.key ? "border-value/40 bg-value/[0.06]" : "border-white/10 bg-white/[0.02]"
+                layer.key ? "border-accent/40 bg-accent/[0.06]" : "border-white/10 bg-white/[0.02]"
               }`}
             >
               <div className="min-w-0 flex-1">
@@ -117,7 +118,7 @@ export default function SecurityPage() {
               </div>
               <span
                 className={`mkt-mono shrink-0 whitespace-nowrap text-caption uppercase tracking-wider ${
-                  layer.key ? "text-value" : "text-fg-subtle"
+                  layer.key ? "text-white" : "text-fg-subtle"
                 }`}
               >
                 {layer.note}
@@ -164,21 +165,21 @@ export default function SecurityPage() {
       </div>
 
       <div className="mt-12 flex flex-wrap items-center gap-3">
-        <Link
-          href="/mainnet"
-          className="group inline-flex items-center gap-2 rounded-xl bg-value px-5 py-3 text-sm font-semibold text-value-fg transition-all hover:bg-value/90 hover:shadow-[0_12px_30px_-14px_hsl(var(--value)/0.7)]"
-        >
-          Open the app
-          <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-        </Link>
-        <a
-          href="https://docs.lumenwipe.com/architecture"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/[0.02] px-5 py-3 text-sm font-semibold text-white/85 transition-colors hover:border-white/30 hover:text-white"
-        >
-          Read the security model
-        </a>
+        <Button asChild size="lg" className="group">
+          <Link href="/mainnet">
+            Open the app
+            <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+          </Link>
+        </Button>
+        <Button asChild size="lg" variant="secondary">
+          <a
+            href="https://docs.lumenwipe.com/architecture"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Read the security model
+          </a>
+        </Button>
       </div>
     </section>
   );

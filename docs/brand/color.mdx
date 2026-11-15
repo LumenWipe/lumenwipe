@@ -27,7 +27,7 @@ The examples below are taken from the current product. Each "do not" is a place 
 
 **Do.** On the plan screen, the amount under "Estimated received at destination" is gold, because it is the XLM the user gets back (`apps/web/components/plan/AccountSummaryCard.tsx`). On the landing page headline, "Close the account. Keep the lumens.", only the word "lumens." is gold, because it names the value (`apps/web/app/(marketing)/page.tsx`).
 
-**Do not.** The landing hero shows two solid gold buttons, "Analyze account" in the address field and "Open the app" below it (`apps/web/components/marketing/HeroAccountInput.tsx`, `apps/web/app/(marketing)/page.tsx`), and on wider screens the marketing navigation bar above them adds a third, also "Open the app" (`apps/web/components/marketing/MarketingNav.tsx`). The same solid gold button appears on the FAQ, security, how it works, playground and not found pages. A button is interactive, so it is cyan, and only one per screen is solid.
+**Do not.** Fill a button or color a link gold, even one that leads to the money, such as "Open the app". A button or link is interactive, so it is cyan, and only one per screen is solid. Every marketing action uses `Button` (`apps/web/components/ui/button.tsx`), and a `no-restricted-syntax` rule in `apps/web/eslint.config.mjs` rejects a gold class on the class name of any button or link in the web app.
 
 ## Red is irreversible or error
 

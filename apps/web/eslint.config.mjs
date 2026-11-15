@@ -45,6 +45,33 @@ const rawStyling = [
   ),
 ];
 
+/** Flags a class on the className of a button or link, in a string or template literal. */
+function bannedActionClass(pattern, message) {
+  const element = "JSXOpeningElement[name.name=/^(?:a|button|Link|Button)$/]";
+  const attribute = 'JSXAttribute[name.name="className"]';
+  return ["Literal[value", "TemplateElement[value.raw"].map((literal) => ({
+    selector: `${element} > ${attribute} ${literal}=/${CLASS_START}${pattern}/]`,
+    message,
+  }));
+}
+
+const goldAction = bannedActionClass(
+  "(?:bg|text|border)-value(?![\\w-])",
+  "Gold is recovered value only: XLM amounts and totals. A button or link is an action, so it is cyan: use Button, or text-accent for a text link."
+);
+
+const MARKETING = [
+  "app/(marketing)/**/*.{ts,tsx}",
+  "app/not-found.tsx",
+  "components/marketing/**/*.{ts,tsx}",
+  "components/blog/**/*.{ts,tsx}",
+];
+
+const goldFill = bannedClass(
+  "text-value-fg(?![\\w-])",
+  "text-value-fg is the text on a gold fill, and marketing has no gold control. Use Button for an action."
+);
+
 const config = [
   { ignores: [".next/**", "node_modules/**", "next-env.d.ts"] },
   ...coreWebVitals,
@@ -96,11 +123,17 @@ const config = [
   {
     files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}"],
     ignores: ["components/ui/**"],
-    rules: { "no-restricted-syntax": ["error", ...dimWhiteText, ...rawStyling] },
+    rules: { "no-restricted-syntax": ["error", ...dimWhiteText, ...rawStyling, ...goldAction] },
+  },
+  {
+    files: MARKETING,
+    rules: {
+      "no-restricted-syntax": ["error", ...dimWhiteText, ...rawStyling, ...goldAction, ...goldFill],
+    },
   },
   {
     files: ["components/ui/**/*.{ts,tsx}"],
-    rules: { "no-restricted-syntax": ["error", ...dimWhiteText] },
+    rules: { "no-restricted-syntax": ["error", ...dimWhiteText, ...goldAction] },
   },
   {
     files: ["tests/**/*.ts", "tests/**/*.tsx"],

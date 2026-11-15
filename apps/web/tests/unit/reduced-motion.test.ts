@@ -69,10 +69,7 @@ describe("reduced motion", () => {
   });
 
   test("the components that read matchMedia keep doing so", () => {
-    for (const rel of [
-      "components/marketing/HeroConsole.tsx",
-      "components/marketing/ExecutionPlanDemo.tsx",
-    ]) {
+    for (const rel of ["components/marketing/HeroConsole.tsx"]) {
       const src = fs.readFileSync(path.join(process.cwd(), rel), "utf8");
       expect(src).toContain("(prefers-reduced-motion: reduce)");
     }

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import Faq from "@/components/marketing/Faq";
+import { Button } from "@/components/ui/button";
 
 export const metadata: Metadata = {
   title: "FAQ - LumenWipe",
@@ -30,21 +31,17 @@ export default function FaqPage() {
       </div>
 
       <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
-        <Link
-          href="/mainnet"
-          className="group inline-flex items-center gap-2 rounded-xl bg-value px-5 py-3 text-sm font-semibold text-value-fg transition-all hover:bg-value/90 hover:shadow-[0_12px_30px_-14px_hsl(var(--value)/0.7)]"
-        >
-          Open the app
-          <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-        </Link>
-        <a
-          href="https://docs.lumenwipe.com"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/[0.02] px-5 py-3 text-sm font-semibold text-white/85 transition-colors hover:border-white/30 hover:text-white"
-        >
-          Read the documentation
-        </a>
+        <Button asChild size="lg" className="group">
+          <Link href="/mainnet">
+            Open the app
+            <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+          </Link>
+        </Button>
+        <Button asChild size="lg" variant="secondary">
+          <a href="https://docs.lumenwipe.com" target="_blank" rel="noopener noreferrer">
+            Read the documentation
+          </a>
+        </Button>
       </div>
     </section>
   );

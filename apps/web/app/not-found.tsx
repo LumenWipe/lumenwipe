@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Home, ArrowRight, GitMerge } from "lucide-react";
 import Logo from "@/components/marketing/Logo";
+import { Button } from "@/components/ui/button";
 
 export const metadata: Metadata = {
   title: "404 - Page Not Found",
@@ -62,7 +63,7 @@ export default function NotFound() {
               <div className="mkt-mono text-sm">
                 <span className="text-accent/40">$ </span>
                 <span className="text-fg-muted">lw analyze --network mainnet </span>
-                <span className="text-value/70">this-page</span>
+                <span className="text-white">this-page</span>
               </div>
 
               {/* step checklist */}
@@ -120,21 +121,19 @@ export default function NotFound() {
 
           {/* CTAs */}
           <div className="flex flex-wrap gap-3">
-            <Link
-              href="/"
-              className="inline-flex items-center gap-2 rounded-xl bg-value px-5 py-2.5 text-sm font-semibold text-value-fg transition-all hover:bg-value/90 hover:shadow-[0_0_24px_-4px_hsl(var(--value)/0.5)]"
-            >
-              <Home className="h-4 w-4" />
-              Back to home
-            </Link>
-            <Link
-              href="/mainnet"
-              className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-5 py-2.5 text-sm font-medium text-white/60 transition-colors hover:border-white/20 hover:text-white"
-            >
-              <GitMerge className="h-4 w-4" />
-              Open the app
-              <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
+            <Button asChild size="lg">
+              <Link href="/">
+                <Home className="h-4 w-4" />
+                Back to home
+              </Link>
+            </Button>
+            <Button asChild size="lg" variant="secondary">
+              <Link href="/mainnet">
+                <GitMerge className="h-4 w-4" />
+                Open the app
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </Button>
           </div>
         </div>
       </main>

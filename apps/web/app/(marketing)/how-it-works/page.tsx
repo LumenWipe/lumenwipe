@@ -22,6 +22,7 @@ import {
 import Reveal from "@/components/marketing/Reveal";
 import Faq from "@/components/marketing/Faq";
 import { LIVE_EXIT_PROTOCOLS } from "@/lib/site/status";
+import { Button } from "@/components/ui/button";
 
 export const metadata: Metadata = {
   title: "How it works",
@@ -124,19 +125,15 @@ export default function HowItWorksPage() {
             data.
           </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-            <Link
-              href="/mainnet"
-              className="group inline-flex items-center gap-2 rounded-xl bg-value px-5 py-3 text-sm font-semibold text-value-fg transition-all hover:bg-value/90 hover:shadow-[0_0_32px_-6px_hsl(var(--value)/0.7)]"
-            >
-              Open the app
-              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-            </Link>
-            <Link
-              href="/faq"
-              className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/[0.02] px-5 py-3 text-sm font-semibold text-white/85 transition-colors hover:border-white/30 hover:text-white"
-            >
-              Jump to FAQ
-            </Link>
+            <Button asChild size="lg" className="group">
+              <Link href="/mainnet">
+                Open the app
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+              </Link>
+            </Button>
+            <Button asChild size="lg" variant="secondary">
+              <Link href="/faq">Jump to FAQ</Link>
+            </Button>
           </div>
         </Reveal>
       </section>
@@ -243,7 +240,7 @@ export default function HowItWorksPage() {
                     tone: "accent",
                   },
                   { op: "Payment + memo" },
-                  { label: "Exchange deposit", sub: "validated address & memo", tone: "value" },
+                  { label: "Exchange deposit", sub: "validated address & memo" },
                 ].map((node, i) =>
                   "op" in node ? (
                     <div
@@ -262,9 +259,7 @@ export default function HowItWorksPage() {
                       className={`flex-1 rounded-xl border p-4 text-center ${
                         node.tone === "accent"
                           ? "border-accent/40 bg-accent/[0.06]"
-                          : node.tone === "value"
-                            ? "border-value/30 bg-value/[0.05]"
-                            : "border-white/12 bg-white/[0.03]"
+                          : "border-white/12 bg-white/[0.03]"
                       }`}
                     >
                       <div className="text-sm font-semibold text-white">{node.label}</div>
@@ -342,7 +337,9 @@ export default function HowItWorksPage() {
                 <div
                   key={row.l}
                   className={`flex items-center justify-between gap-3 rounded-xl border p-3.5 ${
-                    row.tone ? "border-value/40 bg-value/[0.06]" : "border-white/10 bg-white/[0.02]"
+                    row.tone
+                      ? "border-accent/40 bg-accent/[0.06]"
+                      : "border-white/10 bg-white/[0.02]"
                   }`}
                 >
                   <div className="min-w-0">
@@ -351,7 +348,7 @@ export default function HowItWorksPage() {
                   </div>
                   <span
                     className={`shrink-0 mkt-mono text-caption uppercase tracking-wider ${
-                      row.tone ? "text-value" : "text-fg-muted"
+                      row.tone ? "text-white" : "text-fg-muted"
                     }`}
                   >
                     {row.note}
@@ -376,13 +373,12 @@ export default function HowItWorksPage() {
         </div>
         <div className="mt-12 flex flex-col items-center gap-4 rounded-2xl border border-white/10 bg-surface p-8 text-center">
           <h3 className="mkt-display text-xl font-bold text-white">Ready when you are.</h3>
-          <Link
-            href="/public"
-            className="group inline-flex items-center gap-2 rounded-xl bg-value px-5 py-3 text-sm font-semibold text-value-fg transition-all hover:bg-value/90 hover:shadow-[0_0_32px_-6px_hsl(var(--value)/0.7)]"
-          >
-            Open the app
-            <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-          </Link>
+          <Button asChild size="lg" className="group">
+            <Link href="/mainnet">
+              Open the app
+              <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+            </Link>
+          </Button>
         </div>
       </section>
     </>
