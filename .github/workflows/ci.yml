@@ -246,10 +246,14 @@ jobs:
         if: github.event_name == 'pull_request'
         continue-on-error: true
         working-directory: apps/web
+        # The container runs as root on a workspace the runner user owns, so git refuses it unless
+        # told otherwise; bash's pipefail turns a refused diff into a failed step, not a silent false.
+        shell: bash
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
-          run=$(git diff --name-only "origin/${BASE_REF}...HEAD" | bun scripts/lighthouse-report.ts gate)
+          run=$(git -c safe.directory="$GITHUB_WORKSPACE" diff --name-only "origin/${BASE_REF}...HEAD" |
+            bun scripts/lighthouse-report.ts gate)
           echo "run=$run" >> "$GITHUB_OUTPUT"
           echo "Web app changed: $run"
 
