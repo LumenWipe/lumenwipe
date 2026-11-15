@@ -1,7 +1,16 @@
 import { test, expect, beforeAll, afterAll } from "bun:test";
 import fs from "fs";
 import path from "path";
-import { getAllPostMetas, getAllSlugs, getPost, resolveUpdatedAt } from "@/lib/blog";
+import {
+  getAllPostMetas,
+  getAllSlugs,
+  getPost,
+  parseFrontMatter,
+  PostNotFoundError,
+  relatedPosts,
+  resolveUpdatedAt,
+  type PostMeta,
+} from "@/lib/blog";
 
 const CONTENT_DIR = path.join(process.cwd(), "content/blog");
 const DRAFT_SLUG = "test-draft-fixture";
@@ -57,7 +66,14 @@ test("resolveUpdatedAt › an edit date on or after publishing is the last modif
 });
 
 test("resolveUpdatedAt › refuses an edit date before publishing or not written as YYYY-MM-DD", () => {
-  for (const bad of ["2026-06-01", "June 3, 2026", "2026-6-3", new Date("2026-11-10"), 20261110]) {
+  for (const bad of [
+    "2026-06-01",
+    "June 3, 2026",
+    "2026-6-3",
+    "2026-06-31",
+    new Date("2026-11-10"),
+    20261110,
+  ]) {
     expect(() => resolveUpdatedAt("p", "2026-06-02", bad)).toThrow(
       'Post "p" has an invalid updatedAt'
     );
@@ -69,4 +85,112 @@ test("getAllPostMetas › every post's updatedAt is a date no earlier than its p
     expect(post.updatedAt >= post.publishedAt).toBe(true);
     expect(getPost(post.slug).updatedAt).toBe(post.updatedAt);
   }
+});
+
+const VALID = {
+  title: "A post",
+  description: "What it says.",
+  publishedAt: "2026-06-02",
+  category: "Guides" as const,
+  tags: ["stellar"],
+};
+
+test("parseFrontMatter › accepts a complete front matter and defaults updatedAt to publishedAt", () => {
+  expect(parseFrontMatter("p", { ...VALID, cta: "Try it." })).toEqual({
+    ...VALID,
+    updatedAt: "2026-06-02",
+    cta: "Try it.",
+  });
+});
+
+test("parseFrontMatter › refuses an unknown category instead of rendering an empty badge", () => {
+  expect(() => parseFrontMatter("p", { ...VALID, category: "Guide" })).toThrow(
+    /Post "p" has invalid front matter:[\s\S]*category/
+  );
+});
+
+test("parseFrontMatter › refuses a missing or blank description", () => {
+  const { description: _description, ...rest } = VALID;
+  expect(() => parseFrontMatter("p", rest)).toThrow(/description/);
+  expect(() => parseFrontMatter("p", { ...VALID, description: "  " })).toThrow(/description/);
+});
+
+test("parseFrontMatter › refuses a publishedAt that is not a real YYYY-MM-DD date", () => {
+  for (const bad of ["2026-02-30", "2026-6-2", "June 2, 2026", new Date("2026-06-02")]) {
+    expect(() => parseFrontMatter("p", { ...VALID, publishedAt: bad })).toThrow(/publishedAt/);
+  }
+});
+
+test("parseFrontMatter › refuses an unknown key, so a misspelled field fails", () => {
+  expect(() => parseFrontMatter("p", { ...VALID, updateAt: "2026-07-01" })).toThrow(/updateAt/);
+});
+
+test("parseFrontMatter › refuses missing, empty or non-string tags", () => {
+  const { tags: _tags, ...rest } = VALID;
+  for (const data of [
+    rest,
+    { ...VALID, tags: [] },
+    { ...VALID, tags: "stellar" },
+    { ...VALID, tags: [""] },
+  ]) {
+    expect(() => parseFrontMatter("p", data)).toThrow(/tags/);
+  }
+});
+
+test("parseFrontMatter › still applies the updatedAt rule", () => {
+  expect(() => parseFrontMatter("p", { ...VALID, updatedAt: "2026-06-01" })).toThrow(
+    'Post "p" has an invalid updatedAt'
+  );
+});
+
+test("getAllPostMetas › a published post with a bad category fails with a readable message", () => {
+  const slug = "test-invalid-fixture";
+  const file = path.join(CONTENT_DIR, `${slug}.mdx`);
+  fs.writeFileSync(
+    file,
+    `---\ntitle: "Invalid"\ndescription: "Used only by blog.test.ts."\npublishedAt: "2026-06-02"\ncategory: "Guide"\ntags: ["fixture"]\n---\n\nBody.\n`
+  );
+  try {
+    expect(() => getAllPostMetas()).toThrow(`Post "${slug}" has invalid front matter`);
+    expect(() => getAllSlugs()).toThrow(`Post "${slug}" has invalid front matter`);
+  } finally {
+    fs.rmSync(file, { force: true });
+  }
+});
+
+test("getPost › a slug with no published post is not found, and is never read as a path", () => {
+  for (const slug of ["no-such-post", "../blog/phase-0-launch", DRAFT_SLUG]) {
+    expect(() => getPost(slug)).toThrow(PostNotFoundError);
+  }
+});
+
+function meta(slug: string, tags: string[], publishedAt = "2026-06-02"): PostMeta {
+  return {
+    slug,
+    title: slug,
+    description: slug,
+    publishedAt,
+    updatedAt: publishedAt,
+    category: "Guides",
+    tags,
+    readingTime: "1 min read",
+  };
+}
+
+test("relatedPosts › ranks by shared tags, then newest, and leaves out the post and unrelated ones", () => {
+  const post = meta("self", ["a", "b"]);
+  const all = [
+    post,
+    meta("one-tag-old", ["a"], "2026-01-01"),
+    meta("two-tags", ["a", "b"], "2026-01-01"),
+    meta("one-tag-new", ["b"], "2026-05-01"),
+    meta("unrelated", ["c"], "2026-09-01"),
+  ];
+  expect(relatedPosts(post, all).map((p) => p.slug)).toEqual([
+    "two-tags",
+    "one-tag-new",
+    "one-tag-old",
+  ]);
+  expect(relatedPosts(post, all, 2).map((p) => p.slug)).toEqual(["two-tags", "one-tag-new"]);
+  expect(relatedPosts(meta("lonely", ["z"]), all)).toEqual([]);
 });

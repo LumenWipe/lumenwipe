@@ -50,6 +50,13 @@ for (const [name, path] of [
   });
 }
 
+test("the content hub lists published and planned articles in a table", async ({ page }) => {
+  await page.goto("/content");
+  const table = page.getByRole("table", { name: "Published and planned articles" });
+  await expect(table.getByRole("cell", { name: "Planned" }).first()).toBeVisible();
+  await expect(table.getByRole("cell", { name: "Published" }).first()).toBeVisible();
+});
+
 test("the skip link is the first stop and moves focus to the content", async ({ page }) => {
   await page.goto("/security");
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();

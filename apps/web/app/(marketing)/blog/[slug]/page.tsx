@@ -1,16 +1,29 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Calendar, Clock, ArrowLeft } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { MDXRemote } from "next-mdx-remote/rsc";
 import remarkGfm from "remark-gfm";
-import { getAllSlugs, getPost, extractToc, slugify } from "@/lib/blog";
+import {
+  extractToc,
+  getAllPostMetas,
+  getAllSlugs,
+  getPost,
+  PostNotFoundError,
+  relatedPosts,
+  slugify,
+} from "@/lib/blog";
 import { pageMetadata, postShareImage } from "@/lib/site/pages";
+import { postTimestamp } from "@/lib/blog-date";
 import { postJsonLd } from "@/lib/site/structured-data";
 import JsonLd from "@/components/seo/JsonLd";
 import CategoryBadge from "@/components/blog/CategoryBadge";
 import BlogToc from "@/components/blog/BlogToc";
 import YouTubeEmbed from "@/components/blog/YouTubeEmbed";
+import PostDates from "@/components/blog/PostDates";
+import PostNextStep from "@/components/blog/PostNextStep";
+import RelatedPosts from "@/components/blog/RelatedPosts";
+import { BaseReserve, BaseReserveCheckedOn } from "@/components/blog/BaseReserve";
 
 export async function generateStaticParams() {
   return getAllSlugs().map((slug) => ({ slug }));
@@ -32,15 +45,16 @@ export async function generateMetadata({
         shareImage: postShareImage(slug, post.title),
         openGraph: {
           type: "article",
-          publishedTime: post.publishedAt,
-          modifiedTime: post.updatedAt,
+          publishedTime: postTimestamp(post.publishedAt),
+          modifiedTime: postTimestamp(post.updatedAt),
           tags: post.tags,
         },
       }),
       keywords: post.tags,
     };
-  } catch {
-    return {};
+  } catch (error) {
+    if (error instanceof PostNotFoundError) return {};
+    throw error;
   }
 }
 
@@ -71,6 +85,8 @@ const mdxComponents = {
   h2: makeHeadingComponent("h2"),
   h3: makeHeadingComponent("h3"),
   YouTubeEmbed,
+  BaseReserve,
+  BaseReserveCheckedOn,
   a: ({ href, children, ...props }: React.AnchorHTMLAttributes<HTMLAnchorElement>) => {
     const isExternal = href?.startsWith("http");
     return (
@@ -92,17 +108,13 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
   let post;
   try {
     post = getPost(slug);
-  } catch {
-    notFound();
+  } catch (error) {
+    if (error instanceof PostNotFoundError) notFound();
+    throw error;
   }
 
   const toc = extractToc(post.content);
-  const date = new Date(post.publishedAt).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    timeZone: "UTC",
-  });
+  const related = relatedPosts(post, getAllPostMetas());
 
   return (
     <>
@@ -130,16 +142,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                 {post.title}
               </h1>
               <p className="text-white/85 text-base leading-relaxed mb-5">{post.description}</p>
-              <div className="flex items-center gap-4 mkt-mono text-xs text-fg-muted">
-                <span className="flex items-center gap-1.5">
-                  <Calendar className="h-3 w-3" />
-                  {date}
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <Clock className="h-3 w-3" />
-                  {post.readingTime}
-                </span>
-              </div>
+              <PostDates post={post} />
             </header>
 
             {/* Content */}
@@ -167,6 +170,9 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                 </div>
               </div>
             )}
+
+            <PostNextStep lead={post.cta} />
+            <RelatedPosts posts={related} />
           </article>
 
           {/* TOC sidebar with scroll-spy */}

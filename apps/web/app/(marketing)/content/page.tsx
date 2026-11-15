@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { pageMetadata } from "@/lib/site/pages";
 import { getAllPostMetas } from "@/lib/blog";
 import PostCard from "@/components/blog/PostCard";
+import ContentStatusTable from "@/components/blog/ContentStatusTable";
+import { contentStatusRows } from "@/lib/site/content-status";
 import { Play } from "lucide-react";
 
 export const metadata: Metadata = pageMetadata({
@@ -137,6 +139,16 @@ export default function ContentPage() {
         ) : (
           <p className="text-sm text-fg-subtle">No articles published yet.</p>
         )}
+      </section>
+
+      <section aria-labelledby="content-status" className="mt-16">
+        <h2 id="content-status" className="mkt-display mb-2 text-xl font-bold text-white">
+          Article status
+        </h2>
+        <p className="mb-6 max-w-2xl text-sm leading-relaxed text-white/70">
+          What is published and what is planned next.
+        </p>
+        <ContentStatusTable rows={contentStatusRows(posts)} />
       </section>
     </div>
   );

@@ -2,13 +2,14 @@
 title: "Account Merge on Stellar: A Complete Technical Reference"
 description: "A technical reference for the AccountMerge operation on Stellar: prerequisites, reserve recovery math, XDR structure, result codes, and how automated wind-down tools handle the full flow."
 publishedAt: "2026-06-02"
+updatedAt: "2026-11-15"
 category: "Technical"
 tags: ["stellar", "account-merge", "xlm", "reserves", "trustlines", "protocol", "xdr"]
 ---
 
 `AccountMerge` is one of Stellar's built-in operations. It closes the source account, transfers its entire XLM balance to a destination, and removes the source entry from the ledger permanently. Understanding how it works at the protocol level matters for anyone building account lifecycle tooling, or simply trying to consolidate Stellar addresses.
 
-For a guided walkthrough of the wind-down process, see the [LumenWipe Phase 0 announcement](/blog/phase-0-launch).
+For a guided walkthrough of the wind-down process, see the [LumenWipe launch announcement](/blog/phase-0-launch).
 
 ## The operation
 

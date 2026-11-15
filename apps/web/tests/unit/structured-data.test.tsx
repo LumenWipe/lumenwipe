@@ -4,7 +4,7 @@ import { render } from "@testing-library/react";
 import LandingPage from "@/app/(marketing)/page";
 import FaqPage from "@/app/(marketing)/faq/page";
 import BlogPage from "@/app/(marketing)/blog/page";
-import BlogPostPage from "@/app/(marketing)/blog/[slug]/page";
+import BlogPostPage, { generateMetadata } from "@/app/(marketing)/blog/[slug]/page";
 import SecurityPage from "@/app/(marketing)/security/page";
 import HowItWorksPage from "@/app/(marketing)/how-it-works/page";
 import Faq, { ITEMS } from "@/components/marketing/Faq";
@@ -174,8 +174,8 @@ describe("a post", () => {
     expect(article).toMatchObject({
       headline: post.title,
       description: post.description,
-      datePublished: post.publishedAt,
-      dateModified: post.updatedAt,
+      datePublished: `${post.publishedAt}T00:00:00Z`,
+      dateModified: `${post.updatedAt}T00:00:00Z`,
       image: [siteUrl(postShareImage(post.slug, post.title).url)],
       mainEntityOfPage: { "@type": "WebPage", "@id": canonical },
       author: { "@type": "Organization", name: "LumenWipe" },
@@ -185,6 +185,24 @@ describe("a post", () => {
       name: "LumenWipe",
       logo: { "@type": "ImageObject", url: siteUrl("/web-app-manifest-512x512.png") },
     });
+  });
+
+  test("dates the article, the blog's entries and Open Graph as UTC timestamps", async () => {
+    const TIMESTAMP = /^\d{4}-\d{2}-\d{2}T00:00:00Z$/;
+    const article = one(PAGES.post, "Article");
+    const entries = one(PAGES.blog, "Blog").blogPost as Record<string, unknown>[];
+    const og = (await generateMetadata({ params: Promise.resolve({ slug: post.slug }) }))
+      .openGraph as Record<string, unknown>;
+    for (const value of [
+      article.datePublished,
+      article.dateModified,
+      ...entries.flatMap((e) => [e.datePublished, e.dateModified]),
+      og.publishedTime,
+      og.modifiedTime,
+    ]) {
+      expect(value).toMatch(TIMESTAMP);
+    }
+    expect(og.modifiedTime).toBe(`${post.updatedAt}T00:00:00Z`);
   });
 
   test("has a breadcrumb ending at the post", () => {
