@@ -5,7 +5,7 @@ import { AlertTriangle, CheckCircle } from "lucide-react";
 import { NETWORK_NAME, type Network } from "@/config/networks";
 import type { WalletKitConnection } from "@/hooks/useWalletKitConnection";
 import { Button } from "@/components/ui/button";
-import { walletConnectConfigured } from "@/lib/wallet-kit/modules";
+import { walletConnectConfigured } from "@/lib/wallet-kit/wallet-connect-config";
 
 /** Shown under the connect button on a build without a WalletConnect project id (never production:
  *  its build requires one). */

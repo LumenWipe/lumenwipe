@@ -204,7 +204,7 @@ export default function ApiKeysPanel({ pollar: PollarSlot }: ApiKeysPanelProps) 
   const signInWithWallet = () =>
     guarded("wallet", async () => {
       setNotice(null);
-      const kit = ensureWalletKitInitialized(KIT_NETWORK);
+      const kit = await ensureWalletKitInitialized(KIT_NETWORK);
       const { address } = await kit.authModal();
       const walletId = selectedWalletId(kit);
       if (isContractAddress(address)) throw new WalletSignInError("contract_account", walletId);

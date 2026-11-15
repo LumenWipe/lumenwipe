@@ -429,7 +429,7 @@ function txHash(signedXdr: string): string {
 /** Routes every API call to a fixture and returns the list of calls nothing answered. */
 /** WalletConnect's relay, verify and analytics hosts. The a11y build carries a placeholder
  *  project id, so nothing may reach them: every request and socket is refused. */
-const WALLET_CONNECT_HOSTS =
+export const WALLET_CONNECT_HOSTS =
   /^(?:https|wss):\/\/[^/]*(?:walletconnect\.(?:com|org)|reown\.com|web3modal\.(?:com|org))\//;
 
 /** The landing page's recovery estimate: a range, one blocker and the assumptions that apply. */

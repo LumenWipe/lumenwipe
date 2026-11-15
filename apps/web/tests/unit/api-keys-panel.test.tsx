@@ -89,7 +89,8 @@ beforeEach(() => {
     disconnect: () => kit.disconnect(),
   };
   spyOn(walletKitClient, "ensureWalletKitInitialized").mockImplementation(
-    () => fake as unknown as ReturnType<typeof walletKitClient.ensureWalletKitInitialized>
+    async () =>
+      fake as unknown as Awaited<ReturnType<typeof walletKitClient.ensureWalletKitInitialized>>
   );
   spyOn(walletKitClient, "selectedWalletId").mockImplementation(() => kit.walletId);
 });
