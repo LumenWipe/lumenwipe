@@ -436,18 +436,51 @@ export const WALLET_CONNECT_HOSTS =
 // script holding either is kit code, even when only a module and not the SDK was bundled.
 const KIT_MARKERS = ["Please set the wallet first", "web3modal"];
 
+interface KitRequests {
+  kitScripts: string[];
+  walletConnect: string[];
+}
+
+export interface KitWatch extends KitRequests {
+  /** From here on, what the page requests counts as after the mark. */
+  mark(): void;
+  /** What the page requested before the mark, once every script requested by then is read. */
+  beforeMark(): Promise<KitRequests>;
+}
+
 /** Records every script the page loads that holds the wallet kit, and every WalletConnect call. */
-export function watchKit(page: Page): { kitScripts: string[]; walletConnect: string[] } {
-  const seen = { kitScripts: [] as string[], walletConnect: [] as string[] };
+export function watchKit(page: Page): KitWatch {
+  const early: KitRequests = { kitScripts: [], walletConnect: [] };
+  const reads: Promise<void>[] = [];
+  let marked = false;
+  const watch: KitWatch = {
+    kitScripts: [],
+    walletConnect: [],
+    mark: () => {
+      marked = true;
+    },
+    beforeMark: () => Promise.all(reads).then(() => early),
+  };
   page.on("request", (request) => {
-    if (WALLET_CONNECT_HOSTS.test(request.url())) seen.walletConnect.push(request.url());
+    const url = request.url();
+    const before = !marked;
+    if (WALLET_CONNECT_HOSTS.test(url)) {
+      watch.walletConnect.push(url);
+      if (before) early.walletConnect.push(url);
+    }
+    if (request.resourceType() !== "script") return;
+    const read = request
+      .response()
+      .then((response) => response?.text() ?? "")
+      .catch(() => "")
+      .then((body) => {
+        if (!KIT_MARKERS.some((marker) => body.includes(marker))) return;
+        watch.kitScripts.push(url);
+        if (before) early.kitScripts.push(url);
+      });
+    if (before) reads.push(read);
   });
-  page.on("response", async (response) => {
-    if (response.request().resourceType() !== "script") return;
-    const body = await response.text().catch(() => "");
-    if (KIT_MARKERS.some((marker) => body.includes(marker))) seen.kitScripts.push(response.url());
-  });
-  return seen;
+  return watch;
 }
 
 /** The landing page's recovery estimate: a range, one blocker and the assumptions that apply. */

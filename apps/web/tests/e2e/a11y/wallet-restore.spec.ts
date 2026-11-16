@@ -10,16 +10,29 @@ function savedAddress(page: Page): Promise<string | null> {
   return page.evaluate((key) => localStorage.getItem(key), LocalStorageKeys.activeAddress);
 }
 
+const NO_KIT = { kitScripts: [], walletConnect: [] };
+
+/** Selects `other`, then "Connect wallet" again. Only a hydrated form switches tabs, and React runs
+ *  its pending mount effects, the saved-session check among them, before it handles a click. */
+async function switchSignerTabsAndBack(page: Page, other: string): Promise<void> {
+  for (const name of [other, "Connect wallet"]) {
+    const tab = page.getByRole("tab", { name });
+    await expect(async () => {
+      await tab.click();
+      await expect(tab).toHaveAttribute("aria-selected", "true", { timeout: 1_000 });
+    }).toPass();
+  }
+}
+
 test("a visitor with no saved wallet loads no wallet kit until choosing to connect", async ({
   page,
 }) => {
   const api = await installApiFixtures(page);
   const seen = watchKit(page);
   await openTestnetHome(page);
-  await expect(page.getByRole("tab", { name: "Connect wallet" })).toBeVisible();
-  await page.waitForLoadState("networkidle");
-  expect(seen.kitScripts).toEqual([]);
-  expect(seen.walletConnect).toEqual([]);
+  await switchSignerTabsAndBack(page, "Paste address");
+  seen.mark();
+  expect(await seen.beforeMark()).toEqual(NO_KIT);
 
   await page
     .getByRole("button", { name: /Connect wallet/i })
@@ -44,14 +57,22 @@ test("a saved wallet session is restored on reload, and forgetting it loads no k
   await expect(page.getByText(/Connected:/)).toBeVisible({ timeout: 30_000 });
 
   await page.evaluate((key) => localStorage.removeItem(key), LocalStorageKeys.activeAddress);
+  // The restored page's kit keeps working after the assertion above, and WalletConnect calls it
+  // makes late would land in a watch started on it. Once about:blank has loaded, it is gone.
+  await page.goto("about:blank");
   const seen = watchKit(page);
-  await page.reload();
-  await expect(page.getByRole("tab", { name: "Connect wallet" })).toBeVisible();
-  await page.waitForLoadState("networkidle");
-  await expect(page.getByRole("button", { name: /Connect wallet/i }).last()).toBeVisible();
+  await page.goto("/testnet");
+  await switchSignerTabsAndBack(page, "Paste address");
+  seen.mark();
+  expect(await seen.beforeMark()).toEqual(NO_KIT);
   await expect(page.getByText(/Connected:/)).toHaveCount(0);
-  expect(seen.kitScripts).toEqual([]);
-  expect(seen.walletConnect).toEqual([]);
+
+  await page
+    .getByRole("button", { name: /Connect wallet/i })
+    .last()
+    .click();
+  await expect(page.getByText("Varial", { exact: true })).toBeVisible();
+  expect(seen.kitScripts.length).toBeGreaterThan(0);
   api.expectAllAnswered();
 });
 
@@ -78,9 +99,9 @@ test("the signing page loads no wallet kit until a wallet connects, then signs w
   await page.getByRole("button", { name: /Continue to signing/i }).click();
   await expect(page).toHaveURL(/\/testnet\/execute/);
   await expectSigningPanel(page);
-  await page.waitForLoadState("networkidle");
-  expect(seen.kitScripts).toEqual([]);
-  expect(seen.walletConnect).toEqual([]);
+  await switchSignerTabsAndBack(page, "Use secret key (advanced)");
+  seen.mark();
+  expect(await seen.beforeMark()).toEqual(NO_KIT);
 
   await connectStubWallet(page);
   expect(seen.kitScripts.length).toBeGreaterThan(0);
