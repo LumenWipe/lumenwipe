@@ -60,8 +60,21 @@ plus an adapter change, never a rewrite (§18).
    - `version`: the protocol's own version name, e.g. `"v2"`
    - `label`: what this is, and any caveat (e.g. "reference only, not probed for balances")
    - `verifiedLive`: whether the address resolved on-chain when you checked
-   - `verifiedBy` (optional, recommended): the exact command or explorer link from step 1, so a
-     reviewer can re-run the verification
+   - `verifiedBy` (required on mainnet): the exact command or explorer link from step 1, so a
+     reviewer can re-run the verification. A note about a check recorded only in a pull request
+     names that pull request (`(#581)`)
+   - `source` (required on mainnet): where the address and its code are published or named: the
+     protocol's docs or contracts file, an explorer directory entry, or the contract whose own
+     config points at this one
+   - `verifiedAt` (required on mainnet): `YYYY-MM-DD`, the day you ran step 1. Never earlier than
+     the file's `lastVerified`
+   - `ownDeployment: true` (testnet only): the contract is one LumenWipe deployed itself, for
+     example a redeploy of a protocol's real code when its own testnet deployment is gone. It
+     needs a `verifiedBy` that says how it was deployed, and the validator refuses it on mainnet,
+     where every entry must be the protocol's own deployment
+
+   On testnet `verifiedBy`, `source` and `verifiedAt` are optional and validated when present.
+
 3. Run `bun test tests/unit/contract-registry.test.ts` from `apps/api`. The suite validates the
    shipped JSON on every run, so a malformed edit fails CI before it can ship.
 
@@ -72,11 +85,31 @@ One entry per pull request, with the verification evidence in the PR description
 The file carries `lastVerified` and `validUntil`, and `isRegistryFresh()` is fail-closed past
 `validUntil`, the same convention as the exchange registry. Refreshing is bounded, manual work:
 re-resolve every entry's address on its network, confirm the hash still matches, set
-`lastVerified` to today and `validUntil` out again, and say in the PR what you checked.
+`lastVerified` to today and `validUntil` out again, and say in the PR what you checked. A full
+refresh checks every entry, so it also sets every dated entry's `verifiedAt` to today and adds
+the check to its `verifiedBy` with the pull request's number.
+
+The three dates mean different things:
+
+- `verifiedAt`, per entry: the last day that entry's live code was checked against its hash. An
+  entry added or re-pinned after a full refresh carries a later date than the file.
+- `lastVerified`, per file: the last full refresh. The validator refuses any `verifiedAt` earlier
+  than it, so it is the oldest date any entry can carry.
+- `validUntil`, per file: the gate. Past it the API and the web refuse every exit through a
+  registered contract. Per-entry dates never change that.
+
+CI warns about any entry last verified more than 60 days ago (`ENTRY_STALE_DAYS`): the `api`
+check job runs `bun run --filter '@lumenwipe/api' registry:staleness`, which prints one GitHub
+`::warning::` annotation per such entry and still passes. Only a registry that fails validation
+fails the step. The warning names the entries a refresh should reach first; it is not a second
+expiry. The daily mainnet canary (below) re-reads hashes automatically, but it does not move
+`verifiedAt`, which records a check someone ran and wrote down.
 
 ## What reviewers hold the line on
 
 - The hash was independently verified on-chain (re-run `verifiedBy`, or the command in step 1).
+- `source` names a place the protocol publishes the address, or a contract that names it, and
+  `verifiedAt` is the day that check was run, not the day the pull request was merged.
 - Many instances may share one hash (every pool a factory deploys does), but one hash never maps
   to two different protocol versions - the validator rejects the contradiction, and a genuine
   collision needs a human decision, not a merge.

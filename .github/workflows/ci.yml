@@ -117,6 +117,14 @@ jobs:
             echo "::endgroup::"
           done
 
+      # A contract registry entry last verified more than 60 days ago is a warning annotation, not
+      # a failure: validUntil is the gate. A registry that cannot be read or does not validate
+      # still fails the step.
+      - name: Warn about contract registry entries due for re-verification
+        if: matrix.name == 'api'
+        shell: bash
+        run: bun run --filter '@lumenwipe/api' registry:staleness
+
       # CONTRIBUTING.md section 3, as written, on this fresh checkout: copy the examples, set the
       # sample key, start the API and the web in development, and require /health from the API and
       # /api/health from the web, which reaches the API through its proxy with that key. No secret

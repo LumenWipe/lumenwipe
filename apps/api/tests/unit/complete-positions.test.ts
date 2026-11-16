@@ -367,6 +367,9 @@ describe("a pool that takes its code from a shared release (CAP-85)", () => {
           version: "constant_product",
           label: "test",
           verifiedLive: true,
+          verifiedBy: "test",
+          source: "test",
+          verifiedAt: "2026-09-01",
         },
       ],
     })

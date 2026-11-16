@@ -26,6 +26,11 @@ release is cut.
   next to the hash, and the owner is registered as a new entry kind, `executable-owner`, which is
   never treated as a contract a close may call. On testnet, `exitExpectations` lists the same
   contract addresses as before. Mainnet entries are unchanged.
+- The bundled contract registry (version `2026-11-16`) records each mainnet entry's provenance:
+  how its hash was verified (`verifiedBy`), where its address is published (`source`) and the day
+  it was last verified (`verifiedAt`). Testnet contracts LumenWipe deployed itself are marked
+  `ownDeployment`. No address, hash, version or `verifiedLive` value changed, and the contracts a
+  close may call, `validUntil` and verification are unchanged.
 
 ## [0.4.0] - 2026-11-10
 

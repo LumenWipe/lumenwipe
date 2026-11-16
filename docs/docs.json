@@ -43,6 +43,7 @@
           "threat-model",
           "invariants",
           "multisig-cosigning",
+          "verify-package",
           "security-scope",
           "security-remediation-plan",
           "monitoring-plan",
