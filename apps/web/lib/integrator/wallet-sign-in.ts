@@ -1,10 +1,12 @@
 import { Keypair, StrKey } from "@stellar/stellar-sdk";
-import { VARIAL_ID } from "@creit-tech/stellar-wallets-kit/modules/varial";
-import { XBULL_ID } from "@creit-tech/stellar-wallets-kit/modules/xbull";
-import { ALBEDO_ID } from "@creit-tech/stellar-wallets-kit/modules/albedo";
-import { RABET_ID } from "@creit-tech/stellar-wallets-kit/modules/rabet";
-import { HANA_ID } from "@creit-tech/stellar-wallets-kit/modules/hana";
-import { WALLET_CONNECT_ID } from "@creit-tech/stellar-wallets-kit/modules/wallet-connect";
+import {
+  ALBEDO_ID,
+  HANA_ID,
+  RABET_ID,
+  VARIAL_ID,
+  WALLET_CONNECT_ID,
+  XBULL_ID,
+} from "@/lib/wallet-kit/wallet-ids";
 
 /** Whether a wallet can sign a SEP-53 message: "depends" for WalletConnect, which forwards the
  *  request to whichever phone wallet is paired. */

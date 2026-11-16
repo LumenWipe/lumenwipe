@@ -180,20 +180,27 @@ const envelopeConstruction = [
 const noTxBuilding = [...txConstruction, ...envelopeConstruction];
 
 const operationBuilders = {
-  "@typescript-eslint/no-restricted-imports": [
-    "error",
-    {
-      patterns: [
-        {
-          group: ["@stellar/stellar-sdk", "@stellar/stellar-sdk/*"],
-          importNames: ["Operation", "Account", "MuxedAccount", "Contract", "SorobanDataBuilder"],
-          allowTypeImports: true,
-          message: NOT_BUILT_HERE,
-        },
-      ],
-    },
-  ],
+  group: ["@stellar/stellar-sdk", "@stellar/stellar-sdk/*"],
+  importNames: ["Operation", "Account", "MuxedAccount", "Contract", "SorobanDataBuilder"],
+  allowTypeImports: true,
+  message: NOT_BUILT_HERE,
 };
+
+// The wallet kit's code loads only through lib/wallet-kit/loader.ts, once a wallet is restored or
+// connected. A static import would put it back in a page's initial JavaScript.
+const walletKitImports = {
+  regex: "^@creit-tech/stellar-wallets-kit(?!/types$)(?:/.*)?$",
+  allowTypeImports: true,
+  message:
+    "Load the wallet kit through lib/wallet-kit/loader.ts. Wallet ids are in lib/wallet-kit/wallet-ids.ts.",
+};
+
+const restrictedImports = (...patterns) => ({
+  "@typescript-eslint/no-restricted-imports": ["error", { patterns }],
+});
+
+/** The module list is the one file the lazy loader imports the kit's modules through. */
+const WALLET_KIT_MODULES = "lib/wallet-kit/modules.ts";
 
 // Web code may import only its own source and packages/*. The one exception is the registry data
 // the API owns and validates, which the web bundles through `@registry/*` as an offline floor.
@@ -256,7 +263,12 @@ const config = [
     ignores: NOT_SHIPPED,
     rules: { "no-restricted-syntax": ["error", ...noTxBuilding] },
   },
-  { files: ["**/*.{ts,tsx}"], ignores: NOT_SHIPPED, rules: operationBuilders },
+  {
+    files: ["**/*.{ts,tsx}"],
+    ignores: [...NOT_SHIPPED, WALLET_KIT_MODULES],
+    rules: restrictedImports(operationBuilders, walletKitImports),
+  },
+  { files: [WALLET_KIT_MODULES], rules: restrictedImports(operationBuilders) },
   // Re-wraps the transaction body the user reviewed with the cosigners' signatures: signing only.
   {
     files: ["lib/cosign/merge.ts"],

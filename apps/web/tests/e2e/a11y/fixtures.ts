@@ -432,6 +432,24 @@ function txHash(signedXdr: string): string {
 export const WALLET_CONNECT_HOSTS =
   /^(?:https|wss):\/\/[^/]*(?:walletconnect\.(?:com|org)|reown\.com|web3modal\.(?:com|org))\//;
 
+// Text only the kit's own code carries: its SDK's error, and the WalletConnect module's host. A
+// script holding either is kit code, even when only a module and not the SDK was bundled.
+const KIT_MARKERS = ["Please set the wallet first", "web3modal"];
+
+/** Records every script the page loads that holds the wallet kit, and every WalletConnect call. */
+export function watchKit(page: Page): { kitScripts: string[]; walletConnect: string[] } {
+  const seen = { kitScripts: [] as string[], walletConnect: [] as string[] };
+  page.on("request", (request) => {
+    if (WALLET_CONNECT_HOSTS.test(request.url())) seen.walletConnect.push(request.url());
+  });
+  page.on("response", async (response) => {
+    if (response.request().resourceType() !== "script") return;
+    const body = await response.text().catch(() => "");
+    if (KIT_MARKERS.some((marker) => body.includes(marker))) seen.kitScripts.push(response.url());
+  });
+  return seen;
+}
+
 /** The landing page's recovery estimate: a range, one blocker and the assumptions that apply. */
 export const ESTIMATE: RecoveryEstimate = {
   readAt: "2026-11-07T12:34:00.000Z",

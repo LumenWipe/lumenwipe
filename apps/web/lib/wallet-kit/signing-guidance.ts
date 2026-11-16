@@ -1,9 +1,4 @@
-import { WALLET_CONNECT_ID } from "@creit-tech/stellar-wallets-kit/modules/wallet-connect";
-import { VARIAL_ID } from "@creit-tech/stellar-wallets-kit/modules/varial";
-import { XBULL_ID } from "@creit-tech/stellar-wallets-kit/modules/xbull";
-import { ALBEDO_ID } from "@creit-tech/stellar-wallets-kit/modules/albedo";
-import { RABET_ID } from "@creit-tech/stellar-wallets-kit/modules/rabet";
-import { HANA_ID } from "@creit-tech/stellar-wallets-kit/modules/hana";
+import { ALBEDO_ID, HANA_ID, RABET_ID, VARIAL_ID, WALLET_CONNECT_ID, XBULL_ID } from "./wallet-ids";
 
 const IN_APP =
   "Approve it in the wallet app on your phone. Before you do, check there that the destination and the number of operations match the ones below.";
