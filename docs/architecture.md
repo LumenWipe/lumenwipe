@@ -162,7 +162,7 @@ Each network's RPC and Horizon-compatible settings take one URL or an ordered, c
 - The budget reaches the last provider. Providers before the last get no retries, and each attempt is capped at an even share of what is left of the 40 second deadline. All providers failing is the typed `unavailable`.
 - A send never fails over. `sendTransaction` runs once, on the pinned provider. After an ambiguous failure the API makes one `getTransaction` call on the next provider: success is reported as success, a failure as a rejection, and anything else leaves the original error. It never sends again.
 
-An unset mainnet endpoint warns at boot in production, and refuses to start under `REQUIRE_EXPLICIT_MAINNET_ENDPOINTS=true`. A list with a non-https entry, a duplicate or a header name without its value refuses to start. The boot log prints effective hostnames only: a provider URL can carry a key in its path. Each move to another provider increments a process counter and writes a structured log line.
+In production the API refuses to start while `STELLAR_RPC_MAINNET` or `PATH_ROUTING_API_MAINNET` is unset, so a mainnet service never runs on a compiled-in default. A list with a non-https entry, a duplicate or a header name without its value refuses to start. The boot log prints effective hostnames only: a provider URL can carry a key in its path. Each move to another provider increments a process counter and writes a structured log line.
 
 ### Horizon-compatible exit plan
 

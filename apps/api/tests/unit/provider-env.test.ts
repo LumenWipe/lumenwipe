@@ -68,25 +68,34 @@ async function boot(env: Record<string, string>): Promise<Report> {
   }
 }
 
-test("the deployed environment keeps booting: only the legacy routing names, no new ones", async () => {
+test("the deployed environment boots: a mainnet RPC list and an explicit routing endpoint", async () => {
   const report = await boot({
-    NEXT_PUBLIC_PATH_ROUTING_API_MAINNET: "https://routing-mainnet.test",
-    NEXT_PUBLIC_PATH_ROUTING_API_TESTNET: "https://routing-testnet.test",
+    STELLAR_RPC_MAINNET: "https://rpc-a.test,https://rpc-b.test",
+    PATH_ROUTING_API_MAINNET: "https://routing-mainnet.test",
   });
   expect(report.problems).toEqual([]);
-  expect(report.rpc).toHaveLength(1);
+  expect(report.warnings).toEqual([]);
+  expect(report.deprecated).toEqual([]);
+  expect(report.rpc).toHaveLength(2);
   expect(report.horizon).toHaveLength(1);
-  expect(report.warnings.map((w) => w.variable)).toEqual(["STELLAR_RPC_MAINNET"]);
-  expect(report.deprecated).toEqual([
-    "NEXT_PUBLIC_PATH_ROUTING_API_MAINNET is deprecated - rename it to PATH_ROUTING_API_MAINNET.",
-    "NEXT_PUBLIC_PATH_ROUTING_API_TESTNET is deprecated - rename it to PATH_ROUTING_API_TESTNET.",
-  ]);
   expect(report.hosts).toEqual([
-    "mainnet rpc endpoints: mainnet.sorobanrpc.com",
+    "mainnet rpc endpoints: rpc-a.test, rpc-b.test",
     "mainnet horizon endpoints: routing-mainnet.test",
     "testnet rpc endpoints: soroban-testnet.stellar.org",
-    "testnet horizon endpoints: routing-testnet.test",
+    "testnet horizon endpoints: none",
   ]);
+});
+
+test("a production boot that would fall back to the compiled-in mainnet RPC is refused", async () => {
+  const report = await boot({
+    NEXT_PUBLIC_PATH_ROUTING_API_MAINNET: "https://routing-mainnet.test",
+  });
+  expect(report.problems.map((p) => p.variable)).toEqual(["STELLAR_RPC_MAINNET"]);
+  expect(report.warnings).toEqual([]);
+  expect(report.deprecated).toEqual([
+    "NEXT_PUBLIC_PATH_ROUTING_API_MAINNET is deprecated - rename it to PATH_ROUTING_API_MAINNET.",
+  ]);
+  expect(report.hosts).toContain("mainnet rpc endpoints: mainnet.sorobanrpc.com");
 });
 
 test("a list is split in order, and each URL keeps only its own headers", async () => {

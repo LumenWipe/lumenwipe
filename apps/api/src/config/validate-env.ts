@@ -88,13 +88,13 @@ const ENDPOINT_LISTS: ReadonlyArray<{
   {
     base: "STELLAR_RPC",
     network: "mainnet",
-    ifUnset: "mainnet reads and submissions use the compiled-in public endpoint",
+    ifUnset: "mainnet reads and submissions would use the compiled-in public endpoint",
   },
   { base: "STELLAR_RPC", network: "testnet", ifUnset: "" },
   {
     base: "PATH_ROUTING_API",
     network: "mainnet",
-    ifUnset: "mainnet account reads are unavailable",
+    ifUnset: "mainnet account reads would be unavailable",
   },
   { base: "PATH_ROUTING_API", network: "testnet", ifUnset: "" },
 ];
@@ -210,16 +210,11 @@ export function checkEnv(env: NodeJS.ProcessEnv = process.env): {
     const urls = splitEndpointList(effectiveEnv(env, variable)?.trim());
     // A list only becomes fatal once it is one: a lone URL boots exactly as it always has.
     if (urls.length > 1) problems.push(...endpointListProblems(variable, urls, env, list));
-    if (list.network !== "mainnet" || urls.length > 0) continue;
-    const message = `${variable} is not set - ${list.ifUnset}.`;
-    if (env.REQUIRE_EXPLICIT_MAINNET_ENDPOINTS === "true") {
-      problems.push({
-        variable,
-        message: `${message} REQUIRE_EXPLICIT_MAINNET_ENDPOINTS=true requires an explicit value.`,
-      });
-    } else if (env.NODE_ENV === "production") {
-      warnings.push({ variable, message });
-    }
+    if (list.network !== "mainnet" || urls.length > 0 || env.NODE_ENV !== "production") continue;
+    problems.push({
+      variable,
+      message: `${variable} is not set - ${list.ifUnset}. A production boot requires an explicit mainnet endpoint.`,
+    });
   }
 
   return { problems, warnings };
