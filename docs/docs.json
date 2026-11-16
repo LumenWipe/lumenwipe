@@ -53,6 +53,10 @@
         ]
       },
       {
+        "group": "Security and trust",
+        "pages": ["security/posture", "security/data-handling"]
+      },
+      {
         "group": "Runbooks",
         "pages": [
           "runbooks/overview",

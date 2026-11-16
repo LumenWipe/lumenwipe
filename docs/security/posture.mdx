@@ -1,0 +1,181 @@
+---
+title: "Security posture"
+description: "LumenWipe's trust model on one page: who builds and who checks each transaction, the two keys the service holds and what each can sign, the hard invariants, which controls are in place and which are planned, the reviews done so far, accepted residual risk and how to report a vulnerability."
+icon: "shield-check"
+---
+
+This page summarizes how LumenWipe protects a close and points to the documents that hold the detail. What data
+the service handles is on the [data handling](/security/data-handling) page.
+
+**Status as of 2026-11-16, checked against commit `7e3e555`.** Each statement names the file that proves it.
+`bun run check:docs` fails the build when a file, symbol or invariant id cited here no longer exists, when an API
+source file loads a secret key that [Keys the service holds](#keys-the-service-holds) does not cite, and when the
+operation types listed under [What `verify()` accepts](#what-verify-accepts) differ from the ones the verifier
+handles. It checks names, not meaning: whether the cited code still does what the sentence says stays a review
+question.
+
+## Trust model
+
+- **The API builds, the browser checks.** The API reads the ledger and builds every unsigned transaction. The web
+  app builds none: it parses, verifies, signs and submits what the API built, and a lint rule refuses
+  transaction-building code in it (INV-18, `apps/web/eslint.config.mjs`).
+- **Every transaction is checked before it is signed.** The browser decodes each transaction and runs `verify()`
+  on it (`apps/web/lib/stellar/verify.ts#verifyCloseTransaction`, called from
+  `apps/web/hooks/useCloseExecution.ts`). The destination, the memo and the user's choice for each asset come from
+  the user's own inputs, never from the API's answer (INV-04), and an operation the verifier cannot describe is
+  refused (INV-03). The same verifier is published as [`@lumenwipe/verify`](/verify-package) for integrators.
+- **Keys stay with the user.** Signing happens in the browser or in the user's wallet. LumenWipe does not store,
+  log or transmit the user's secret key; the secret-key mode holds it in memory only (INV-22). The API never signs
+  for a user's account.
+- **Exchange closes pass through a relay inside one transaction.** An exchange credits a payment with a memo, not a
+  merge, so an exchange close merges the account into a shared relay account and, in the same transaction, the
+  relay forwards the balance to the exchange. `verify()` accepts that hand-off only as one atomic merge and forward
+  to the address and memo the user confirmed (INV-15, `apps/web/lib/stellar/verify.ts#assertMergeShape`).
+- **Nothing is submitted on its own.** A destructive choice reaches the API only as the user's acknowledgement
+  for that exact destination or account, and the tool never submits without the user's confirmation (INV-24).
+
+## Keys the service holds
+
+The API holds two signing keys per network, each read from its own environment variable and nothing else. Their
+public addresses are listed in the [monitoring plan's inventory](/monitoring-plan#1-what-are-we-monitoring). The
+secrets live only in the API's environment and never reach the browser (INV-17).
+
+| Key              | Loaded by                                                                                                                        | What it signs                                                                                                                                                                                          | What limits it                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mediator (relay) | `apps/api/src/lib/stellar/mediator-server.ts#getMediatorKeypair` from `MEDIATOR_SECRET_MAINNET` or `MEDIATOR_SECRET_TESTNET`     | One leg of an exchange close: it adds one signature to a transaction the user already signed, and that signature authorizes only the forwarding payment, the one operation the relay is the source of. | `apps/api/src/mediator/mediator-signing.service.ts#MediatorSigningService` signs only a transaction of exactly two operations, an account merge into the relay followed by an XLM payment from the relay to another account. The relay may not be the transaction's source or the account merged; the envelope must be unexpired and expire within `MAX_SIGNED_VALIDITY_SECONDS` (INV-38); a memo the destination requires must be present; the forward may not exceed the merged account's balance as read when co-signing (`apps/api/src/mediator/mediator-validation.ts#forwardExceedsMergedBalance`); the key must match its configured public address; and a kill switch can pause it. |
+| Fee-bump sponsor | `apps/api/src/lib/stellar/fee-account.ts#getFeeAccountKeypair` from `FEE_ACCOUNT_SECRET_MAINNET` or `FEE_ACCOUNT_SECRET_TESTNET` | Only the outer fee-bump envelope. Its signature pays the network fee and authorizes nothing inside the user's transaction.                                                                             | `apps/api/src/fee-bump/fee-bump.controller.ts#FeeBumpController` wraps only a transaction that pays no fee itself, whose every operation is a wind-down shape (`apps/api/src/fee-bump/fee-bump-validation.ts#isAllowedWindDownOperation`) acting for one account (`apps/api/src/fee-bump/fee-bump-validation.ts#actsForOneAccount`, INV-16), and that is that account's next transaction. The fee is capped at `MAX_FEE_BUMP_STROOPS` per transaction, spending stays within a daily budget per account, per API key and in total (`apps/api/src/fee-bump/sponsorship-budget.ts#SponsorshipBudget`, INV-39), the same validity window applies (INV-38), and a kill switch can pause it.     |
+
+The kill switches are read per network by `apps/api/src/config/kill-switches.ts#readKillSwitches`, and the limits
+are defined in `apps/api/src/config/constants.ts`.
+
+## What `verify()` accepts
+
+`verify()` accepts a transaction only when every operation in it is one of the types below and passes that type's
+rule (`apps/web/lib/stellar/verify.ts#assertCloseIntent`). Each operation must be sourced from the account being
+closed, except the relay's forward (INV-06).
+
+| Category               | Operation types                                                          | Rule, in short                                                                                                                                                                                         |
+| ---------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Delivering the balance | `account_merge`, `payment`                                               | The merge goes to the destination the user confirmed, or to the relay that forwards it in the same transaction; a payment is the relay's forward or a transfer the user chose for that asset (INV-07). |
+| Converting to XLM      | `path_payment_strict_send`, `invoke_host_function`                       | A conversion sells only an asset the user chose to convert, pays the account itself and accepts no less than the floor the user saw (INV-08, INV-36).                                                  |
+| Exiting DeFi positions | `invoke_host_function`                                                   | Only contracts the account's analysis or the bundled registry names, only that protocol's exit function, against verified contract code (INV-10, INV-13).                                              |
+| Removing entries       | `change_trust`, `manage_data`, `manage_sell_offer`, `revoke_sponsorship` | Trustlines are removed (or added only for a balance the user chose to claim), data entries deleted, offers cancelled, and a sponsorship returned to its owner.                                         |
+| Claiming balances      | `claim_claimable_balance`                                                | A claim only credits the account being closed, the source every operation is held to (INV-06).                                                                                                         |
+| Normalizing signers    | `set_options`                                                            | Never adds a signer or raises a threshold (INV-05).                                                                                                                                                    |
+
+Any other operation, including one the verifier cannot decode, is refused (INV-03). Integrators can run the same
+checks with [`@lumenwipe/verify`](/sdk/verification).
+
+## Hard invariants
+
+The [invariant register](/invariants) lists each invariant with the code that enforces it and the test or CI job
+that proves it. The ones this page rests on:
+
+| Id     | Invariant, in short                                                                                     |
+| ------ | ------------------------------------------------------------------------------------------------------- |
+| INV-03 | `verify()` rejects any operation it cannot describe.                                                    |
+| INV-04 | The destination, memo and per-asset choices come from the user's inputs, never from the API.            |
+| INV-15 | The relay is a structural conduit, accepted only for a destination the exchange registry says needs it. |
+| INV-16 | The fee-bump sponsor pays only for a wind-down transaction that acts for a single account.              |
+| INV-17 | The mediator and sponsor secrets live only in the API's environment.                                    |
+| INV-18 | The web builds no transactions.                                                                         |
+| INV-22 | LumenWipe does not store, log or transmit the user's secret key.                                        |
+| INV-24 | Destructive choices are the user's own, and the tool never submits on its own.                          |
+| INV-38 | The service keys sign only an envelope that has not expired and expires soon.                           |
+| INV-39 | The fee-bump sponsor is capped per transaction and by a daily budget.                                   |
+
+The register's status column says which of these a test fully proves and which carry a stated residual.
+
+## Implemented and planned controls
+
+In place today:
+
+- The checks above on every transaction before it is signed, and the limits on both service keys.
+- A kill switch per network for the relay forward and for fee sponsorship (`apps/api/src/config/kill-switches.ts`).
+- A strict Content Security Policy and security headers on every web route (`apps/web/proxy.ts#proxy`,
+  `apps/web/config/security-headers.mjs`).
+- Log redaction applied where lines are written (`apps/api/src/common/log-privacy.ts#scrubValue`).
+- Rate limits per API key and client in the API (`apps/api/src/auth/rate-limiter.ts`), and per visitor on the web
+  server's proxy routes (`apps/web/lib/api/rate-limit.ts#rateLimitProxy`).
+- Contract and exchange registries that fail closed once past their validity date (INV-14).
+- In CI on every pull request: a dependency advisory gate (`.github/workflows/ci.yml#audit`), static analysis
+  (`.github/workflows/ci.yml#codeql`, `.github/workflows/ci.yml#semgrep`), a secret scan over the full history
+  (`.github/workflows/ci.yml#gitleaks`), and the documentation claim check (`.github/workflows/ci.yml#docs-claims`).
+- On-chain monitors for the two service accounts and the contract registry, and a daily check of the data
+  providers (see [Dependencies and monitoring](#dependencies-and-monitoring)).
+
+Planned:
+
+- Two monitors that decode each transaction the relay or the fee sponsor signs and judge its shape, and an alert
+  on the sponsor's usage rate once real usage sets a baseline. The [monitoring plan](/monitoring-plan) lists them
+  as Planned and says what each waits on.
+
+## Security reviews
+
+Every review so far was performed by the project's maintainers. No third-party audit has been performed
+([remediation plan, Section 1](/security-remediation-plan#1-scope-and-method)).
+
+| Date       | Review                                                                                  | Kind          | Record                                                                                    |
+| ---------- | --------------------------------------------------------------------------------------- | ------------- | ----------------------------------------------------------------------------------------- |
+| 2026-09-02 | Dependency audit, static analysis and a full-history secret scan, every finding triaged | Self-assessed | [Remediation plan, Sections 1 to 6](/security-remediation-plan)                           |
+| 2026-09-29 | Refresh of that pass                                                                    | Self-assessed | [Remediation plan, Section 7](/security-remediation-plan#7-refresh-2026-09-29)            |
+| 2026-10-13 | STRIDE threat model, checked against commit `6a76eab`                                   | Self-assessed | [Threat model](/threat-model)                                                             |
+| 2026-10-13 | Invariant register, checked against commit `5d661ed`                                    | Self-assessed | [Invariant register](/invariants)                                                         |
+| 2026-10-13 | Tooling pass, at commit `d1ab2cb`                                                       | Self-assessed | [Remediation plan, Section 8](/security-remediation-plan#8-tooling-pass-2026-10-13)       |
+| 2026-10-30 | Dependency refresh                                                                      | Self-assessed | [Remediation plan, Section 9](/security-remediation-plan#9-dependency-refresh-2026-10-30) |
+
+A change to a security-sensitive path also needs the closer review described in the
+[security scope](/security-scope), also self-assessed.
+
+## Accepted residual risks
+
+The [threat model, Section 11](/threat-model#11-known-residual-risks-summary) lists each accepted risk with its
+surface and the reasoning for accepting it. By category:
+
+- **Values `verify()` takes from the API.** Some inputs to the browser's checks, such as balances, signers,
+  DeFi positions and conversion quotes, come from the API's own reads rather than from the user.
+- **The relay forward.** The relay is protected by its code checks together with an operational policy on its
+  own balance and an on-chain monitor.
+- **Fee sponsorship.** The sponsor's rules bound what it pays for by operation shape, account and budget; they
+  do not re-derive each close's choices.
+- **Soroban conversions and DeFi exits.** These are bounded by the contract registry, the exit function and the
+  accepted floor, not by every contract a route passes through.
+- **Third-party data.** Ledger providers, quote sources and the DeFi position provider are relied on for
+  availability and for the values they report, which are checked against the ledger where it allows.
+- **Completion status.** A close is reported complete from the API's confirmed lookup of the hash the browser
+  computed.
+- **Integrator signing paths.** Two signing guards live in the web app; an integrator with its own signing path
+  applies them itself.
+- **Integrator access.** Short windows apply to key revocation across instances and to sign-in sessions.
+
+## Dependencies and monitoring
+
+- Dependencies: Renovate opens one pull request with every update each week, plus lockfile maintenance
+  (`renovate.json`). A high or critical advisory fails CI unless it is allowlisted with a reason and an expiry
+  (`scripts/audit-gate.ts`, `scripts/audit-allowlist.json`, INV-27).
+- On-chain monitors: the service-account checks run every hour and the registry comparison once a day
+  (`.github/workflows/onchain-monitors.yml`). A finding opens an issue and alerts the maintainers, and a check that
+  did not run counts as a finding ([monitoring plan](/monitoring-plan#how-the-live-ones-run)).
+- Data providers: each configured Horizon-compatible provider is checked daily for the routes and fields the API
+  reads (`.github/workflows/provider-contract.yml`).
+- Infrastructure: a read-only check of the API's hosting, run after any project or permission change
+  (`.github/workflows/migration-check.yml`, `scripts/migration-check.sh`).
+
+## Reporting a vulnerability
+
+Report privately to **security@lumenwipe.com**, not in a public issue. Reports are acknowledged within 48 hours,
+disclosure is coordinated with the reporter, and a fixed issue is published as a GitHub security advisory. The full
+policy, scope and timelines are in
+[SECURITY.md](https://github.com/LumenWipe/lumenwipe/blob/main/SECURITY.md).
+
+## Related documents
+
+| Document                                                                    | What it holds                                                                         |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| [Threat model](/threat-model)                                               | Each surface analysed with STRIDE, its mitigations and its residual risk.             |
+| [Invariant register](/invariants)                                           | Each invariant with the code that enforces it and the test that proves it.            |
+| [Remediation plan](/security-remediation-plan)                              | Dependency, static analysis and secret scan findings, each with its resolution.       |
+| [Monitoring plan](/monitoring-plan)                                         | What is watched on the ledger, which threat each monitor traces to, and the response. |
+| [Security scope](/security-scope)                                           | The security-sensitive paths and the review each needs.                               |
+| [Data handling](/security/data-handling)                                    | What data the service handles, who receives it and for how long.                      |
+| [SECURITY.md](https://github.com/LumenWipe/lumenwipe/blob/main/SECURITY.md) | How to report a vulnerability, and the disclosure policy.                             |

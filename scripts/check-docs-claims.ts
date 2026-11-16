@@ -626,6 +626,7 @@ const WEB_LAYOUT = "apps/web/app/root-document.tsx";
 const PRIVACY_SECTIONS = [
   { source: "docs/architecture.md", heading: /^## \d+\. User protection and privacy\s*$/ },
   { source: "docs/reference/logging-and-privacy.mdx", heading: /^## Page analytics\s*$/ },
+  { source: "docs/security/data-handling.mdx", heading: /^## What third parties receive\s*$/ },
 ];
 const LOCAL_EXTENSIONS = [".tsx", ".ts", "/index.tsx", "/index.ts"];
 
@@ -911,6 +912,152 @@ export function checkFontCopies(root: string): Problem[] {
   return problems;
 }
 
+export const POSTURE_PAGE = "docs/security/posture.mdx";
+export const DATA_HANDLING_PAGE = "docs/security/data-handling.mdx";
+const KEYS_HEADING = /^## Keys the service holds\s*$/;
+const ALLOWLIST_HEADING = /^## What `verify\(\)` accepts\s*$/;
+const VERIFY_SOURCE = "apps/web/lib/stellar/verify.ts";
+const API_SOURCE = "apps/api/src";
+const KEY_LOADER = /\bKeypair\s*\.\s*(?:fromSecret|fromRawEd25519Seed)\s*\(/;
+const TEST_DIR = /(?:^|\/)(?:tests?|__tests__)\//;
+const TEST_SUFFIX = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
+const OPERATION_TYPE = /^[a-z]+(?:_[a-z]+)*$/;
+const UNKNOWN_OPERATION = "unknown";
+
+function citedPath(span: string): string | null {
+  const [, rawPath] = REFERENCE.exec(span) ?? [];
+  return rawPath && REPO_PATH.test(rawPath) ? rawPath : null;
+}
+
+/**
+ * The operation types `assertCloseIntent` gives a case of its own in its `switch (op.type)`,
+ * read at that switch's own indentation so a nested switch never counts. Null when the function
+ * or the switch is not found.
+ */
+export function verifiedOperationTypes(source: string): Set<string> | null {
+  const code = stripComments(source);
+  const fn = code.search(/\bfunction\s+assertCloseIntent\s*\(/);
+  if (fn === -1) return null;
+  const lines = code.slice(fn).split("\n");
+  const start = lines.findIndex((line) => /^\s*switch\s*\(\s*op\.type\s*\)\s*\{/.test(line));
+  if (start === -1) return null;
+  const indent = /^\s*/.exec(lines[start]!)![0].length;
+  const types = new Set<string>();
+  for (const line of lines.slice(start + 1)) {
+    const lead = /^\s*/.exec(line)![0].length;
+    if (lead === indent && line.trim().startsWith("}")) break;
+    const label = /^\s*case\s+["'](\w+)["']\s*:/.exec(line);
+    if (label && lead === indent + 2) types.add(label[1]!);
+  }
+  return types;
+}
+
+/**
+ * The security pages state claims a reader may act on, so: every repository path they cite (with
+ * an optional `#symbol` or `#"test name"`) must resolve, every invariant id they name must be a row
+ * of the register, the posture page's key section must cite every API source file that loads a
+ * secret key, and its `verify()` section must name exactly the operation types `assertCloseIntent`
+ * handles, so a key or an accepted operation cannot be added without the page following.
+ */
+export function checkSecurityPages(root: string): Problem[] {
+  const problems: Problem[] = [];
+  const register = read(root, REGISTER) ?? "";
+  const ids = new Set([...register.matchAll(/^\|\s*(INV-\d+)\s*\|/gm)].map((m) => m[1]!));
+  for (const source of [POSTURE_PAGE, DATA_HANDLING_PAGE]) {
+    const text = read(root, source);
+    if (text === null) {
+      problems.push({ source, message: "is missing" });
+      continue;
+    }
+    for (const span of codeSpans(text)) {
+      if (citedPath(span) === null) continue;
+      const problem = checkReference(root, span);
+      if (problem) problems.push({ source, message: problem });
+    }
+    for (const id of new Set([...text.matchAll(/\bINV-\d+\b/g)].map((m) => m[0]))) {
+      if (!ids.has(id)) {
+        problems.push({
+          source,
+          message: `names ${id}, which the invariant register has no row for`,
+        });
+      }
+    }
+  }
+
+  const posture = read(root, POSTURE_PAGE);
+  if (posture === null) return problems;
+
+  const keys = section(posture, KEYS_HEADING);
+  if (keys === null) {
+    problems.push({
+      source: POSTURE_PAGE,
+      message: "the section listing the service's keys was not found",
+    });
+  } else {
+    const cited = new Set(
+      codeSpans(keys)
+        .map(citedPath)
+        .filter((path): path is string => path !== null)
+        .flatMap(expandBraces)
+    );
+    const loaders = walk(
+      root,
+      API_SOURCE,
+      (path) => TEST_DIR.test(path) || TEST_SUFFIX.test(path)
+    ).filter((path) => KEY_LOADER.test(stripComments(read(root, path) ?? "")));
+    if (loaders.length === 0) {
+      problems.push({
+        source: API_SOURCE,
+        message:
+          "no source file loads a secret key, so the posture page's key section is out of date",
+      });
+    }
+    for (const loader of loaders.filter((path) => !cited.has(path))) {
+      problems.push({
+        source: POSTURE_PAGE,
+        message: `the keys section does not cite ${loader}, which loads a secret key`,
+      });
+    }
+  }
+
+  const allowlist = section(posture, ALLOWLIST_HEADING);
+  const verify = read(root, VERIFY_SOURCE);
+  const handled = verify === null ? null : verifiedOperationTypes(verify);
+  if (allowlist === null) {
+    problems.push({
+      source: POSTURE_PAGE,
+      message: "the section listing what verify() accepts was not found",
+    });
+  } else if (handled === null) {
+    problems.push({
+      source: VERIFY_SOURCE,
+      message: "assertCloseIntent's switch over the operation type was not found",
+    });
+  } else {
+    handled.delete(UNKNOWN_OPERATION);
+    const named = new Set(
+      codeSpans(allowlist).filter((span) => OPERATION_TYPE.test(span) && span !== UNKNOWN_OPERATION)
+    );
+    for (const type of handled) {
+      if (!named.has(type)) {
+        problems.push({
+          source: POSTURE_PAGE,
+          message: `does not name ${type}, which verify() accepts`,
+        });
+      }
+    }
+    for (const type of named) {
+      if (!handled.has(type)) {
+        problems.push({
+          source: POSTURE_PAGE,
+          message: `names ${type}, which assertCloseIntent in ${VERIFY_SOURCE} does not handle`,
+        });
+      }
+    }
+  }
+  return problems;
+}
+
 export function checkAll(root: string): Problem[] {
   return [
     ...checkRegister(root),
@@ -926,6 +1073,7 @@ export function checkAll(root: string): Problem[] {
     ...checkNodeVersion(root),
     ...checkSetupSteps(root),
     ...checkFontCopies(root),
+    ...checkSecurityPages(root),
   ].map((problem) => ({ ...problem, source: toPosix(problem.source) }));
 }
 
