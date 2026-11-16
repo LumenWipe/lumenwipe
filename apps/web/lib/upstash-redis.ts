@@ -1,10 +1,11 @@
 import { Redis } from "@upstash/redis";
-import { createHash } from "crypto";
+import { createHmac } from "crypto";
 import { utcDayKey } from "@/lib/utc-day";
 
 // {namespace}:ratelimit:{ipHash}:{date} → per-IP daily request counter. The UTC date in the key is
 // what resets the counter at 00:00 UTC; the 24-hour expiry, renewed on each increment, only clears
-// the previous day's key.
+// the previous day's key. {ipHash} is keyed with RATE_LIMIT_HASH_KEY over the namespace, the date
+// and the IP, so it can't be reversed by enumerating addresses and links no two days or routes.
 
 /**
  * What the limiter says about one request:
@@ -12,20 +13,26 @@ import { utcDayKey } from "@/lib/utc-day";
  * - `unavailable`: the counter could not be asked (an error, a timeout, a reply it can't read, or
  *   no credentials on a deployment). Each route decides whether that lets the request through.
  * - `disabled`: no credentials outside a Vercel deployment (local dev, CI), so nothing is counted.
+ * Credentials are the Redis URL and token and a hash key of at least `MIN_HASH_KEY_LENGTH`.
  */
 export type RateLimitVerdict = "allowed" | "limited" | "unavailable" | "disabled";
 
 /** How long a request waits on the counter before the limiter counts as unavailable. */
 export const LIMITER_TIMEOUT_MS = 1000;
 
+/** The shortest `RATE_LIMIT_HASH_KEY` accepted; a shorter one counts as unset. */
+export const MIN_HASH_KEY_LENGTH = 32;
+
 let client: { url: string; redis: Redis } | undefined;
 let warnedDisabled = false;
 let reportedUnconfigured = false;
 
-function credentials(): { url: string; token: string } | null {
+function credentials(): { url: string; token: string; hashKey: string } | null {
   const url = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
-  return url && token ? { url, token } : null;
+  const hashKey = process.env.RATE_LIMIT_HASH_KEY;
+  if (!url || !token || !hashKey || hashKey.length < MIN_HASH_KEY_LENGTH) return null;
+  return { url, token, hashKey };
 }
 
 /** A Vercel production or preview deployment: both spend the shared API key. `vercel dev` is not. */
@@ -42,13 +49,16 @@ function redis(url: string, token: string): Redis {
   return client.redis;
 }
 
-function hashIp(ip: string): string {
-  // One-way hash so no raw IP is stored in Redis
-  return createHash("sha256").update(ip).digest("hex").slice(0, 16);
+function hashIp(hashKey: string, namespace: string, day: string, ip: string): string {
+  return createHmac("sha256", hashKey)
+    .update(`${namespace}:${day}:${ip}`)
+    .digest("hex")
+    .slice(0, 16);
 }
 
 /** One log line per failure: the namespace, the kind and at most the error's name. Never the IP,
- *  its hash, the key or the error's message, which may echo the command and its key. */
+ *  its hash, the counter key, the hash key or the error's message, which may echo the command and
+ *  its key. */
 function reportUnavailable(namespace: string, kind: string, err?: unknown): void {
   const name = err instanceof Error ? ` (${err.name})` : "";
   console.error(`Rate limiter unavailable for ${namespace}: ${kind}${name}`);
@@ -86,13 +96,16 @@ export async function checkNamespacedRateLimit(
     }
     if (!warnedDisabled) {
       warnedDisabled = true;
-      console.warn("Rate limiting is disabled: Upstash Redis is not configured (local or CI).");
+      console.warn(
+        "Rate limiting is disabled: Upstash Redis or its hash key is not configured (local or CI)."
+      );
     }
     return "disabled";
   }
 
   try {
-    const key = `${namespace}:ratelimit:${hashIp(ip)}:${utcDayKey(options.now ?? new Date())}`;
+    const day = utcDayKey(options.now ?? new Date());
+    const key = `${namespace}:ratelimit:${hashIp(creds.hashKey, namespace, day, ip)}:${day}`;
     const pipeline = redis(creds.url, creds.token).pipeline();
     pipeline.incr(key);
     pipeline.expire(key, 86_400);

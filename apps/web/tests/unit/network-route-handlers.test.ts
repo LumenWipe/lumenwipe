@@ -8,6 +8,7 @@ import {
   spyOn,
   test,
 } from "bun:test";
+import { randomBytes } from "node:crypto";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { NextRequest, type NextResponse } from "next/server";
@@ -23,6 +24,7 @@ const ENV = {
   LUMENWIPE_API_KEY: "test-key",
   UPSTASH_REDIS_REST_URL: LIMITER,
   UPSTASH_REDIS_REST_TOKEN: "test-token",
+  RATE_LIMIT_HASH_KEY: randomBytes(32).toString("hex"),
 };
 
 type Handler = (
