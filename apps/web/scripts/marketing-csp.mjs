@@ -334,6 +334,18 @@ function readJson(file) {
   return JSON.parse(readFileSync(file, "utf8"));
 }
 
+/** @param {string} file @returns {any} the parsed file, or undefined when there is none. */
+function readJsonIfPresent(file) {
+  let text;
+  try {
+    text = readFileSync(file, "utf8");
+  } catch (error) {
+    if (/** @type {NodeJS.ErrnoException} */ (error).code === "ENOENT") return undefined;
+    throw error;
+  }
+  return JSON.parse(text);
+}
+
 /**
  * @param {string[]} pages
  * @param {(path: string) => string} fileOf
@@ -377,10 +389,10 @@ export function run(dir, write, env = process.env) {
   const pages = marketingPages(dir);
   const outputDir = join(dir, "output");
   const configFile = join(outputDir, "config.json");
-  if (existsSync(configFile)) {
+  const config = readJsonIfPresent(configFile);
+  if (config !== undefined) {
     const htmlByPath = readPages(pages, outputPageFile(outputDir));
     if (write) {
-      const config = readJson(configFile);
       injectRoutes(
         config,
         new Map([...htmlByPath].map(([path, html]) => [path, policyForPage(html, path)]))
