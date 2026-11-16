@@ -2,6 +2,7 @@ import type { Network } from "@/config/networks";
 import { WalletKitSigner } from "@/lib/stellar/signer";
 import { startSignTimeout } from "@/lib/stellar/wallet-timeout";
 import { importWalletKit, walletKitLoader, WalletKitLoadError, type WalletKit } from "./loader";
+import { VARIAL_ID } from "./wallet-ids";
 
 const kitLoader = walletKitLoader(() => importWalletKit());
 
@@ -65,7 +66,7 @@ export const ADDRESS_CHECK_TIMEOUT_MS = 4_000;
  * extension without a prompt. Every other wallet in the kit opens a popup, a QR pairing or a
  * device prompt to answer `getAddress`, so its session cannot be checked silently.
  */
-const SILENT_ADDRESS_WALLETS: ReadonlySet<string> = new Set(["varial"]);
+const SILENT_ADDRESS_WALLETS: ReadonlySet<string> = new Set([VARIAL_ID]);
 
 /**
  * The account the selected wallet holds right now, read without any prompt: "unsupported" for a

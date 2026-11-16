@@ -122,3 +122,41 @@ describe("transaction construction", () => {
     }
   });
 });
+
+describe("wallet kit imports", () => {
+  const LAZY = /Load the wallet kit through lib\/wallet-kit\/loader\.ts/;
+  const kitCode = [
+    `import { StellarWalletsKit } from "@creit-tech/stellar-wallets-kit";\nexport const b = StellarWalletsKit;\n`,
+    `import { StellarWalletsKit } from "@creit-tech/stellar-wallets-kit/sdk";\nexport const b = StellarWalletsKit;\n`,
+    `import { XBULL_ID } from "@creit-tech/stellar-wallets-kit/modules/xbull";\nexport const b = XBULL_ID;\n`,
+  ];
+
+  test("a static import of the kit's code fails lint in every shipped folder", async () => {
+    for (const code of kitCode) {
+      for (const file of [
+        "lib/zz-fixture.ts",
+        "hooks/zz-fixture.ts",
+        "components/zz-fixture.tsx",
+      ]) {
+        expect({ code, file, errors: await errors(code, file) }).toMatchObject({
+          errors: [expect.stringMatching(LAZY)],
+        });
+      }
+    }
+  });
+
+  test("its types, the kit-free ids, and tests are allowed", async () => {
+    const allowed = `import type { StellarWalletsKit } from "@creit-tech/stellar-wallets-kit/sdk";\nimport { KitEventType } from "@creit-tech/stellar-wallets-kit/types";\nimport { XBULL_ID } from "@/lib/wallet-kit/wallet-ids";\nexport type K = typeof StellarWalletsKit;\nexport const b = [KitEventType, XBULL_ID];\n`;
+    expect(await errors(allowed, "lib/zz-fixture.ts")).toEqual([]);
+    expect(await errors(kitCode[2]!, "tests/unit/zz-fixture.test.ts")).toEqual([]);
+  });
+
+  test("the module list may import the kit's modules and still builds no transaction", async () => {
+    const file = "lib/wallet-kit/modules.ts";
+    expect(await errors(kitCode[2]!, file)).toEqual([]);
+    const operation = `import { Operation } from "@stellar/stellar-sdk";\nexport const b = Operation;\n`;
+    expect(await errors(operation, file)).toEqual([
+      expect.stringMatching(/apps\/web never builds a transaction/),
+    ]);
+  });
+});

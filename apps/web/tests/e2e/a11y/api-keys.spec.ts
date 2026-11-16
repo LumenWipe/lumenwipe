@@ -2,7 +2,7 @@ import { expect, test, type Page, type Route } from "@playwright/test";
 import { Keypair } from "@stellar/stellar-sdk";
 import { installWalletStub } from "../helpers/wallet-stub";
 import { expectNoAxeViolations } from "./axe";
-import { installApiFixtures } from "./fixtures";
+import { installApiFixtures, watchKit } from "./fixtures";
 
 const CONTRACT = "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA";
 const NEW_KEY = "lw_test_placeholder_not_a_real_key";
@@ -116,6 +116,7 @@ test("a plain wallet signs in, sees key management and the limits, and stays sig
     sign: { kind: "approve", keypair: owner },
   });
   const integrator = await installIntegratorFixtures(page);
+  const seen = watchKit(page);
 
   await page.goto("/api-keys");
   await expect(page).toHaveTitle(/API keys/);
@@ -123,6 +124,8 @@ test("a plain wallet signs in, sees key management and the limits, and stays sig
   await expect(page.getByText(/up to 5 active keys/)).toBeVisible();
   await expect(page.getByText(/120 requests per 60 seconds/)).toBeVisible();
   await expectNoAxeViolations(page, "api keys, signed out");
+  await page.waitForLoadState("networkidle");
+  expect(seen.kitScripts).toEqual([]);
 
   await signInWithStubWallet(page);
   await expect(page.getByText(`Signed in as ${owner.publicKey()}`)).toBeVisible({
@@ -130,6 +133,7 @@ test("a plain wallet signs in, sees key management and the limits, and stays sig
   });
   await expect(page.getByRole("button", { name: "Create key" })).toBeVisible();
   expect(integrator.signatures).toHaveLength(1);
+  expect(seen.kitScripts.length).toBeGreaterThan(0);
   await expectNoAxeViolations(page, "api keys, signed in");
 
   await page.reload();

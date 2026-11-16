@@ -1,6 +1,13 @@
 import { test, expect, spyOn } from "bun:test";
 import { LOBSTR_ID } from "@creit-tech/stellar-wallets-kit/modules/lobstr";
 import { FREIGHTER_ID } from "@creit-tech/stellar-wallets-kit/modules/freighter";
+import * as varial from "@creit-tech/stellar-wallets-kit/modules/varial";
+import * as xbull from "@creit-tech/stellar-wallets-kit/modules/xbull";
+import * as albedo from "@creit-tech/stellar-wallets-kit/modules/albedo";
+import * as rabet from "@creit-tech/stellar-wallets-kit/modules/rabet";
+import * as hana from "@creit-tech/stellar-wallets-kit/modules/hana";
+import * as walletConnect from "@creit-tech/stellar-wallets-kit/modules/wallet-connect";
+import { WALLET_CONNECT_WALLET_ID } from "@/lib/stellar/signer";
 import {
   ALLOWED_DEFAULT_MODULE_IDS,
   vettedDefaultModules,
@@ -10,6 +17,7 @@ import {
   walletConnectConfigured,
   walletConnectMetadata,
 } from "@/lib/wallet-kit/wallet-connect-config";
+import * as walletIds from "@/lib/wallet-kit/wallet-ids";
 
 test("vettedDefaultModules › never includes LOBSTR's own module", () => {
   const ids = vettedDefaultModules().map((m) => m.productId);
@@ -81,4 +89,25 @@ test("walletKitModules › without a project id: the vetted wallets only, and no
   } finally {
     warn.mockRestore();
   }
+});
+
+test("wallet ids › each kit-free id is the kit's own", () => {
+  const ours: Record<string, string> = { ...walletIds };
+  expect(ours).toEqual({
+    VARIAL_ID: varial.VARIAL_ID,
+    XBULL_ID: xbull.XBULL_ID,
+    ALBEDO_ID: albedo.ALBEDO_ID,
+    RABET_ID: rabet.RABET_ID,
+    HANA_ID: hana.HANA_ID,
+    WALLET_CONNECT_ID: walletConnect.WALLET_CONNECT_ID,
+  });
+  expect(WALLET_CONNECT_WALLET_ID).toBe(walletConnect.WALLET_CONNECT_ID);
+});
+
+// WalletConnect is left out: building its module starts a pairing client, so its id is checked
+// against the module's own export above.
+test("wallet ids › every vetted wallet the app builds has a kit-free id", () => {
+  const ids = vettedDefaultModules().map((m) => m.productId);
+  const vetted = Object.values(walletIds).filter((id) => id !== walletIds.WALLET_CONNECT_ID);
+  expect(ids.sort()).toEqual(vetted.sort());
 });

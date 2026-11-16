@@ -59,9 +59,9 @@ LCP and transferred JS are stable from run to run. Total blocking time is the no
 
 ### Known third-party request
 
-`/mainnet` requests `https://api.web3modal.org/appkit/v1/project-limits` on load, before the user has asked to connect a wallet. It comes from the wallet kit's WalletConnect module. The CI job blocks it, and the summary lists it as blocked. Loading no wallet-kit code until the user chooses to connect (#536) should remove the request from the entry page. When it does, the summary's third-party list for this route should be empty.
+At this baseline, `/mainnet` requested `https://api.web3modal.org/appkit/v1/project-limits` on load, before the user had asked to connect a wallet. It came from the wallet kit's WalletConnect module, and the CI job blocked it. No other route attempted a third-party request.
 
-No other route attempted a third-party request.
+That request is gone. Since #536 the entry page loads no wallet-kit code until a saved wallet is restored or the user chooses to connect, and the summary of the first run after that change ([run 43775110427](https://github.com/LumenWipe/lumenwipe/actions/runs/43775110427)) lists no third-party request for any route, `/mainnet` included. The signing page and the API keys page load the kit the same way since #921.
 
 ## What the baseline leaves out
 
