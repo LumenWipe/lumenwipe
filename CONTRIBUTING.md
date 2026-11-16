@@ -216,6 +216,8 @@ bun test              # run all unit tests
 bun test:watch        # watch mode during development
 ```
 
+The trust-boundary modules carry a per-file line coverage gate: `scripts/coverage-thresholds.json` lists them (the transaction builder, submit, signature, the close-round account read and path finding in the API, `verify.ts` and the mediator helper in the web, the SDK client and close engine). CI runs `test:coverage` and then `coverage:gate` for the api, web and sdk, which fails when a listed file drops below its minimum and prints the gated files in the job summary. A minimum is the file's measured line coverage rounded down to the nearest 5, so a fully covered file is gated at 100. When a Bun upgrade changes how lines are counted, the gate fails on that upgrade and the threshold is adjusted on purpose in the same PR. Run it locally with `bun run --filter '@lumenwipe/api' test:coverage && bun run --filter '@lumenwipe/api' coverage:gate`.
+
 ### End-to-end tests (`tests/e2e/`)
 
 Playwright drives a real browser against **testnet** through full flows: account analysis, each step category, the mediator flow, session recovery. New protocol integrations require a matching E2E test that executes the full exit against a testnet account with a real position.

@@ -36,7 +36,7 @@ jobs:
           - {
               name: "sdk",
               pkg: "@lumenwipe/sdk",
-              checks: "type-check lint test build:types check-api build:dist pack:check release:check",
+              checks: "type-check lint test:coverage coverage:gate build:types check-api build:dist pack:check release:check",
             }
           # The reference verifier, compiled from the web's verify(). `test` builds the bundle
           # first and runs the conformance vectors against it in both module formats; the web
@@ -48,8 +48,9 @@ jobs:
               pkg: "@lumenwipe/verify",
               checks: "type-check lint test build:types check-api build:dist pack:check release:check",
             }
-          # test:coverage runs the same suite as `test` with a coverage report printed to the
-          # log - same pass/fail outcome, no threshold gate, just visibility into what's covered.
+          # test:coverage runs the same suite as `test` and writes an lcov report; coverage:gate
+          # then holds each trust-boundary file in scripts/coverage-thresholds.json to its minimum
+          # line coverage and prints the gated files in the job summary.
           # `build` is in the list because type-check alone cannot catch a broken build: tsc
           # with noEmit never computes an output layout at all. It does not close the gap on
           # its own, though - a change that relocates the emitted entrypoint (#81) still exits
@@ -59,17 +60,17 @@ jobs:
           - {
               name: "web",
               pkg: "@lumenwipe/web",
-              checks: "type-check lint test:coverage check:env build",
+              checks: "type-check lint test:coverage coverage:gate check:env build",
             }
           - {
               name: "api",
               pkg: "@lumenwipe/api",
-              checks: "type-check lint test:coverage test:adversarial build",
+              checks: "type-check lint test:coverage coverage:gate test:adversarial build",
             }
           - {
               name: "playground",
               pkg: "@lumenwipe/playground",
-              checks: "type-check lint test build",
+              checks: "type-check lint test:coverage build",
             }
           # The latency lab's own checks. Never its `lab` script: the lab runs only on a person's
           # machine (tools/lab/tests/no-workflow.test.ts fails a workflow that invokes it).
@@ -795,6 +796,9 @@ jobs:
 
       - name: Test the API image scan gate
         run: bun test scripts/image-scan-gate.test.ts
+
+      - name: Test the coverage gate
+        run: bun test scripts/coverage-gate.test.ts
 
       - name: Audit dependencies
         run: bun run scripts/audit-gate.ts
