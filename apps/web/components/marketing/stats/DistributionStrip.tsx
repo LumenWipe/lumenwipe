@@ -6,14 +6,16 @@ import { useState } from "react";
 import { stroopsToXlm } from "@/lib/utils/amounts";
 import { SE_EXPLORER_BASE } from "@/config/networks";
 import type { FeedData, MergeRecord } from "@/hooks/useFeed";
+import AxisLabels from "./AxisLabels";
 
 const W = 900;
-const H = 120;
+const H = 104;
 const PAD_X = 12;
-const PAD_Y = 16;
-const TRACK_H = H - PAD_Y * 2; // 88px
+const PAD_Y = 12;
+const TRACK_H = H - PAD_Y * 2;
 const TRACK_W = W - PAD_X * 2;
 const CENTER_Y = PAD_Y + TRACK_H / 2;
+const AXIS_Y = H - 1;
 
 // Log scale: 0.5 XLM → 200 XLM mapped to [0,1]
 const LOG_MIN = Math.log(0.5);
@@ -34,6 +36,10 @@ function hashJitter(txHash: string): number {
 }
 
 const AXIS_TICKS = [1, 2, 5, 10, 20, 50, 100];
+const AXIS_LABELS = [
+  ...AXIS_TICKS.map((v) => ({ label: String(v), x: xlmToX(v) })),
+  { label: "XLM", x: W },
+];
 
 interface HoveredDot {
   record: MergeRecord;
@@ -84,41 +90,30 @@ export default function DistributionStrip({ feed }: { feed: FeedData | null }) {
             strokeWidth="1"
           />
 
-          {/* tick marks + labels */}
+          {/* axis and tick marks */}
+          <line
+            x1={PAD_X}
+            y1={AXIS_Y}
+            x2={PAD_X + TRACK_W}
+            y2={AXIS_Y}
+            stroke="rgba(255,255,255,0.08)"
+            strokeWidth="1"
+          />
           {AXIS_TICKS.map((v) => {
             const x = xlmToX(v);
             return (
-              <g key={v}>
-                <line
-                  x1={x}
-                  y1={CENTER_Y - 4}
-                  x2={x}
-                  y2={CENTER_Y + 4}
-                  stroke="rgba(255,255,255,0.15)"
-                  strokeWidth="1"
-                />
-                <text
-                  x={x}
-                  y={CENTER_Y + 18}
-                  textAnchor="middle"
-                  fill="rgba(255,255,255,0.25)"
-                  fontSize="8"
-                  fontFamily="monospace"
-                >
-                  {v}
-                </text>
-              </g>
+              <line
+                key={v}
+                data-axis-tick
+                x1={x}
+                y1={AXIS_Y - 6}
+                x2={x}
+                y2={AXIS_Y}
+                stroke="rgba(255,255,255,0.15)"
+                strokeWidth="1"
+              />
             );
           })}
-          <text
-            x={PAD_X + TRACK_W + 4}
-            y={CENTER_Y + 18}
-            fill="rgba(255,255,255,0.18)"
-            fontSize="7"
-            fontFamily="monospace"
-          >
-            XLM
-          </text>
 
           {/* skeleton */}
           {!feed &&
@@ -161,22 +156,12 @@ export default function DistributionStrip({ feed }: { feed: FeedData | null }) {
               />
             );
           })}
-
-          {/* empty */}
-          {feed && records.length === 0 && (
-            <text
-              x={W / 2}
-              y={H / 2}
-              textAnchor="middle"
-              dominantBaseline="middle"
-              fill="rgba(255,255,255,0.2)"
-              fontSize="11"
-              fontFamily="monospace"
-            >
-              No closes yet
-            </text>
-          )}
         </svg>
+        {feed && records.length === 0 && (
+          <p className="mkt-mono absolute inset-0 flex items-center justify-center text-caption text-fg-subtle">
+            No closes yet
+          </p>
+        )}
 
         {/* tooltip */}
         {hovered && (
@@ -204,6 +189,7 @@ export default function DistributionStrip({ feed }: { feed: FeedData | null }) {
           </div>
         )}
       </div>
+      <AxisLabels labels={AXIS_LABELS} width={W} />
     </div>
   );
 }
