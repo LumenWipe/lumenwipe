@@ -19,58 +19,50 @@ import {
   VERIFY_SOURCE_URL,
 } from "@/lib/site/trust";
 import { Button } from "@/components/ui/button";
+import { SITE_LOCALE } from "@/lib/i18n/locale";
+import { COMMON } from "@/lib/i18n/messages/common";
+import { SECURITY } from "@/lib/i18n/messages/security";
+
+const T = SECURITY[SITE_LOCALE];
+const NEW_TAB = COMMON[SITE_LOCALE].newTab;
 
 export const metadata: Metadata = pageMetadata({
   path: "/security",
-  title: "Security",
-  description:
-    "How LumenWipe keeps your key in your browser, what its API builds, what your browser checks before you sign, and the two server keys and what each may sign.",
+  title: T.metadata.title,
+  description: T.metadata.description,
 });
 
 const LAYERS = [
-  {
-    label: "Your browser",
-    sub: "Wallet · transaction check · signing · session",
-    note: "your key stays here",
-    key: true,
-  },
-  {
-    label: "LumenWipe API",
-    sub: "Account reads · DeFi adapters · builds unsigned transactions · relay and fee-sponsor keys",
-    note: "never holds your key",
-  },
-  {
-    label: "Stellar network & data",
-    sub: "Stellar RPC · stellar.expert · Soroswap API",
-    note: "read · simulate · submit",
-  },
+  { ...T.layers.browser, key: true },
+  { ...T.layers.api, key: false },
+  { ...T.layers.network, key: false },
 ];
 
 const GUARANTEES = [
   {
     icon: KeyRound,
-    title: "Private key",
-    body: "Never transmitted. It stays in your wallet, or in memory only for the duration of the close, never persisted and cleared when you finish, abort, or navigate away.",
+    title: T.guarantees.key.title,
+    body: T.guarantees.key.body,
   },
   {
     icon: ScanLine,
-    title: "Every destructive step",
-    body: "Reviewed as raw XDR and explicitly confirmed before signing. The full plan is shown up front and each step is simulated first.",
+    title: T.guarantees.steps.title,
+    body: T.guarantees.steps.body,
   },
   {
     icon: Building2,
-    title: "Exchange memo",
-    body: "Required and validated against a registry of known exchanges that enforces the memo type; a missing memo blocks submission so deposits don't go missing.",
+    title: T.guarantees.memo.title,
+    body: T.guarantees.memo.body,
   },
   {
     icon: Server,
-    title: "API compromise",
-    body: "It holds no key that can sign for your account, and your browser checks the operations and destination of every transaction it builds before you sign. Figures your browser can only take from the API's own reads, such as a conversion quote, are shown for you to accept.",
+    title: T.guarantees.api.title,
+    body: T.guarantees.api.body,
   },
   {
     icon: Network,
-    title: "Strict CSP",
-    body: "No inline scripts, no unsafe-eval. Dependencies are lockfile-pinned and audited in CI; the transaction builder is a pure, unit-tested module with zero network side effects.",
+    title: T.guarantees.csp.title,
+    body: T.guarantees.csp.body,
   },
 ];
 
@@ -80,31 +72,27 @@ export default function SecurityPage() {
       <div className="max-w-2xl">
         <span className="mkt-eyebrow inline-flex items-center gap-2 text-fg-muted">
           <span className="h-px w-5 bg-accent/60" />
-          Trust model
+          {T.eyebrow}
         </span>
-        <h1 className="mkt-display mt-4 text-4xl font-bold text-white sm:text-5xl">
-          The trust boundary is your browser.
-        </h1>
+        <h1 className="mkt-display mt-4 text-4xl font-bold text-white sm:text-5xl">{T.heading}</h1>
         <p className="mt-5 text-body leading-relaxed text-white/70">
-          LumenWipe builds transactions that drain accounts irreversibly, so the design starts from
-          that fact. {KEY_STATEMENT} {CHECK_STATEMENT}
+          {T.lede(KEY_STATEMENT, CHECK_STATEMENT)}
         </p>
         <p className="mt-4 text-body leading-relaxed text-white/70">
-          The check is open source:{" "}
-          <a
-            href={VERIFY_SOURCE_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-accent underline underline-offset-4"
-          >
-            read verify.ts on GitHub<span className="sr-only"> (opens in a new tab)</span>
-          </a>
-          . The exchanges and memo rules it checks against, and the protocols it can exit, are
-          listed in the{" "}
-          <Link href="/registry" className="text-accent underline underline-offset-4">
-            exchange registry
-          </Link>
-          .
+          {T.openSource(
+            <a
+              href={VERIFY_SOURCE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-accent underline underline-offset-4"
+            >
+              {T.verifyLink}
+              <span className="sr-only">{NEW_TAB}</span>
+            </a>,
+            <Link href="/registry" className="text-accent underline underline-offset-4">
+              {T.registryLink}
+            </Link>
+          )}
         </p>
       </div>
 
@@ -134,7 +122,7 @@ export default function SecurityPage() {
           ))}
           <p className="mkt-mono flex items-center gap-2 pt-2 text-caption text-fg-subtle">
             <ShieldCheck className="h-3.5 w-3.5 text-accent" aria-hidden="true" />
-            Your key stays in your browser
+            {T.keyStays}
           </p>
         </div>
 
@@ -157,7 +145,7 @@ export default function SecurityPage() {
       </div>
 
       <div className="mt-12 max-w-3xl">
-        <h2 className="mkt-display text-2xl font-bold text-white">Keys on the server</h2>
+        <h2 className="mkt-display text-2xl font-bold text-white">{T.serverKeysHeading}</h2>
         <p className="mt-3 text-body leading-relaxed text-white/70">{SERVER_KEYS_INTRO}</p>
         <dl className="mt-5 space-y-4">
           {SERVER_KEYS.map((key) => (
@@ -174,7 +162,7 @@ export default function SecurityPage() {
       <div className="mt-12 flex flex-wrap items-center gap-3">
         <Button asChild size="lg" className="group">
           <Link href="/mainnet">
-            Open the app
+            {T.openApp}
             <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
           </Link>
         </Button>
@@ -184,7 +172,7 @@ export default function SecurityPage() {
             target="_blank"
             rel="noopener noreferrer"
           >
-            Read the security model
+            {T.securityModel}
           </a>
         </Button>
       </div>

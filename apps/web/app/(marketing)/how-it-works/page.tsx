@@ -24,12 +24,15 @@ import Reveal from "@/components/marketing/Reveal";
 import Faq from "@/components/marketing/Faq";
 import { LIVE_EXIT_PROTOCOLS } from "@/lib/site/status";
 import { Button } from "@/components/ui/button";
+import { SITE_LOCALE } from "@/lib/i18n/locale";
+import { HOW_IT_WORKS } from "@/lib/i18n/messages/how-it-works";
+
+const T = HOW_IT_WORKS[SITE_LOCALE];
 
 export const metadata: Metadata = pageMetadata({
   path: "/how-it-works",
-  title: "How it works",
-  description:
-    "How LumenWipe closes a Stellar account: a deterministic ordered plan, per-step simulation and confirmation, the CEX relay flow, and resumable sessions reconciled against on-chain state.",
+  title: T.metadata.title,
+  description: T.metadata.description,
 });
 
 function Eyebrow({ children }: { children: React.ReactNode }) {
@@ -42,73 +45,30 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
 }
 
 const LOOP = [
-  { icon: RefreshCw, label: "Re-read live state", note: "getLedgerEntries" },
-  { icon: Eye, label: "Simulate", note: "simulateTransaction" },
-  { icon: CheckCircle2, label: "Confirm", note: "you approve" },
-  { icon: PenTool, label: "Sign in browser", note: "your wallet" },
-  { icon: Send, label: "Submit XDR", note: "to Stellar RPC" },
-  { icon: ArrowRight, label: "Poll & advance", note: "next step" },
+  { icon: RefreshCw, ...T.loop.steps.reread },
+  { icon: Eye, ...T.loop.steps.simulate },
+  { icon: CheckCircle2, ...T.loop.steps.confirm },
+  { icon: PenTool, ...T.loop.steps.sign },
+  { icon: Send, ...T.loop.steps.submit },
+  { icon: ArrowRight, ...T.loop.steps.poll },
 ];
 
 const STEPS = [
-  {
-    icon: Search,
-    title: "Analyze the account",
-    body: "Enumerate every subentry (trustlines, offers, data entries, signers) and detect DeFi positions through OctoPos. The result is a single, ordered execution plan.",
-    op: "stellar.expert + Stellar RPC",
-  },
-  {
-    icon: KeyRound,
-    title: "Normalize signers",
-    body: "Remove extra signers and reset thresholds so a single key can authorize every remaining step without surprises mid-flow.",
-    op: "SetOptions",
-  },
-  {
-    icon: Database,
-    title: "Remove data entries",
-    body: "Clear every ManageData entry in batches, releasing 0.5 XLM of reserve each.",
-    op: "ManageData (value = null)",
-  },
-  {
-    icon: XCircle,
-    title: "Cancel DEX offers",
-    body: "Close all open order-book offers, freeing the reserve each one holds.",
-    op: "ManageSellOffer / ManageBuyOffer · amount = 0",
-  },
+  { icon: Search, ...T.plan.steps.analyze },
+  { icon: KeyRound, ...T.plan.steps.signers },
+  { icon: Database, ...T.plan.steps.data },
+  { icon: XCircle, ...T.plan.steps.offers },
   {
     icon: Layers,
-    title: "Exit DeFi positions",
-    body: "Exit every supported Soroban protocol position, repaying loans and unstaking first where needed, via each protocol's own adapter. Classic AMM pool shares are reported as a blocker to withdraw elsewhere first.",
-    op: `InvokeHostFunction · ${LIVE_EXIT_PROTOCOLS.map((p) => p.name).join(" · ")}`,
+    ...T.plan.steps.defi,
+    op: T.plan.steps.defi.op(LIVE_EXIT_PROTOCOLS.map((p) => p.name)),
   },
-  {
-    icon: ArrowLeftRight,
-    title: "Convert assets to XLM",
-    body: "Swap every remaining token to XLM along the best available route across Soroban and classic venues.",
-    op: "Soroswap API · SDEX path payments",
-  },
-  {
-    icon: Unlink,
-    title: "Remove trustlines",
-    body: "Once a balance is zero, remove its trustline and release the 0.5 XLM reserve.",
-    op: "ChangeTrust · limit = 0",
-  },
-  {
-    icon: GitMerge,
-    title: "Merge the account",
-    body: "Execute the final merge, directly to a wallet or through a relay account for an exchange destination. The base reserve comes back too.",
-    op: "AccountMerge",
-  },
+  { icon: ArrowLeftRight, ...T.plan.steps.convert },
+  { icon: Unlink, ...T.plan.steps.trustlines },
+  { icon: GitMerge, ...T.plan.steps.merge },
 ];
 
-const MACHINE = [
-  "Idle",
-  "Analyzing",
-  "PreflightComplete",
-  "StepExecuting",
-  "StepConfirmed",
-  "Complete",
-];
+const MACHINE = T.resume.phases;
 
 export default function HowItWorksPage() {
   return (
@@ -116,25 +76,22 @@ export default function HowItWorksPage() {
       {/* hero */}
       <section className="mx-auto max-w-4xl px-5 pb-14 pt-16 text-center lg:px-8 lg:pt-24">
         <Reveal>
-          <Eyebrow>How it works</Eyebrow>
+          <Eyebrow>{T.hero.eyebrow}</Eyebrow>
           <h1 className="mkt-display mx-auto mt-5 max-w-3xl text-display font-extrabold leading-[1.02] text-white sm:text-6xl">
-            A deterministic plan for an irreversible action.
+            {T.hero.heading}
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-body leading-relaxed text-white/85">
-            Closing an account is several sequential transactions in the right order. LumenWipe
-            shows the whole plan up front, then executes it one confirmed step at a time, re-reading
-            live state and simulating before every signature, so nothing is ever signed on stale
-            data.
+            {T.hero.body}
           </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Button asChild size="lg" className="group">
               <Link href="/mainnet">
-                Open the app
+                {T.hero.openApp}
                 <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
               </Link>
             </Button>
             <Button asChild size="lg" variant="secondary">
-              <Link href="/faq">Jump to FAQ</Link>
+              <Link href="/faq">{T.hero.faq}</Link>
             </Button>
           </div>
         </Reveal>
@@ -144,14 +101,11 @@ export default function HowItWorksPage() {
       <section className="border-y border-white/8 bg-white/[0.012]">
         <div className="mx-auto max-w-6xl px-5 py-16 lg:px-8 lg:py-20">
           <Reveal className="max-w-2xl">
-            <Eyebrow>The execution loop</Eyebrow>
+            <Eyebrow>{T.loop.eyebrow}</Eyebrow>
             <h2 className="mkt-display mt-4 text-2xl font-bold text-white sm:text-4xl">
-              Every step runs the same safe loop.
+              {T.loop.heading}
             </h2>
-            <p className="mt-4 leading-relaxed text-white/85">
-              No step trusts a cached value. Each one reconciles against the live ledger, simulates,
-              and waits for your explicit approval before a single byte is signed.
-            </p>
+            <p className="mt-4 leading-relaxed text-white/85">{T.loop.body}</p>
           </Reveal>
 
           <div className="mt-10 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
@@ -169,7 +123,7 @@ export default function HowItWorksPage() {
           </div>
           <p className="mt-5 inline-flex items-center gap-2 mkt-mono text-xs text-fg-muted">
             <Repeat className="h-3.5 w-3.5 text-accent" />
-            repeats for every step in the plan
+            {T.loop.repeats}
           </p>
         </div>
       </section>
@@ -177,9 +131,9 @@ export default function HowItWorksPage() {
       {/* the eight steps */}
       <section className="mx-auto max-w-4xl px-5 py-20 lg:px-8 lg:py-28">
         <Reveal className="max-w-2xl">
-          <Eyebrow>The plan</Eyebrow>
+          <Eyebrow>{T.plan.eyebrow}</Eyebrow>
           <h2 className="mkt-display mt-4 text-3xl font-bold text-white sm:text-display sm:leading-[1.05]">
-            Eight ordered steps, every reserve accounted for.
+            {T.plan.heading}
           </h2>
         </Reveal>
 
@@ -204,7 +158,7 @@ export default function HowItWorksPage() {
                   </div>
                   <p className="mt-2 text-sm leading-relaxed text-white/85">{s.body}</p>
                   <div className="mt-3 inline-flex items-center gap-2 rounded-lg border border-white/8 bg-black/30 px-2.5 py-1 mkt-mono text-caption text-fg-muted">
-                    <span className="text-fg-muted">op</span>
+                    <span className="text-fg-muted">{T.plan.opLabel}</span>
                     {s.op}
                   </div>
                 </div>
@@ -218,15 +172,14 @@ export default function HowItWorksPage() {
       <section className="border-y border-white/8 bg-white/[0.012]">
         <div className="mx-auto max-w-5xl px-5 py-20 lg:px-8 lg:py-28">
           <Reveal className="max-w-2xl">
-            <Eyebrow>Exchange destinations</Eyebrow>
+            <Eyebrow>{T.relay.eyebrow}</Eyebrow>
             <h2 className="mkt-display mt-4 text-3xl font-bold text-white sm:text-display sm:leading-[1.05]">
-              The CEX relay flow.
+              {T.relay.heading}
             </h2>
             <p className="mt-5 leading-relaxed text-white/85">
-              Exchanges don&apos;t support{" "}
-              <span className="mkt-mono text-white/80">ACCOUNT_MERGE</span>. LumenWipe bridges the
-              gap with a transparent, single-use relay account, generated in your browser, used
-              once, and cleared from memory.
+              {T.relay.body((text) => (
+                <span className="mkt-mono text-white/80">{text}</span>
+              ))}
             </p>
           </Reveal>
 
@@ -234,15 +187,11 @@ export default function HowItWorksPage() {
             <div className="mkt-panel mt-10 rounded-2xl p-6 sm:p-8">
               <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
                 {[
-                  { label: "Source account", sub: "the account you're closing", tone: "white" },
-                  { op: "AccountMerge" },
-                  {
-                    label: "Relay account",
-                    sub: "single-use · generated in browser",
-                    tone: "accent",
-                  },
-                  { op: "Payment + memo" },
-                  { label: "Exchange deposit", sub: "validated address & memo" },
+                  { ...T.relay.nodes.source, tone: "white" },
+                  { op: T.relay.nodes.merge },
+                  { ...T.relay.nodes.relay, tone: "accent" },
+                  { op: T.relay.nodes.payment },
+                  { ...T.relay.nodes.exchange, tone: "white" },
                 ].map((node, i) =>
                   "op" in node ? (
                     <div
@@ -270,11 +219,7 @@ export default function HowItWorksPage() {
                   )
                 )}
               </div>
-              <p className="mt-6 text-center text-sm text-fg-muted">
-                The ~1 XLM that stays as the relay account&apos;s base reserve is disclosed upfront.
-                Known exchanges are validated against a registry that enforces the correct memo
-                type.
-              </p>
+              <p className="mt-6 text-center text-sm text-fg-muted">{T.relay.footnote}</p>
             </div>
           </Reveal>
         </div>
@@ -284,16 +229,11 @@ export default function HowItWorksPage() {
       <section className="mx-auto max-w-6xl px-5 py-20 lg:px-8 lg:py-28">
         <div className="grid gap-12 lg:grid-cols-2 lg:gap-16">
           <Reveal>
-            <Eyebrow>Resumable by design</Eyebrow>
+            <Eyebrow>{T.resume.eyebrow}</Eyebrow>
             <h2 className="mkt-display mt-4 text-2xl font-bold text-white sm:text-3xl">
-              Close the tab. Pick up where you left off.
+              {T.resume.heading}
             </h2>
-            <p className="mt-4 leading-relaxed text-white/85">
-              The close moves through these phases in your browser. Once you confirm the plan, the
-              browser keeps a small record of the close, never your keys. On return, LumenWipe
-              re-reads the account and builds a fresh plan for what is left, which you review and
-              sign again, so confirmed work is not repeated.
-            </p>
+            <p className="mt-4 leading-relaxed text-white/85">{T.resume.body}</p>
             <div className="mt-7 flex flex-wrap items-center gap-2">
               {MACHINE.map((s, i) => (
                 <span key={s} className="inline-flex items-center gap-2">
@@ -309,35 +249,19 @@ export default function HowItWorksPage() {
           </Reveal>
 
           <Reveal delay={100}>
-            <Eyebrow>Architecture</Eyebrow>
+            <Eyebrow>{T.architecture.eyebrow}</Eyebrow>
             <h2 className="mkt-display mt-4 text-2xl font-bold text-white sm:text-3xl">
-              Three layers, one trust boundary.
+              {T.architecture.heading}
             </h2>
-            <p className="mt-4 leading-relaxed text-white/85">
-              No bespoke indexer. Every read source sits behind an adapter, so any compatible
-              provider can be swapped in without touching the rest of the system.
-            </p>
+            <p className="mt-4 leading-relaxed text-white/85">{T.architecture.body}</p>
             <div className="mt-7 space-y-2.5">
               {[
-                {
-                  l: "Browser",
-                  s: "UI · wallet · transaction check · signing · session",
-                  note: "your key stays here",
-                  tone: true,
-                },
-                {
-                  l: "LumenWipe API",
-                  s: "reads · DeFi adapters · routing · builds unsigned transactions",
-                  note: "never holds your key",
-                },
-                {
-                  l: "Stellar network",
-                  s: "Stellar RPC · stellar.expert · Soroswap",
-                  note: "read · submit",
-                },
+                { ...T.architecture.rows.browser, tone: true },
+                { ...T.architecture.rows.api, tone: false },
+                { ...T.architecture.rows.network, tone: false },
               ].map((row) => (
                 <div
-                  key={row.l}
+                  key={row.label}
                   className={`flex items-center justify-between gap-3 rounded-xl border p-3.5 ${
                     row.tone
                       ? "border-accent/40 bg-accent/[0.06]"
@@ -345,8 +269,8 @@ export default function HowItWorksPage() {
                   }`}
                 >
                   <div className="min-w-0">
-                    <div className="text-sm font-semibold text-white">{row.l}</div>
-                    <div className="truncate mkt-mono text-caption text-fg-muted">{row.s}</div>
+                    <div className="text-sm font-semibold text-white">{row.label}</div>
+                    <div className="truncate mkt-mono text-caption text-fg-muted">{row.sub}</div>
                   </div>
                   <span
                     className={`shrink-0 mkt-mono text-caption uppercase tracking-wider ${
@@ -365,19 +289,19 @@ export default function HowItWorksPage() {
       {/* faq */}
       <section id="faq" className="mx-auto max-w-3xl scroll-mt-20 px-5 pb-24 lg:px-8">
         <Reveal className="text-center">
-          <Eyebrow>FAQ</Eyebrow>
+          <Eyebrow>{T.faq.eyebrow}</Eyebrow>
           <h2 className="mkt-display mt-4 text-3xl font-bold text-white sm:text-4xl">
-            Questions, answered.
+            {T.faq.heading}
           </h2>
         </Reveal>
         <div className="mt-10">
           <Faq />
         </div>
         <div className="mt-12 flex flex-col items-center gap-4 rounded-2xl border border-white/10 bg-surface p-8 text-center">
-          <h3 className="mkt-display text-xl font-bold text-white">Ready when you are.</h3>
+          <h3 className="mkt-display text-xl font-bold text-white">{T.ready.heading}</h3>
           <Button asChild size="lg" className="group">
             <Link href="/mainnet">
-              Open the app
+              {T.ready.openApp}
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
             </Link>
           </Button>
