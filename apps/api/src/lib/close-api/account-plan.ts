@@ -70,13 +70,9 @@ import {
 import { ARRIVING_ASSET_PROBE_AMOUNT, assetsArrivingFromExits } from "@/lib/close-api/exit-payouts";
 import { DEFI_POSITIONS_UNAVAILABLE_CODE } from "@/lib/defi-positions/positions-gate";
 import { preflightExitTargets } from "@/lib/defi-exits/exit-round";
-import {
-  planExitSteps,
-  type ExitPreflight,
-  type ExitTargetBlock,
-} from "@/lib/defi-exits/plan-exits";
+import { planExitSteps, type ExitPreflight } from "@/lib/defi-exits/plan-exits";
 import { assemblePlanResponse, computePlanHash } from "@/lib/close-api/plan-response";
-import { BASE_FEE_STROOPS } from "@/config/constants";
+import { planFeeEstimate } from "@/lib/close-api/plan-fee";
 import type { KillSwitches } from "@/config/kill-switches";
 import type {
   ClassicConversionQuote,
@@ -100,33 +96,39 @@ export interface AccountPlanDeps {
 }
 
 /**
- * Which exit targets cannot be built and may be left behind. Only those change the plan: the
- * preflight grades each target alone, while the round runs them in order (an earlier exit can pay
- * the asset a later repay needs), so any other blocker is left for the round to decide, as before.
- * A preflight that fails or runs long reports nothing; the round re-runs every check itself and
- * refuses to build what it cannot, so a missing preflight never lets a merge pass a position.
+ * Which exit targets cannot be built and may be left behind, and the fee of each first exit
+ * transaction the preflight simulated. Only leave-eligible blocks change the plan: the preflight
+ * grades each target alone, while the round runs them in order (an earlier exit can pay the asset
+ * a later repay needs), so any other blocker is left for the round to decide, as before. A
+ * preflight that fails or runs long reports nothing, and every exit fee falls back to the bound;
+ * the round re-runs every check itself and refuses to build what it cannot, so a missing preflight
+ * never lets a merge pass a position.
  */
 async function exitPreflightFor(
   accountState: AccountState,
   network: Network,
   preflight: typeof preflightExitTargets,
   pausedExits: KillSwitches["pausedExits"]
-): Promise<ReadonlyMap<string, ExitTargetBlock>> {
+): Promise<Pick<ExitPreflight, "blocked" | "simulatedFeeStroops">> {
+  const none = { blocked: new Map(), simulatedFeeStroops: new Map() };
   // A paused protocol is never simulated: its contracts may be the reason it is paused.
   const positions = accountState.defiPositions.positions.filter(
     (p) => !pausedExits.has(p.protocol)
   );
-  if (positions.length === 0) return new Map();
+  if (positions.length === 0) return none;
   const state = { ...accountState, defiPositions: { ...accountState.defiPositions, positions } };
   try {
-    const blocked = await withTimeout(
+    const report = await withTimeout(
       preflight(state, network, { rpc: getRpcServer(network) }),
       EXIT_PREFLIGHT_TIMEOUT_MS,
       `exit preflight exceeded ${EXIT_PREFLIGHT_TIMEOUT_MS} ms`
     );
-    return new Map([...blocked].filter(([, block]) => block.leaveEligible));
+    return {
+      blocked: new Map([...report.blocked].filter(([, block]) => block.leaveEligible)),
+      simulatedFeeStroops: report.simulatedFeeStroops,
+    };
   } catch {
-    return new Map();
+    return none;
   }
 }
 
@@ -293,7 +295,7 @@ export async function buildAccountPlan(
       else tokenReasons[contract] = result.reason;
     }
   });
-  const [, sponsorshipAffordability, , issuance, blockedExits] = await Promise.all([
+  const [, sponsorshipAffordability, , issuance, exitReport] = await Promise.all([
     convertibilityPromise,
     sponsorshipAffordabilityPromise,
     tokenQuotePromise,
@@ -301,7 +303,7 @@ export async function buildAccountPlan(
     exitPreflightPromise,
   ]);
   const leftBehind = positionsLeftBehind(decisions, source);
-  const exitPreflight: ExitPreflight = { blocked: blockedExits, leftBehind };
+  const exitPreflight: ExitPreflight = { ...exitReport, leftBehind };
 
   // Every asset the close will touch answers here - held or arriving. Without the arriving
   // ones their disposition never resolves, and the plan would label a balance the caller
@@ -464,9 +466,8 @@ export async function buildAccountPlan(
     sourceSequence: accountState.sequence,
   });
 
-  const totalOps = buildResult.steps.reduce((n, s) => n + s.operationCount, 0);
   const estimate = {
-    feeStroops: String(totalOps * BASE_FEE_STROOPS),
+    ...planFeeEstimate(buildResult.steps, exitPreflight.simulatedFeeStroops ?? new Map()),
     freedReserveXlm: ((2 + accountState.numSubEntries) * 0.5).toFixed(7),
   };
 

@@ -426,7 +426,7 @@ describe("buildExitRound with positions the user chose to leave behind", () => {
 
 describe("preflightExitTargets", () => {
   test("reports only the targets whose exit cannot be built, with whether each may be left", async () => {
-    const blockedTargets = await preflightExitTargets(
+    const { blocked: blockedTargets, simulatedFeeStroops } = await preflightExitTargets(
       account([supply(POOL), supply(POOL_2)]),
       "testnet",
       {
@@ -447,10 +447,27 @@ describe("preflightExitTargets", () => {
         },
       ],
     ]);
+    // The exitable target's fee is its assembled envelope's own, read from the simulated bytes.
+    expect([...simulatedFeeStroops.entries()]).toEqual([[POOL, 100n]]);
+  });
+
+  test("an exitable target whose envelope does not parse reports no simulated fee", async () => {
+    const report = await preflightExitTargets(account([supply(POOL)]), "testnet", {
+      rpc,
+      runExitAdapter: async () => {
+        const result = built([step("withdraw", POOL)], POOL);
+        return {
+          ...result,
+          next: { ...result.next!, simulation: { ...result.next!.simulation, txXdr: "not-xdr" } },
+        };
+      },
+    });
+    expect(report.blocked.size).toBe(0);
+    expect(report.simulatedFeeStroops.size).toBe(0);
   });
 
   test("a target that is gone or has no adapter is reported accordingly", async () => {
-    const blockedTargets = await preflightExitTargets(
+    const { blocked: blockedTargets } = await preflightExitTargets(
       account([supply(POOL), xbullAt(POOL_2)]),
       "testnet",
       { rpc, runExitAdapter: async () => blocked(POOL, "exit_position_gone") }

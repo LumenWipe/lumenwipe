@@ -72,6 +72,12 @@ test("computePlanHash ignores decision ordering", () => {
   expect(a).toBe(b);
 });
 
+const NO_FEE_PARTS = {
+  classicStroops: "0",
+  sorobanSimulatedStroops: "0",
+  sorobanBoundStroops: "0",
+};
+
 const DIRECT = { viaMediator: false, decided: true, normalizationFirst: false };
 const EXCHANGE = { viaMediator: true, decided: true, normalizationFirst: false };
 
@@ -198,7 +204,7 @@ test("assemblePlanResponse status: blocked when blockers exist", () => {
     decisionPoints: [],
     planHash: "h",
     execution: DIRECT,
-    estimate: { feeStroops: "100", freedReserveXlm: "1" },
+    estimate: { feeStroops: "100", freedReserveXlm: "1", feeParts: NO_FEE_PARTS },
   });
   expect(res.status).toBe("blocked");
   expect(res.blockers[0].message).toBe("nope");
@@ -213,7 +219,7 @@ test("assemblePlanResponse passes through a blocker's own code", () => {
     decisionPoints: [],
     planHash: "h",
     execution: DIRECT,
-    estimate: { feeStroops: "100", freedReserveXlm: "1" },
+    estimate: { feeStroops: "100", freedReserveXlm: "1", feeParts: NO_FEE_PARTS },
   });
   expect(res.blockers[0].code).toBe("claimable_balance_forfeited");
 });
@@ -224,7 +230,7 @@ test("assemblePlanResponse falls back to the generic code when a blocker has non
     decisionPoints: [],
     planHash: "h",
     execution: DIRECT,
-    estimate: { feeStroops: "100", freedReserveXlm: "1" },
+    estimate: { feeStroops: "100", freedReserveXlm: "1", feeParts: NO_FEE_PARTS },
   });
   expect(res.blockers[0].code).toBe("plan_blocker");
 });
@@ -235,7 +241,7 @@ test("assemblePlanResponse status: needs_decisions when decision points remain",
     decisionPoints: [decisionPoint],
     planHash: "h",
     execution: DIRECT,
-    estimate: { feeStroops: "100", freedReserveXlm: "1" },
+    estimate: { feeStroops: "100", freedReserveXlm: "1", feeParts: NO_FEE_PARTS },
   });
   expect(res.status).toBe("needs_decisions");
 });
@@ -246,7 +252,7 @@ test("assemblePlanResponse status: ready when no blockers and no pending decisio
     decisionPoints: [],
     planHash: "h",
     execution: DIRECT,
-    estimate: { feeStroops: "100", freedReserveXlm: "1" },
+    estimate: { feeStroops: "100", freedReserveXlm: "1", feeParts: NO_FEE_PARTS },
   });
   expect(res.status).toBe("ready");
 });
@@ -257,7 +263,7 @@ test("assemblePlanResponse status: complete when there is nothing to do", () => 
     decisionPoints: [],
     planHash: "h",
     execution: DIRECT,
-    estimate: { feeStroops: "0", freedReserveXlm: "0" },
+    estimate: { feeStroops: "0", freedReserveXlm: "0", feeParts: NO_FEE_PARTS },
   });
   expect(res.status).toBe("complete");
 });
@@ -290,7 +296,7 @@ test("assemblePlanResponse returns every decision point, answered or not", () =>
     pendingDecisionPoints: [all[1]!],
     planHash: "h",
     execution: DIRECT,
-    estimate: { feeStroops: "100", freedReserveXlm: "0.5" },
+    estimate: { feeStroops: "100", freedReserveXlm: "0.5", feeParts: NO_FEE_PARTS },
   });
   expect(res.decisionPoints.map((d) => d.id)).toEqual(["a", "b"]);
   expect(res.status).toBe("needs_decisions");
@@ -304,7 +310,7 @@ test("assemblePlanResponse status: ready once every decision is answered, cards 
     pendingDecisionPoints: [],
     planHash: "h",
     execution: DIRECT,
-    estimate: { feeStroops: "100", freedReserveXlm: "0.5" },
+    estimate: { feeStroops: "100", freedReserveXlm: "0.5", feeParts: NO_FEE_PARTS },
   });
   expect(res.status).toBe("ready");
   expect(res.decisionPoints).toHaveLength(2);

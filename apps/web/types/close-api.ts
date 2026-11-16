@@ -2,7 +2,8 @@ import type { StepType } from "@/types/plan";
 // Re-exported, not copied. This file still duplicates most of the package's close-api types
 // (#68), but DecisionAnswer is where the transfer destination lives, so a divergent local copy
 // would silently drop the field the API refuses the build without.
-export type { ClassicConversionQuote, DecisionAnswer } from "@lumenwipe/types";
+export type { ClassicConversionQuote, DecisionAnswer, PlanEstimate } from "@lumenwipe/types";
+import type { PlanEstimate } from "@lumenwipe/types";
 import type { AccountSigner } from "@/types/account";
 
 export type CloseApiStatus = "ready" | "needs_decisions" | "blocked" | "complete";
@@ -42,7 +43,7 @@ export interface PlanResponse {
   steps: unknown[]; // PlannedStep[] serialized; reuse types/plan PlannedStep
   decisionPoints: DecisionPoint[];
   blockers: { code: string; message: string; helpUrl?: string }[];
-  estimate: { feeStroops: string; freedReserveXlm: string };
+  estimate: PlanEstimate;
   execution: { estimatedTransactionCount: number | null; transactions: ExecutionTxBreakdown[] };
 }
 

@@ -17,6 +17,17 @@ version number before 0.4.0. Neither has a git tag.
 - `ExchangeRegistryEntry` gains optional `network`, set to `"testnet"` on an entry that applies
   on testnet only, as `getExchangeRegistry()` already returns it. An entry without it applies on
   every network.
+- `PlanResponse.estimate` gains `feeParts` (`classicStroops`, `sorobanSimulatedStroops`,
+  `sorobanBoundStroops`), which sum to `feeStroops` and say how each part of it is known. The
+  type is exported as `PlanEstimate`.
+
+### Changed
+
+- `PlanResponse.estimate.feeStroops` counts Soroban resource fees: each DeFi exit's first
+  transaction at its simulated fee when the plan could simulate it, and every other Soroban
+  transaction (token swaps, token transfers, further exit transactions) at a per-transaction
+  bound. It was the classic base fee alone. Each Soroban step's `estimatedFeeLumens` carries its
+  share, so the steps still sum to `feeStroops`.
 
 ## [0.11.0] - 2026-11-09
 

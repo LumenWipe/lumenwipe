@@ -8492,7 +8492,7 @@
           },
           "estimatedFeeLumens": {
             "type": "string",
-            "description": "Estimated fee in XLM, before the step actually builds/submits.",
+            "description": "Estimated fee in XLM, before the step actually builds/submits. A Soroban step (a token move or a DeFi exit) includes its resource fee: from simulation for an exit's first transaction when the plan simulated it, otherwise a per-transaction bound.",
             "example": "0.0000100"
           },
           "txXdr": {
@@ -8693,21 +8693,52 @@
           "message"
         ]
       },
+      "PlanFeePartsDto": {
+        "type": "object",
+        "properties": {
+          "classicStroops": {
+            "type": "string",
+            "description": "The base fee of every classic operation, in stroops."
+          },
+          "sorobanSimulatedStroops": {
+            "type": "string",
+            "description": "Soroban transactions the plan simulated (the first transaction of each DeFi exit it could build): each assembled envelope's total fee, the most the network may charge it, in stroops."
+          },
+          "sorobanBoundStroops": {
+            "type": "string",
+            "description": "Soroban transactions the plan did not simulate, at a per-transaction bound that leans high, in stroops: 1,000,000 for a token swap or a token not decided yet, 100,000 for a token transfer and for each DeFi exit transaction without a simulation."
+          }
+        },
+        "required": [
+          "classicStroops",
+          "sorobanSimulatedStroops",
+          "sorobanBoundStroops"
+        ]
+      },
       "PlanEstimateDto": {
         "type": "object",
         "properties": {
           "feeStroops": {
             "type": "string",
-            "description": "Estimated total fee across every transaction, in stroops."
+            "description": "Estimated total fee across every transaction, in stroops: the sum of the steps' fees and of `feeParts`, Soroban resource fees included."
           },
           "freedReserveXlm": {
             "type": "string",
             "description": "Estimated XLM freed by removing subentries, in XLM."
+          },
+          "feeParts": {
+            "description": "How each part of `feeStroops` is known.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PlanFeePartsDto"
+              }
+            ]
           }
         },
         "required": [
           "feeStroops",
-          "freedReserveXlm"
+          "freedReserveXlm",
+          "feeParts"
         ]
       },
       "ExecutionTxBreakdownDto": {

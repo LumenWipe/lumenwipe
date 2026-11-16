@@ -77,6 +77,16 @@ export interface ExitPreflight {
   blocked: ReadonlyMap<string, ExitTargetBlock>;
   /** Targets, by contract, the user explicitly chose to leave behind. */
   leftBehind: ReadonlySet<string>;
+  /** Targets, by contract, whose first exit transaction the plan simulated: that envelope's
+   *  total fee in stroops, the most the network may charge it. */
+  simulatedFeeStroops?: ReadonlyMap<string, bigint>;
+}
+
+/** An exit step's fee: the simulated envelope for its first transaction when the plan has one,
+ *  the per-transaction bound for every other. */
+export function exitStepFeeStroops(count: number, simulated: bigint | undefined): bigint {
+  const bound = BigInt(SOROBAN_EXIT_FEE_ESTIMATE_STROOPS);
+  return simulated === undefined ? bound * BigInt(count) : simulated + bound * BigInt(count - 1);
 }
 
 export interface LeavableExitTarget {
@@ -203,7 +213,9 @@ export function planExitSteps(
         `Leave ${where}: settle any debt first, then withdraw ${count} position${count === 1 ? "" : "s"}. ` +
         "Each step is its own transaction, simulated against live state before you sign it.",
       operationCount: count,
-      estimatedFeeLumens: stroopsToXlm(SOROBAN_EXIT_FEE_ESTIMATE_STROOPS * count),
+      estimatedFeeLumens: stroopsToXlm(
+        exitStepFeeStroops(count, preflight.simulatedFeeStroops?.get(target.contract))
+      ),
       txXdr: null,
       status: "pending",
       txHash: null,

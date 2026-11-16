@@ -289,7 +289,11 @@ function plan(status: PlanResponse["status"], blockers: PlanResponse["blockers"]
     steps: [],
     decisionPoints: [],
     blockers,
-    estimate: { feeStroops: "0", freedReserveXlm: "0" },
+    estimate: {
+      feeStroops: "0",
+      freedReserveXlm: "0",
+      feeParts: { classicStroops: "0", sorobanSimulatedStroops: "0", sorobanBoundStroops: "0" },
+    },
     execution: { estimatedTransactionCount: 1, transactions: [] },
   } satisfies PlanResponse;
 }

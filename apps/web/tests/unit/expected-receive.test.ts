@@ -96,7 +96,6 @@ test("a token swap adds its minimum, not its quote", () => {
     input({ conversions: [tokenSwap], dispositions: { [TOKEN]: "convert" } })
   );
   expect(result.swapStroops).toBe("30000000");
-  expect(result.tokenSwaps).toBe(1);
   expect(result.totalStroops).toBe("154999500");
   expect(result.estimated).toBe(true);
   expectLinesSum(result);

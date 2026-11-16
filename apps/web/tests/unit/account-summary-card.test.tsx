@@ -89,12 +89,9 @@ test("with a swap or a claim the note says the figure counts swap minimums", () 
 
 test("what the figure leaves out is said under it", () => {
   const account = baseAccount();
-  renderCard(
-    account,
-    expectedFor(account, { leavesOutDefiExits: true, unquotedSwaps: 2, tokenSwaps: 1 })
-  );
+  renderCard(account, expectedFor(account, { leavesOutDefiExits: true, unquotedSwaps: 2 }));
   expect(screen.getByText(/leaves out 2 swaps that have no estimate/)).toBeTruthy();
-  expect(screen.getByText(/leaves out the Soroban resource fee each token swap pays/)).toBeTruthy();
+  expect(screen.queryByText(/Soroban resource fee/)).toBeNull();
   expect(
     screen.getByText(/leaves out any XLM that exiting your DeFi positions pays out/)
   ).toBeTruthy();

@@ -151,7 +151,11 @@ function outcomesPlan(decided: boolean): PlanResponse {
       step(1, "REMOVE_TRUSTLINES", "Remove trustlines"),
       { ...MERGE_STEP, index: 2 },
     ],
-    estimate: { feeStroops: "300", freedReserveXlm: "2" },
+    estimate: {
+      feeStroops: "300",
+      freedReserveXlm: "2",
+      feeParts: { classicStroops: "300", sorobanSimulatedStroops: "0", sorobanBoundStroops: "0" },
+    },
     execution: { estimatedTransactionCount: 2, transactions: [] },
     decisionPoints: [
       {
@@ -280,7 +284,11 @@ function plan(): PlanResponse {
     steps: [MERGE_STEP],
     decisionPoints: [],
     blockers: [],
-    estimate: { feeStroops: "100", freedReserveXlm: "1" },
+    estimate: {
+      feeStroops: "100",
+      freedReserveXlm: "1",
+      feeParts: { classicStroops: "100", sorobanSimulatedStroops: "0", sorobanBoundStroops: "0" },
+    },
     execution: { estimatedTransactionCount: 1, transactions: [{ order: 0, covers: ["MERGE"] }] },
   };
 }
@@ -492,7 +500,6 @@ export const ESTIMATE: RecoveryEstimate = {
     feeStroops: "600",
     convertedAssets: 2,
     unquotedSwaps: 1,
-    tokenSwaps: 1,
     unconvertibleAssets: 1,
     leavesOutDefiExits: true,
     blockers: 1,

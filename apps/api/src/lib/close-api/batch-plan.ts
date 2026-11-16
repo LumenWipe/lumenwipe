@@ -22,7 +22,11 @@ export interface BatchPlanDeps {
 
 export const defaultBatchPlanDeps = (): BatchPlanDeps => ({ buildAccountPlan });
 
-const BLOCKED_ESTIMATE = { feeStroops: "0", freedReserveXlm: "0.0000000" } as const;
+const BLOCKED_ESTIMATE = {
+  feeStroops: "0",
+  freedReserveXlm: "0.0000000",
+  feeParts: { classicStroops: "0", sorobanSimulatedStroops: "0", sorobanBoundStroops: "0" },
+} as const;
 
 /**
  * Maps through the same table `CloseController.plan()` answers from, so a batch result and a

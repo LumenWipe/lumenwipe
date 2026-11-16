@@ -16,7 +16,7 @@ import type {
 import type { SponsorshipAffordability } from "@/lib/stellar/sponsorship-affordability";
 import { assessDefiPositionsGate } from "@/lib/defi-positions/positions-gate";
 import { planExitSteps, type ExitPreflight } from "@/lib/defi-exits/plan-exits";
-import { estimateFeeLumens } from "@/lib/utils/amounts";
+import { estimateFeeLumens, stroopsToXlm } from "@/lib/utils/amounts";
 import {
   claimStatus,
   claimableFromEpoch,
@@ -31,6 +31,7 @@ import {
   closeFeeShortMessage,
   laterOwnFeesStroops,
   ownFeeShortfallStroops,
+  tokenRoundFeeBoundStroops,
   tokenRoundsAhead,
   trustlineReserveShortfallStroops,
   trustlineShortfallNote,
@@ -597,6 +598,7 @@ export function buildPlan(
       steps.push(
         step(idx++, "HANDLE_ASSETS", labels.title, labels.description, labels.operationCount, {
           affectedAsset: token.contract,
+          estimatedFeeLumens: stroopsToXlm(tokenRoundFeeBoundStroops(dispositions[token.contract])),
         })
       );
     }

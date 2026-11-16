@@ -359,7 +359,7 @@ describe("the exit round repays from the account's ledger-confirmed Soroban toke
 
   /** The plan's preflight builds the same context the round does and keeps the adapter's code. */
   async function refusal(state: AccountState): Promise<string | undefined> {
-    return (await preflightExitTargets(state, "testnet", deps)).get(VAULT)?.code;
+    return (await preflightExitTargets(state, "testnet", deps)).blocked.get(VAULT)?.code;
   }
 
   test("a sufficient balance of the vault's Wasm stablecoin builds the full repay", async () => {

@@ -205,7 +205,6 @@ test("the expected receive is held to the stored floors, not to a quote that ros
     claimStroops: "0",
     estimated: true,
     unquotedSwaps: 0,
-    tokenSwaps: 0,
     flaggedSwaps: 0,
     leavesOutDefiExits: false,
   };

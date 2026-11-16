@@ -28,13 +28,8 @@ export function estimateNote(expected: ExpectedReceive): string {
         : `${expected.flaggedSwaps} swaps you confirmed were flagged on their cards: they may deliver much less than the current market price suggests.`
     );
   }
-  if (expected.tokenSwaps > 0) {
-    parts.push("It leaves out the Soroban resource fee each token swap pays.");
-  }
   if (expected.leavesOutDefiExits) {
-    parts.push(
-      "It leaves out any XLM that exiting your DeFi positions pays out, and the fees those exits pay."
-    );
+    parts.push("It leaves out any XLM that exiting your DeFi positions pays out.");
   }
   return parts.join(" ");
 }

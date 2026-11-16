@@ -35,7 +35,6 @@ function expected(totalStroops: string): ExpectedReceive {
     claimStroops: "0",
     estimated: false,
     unquotedSwaps: 0,
-    tokenSwaps: 0,
     flaggedSwaps: 0,
     leavesOutDefiExits: false,
   };

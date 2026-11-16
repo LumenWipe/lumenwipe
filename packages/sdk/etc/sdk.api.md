@@ -1058,6 +1058,19 @@ export interface PlanBlocker {
     message: string;
 }
 
+// @public
+export interface PlanEstimate {
+    // (undocumented)
+    feeParts: {
+        classicStroops: string;
+        sorobanSimulatedStroops: string;
+        sorobanBoundStroops: string;
+    };
+    feeStroops: string;
+    // (undocumented)
+    freedReserveXlm: string;
+}
+
 // @public (undocumented)
 export interface PlannedStep {
     actualFeeLumens?: string;
@@ -1099,10 +1112,7 @@ export interface PlanResponse {
     // (undocumented)
     decisionPoints: DecisionPoint[];
     // (undocumented)
-    estimate: {
-        feeStroops: string;
-        freedReserveXlm: string;
-    };
+    estimate: PlanEstimate;
     execution: {
         estimatedTransactionCount: number | null;
         transactions: ExecutionTxBreakdown[];

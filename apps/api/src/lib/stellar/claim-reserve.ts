@@ -4,6 +4,7 @@ import {
   BASE_FEE_STROOPS,
   BASE_RESERVE_XLM,
   SOROBAN_EXIT_FEE_ESTIMATE_STROOPS,
+  SOROBAN_SWAP_FEE_ESTIMATE_STROOPS,
 } from "@/config/constants";
 import { stroopsToFixedXlm, xlmToStroops } from "@/lib/utils/amounts";
 import { normalizesSignersFirst } from "@/lib/stellar/tx-builder/signers";
@@ -81,6 +82,19 @@ function classicOpsBound(state: AccountState): number {
     state.sponsoredEntries.length +
     1
   );
+}
+
+/**
+ * The fee bound for the Soroban transaction that moves one held token, by its answer: a swap's
+ * bound for `convert` and for a token not decided yet (it may still be converted), the
+ * per-transaction bound for a transfer, nothing for `leave`.
+ */
+export function tokenRoundFeeBoundStroops(disposition: string | undefined): bigint {
+  if (disposition === "leave") return 0n;
+  if (disposition === undefined || disposition === "convert") {
+    return BigInt(SOROBAN_SWAP_FEE_ESTIMATE_STROOPS);
+  }
+  return BigInt(SOROBAN_EXIT_FEE_ESTIMATE_STROOPS);
 }
 
 /** Soroban token balances the close will move: held, and not answered `leave`. */

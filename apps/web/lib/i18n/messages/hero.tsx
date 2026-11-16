@@ -62,7 +62,6 @@ const en = {
         `${count(n, "asset", "assets")} had no quote and count as zero.`,
       unconvertible: (n: number): string =>
         `${count(n, "asset has", "assets have")} no route to XLM and ${n === 1 ? "is" : "are"} not counted.`,
-      tokenSwaps: "Token conversions pay a network fee the high figure does not include.",
       defiExits: "XLM paid out by exiting DeFi positions is not counted.",
     },
     announcement: (range: string, blockers: string, caveat: string): string =>

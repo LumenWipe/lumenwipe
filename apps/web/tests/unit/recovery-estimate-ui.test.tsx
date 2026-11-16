@@ -20,7 +20,6 @@ function estimate(over: Partial<RecoveryEstimate["range"]> = {}): RecoveryEstima
       feeStroops: "600",
       convertedAssets: 2,
       unquotedSwaps: 0,
-      tokenSwaps: 0,
       unconvertibleAssets: 0,
       leavesOutDefiExits: false,
       blockers: 0,
@@ -168,7 +167,6 @@ test("no sentence of the estimate makes a claim about a close", async () => {
       blockers: 1,
       unquotedSwaps: 2,
       unconvertibleAssets: 2,
-      tokenSwaps: 1,
       leavesOutDefiExits: true,
     })
   );
