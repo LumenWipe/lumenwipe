@@ -1,5 +1,7 @@
 "use client";
 
+import { formatNumber } from "@/lib/i18n/format";
+import { SITE_LOCALE } from "@/lib/i18n/locale";
 import { useEffect, useRef, useState } from "react";
 import { stroopsToXlm } from "@/lib/utils/amounts";
 import type { FeedData } from "@/hooks/useFeed";
@@ -72,20 +74,27 @@ export default function StatsHero({ feed }: { feed: FeedData | null }) {
   const xlmAnimated = useCountUp(Math.round(xlmNum));
 
   const avg =
-    mainnetCount > 0 ? (parseFloat(stroopsToXlm(xlmStroops)) / mainnetCount).toFixed(1) : null;
+    mainnetCount > 0
+      ? formatNumber(SITE_LOCALE, parseFloat(stroopsToXlm(xlmStroops)) / mainnetCount, {
+          minimumFractionDigits: 1,
+          maximumFractionDigits: 1,
+        })
+      : null;
 
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
       <StatCard
         label="Accounts closed on mainnet"
-        value={feed ? mainnetClosedCount.toLocaleString() : null}
+        value={feed ? formatNumber(SITE_LOCALE, mainnetClosedCount) : null}
         sub={
-          feed ? `Testnet, counted separately: ${testnetClosedCount.toLocaleString()}` : undefined
+          feed
+            ? `Testnet, counted separately: ${formatNumber(SITE_LOCALE, testnetClosedCount)}`
+            : undefined
         }
       />
       <StatCard
         label="XLM recovered on mainnet"
-        value={feed ? `${xlmAnimated.toLocaleString()} XLM` : null}
+        value={feed ? `${formatNumber(SITE_LOCALE, xlmAnimated)} XLM` : null}
         sub="From reserves released on-chain"
         accent="value"
       />

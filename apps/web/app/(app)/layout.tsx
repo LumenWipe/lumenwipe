@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
 import RootDocument from "@/app/root-document";
+import { SITE_LOCALE } from "@/lib/i18n/locale";
 import { ROOT_METADATA, ROOT_VIEWPORT } from "@/lib/site/root-metadata";
 
 export const viewport: Viewport = ROOT_VIEWPORT;
@@ -11,5 +12,9 @@ export const metadata: Metadata = ROOT_METADATA;
  *  proxy.ts put in the request. */
 export default async function AppRootLayout({ children }: { children: React.ReactNode }) {
   const nonce = (await headers()).get("x-nonce") ?? undefined;
-  return <RootDocument nonce={nonce}>{children}</RootDocument>;
+  return (
+    <RootDocument locale={SITE_LOCALE} nonce={nonce}>
+      {children}
+    </RootDocument>
+  );
 }

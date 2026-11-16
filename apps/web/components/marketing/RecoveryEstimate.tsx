@@ -9,62 +9,51 @@ import {
   formatXlmDown,
   type RecoveryEstimate as Estimate,
 } from "@/lib/api/estimate-client";
+import { formatDate } from "@/lib/i18n/format";
+import { SITE_LOCALE } from "@/lib/i18n/locale";
+import { HERO } from "@/lib/i18n/messages/hero";
 
-export const ESTIMATE_CAVEAT = "Estimate, not a promise: fees and market quotes change";
+const T = HERO[SITE_LOCALE].estimate;
+
+export const ESTIMATE_CAVEAT = T.caveat;
 
 type Read =
   { kind: "pending" } | { kind: "ready"; estimate: Estimate } | { kind: "failed"; message: string };
 
-function count(n: number, one: string, many: string): string {
-  return `${n} ${n === 1 ? one : many}`;
-}
-
 function rangeText({ lowStroops, highStroops }: Estimate["range"]): string {
   const low = formatXlmDown(lowStroops);
   const high = formatXlmDown(highStroops);
-  return low === high ? `About ${low} XLM` : `${low} to ${high} XLM`;
-}
-
-function blockerText(blockers: number): string {
-  return blockers === 0
-    ? "No items found that would block a close."
-    : `${count(blockers, "item", "items")} would block a close until resolved.`;
+  return low === high ? T.about(low) : T.range(low, high);
 }
 
 /** The assumptions behind the figures, each shown only when it applies to this read. */
 function assumptions(range: Estimate["range"]): string[] {
-  const lines = [
-    "Low: the XLM balance less estimated network fees, with no conversions.",
-    "High: adds the minimum quoted for converting other assets to XLM, and any XLM claimable balances. Quotes move with the market.",
-    "Fees include the extra network fee an exchange destination needs.",
-  ];
+  const lines = [T.assumptions.low, T.assumptions.high, T.assumptions.exchangeFee];
   if (range.unquotedSwaps > 0) {
-    lines.push(`${count(range.unquotedSwaps, "asset", "assets")} had no quote and count as zero.`);
+    lines.push(T.assumptions.unquoted(range.unquotedSwaps));
   }
   if (range.unconvertibleAssets > 0) {
-    lines.push(
-      `${count(range.unconvertibleAssets, "asset has", "assets have")} no route to XLM and ${range.unconvertibleAssets === 1 ? "is" : "are"} not counted.`
-    );
+    lines.push(T.assumptions.unconvertible(range.unconvertibleAssets));
   }
   if (range.tokenSwaps > 0) {
-    lines.push("Token conversions pay a network fee the high figure does not include.");
+    lines.push(T.assumptions.tokenSwaps);
   }
   if (range.leavesOutDefiExits) {
-    lines.push("XLM paid out by exiting DeFi positions is not counted.");
+    lines.push(T.assumptions.defiExits);
   }
   return lines;
 }
 
 /** The sentence the hero's live region reads for this outcome. */
 export function estimateAnnouncement(read: Read): string {
-  if (read.kind === "pending") return "Reading the account.";
+  if (read.kind === "pending") return T.readingAnnouncement;
   if (read.kind === "failed") return read.message;
   const { range } = read.estimate;
-  return `Estimated recovery: ${rangeText(range)}. ${blockerText(range.blockers)} ${ESTIMATE_CAVEAT}.`;
+  return T.announcement(rangeText(range), T.blockers(range.blockers), ESTIMATE_CAVEAT);
 }
 
 function readTime(readAt: string): string {
-  return new Date(readAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return formatDate(SITE_LOCALE, readAt, { hour: "2-digit", minute: "2-digit" });
 }
 
 /**
@@ -111,12 +100,10 @@ export default function RecoveryEstimate({
       className="mt-4 rounded-2xl border border-line-strong bg-white/[0.03] p-5 text-left"
     >
       <h2 id={headingId} className="text-sm font-semibold text-white">
-        Recovery estimate
+        {T.heading}
       </h2>
 
-      {read.kind === "pending" && (
-        <p className="mt-2 text-sm text-fg-muted">Reading the account…</p>
-      )}
+      {read.kind === "pending" && <p className="mt-2 text-sm text-fg-muted">{T.reading}</p>}
 
       {read.kind === "failed" && <p className="mt-2 text-sm text-fg-muted">{read.message}</p>}
 
@@ -126,11 +113,12 @@ export default function RecoveryEstimate({
             {rangeText(read.estimate.range)}
           </p>
           <p className="mt-1 text-xs text-fg-subtle">
-            Read at <time dateTime={read.estimate.readAt}>{readTime(read.estimate.readAt)}</time>{" "}
-            from the public ledger. No wallet, no signing.
+            {T.readAt(
+              <time dateTime={read.estimate.readAt}>{readTime(read.estimate.readAt)}</time>
+            )}
           </p>
           <p className="mt-3 text-sm font-medium text-white">{ESTIMATE_CAVEAT}</p>
-          <p className="mt-2 text-sm text-fg-muted">{blockerText(read.estimate.range.blockers)}</p>
+          <p className="mt-2 text-sm text-fg-muted">{T.blockers(read.estimate.range.blockers)}</p>
           <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-fg-muted">
             {assumptions(read.estimate.range).map((line) => (
               <li key={line}>{line}</li>
@@ -145,7 +133,7 @@ export default function RecoveryEstimate({
           onClick={onContinue}
           className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-accent hover:underline"
         >
-          Continue to close
+          {T.continue}
           <ArrowRight className="h-4 w-4" />
         </button>
       )}

@@ -1,5 +1,7 @@
 "use client";
 
+import { formatNumber, TWO_DECIMALS } from "@/lib/i18n/format";
+import { SITE_LOCALE } from "@/lib/i18n/locale";
 import { useState } from "react";
 import { stroopsToXlm } from "@/lib/utils/amounts";
 import { SE_EXPLORER_BASE } from "@/config/networks";
@@ -188,11 +190,7 @@ export default function DistributionStrip({ feed }: { feed: FeedData | null }) {
           >
             <div className="flex flex-col gap-1 rounded-xl border border-white/15 bg-surface/95 px-3 py-2 shadow-xl backdrop-blur">
               <span className="mkt-mono text-label text-white">
-                {hovered.xlm.toLocaleString("en-US", {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}{" "}
-                XLM
+                {formatNumber(SITE_LOCALE, hovered.xlm, TWO_DECIMALS)} XLM
               </span>
               <a
                 href={`${SE_EXPLORER_BASE[hovered.record.network]}/tx/${hovered.record.txHash}`}

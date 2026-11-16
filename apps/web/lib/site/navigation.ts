@@ -1,3 +1,6 @@
+import { SITE_LOCALE } from "@/lib/i18n/locale";
+import { NAV } from "@/lib/i18n/messages/nav";
+
 export interface SiteLink {
   href: string;
   label: string;
@@ -9,19 +12,21 @@ export const DOCS_URL = "https://docs.lumenwipe.com";
 export const PLAYGROUND_URL = "https://playground.lumenwipe.com";
 export const APP_HREF = "/mainnet";
 
+const LABEL = NAV[SITE_LOCALE].links;
+
 /** The primary navigation, in the order a first-time visitor asks: what it does, whether it is
  *  safe, where to learn more, and where to try it. */
 export const PRIMARY_LINKS: readonly SiteLink[] = [
-  { href: "/how-it-works", label: "How it works" },
-  { href: "/security", label: "Security" },
-  { href: "/content", label: "Guides" },
-  { href: PLAYGROUND_URL, label: "Playground", external: true },
+  { href: "/how-it-works", label: LABEL.howItWorks },
+  { href: "/security", label: LABEL.security },
+  { href: "/content", label: LABEL.guides },
+  { href: PLAYGROUND_URL, label: LABEL.playground, external: true },
 ];
 
 export const DEVELOPER_LINKS: readonly SiteLink[] = [
-  { href: "/api-keys", label: "API keys" },
-  { href: DOCS_URL, label: "Docs", external: true },
-  { href: GITHUB_URL, label: "GitHub", external: true },
+  { href: "/api-keys", label: LABEL.apiKeys },
+  { href: DOCS_URL, label: LABEL.docs, external: true },
+  { href: GITHUB_URL, label: LABEL.github, external: true },
 ];
 
 /** Whether `pathname` is the page `link` leads to. Guides covers the blog it lists. */

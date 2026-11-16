@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Toaster } from "sonner";
 import RedactedAnalytics from "@/components/analytics/RedactedAnalytics";
 import { UMAMI_BEFORE_SEND, UMAMI_BEFORE_SEND_SCRIPT } from "@/lib/analytics/redact";
+import { LOCALE_TAGS, type Locale } from "@/lib/i18n/locale";
 import { siteFontVars } from "./fonts";
 import "./globals.css";
 
@@ -10,9 +11,17 @@ import "./globals.css";
  * marketing pages are prerendered without one, and the build hashes their inline scripts instead
  * (scripts/marketing-csp.mjs).
  */
-export default function RootDocument({ nonce, children }: { nonce?: string; children: ReactNode }) {
+export default function RootDocument({
+  locale,
+  nonce,
+  children,
+}: {
+  locale: Locale;
+  nonce?: string;
+  children: ReactNode;
+}) {
   return (
-    <html lang="en" className="dark">
+    <html lang={LOCALE_TAGS[locale].html} className="dark">
       <head>
         {process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID && (
           <>

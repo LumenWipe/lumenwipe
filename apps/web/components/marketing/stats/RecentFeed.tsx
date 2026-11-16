@@ -1,5 +1,7 @@
 "use client";
 
+import { formatNumber, TWO_DECIMALS } from "@/lib/i18n/format";
+import { SITE_LOCALE } from "@/lib/i18n/locale";
 import { ExternalLink } from "lucide-react";
 import { stroopsToXlm } from "@/lib/utils/amounts";
 import { SE_EXPLORER_BASE } from "@/config/networks";
@@ -20,7 +22,7 @@ function timeAgo(timestamp: string): string {
 function fmtXlm(stroops: string): string {
   const n = parseFloat(stroopsToXlm(stroops));
   if (isNaN(n)) return "-";
-  return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return formatNumber(SITE_LOCALE, n, TWO_DECIMALS);
 }
 
 function SkeletonRow() {

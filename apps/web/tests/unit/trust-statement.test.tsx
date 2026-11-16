@@ -68,6 +68,7 @@ describe("no surface overstates the trust model", () => {
     for (const file of [
       ["app", "root-document.tsx"],
       ["lib", "site", "root-metadata.ts"],
+      ["lib", "i18n", "messages", "site.ts"],
       ["lib", "site", "structured-data.ts"],
     ]) {
       expect(overclaims(readFileSync(join(WEB, ...file), "utf8"))).toEqual([]);

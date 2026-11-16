@@ -811,7 +811,7 @@ const SANCTIONED: Record<string, Partial<Record<ClaimKey, Site>>> = {
     "may-be-sent": { count: 1, shownBy: "route error page" },
     "nothing-sent": { count: 1, shownBy: "route error page" },
   },
-  "components/marketing/NotFoundView.tsx": {
+  "lib/i18n/messages/not-found.ts": {
     "account-closed": { count: 1, shownBy: OUTSIDE.notFound },
   },
   "components/complete/CompletionReceipt.tsx": {
@@ -837,7 +837,7 @@ const SANCTIONED: Record<string, Partial<Record<ClaimKey, Site>>> = {
   "components/account-entry/SecretKeyInput.tsx": {
     "key-stays-in-browser": { count: 2, shownBy: "execute secret key field" },
   },
-  "components/marketing/Faq.tsx": {
+  "lib/i18n/messages/faq.tsx": {
     "key-stays-in-browser": { count: 1, shownBy: OUTSIDE.marketing },
   },
   "components/execution/ExecutionWizard.tsx": {

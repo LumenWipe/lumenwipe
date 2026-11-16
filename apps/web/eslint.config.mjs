@@ -67,6 +67,7 @@ const MARKETING = [
   "app/(app)/api-keys/**/*.{ts,tsx}",
   "components/marketing/**/*.{ts,tsx}",
   "components/blog/**/*.{ts,tsx}",
+  "lib/i18n/messages/**/*.{ts,tsx}",
 ];
 
 const marketingTextFloor = bannedClass(
@@ -78,6 +79,82 @@ const goldFill = bannedClass(
   "text-value-fg(?![\\w-])",
   "text-value-fg is the text on a gold fill, and marketing has no gold control. Use Button for an action."
 );
+
+// Files whose user-facing copy is read from the locale dictionary (lib/i18n/messages), and must
+// stay that way (docs/contributing/localization.mdx).
+export const DICTIONARY_COPY = [
+  "app/(marketing)/layout.tsx",
+  "app/(marketing)/not-found.tsx",
+  "app/(marketing)/page.tsx",
+  "app/(marketing)/faq/page.tsx",
+  "app/global-not-found.tsx",
+  "components/marketing/Faq.tsx",
+  "components/marketing/FaqAccordion.tsx",
+  "components/marketing/HeroAccountInput.tsx",
+  "components/marketing/HeroConsole.tsx",
+  "components/marketing/MarketingFooter.tsx",
+  "components/marketing/MarketingNav.tsx",
+  "components/marketing/MarketingShell.tsx",
+  "components/marketing/NotFoundView.tsx",
+  "components/marketing/RecoveryEstimate.tsx",
+  "components/marketing/Reveal.tsx",
+  "lib/site/navigation.ts",
+  "lib/site/numbers.ts",
+  "lib/site/pages.ts",
+  "lib/site/root-metadata.ts",
+  "lib/site/status.ts",
+  "lib/site/trust.ts",
+];
+
+const COPY_MESSAGE =
+  "User-facing copy on these pages is read from the locale dictionary. Add it to lib/i18n/messages and read it from there.";
+
+const WORD = "[A-Za-z]{2}";
+const TEXT_ATTRIBUTE =
+  "JSXAttribute[name.name=/^(?:alt|title|label|placeholder|aria-label|aria-description|aria-roledescription|aria-valuetext|aria-placeholder)$/]";
+const CHILD = ":matches(JSXElement, JSXFragment) > JSXExpressionContainer";
+
+/** A literal shown as it is in `container`: the expression itself, a branch of a ternary, or the
+ *  right of `&&`, never a comparison or a call argument. */
+function shownLiterals(container) {
+  const positions = [
+    "",
+    " > ConditionalExpression > .consequent",
+    " > ConditionalExpression > .alternate",
+    " > LogicalExpression > .right",
+  ];
+  return positions.flatMap((position) => {
+    const at = position ? `${container}${position}` : `${container} > *`;
+    return [
+      `${at}:matches(Literal[value=/${WORD}/])`,
+      `${at}:matches(TemplateLiteral) > TemplateElement[value.raw=/${WORD}/]`,
+    ];
+  });
+}
+
+// Prose: three words in a row. Class lists, import paths, directives and error messages are not
+// shown to a reader.
+const PROSE = "[A-Za-z]+ [A-Za-z]+ [A-Za-z]+";
+const NOT_SHOWN =
+  ":not(JSXAttribute[name.name=/[cC]lassName$/] *, CallExpression[callee.name=/^(?:cn|clsx|cva)$/] *, ImportDeclaration *, ExportNamedDeclaration > Literal, ExportAllDeclaration > Literal, NewExpression[callee.name=/Error$/] *, ExpressionStatement[directive] > Literal)";
+
+const hardCodedCopy = [
+  `JSXText[value=/^(?!\\s*XLM\\s*$)[\\s\\S]*${WORD}/]`,
+  ...shownLiterals(`${TEXT_ATTRIBUTE} > JSXExpressionContainer`),
+  `${TEXT_ATTRIBUTE} > Literal[value=/${WORD}/]`,
+  ...shownLiterals(CHILD),
+  `CallExpression[callee.name="pageMetadata"] Property[key.name=/^(?:title|description)$/] > :matches(Literal, TemplateLiteral)`,
+  `Literal[value=/${PROSE}/]${NOT_SHOWN}`,
+  `TemplateElement[value.raw=/${PROSE}/]${NOT_SHOWN}`,
+].map((selector) => ({ selector, message: COPY_MESSAGE }));
+
+const marketingSyntax = [
+  ...dimWhiteText,
+  ...marketingTextFloor,
+  ...rawStyling,
+  ...goldAction,
+  ...goldFill,
+];
 
 const config = [
   { ignores: [".next/**", "node_modules/**", "next-env.d.ts"] },
@@ -134,16 +211,15 @@ const config = [
   },
   {
     files: MARKETING,
-    rules: {
-      "no-restricted-syntax": [
-        "error",
-        ...dimWhiteText,
-        ...marketingTextFloor,
-        ...rawStyling,
-        ...goldAction,
-        ...goldFill,
-      ],
-    },
+    rules: { "no-restricted-syntax": ["error", ...marketingSyntax] },
+  },
+  {
+    files: DICTIONARY_COPY.filter((file) => !file.startsWith("lib/")),
+    rules: { "no-restricted-syntax": ["error", ...marketingSyntax, ...hardCodedCopy] },
+  },
+  {
+    files: DICTIONARY_COPY.filter((file) => file.startsWith("lib/")),
+    rules: { "no-restricted-syntax": ["error", ...hardCodedCopy] },
   },
   {
     files: ["components/ui/**/*.{ts,tsx}"],

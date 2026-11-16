@@ -6,12 +6,15 @@ import Faq, { ITEMS } from "@/components/marketing/Faq";
 import JsonLd from "@/components/seo/JsonLd";
 import { faqJsonLd } from "@/lib/site/structured-data";
 import { Button } from "@/components/ui/button";
+import { SITE_LOCALE } from "@/lib/i18n/locale";
+import { FAQ } from "@/lib/i18n/messages/faq";
+
+const T = FAQ[SITE_LOCALE];
 
 export const metadata: Metadata = pageMetadata({
   path: "/faq",
-  title: "FAQ",
-  description:
-    "Answers to the common questions about closing a Stellar account with LumenWipe: non-custodial signing, irreversibility, exchange merges, Soroban DeFi, supported wallets and resumable sessions.",
+  title: T.page.title,
+  description: T.page.description,
 });
 
 export default function FaqPage() {
@@ -21,14 +24,10 @@ export default function FaqPage() {
       <div className="text-center">
         <span className="mkt-eyebrow inline-flex items-center gap-2 text-fg-muted">
           <span className="h-px w-5 bg-accent/60" />
-          FAQ
+          {T.eyebrow}
         </span>
-        <h1 className="mkt-display mt-4 text-4xl font-bold text-white sm:text-5xl">
-          Questions, answered.
-        </h1>
-        <p className="mx-auto mt-4 max-w-xl text-white/70">
-          Closing an account is irreversible. Here&apos;s exactly how LumenWipe keeps it safe.
-        </p>
+        <h1 className="mkt-display mt-4 text-4xl font-bold text-white sm:text-5xl">{T.heading}</h1>
+        <p className="mx-auto mt-4 max-w-xl text-white/70">{T.lede}</p>
       </div>
 
       <div className="mt-12">
@@ -38,13 +37,13 @@ export default function FaqPage() {
       <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
         <Button asChild size="lg" className="group">
           <Link href="/mainnet">
-            Open the app
+            {T.page.openApp}
             <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
           </Link>
         </Button>
         <Button asChild size="lg" variant="secondary">
           <a href="https://docs.lumenwipe.com" target="_blank" rel="noopener noreferrer">
-            Read the documentation
+            {T.page.docs}
           </a>
         </Button>
       </div>

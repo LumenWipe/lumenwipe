@@ -1,11 +1,15 @@
 import type { Metadata, MetadataRoute } from "next";
+import { LOCALE_TAGS, SITE_LOCALE } from "@/lib/i18n/locale";
+import { SITE } from "@/lib/i18n/messages/site";
 import { siteUrl } from "@/lib/site/url";
+
+const COPY = SITE[SITE_LOCALE].metadata;
 
 export const SITE_NAME = "LumenWipe";
 
 /** The home page's title, the only one that names the brand itself: the root layout's template
  *  appends it to every other page's name. */
-export const HOME_TITLE = "LumenWipe: Recover the XLM locked in your Stellar account";
+export const HOME_TITLE = COPY.homeTitle;
 
 export interface ShareImage {
   url: string;
@@ -19,7 +23,7 @@ export const SHARE_IMAGE: ShareImage = {
   url: "/opengraph-image",
   width: 1200,
   height: 630,
-  alt: "LumenWipe: an example close plan and the XLM it recovers",
+  alt: COPY.shareImageAlt,
 };
 
 /** A blog post's own share image, generated from its title. */
@@ -86,7 +90,7 @@ export function pageMetadata({
       description,
       url,
       siteName: SITE_NAME,
-      locale: "en_US",
+      locale: LOCALE_TAGS[SITE_LOCALE].openGraph,
       images: [shareImage],
     },
     twitter: { card: "summary_large_image", title: fullTitle, description, images: [shareImage] },
