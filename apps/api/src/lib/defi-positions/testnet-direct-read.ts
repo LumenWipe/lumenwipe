@@ -1146,10 +1146,49 @@ function probedEntries(entries: ContractRegistryEntry[]): ContractRegistryEntry[
   });
 }
 
-export async function detectDefiPositionsViaDirectRead(
+type SweepsInFlight = Map<string, Promise<DefiPositionsResult>>;
+
+/** Sweeps running now, by reader, then registry, then network and address. Nothing is kept once a
+ *  sweep settles: this shares a sweep between concurrent requests, it never caches one. */
+const sweepsInFlight = new WeakMap<LedgerReader, WeakMap<object, SweepsInFlight>>();
+const BUNDLED_REGISTRY = {};
+
+/**
+ * Concurrent detections of one account on one network against the same reader and registry share
+ * a single sweep, so an analysis and a plan read together cost one. Every caller gets its own copy
+ * of the result, and a sweep that fails fails every caller sharing it.
+ */
+export function detectDefiPositionsViaDirectRead(
   address: string,
   network: Network = "testnet",
   deps: DirectReadDeps = {}
+): Promise<DefiPositionsResult> {
+  const rpc = deps.rpc ?? getRpcServer(network);
+  const registry = deps.registryEntries ?? BUNDLED_REGISTRY;
+  let byRegistry = sweepsInFlight.get(rpc);
+  if (!byRegistry) {
+    byRegistry = new WeakMap();
+    sweepsInFlight.set(rpc, byRegistry);
+  }
+  let sweeps = byRegistry.get(registry);
+  if (!sweeps) {
+    sweeps = new Map();
+    byRegistry.set(registry, sweeps);
+  }
+  const running = sweeps;
+  const key = `${network}\n${address}`;
+  let shared = running.get(key);
+  if (!shared) {
+    shared = sweep(address, network, { ...deps, rpc }).finally(() => running.delete(key));
+    running.set(key, shared);
+  }
+  return shared.then((result) => structuredClone(result));
+}
+
+async function sweep(
+  address: string,
+  network: Network,
+  deps: DirectReadDeps
 ): Promise<DefiPositionsResult> {
   const read = mergedReads(limitReads(deps.rpc ?? getRpcServer(network), LEDGER_READ_CONCURRENCY));
   const entries = deps.registryEntries ?? entriesForNetwork(network);

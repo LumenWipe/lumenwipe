@@ -1687,14 +1687,14 @@ test("two detections against the same RPC server share one concurrency budget", 
   const pairs = Array.from({ length: MANY_PAIRS }, randomContract);
   const inner = mockRpc([...factoryEntries(pairs), ...pairEntries(pairs[0]!, 1n)]);
   const { rpc, maxInFlight } = tracingRpc(inner, () => 5);
-  const run = () =>
-    detectDefiPositionsViaDirectRead(USER, "testnet", {
+  const run = (account: string) =>
+    detectDefiPositionsViaDirectRead(account, "testnet", {
       rpc,
       registryEntries: SOROSWAP_REGISTRY(),
     });
-  const [a, b] = await Promise.all([run(), run()]);
+  const [a, b] = await Promise.all([run(USER), run(Keypair.random().publicKey())]);
   expect(a.positions).toHaveLength(1);
-  expect(b.positions).toHaveLength(1);
+  expect(b.positions).toHaveLength(0);
   expect(maxInFlight()).toBeGreaterThanOrEqual(2);
   expect(maxInFlight()).toBeLessThanOrEqual(LEDGER_READ_CONCURRENCY);
 });
