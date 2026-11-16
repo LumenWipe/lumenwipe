@@ -195,10 +195,15 @@ describe("RateLimiter with unauthenticated and unknown bearers", () => {
 });
 
 describe("isUnthrottledPath", () => {
-  test.each(["/", "/health", "/health/deep", "/docs", "/docs/", "/docs-json"])(
-    "%s is not counted",
-    (path) => expect(isUnthrottledPath(path)).toBe(true)
-  );
+  test.each([
+    "/",
+    "/.well-known/api-catalog",
+    "/health",
+    "/health/deep",
+    "/docs",
+    "/docs/",
+    "/docs-json",
+  ])("%s is not counted", (path) => expect(isUnthrottledPath(path)).toBe(true));
   test.each([
     "/v1/testnet/stats",
     "/v1/testnet/account/G",

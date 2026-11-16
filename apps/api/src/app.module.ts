@@ -5,6 +5,7 @@ import { ThrottlerModule } from "@nestjs/throttler";
 import { TerminusModule } from "@nestjs/terminus";
 import { HealthController } from "./health/health.controller";
 import { RootController } from "./root.controller";
+import { WellKnownController } from "./well-known.controller";
 import { RegistryController } from "./config-api/registry.controller";
 import { CloseModule } from "./close/close.module";
 import { AccountModule } from "./account/account.module";
@@ -44,7 +45,7 @@ function positiveIntEnv(name: string, fallback: number): number {
     AdminModule,
     IntegratorModule,
   ],
-  controllers: [RootController, HealthController, RegistryController],
+  controllers: [RootController, WellKnownController, HealthController, RegistryController],
   providers: [
     // Rate limiting is the first Express middleware (see configureApp and RateLimiter), so it
     // runs before body parsing and before ApiKeyGuard authenticates anything (#59).

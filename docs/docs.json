@@ -189,7 +189,7 @@
           {
             "group": "Service",
             "openapi": "api-reference/openapi.json",
-            "pages": ["GET /"]
+            "pages": ["GET /", "GET /.well-known/api-catalog"]
           }
         ]
       },

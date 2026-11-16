@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { PHASE_PRODUCTION_SERVER } from "next/constants.js";
+import { HOMEPAGE_LINK } from "@/config/discovery-links.mjs";
 import { SECURITY_HEADERS } from "@/config/security-headers.mjs";
 import config from "@/next.config.mjs";
 
@@ -8,7 +9,10 @@ const header = (key: string): string | undefined =>
 
 test("security-headers › every route, /api included, carries the full set", async () => {
   const rules = await config(PHASE_PRODUCTION_SERVER).headers!();
-  expect(rules).toEqual([{ source: "/:path*", headers: [...SECURITY_HEADERS] }]);
+  expect(rules).toEqual([
+    { source: "/:path*", headers: [...SECURITY_HEADERS] },
+    { source: "/", headers: [{ key: "Link", value: HOMEPAGE_LINK }] },
+  ]);
   expect(SECURITY_HEADERS.map((h) => h.key)).toEqual([
     "Strict-Transport-Security",
     "X-Content-Type-Options",
@@ -63,4 +67,12 @@ test("security-headers › Permissions-Policy allows only clipboard writes and t
     expect(policy.get(denied)).toBe("()");
   }
   expect(policy.size).toBe(15);
+});
+
+test("security-headers › the homepage alone links the API catalog, the docs and llms.txt", () => {
+  expect(HOMEPAGE_LINK).toBe(
+    '<https://api.lumenwipe.com/.well-known/api-catalog>; rel="api-catalog", ' +
+      '<https://docs.lumenwipe.com>; rel="service-doc", ' +
+      '</llms.txt>; rel="describedby"; type="text/plain"'
+  );
 });

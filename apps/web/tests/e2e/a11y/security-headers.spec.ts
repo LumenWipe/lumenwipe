@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type APIResponse, type Page } from "@playwright/test";
+import { HOMEPAGE_LINK } from "../../../config/discovery-links.mjs";
 import { SECURITY_HEADERS } from "../../../config/security-headers.mjs";
 import {
   pageScripts,
@@ -103,6 +104,28 @@ test("every prerendered marketing page is cacheable and hashes exactly the scrip
     expect(served.length, path).toBeGreaterThan(0);
     expect(hashes, path).toEqual(served);
   }
+});
+
+test("the homepage alone carries the discovery Link header", async ({ request }) => {
+  for (const path of [...MARKETING, ...NONCE_PATHS, "/api/health"]) {
+    const res = await request.get(path, { maxRedirects: 0 });
+    const links = res
+      .headersArray()
+      .filter((h) => h.name.toLowerCase() === "link")
+      .map((h) => h.value);
+    if (path === "/") expect(links, path).toEqual([HOMEPAGE_LINK]);
+    else expect(links.join(", "), path).not.toMatch(/rel="(api-catalog|service-doc|describedby)"/);
+  }
+});
+
+test("robots.txt carries the content signals in the group for every crawler", async ({
+  request,
+}) => {
+  const res = await request.get("/robots.txt");
+  expect(res.status()).toBe(200);
+  const group = (await res.text()).split("\n\n")[0]!.split("\n");
+  expect(group[0]).toBe("User-Agent: *");
+  expect(group).toContain("Content-Signal: ai-train=no, search=yes, ai-input=yes");
 });
 
 test("/api gets no CSP", async ({ request }) => {

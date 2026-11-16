@@ -1,5 +1,6 @@
 import { PHASE_PRODUCTION_BUILD } from "next/constants.js";
 import { SECURITY_HEADERS } from "./config/security-headers.mjs";
+import { HOMEPAGE_LINK } from "./config/discovery-links.mjs";
 import { appUrlBuildError } from "./config/app-url-build.mjs";
 import { walletConnectBuildError } from "./config/wallet-connect-build.mjs";
 
@@ -17,7 +18,10 @@ const nextConfig = {
   // It's now /mainnet to match the UI label; keep old links working.
   // `/api/*` included: the proxy skips the CSP there, not these.
   async headers() {
-    return [{ source: "/:path*", headers: [...SECURITY_HEADERS] }];
+    return [
+      { source: "/:path*", headers: [...SECURITY_HEADERS] },
+      { source: "/", headers: [{ key: "Link", value: HOMEPAGE_LINK }] },
+    ];
   },
   async redirects() {
     return [

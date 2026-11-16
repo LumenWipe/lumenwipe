@@ -1,5 +1,6 @@
 import { SITE_LOCALE } from "@/lib/i18n/locale";
 import { NAV } from "@/lib/i18n/messages/nav";
+import { DOCS_URL } from "@/config/discovery-links.mjs";
 
 export interface SiteLink {
   href: string;
@@ -8,7 +9,7 @@ export interface SiteLink {
 }
 
 export const GITHUB_URL = "https://github.com/LumenWipe/lumenwipe";
-export const DOCS_URL = "https://docs.lumenwipe.com";
+export { DOCS_URL };
 export const PLAYGROUND_URL = "https://playground.lumenwipe.com";
 export const APP_HREF = "/mainnet";
 

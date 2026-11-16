@@ -212,7 +212,7 @@ test("the error code table in introduction.mdx is generated from the registry", 
 });
 
 test("every throttled response declares the RateLimit headers, and 429 and 503 declare Retry-After", () => {
-  const unthrottled = new Set(["/", "/health", "/health/deep"]);
+  const unthrottled = new Set(["/", "/.well-known/api-catalog", "/health", "/health/deep"]);
   const problems = operations().flatMap(({ id, operation }) => {
     if (unthrottled.has(id.split(" ")[1]!)) return [];
     const responses = (operation as { responses?: Record<string, { headers?: object }> }).responses;

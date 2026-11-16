@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { HOMEPAGE_LINK } from "@/config/discovery-links.mjs";
 import { marketingPolicy } from "@/config/marketing-csp.mjs";
 import {
   checkOutput,
@@ -226,8 +227,10 @@ describe("under a build adapter, as on Vercel", () => {
     middlewarePath: "/_middleware",
     continue: true,
   };
+  const LINK_ROUTE = { src: "^\\/(?:\\/)?$", headers: { Link: HOMEPAGE_LINK }, continue: true };
   const BASE_ROUTES = [
     { src: "^(?:/(.*))?$", headers: { "X-Content-Type-Options": "nosniff" }, continue: true },
+    LINK_ROUTE,
     PROXY_ROUTE,
     { handle: "filesystem" },
     { src: "^/faq-elsewhere$", dest: "/faq" },
@@ -357,6 +360,44 @@ describe("under a build adapter, as on Vercel", () => {
     expect(() => run(dir, false)).toThrow(
       "/api-keys is not matched by the proxy's route, so it would have no nonce policy"
     );
+  });
+
+  test("the homepage keeps its discovery Link header next to its CSP route", () => {
+    run(dir, true);
+    const routes = config().routes;
+    expect(routes[0]!.src).toBe("^/$");
+    expect(routes.find((r) => r.headers?.Link !== undefined)).toEqual(LINK_ROUTE);
+  });
+
+  test("a homepage without the discovery Link header, or with another one, fails", () => {
+    run(dir, true);
+    const c = config();
+    const link = c.routes.find((r) => r.headers?.Link !== undefined)!;
+    link.headers = { Link: '</llms.txt>; rel="describedby"' };
+    write("output/config.json", c);
+    expect(() => run(dir, false)).toThrow("expected exactly the discovery links");
+    c.routes = c.routes.filter((r) => r !== link);
+    write("output/config.json", c);
+    expect(() => run(dir, false)).toThrow("/ has Link header []");
+  });
+
+  test("a Link header route after the first handle does not count for the homepage", () => {
+    run(dir, true);
+    const c = config();
+    c.routes = c.routes.filter((r) => r.headers?.Link === undefined);
+    c.routes.push(LINK_ROUTE);
+    write("output/config.json", c);
+    expect(() => run(dir, false)).toThrow("/ has Link header []");
+  });
+
+  test("a Link header route that reaches another page or a nonce path fails", () => {
+    run(dir, true);
+    for (const src of ["^/(.+)$", "^/faq$", "^/COSIGN$"]) {
+      const c = config();
+      c.routes.unshift({ src, headers: { Link: '</x>; rel="next"' }, continue: true });
+      write("output/config.json", c);
+      expect(() => run(dir, false)).toThrow("has a Link header route");
+    }
   });
 
   test("check-output verifies the finished deployment output, not the build's copy", () => {

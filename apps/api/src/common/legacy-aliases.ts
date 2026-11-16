@@ -1,11 +1,11 @@
 import type { NextFunction, Request, RequestHandler, Response } from "express";
+import { DOCS_SITE_URL } from "@/config/constants";
 
 export const LEGACY_ALIAS_DEPRECATED_AT = new Date(Date.UTC(2026, 10, 9));
 
 export const LEGACY_ALIAS_SUNSET_AT = new Date(Date.UTC(2027, 5, 1));
 
-export const LEGACY_ALIAS_POLICY_URL =
-  "https://docs.lumenwipe.com/api-reference/introduction#versioning";
+export const LEGACY_ALIAS_POLICY_URL = `${DOCS_SITE_URL}/api-reference/introduction#versioning`;
 
 export const DEPRECATION_HEADER_VALUE = `@${LEGACY_ALIAS_DEPRECATED_AT.getTime() / 1000}`;
 

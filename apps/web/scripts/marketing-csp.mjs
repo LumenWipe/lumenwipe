@@ -17,14 +17,18 @@
  *    scripts or that allows framing or an unsafe source, a script loaded from an origin the
  *    policy does not allow, a build adapter with no output config, a nonce path the proxy does
  *    not cover, or a file not shaped as expected exits 1 and names the page.
+ * 4. In a Build Output config, `/` must carry the discovery Link header (config/discovery-links.mjs)
+ *    from a header route, and no other marketing or nonce path any Link header.
  */
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
+import { HOMEPAGE_LINK } from "../config/discovery-links.mjs";
 import { marketingPolicy, UMAMI_SCRIPT_ORIGIN } from "../config/marketing-csp.mjs";
 
 const GROUP = "/(marketing)/";
 const CSP = "Content-Security-Policy";
+const LINK = "Link";
 const SCRIPT_TYPES = new Set(["", "text/javascript", "application/javascript", "module"]);
 // Prerendered paths come from our own route names; anything else would be read as a pattern by
 // the manifest's `source` matcher.
@@ -201,11 +205,20 @@ function assertPlainPath(path) {
   if (!PLAIN_PATH.test(path)) fail(`${path} is not a plain path`);
 }
 
+/**
+ * @param {Record<string, any>} route
+ * @param {string} name
+ * @returns {string[]} the values of one header a config route sets.
+ */
+function headerValues(route, name) {
+  return Object.entries(route.headers ?? {})
+    .filter(([key]) => key.toLowerCase() === name.toLowerCase())
+    .map(([, value]) => String(value));
+}
+
 /** @param {Record<string, any>} route @returns {string[]} the CSP values a config route sets. */
 function cspValues(route) {
-  return Object.entries(route.headers ?? {})
-    .filter(([key]) => key.toLowerCase() === CSP.toLowerCase())
-    .map(([, value]) => String(value));
+  return headerValues(route, CSP);
 }
 
 /**
@@ -313,6 +326,7 @@ export function verifyRoutes(config, htmlByPath) {
   const proxyRoutes = routes.filter(
     (route) => typeof route.src === "string" && typeof route.middlewarePath === "string"
   );
+  verifyHomepageLink(routes, headerRoutes, [...htmlByPath.keys(), ...NONCE_PATHS]);
   for (const path of NONCE_PATHS) {
     if (cspRoutes.some((route) => routeRegex(route.src, "the Build Output config", "i").test(path)))
       fail(`${path} is matched by a marketing CSP route`);
@@ -320,6 +334,32 @@ export function verifyRoutes(config, htmlByPath) {
       !proxyRoutes.some((route) => routeRegex(route.src, "the Build Output config", "i").test(path))
     )
       fail(`${path} is not matched by the proxy's route, so it would have no nonce policy`);
+  }
+}
+
+/**
+ * Fails unless `/` gets exactly the discovery Link header from a route before the first `handle`,
+ * and no other page or nonce path gets a Link header from any route.
+ *
+ * @param {Array<Record<string, any>>} routes every config route
+ * @param {Array<Record<string, any>>} headerRoutes the header routes before the first `handle`
+ * @param {string[]} paths the marketing and nonce paths
+ */
+function verifyHomepageLink(routes, headerRoutes, paths) {
+  const linksFor = (/** @type {Array<Record<string, any>>} */ list, /** @type {string} */ path) =>
+    list
+      .filter(
+        (route) =>
+          typeof route.src === "string" &&
+          routeRegex(route.src, "the Build Output config", "i").test(path)
+      )
+      .flatMap((route) => headerValues(route, LINK));
+  const home = linksFor(headerRoutes, "/");
+  if (home.length !== 1 || home[0] !== HOMEPAGE_LINK) {
+    fail(`/ has Link header ${JSON.stringify(home)}, expected exactly the discovery links`);
+  }
+  for (const path of paths) {
+    if (path !== "/" && linksFor(routes, path).length > 0) fail(`${path} has a Link header route`);
   }
 }
 
