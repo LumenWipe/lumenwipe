@@ -98,16 +98,6 @@ function tokenDecimals(accountState: AccountState, contract: string): number | n
   return accountState.sorobanTokens?.tokens.find((t) => t.contract === contract)?.decimals ?? null;
 }
 
-async function simulate(
-  rpc: TokenTransferRoundDeps["rpc"],
-  tx: Transaction
-): Promise<stellarRpc.Api.SimulateTransactionResponse> {
-  const response = await rpc.simulateTransaction(tx);
-  return stellarRpc.Api.isSimulationRaw(response)
-    ? stellarRpc.parseRawSimulation(response)
-    : response;
-}
-
 /** The account's live balance of the token, by simulating `balance(account)`; null if unreadable. */
 export async function liveTokenBalance(
   rpc: TokenTransferRoundDeps["rpc"],
@@ -122,7 +112,7 @@ export async function liveTokenBalance(
     .addOperation(new Contract(token).call("balance", new Address(account).toScVal()))
     .setTimeout(30)
     .build();
-  const simulation = await simulate(rpc, tx);
+  const simulation = await rpc.simulateTransaction(tx);
   if (!stellarRpc.Api.isSimulationSuccess(simulation) || !simulation.result) return null;
   const native: unknown = scValToNative(simulation.result.retval);
   if (typeof native === "bigint") return native;
@@ -288,7 +278,7 @@ export async function buildTokenTransferRound(
       )
       .setTimeout(TX_TIMEOUT_SECONDS)
       .build();
-    const simulation = await simulate(deps.rpc, raw);
+    const simulation = await deps.rpc.simulateTransaction(raw);
     if (stellarRpc.Api.isSimulationRestore(simulation)) {
       throw new TokenTransferBlockedError(
         "soroban_token_needs_restore",

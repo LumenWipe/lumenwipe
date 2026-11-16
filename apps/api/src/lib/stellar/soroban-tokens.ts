@@ -387,10 +387,7 @@ async function simulateRead(
     .addOperation(new Contract(token).call(fn, ...args))
     .setTimeout(30)
     .build();
-  const response = await rpc.simulateTransaction(tx);
-  const simulation = stellarRpc.Api.isSimulationRaw(response)
-    ? stellarRpc.parseRawSimulation(response)
-    : response;
+  const simulation = await rpc.simulateTransaction(tx);
   if (!stellarRpc.Api.isSimulationSuccess(simulation)) return null;
   return simulation.result?.retval ?? null;
 }
