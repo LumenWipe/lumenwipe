@@ -1,7 +1,7 @@
 ---
 title: "Multisig cosigning across devices"
 sidebarTitle: "Multisig cosigning"
-description: "Design for completing a multisig close when cosigners are on other devices: the journeys, the exchanged artifact, the checks each device runs, validity, failure handling, and the interim statement."
+description: "Design for completing a multisig close when cosigners are on other devices: the journeys, the exchanged artifact, the checks each device runs, validity, failure handling, and the review statement."
 icon: "users"
 ---
 
@@ -114,13 +114,14 @@ of the account, and the master key holder alone then decides the destination and
 multisig close, where cosigners sign the merge itself, is no longer offered. The station says so before it
 signs (Section 5).
 
-Until the station ships, a multisig close cannot be cosigned across devices at all, and the interim
-statement (Section 12) applies.
+Before consent, the review screen says which transaction of the close another device can sign, if any
+(Section 12).
 
 ## 4. Initiator journey (hub)
 
-1. The initiator reviews and confirms the plan as today. The review screen says which keys must sign and
-   that the master key then completes the close alone.
+1. The initiator reviews and confirms the plan as today. The review screen says which keys must sign, that
+   the master key then completes the close alone, and that the other keys can sign the normalization on
+   another device (Section 12).
 2. The normalization transaction pauses for more weight. The paused panel, alongside today's "connect
    another signer", offers **Sign on another device**. It shows:
    - the signers still able to add weight, from the live round, as `ExecutionWizard` already lists them;
@@ -361,19 +362,37 @@ and from its next live read (INV-02, INV-41).
    another account is refused. The fingerprint, read out by the initiator, so a request swapped in transit
    is refused. The hub never puts the fingerprint in the export.
 
-## 12. Interim statement
+## 12. Review statement
 
-Until this design ships, the review screen and the multisig notice on the signing step say (built by
+The review screen and the multisig notice on the signing step say (built by
 `apps/web/lib/stellar/cosign-requirement.ts`):
 
-> This account needs signatures from at least N of its M keys, on K transactions of this close. These N must
-> sign here, in this browser, during this close. Signing from another device is not supported yet.
+> This account needs signatures from at least N of its M keys, on K transactions of this close.
 
-When N equals M, the first sentence reads "all M of its keys". When a transaction of the close removes
-signers without merging the account (`assertMasterSignsSignerRemoval` applies), it adds:
+When N equals M, it reads "all M of its keys". When a transaction of the close removes signers without
+merging the account (`assertMasterSignsSignerRemoval` applies), it adds:
 
 > One transaction removes the other signers without closing the account, so the master key,
 > `<first 8>…<last 8>`, must be one of these N. After it, the master key alone completes the close.
+
+Where the keys sign follows what **Sign on another device** offers on that close. The signing step offers
+it only on a transaction that just removes the other signers and resets the thresholds, once the master
+key has signed it in this browser (`cosignExport` in `apps/web/lib/cosign/merge.ts`). The plan's
+breakdown tells the review which case applies:
+
+- **The transaction that covers `NORMALIZE_SIGNERS` covers nothing else.** "These N sign during this
+  close.", then: 'On that transaction the master key signs here first, and the other keys can sign here or
+  on another device, under "Sign on another device".' When K is above 1, it adds: "Its other transactions
+  that need several keys are signed here, in this browser."
+- **The breakdown has no such transaction** (the removal also merges, carries other steps, or there is
+  none): "These N must sign here, in this browser, during this close.", then: "Another device can sign
+  only a transaction that just removes the other signers, and this close has none."
+- **The plan gives no breakdown**: "These N sign during this close.", then: "If a transaction of this close
+  only removes the other signers, the other keys can sign it on another device after the master key signs
+  it here; every other transaction is signed here, in this browser."
+- **The keys alone cannot reach the threshold** (below): "Another device cannot add the missing weight: it
+  signs only with keys, and this account's keys alone do not reach it." A response from another device
+  carries key signatures only, and the hub attaches nothing else to the round.
 
 Rules:
 

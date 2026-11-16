@@ -18,6 +18,14 @@ export interface CosignInput {
  */
 export type MasterRule = "required" | "unknown" | "not-required";
 
+/**
+ * Whether "Sign on another device" can apply, which it does only on a transaction that just
+ * removes the other signers (`cosignExport`). `removal`: the plan's removal transaction covers
+ * nothing else. `none`: the plan's breakdown has no such transaction. `unknown`: the plan gives
+ * no breakdown to tell.
+ */
+export type CrossDevice = "removal" | "none" | "unknown";
+
 export interface CosignRequirement {
   /** How many of the account's keys must sign, or null when its keys alone cannot reach the
    *  high threshold. */
@@ -27,6 +35,7 @@ export interface CosignRequirement {
    *  say. */
   transactions: number | null;
   master: MasterRule;
+  crossDevice: CrossDevice;
   masterKey: string;
   hashX: number;
   preAuth: number;
@@ -62,9 +71,17 @@ function masterRule(
   return viaRelay ? "required" : "unknown";
 }
 
+function crossDevice(
+  removal: ExecutionTxBreakdown | undefined,
+  transactions: readonly ExecutionTxBreakdown[] | null
+): CrossDevice {
+  if (transactions === null) return "unknown";
+  return removal?.covers.length === 1 ? "removal" : "none";
+}
+
 /**
- * Which of the account's keys must sign the close, all in this browser. Null when one key is
- * enough. Reads the transaction order only from the plan's breakdown, never from an assumed one.
+ * Which of the account's keys must sign the close, and where. Null when one key is enough. Reads
+ * the transaction order only from the plan's breakdown, never from an assumed one.
  */
 export function cosignRequirement(input: CosignInput): CosignRequirement | null {
   const { account, signers, thresholds } = input;
@@ -122,6 +139,7 @@ export function cosignRequirement(input: CosignInput): CosignRequirement | null 
     keys: keys.length,
     transactions,
     master,
+    crossDevice: crossDevice(removal, ordered),
     masterKey: account,
     hashX,
     preAuth,
@@ -156,7 +174,9 @@ export function cosignStatement(r: CosignRequirement): string[] {
         : `, on ${plural(r.transactions, "transaction", "transactions")} of this close`;
     sentences.push(
       `This account needs signatures from ${who}${where}.`,
-      `These ${r.needed} must sign here, in this browser, during this close.`
+      r.crossDevice === "none"
+        ? `These ${r.needed} must sign here, in this browser, during this close.`
+        : `These ${r.needed} sign during this close.`
     );
   }
   if (r.master === "required") {
@@ -170,6 +190,7 @@ export function cosignStatement(r: CosignRequirement): string[] {
       `If a transaction removes the other signers before the final transaction, the master key, ${shortKey(r.masterKey)}, must sign it as well.`
     );
   }
+  sentences.push(...whereOthersSign(r));
   if (r.hashX > 0) {
     sentences.push(
       `It also has ${plural(r.hashX, "hash(x) signer", "hash(x) signers")}. A preimage is entered in this browser, and only on the step that removes its own signer.`
@@ -185,6 +206,34 @@ export function cosignStatement(r: CosignRequirement): string[] {
       `It also has ${plural(r.signedPayload, "signed-payload signer", "signed-payload signers")}, which cannot sign in LumenWipe.`
     );
   }
-  sentences.push("Signing from another device is not supported yet.");
+  return sentences;
+}
+
+/** What "Sign on another device" can do for this close, under the conditions `cosignExport`
+ *  offers it on. */
+function whereOthersSign(r: CosignRequirement): string[] {
+  if (r.needed === null) {
+    return [
+      "Another device cannot add the missing weight: it signs only with keys, and this account's keys alone do not reach it.",
+    ];
+  }
+  if (r.crossDevice === "none") {
+    return [
+      "Another device can sign only a transaction that just removes the other signers, and this close has none.",
+    ];
+  }
+  if (r.crossDevice === "unknown") {
+    return [
+      "If a transaction of this close only removes the other signers, the other keys can sign it on another device after the master key signs it here; every other transaction is signed here, in this browser.",
+    ];
+  }
+  const sentences = [
+    'On that transaction the master key signs here first, and the other keys can sign here or on another device, under "Sign on another device".',
+  ];
+  if (r.transactions !== null && r.transactions > 1) {
+    sentences.push(
+      "Its other transactions that need several keys are signed here, in this browser."
+    );
+  }
   return sentences;
 }

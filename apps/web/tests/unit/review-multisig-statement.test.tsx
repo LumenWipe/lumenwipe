@@ -59,7 +59,7 @@ test("a two-of-two account is told on the review that both keys sign in this bro
     .setPlan([MERGE], "hash", 1, undefined, [{ order: 0, covers: ["NORMALIZE_SIGNERS", "MERGE"] }]);
   await show();
   expect(screen.getByTestId("multisig-statement").textContent).toBe(
-    "This account needs signatures from all 2 of its keys, on 1 transaction of this close. These 2 must sign here, in this browser, during this close. Signing from another device is not supported yet."
+    "This account needs signatures from all 2 of its keys, on 1 transaction of this close. These 2 must sign here, in this browser, during this close. Another device can sign only a transaction that just removes the other signers, and this close has none."
   );
 });
 

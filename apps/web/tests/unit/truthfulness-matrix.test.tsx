@@ -863,7 +863,7 @@ const SANCTIONED: Record<string, Partial<Record<ClaimKey, Site>>> = {
   },
   "lib/stellar/cosign-requirement.ts": {
     "same-browser-signing": {
-      count: 3,
+      count: 2,
       shownBy: "review multisig statement; execute multisig notice",
     },
   },
