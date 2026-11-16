@@ -44,6 +44,7 @@ import {
   resolveCodeRefs,
   type CodeIdentity,
   type CodeRef,
+  type LedgerBatchReader,
   type LedgerEntriesReader,
 } from "@/lib/stellar/contract-instance";
 import {
@@ -188,18 +189,61 @@ export const variantVal = (variant: string, ...fields: xdr.ScVal[]): xdr.ScVal =
 
 // ─── batched reads ────────────────────────────────────────────────────────────
 
-/** Keyed by the ledger key's base64 XDR, since `getLedgerEntries` doesn't promise result order. */
-async function batchRead(
-  rpc: LedgerReader,
-  keys: xdr.LedgerKey[]
-): Promise<Map<string, xdr.LedgerEntryData>> {
-  if (keys.length === 0) return new Map();
-  const res = await rpc.getLedgerEntries(...keys);
-  const map = new Map<string, xdr.LedgerEntryData>();
-  for (const entry of res.entries ?? []) {
-    map.set(entry.key.toXdr("base64"), entry.val);
-  }
-  return map;
+/** Stellar RPC caps getLedgerEntries at 200 keys per call; stay under it with room to spare. */
+export const LEDGER_KEYS_PER_CALL = 150;
+
+interface PendingRead {
+  keys: xdr.LedgerKey[];
+  resolve: (found: Map<string, xdr.LedgerEntryData>) => void;
+  reject: (error: unknown) => void;
+}
+
+/**
+ * Every read requested before the event loop turns goes out together, keys deduplicated and split
+ * into calls of at most LEDGER_KEYS_PER_CALL, so the protocols' independent reads share calls
+ * instead of costing a round trip each. Each read gets back only its own keys, keyed by base64
+ * XDR since `getLedgerEntries` doesn't promise result order; a failed call fails every read in it.
+ */
+function mergedReads(rpc: LedgerReader): LedgerBatchReader {
+  let queue: PendingRead[] = [];
+  const flush = (): void => {
+    const batch = queue;
+    queue = [];
+    const unique = new Map<string, xdr.LedgerKey>();
+    for (const read of batch) for (const key of read.keys) unique.set(key.toXdr("base64"), key);
+    const keys = [...unique.values()];
+    const calls = [];
+    for (let i = 0; i < keys.length; i += LEDGER_KEYS_PER_CALL) {
+      calls.push(rpc.getLedgerEntries(...keys.slice(i, i + LEDGER_KEYS_PER_CALL)));
+    }
+    Promise.all(calls).then(
+      (answers) => {
+        const found = new Map<string, xdr.LedgerEntryData>();
+        for (const answer of answers) {
+          for (const entry of answer.entries ?? []) found.set(entry.key.toXdr("base64"), entry.val);
+        }
+        for (const read of batch) {
+          const own = new Map<string, xdr.LedgerEntryData>();
+          for (const key of read.keys) {
+            const id = key.toXdr("base64");
+            const val = found.get(id);
+            if (val) own.set(id, val);
+          }
+          read.resolve(own);
+        }
+      },
+      (error: unknown) => {
+        for (const read of batch) read.reject(error);
+      }
+    );
+  };
+  return (keys) => {
+    if (keys.length === 0) return Promise.resolve(new Map());
+    return new Promise((resolve, reject) => {
+      if (queue.length === 0) setTimeout(flush, 0);
+      queue.push({ keys, resolve, reject });
+    });
+  };
 }
 
 function contractDataScVal(val: xdr.LedgerEntryData | undefined): unknown {
@@ -294,13 +338,13 @@ function verifyEntry(
 // ─── Blend pool: supply/borrow ────────────────────────────────────────────────
 
 async function readBlendPoolPositions(
-  rpc: LedgerReader,
+  read: LedgerBatchReader,
   entry: ContractRegistryEntry,
   address: string
 ): Promise<DefiPosition[]> {
   const resListKey = contractDataKey(entry.address, symbolVal("ResList"));
   const positionsKey = contractDataKey(entry.address, variantVal("Positions", addressVal(address)));
-  const results = await batchRead(rpc, [resListKey, positionsKey]);
+  const results = await read([resListKey, positionsKey]);
 
   const resListNative = contractDataScVal(results.get(resListKey.toXdr("base64")));
   const reserveList = Array.isArray(resListNative) ? (resListNative as string[]) : [];
@@ -367,7 +411,7 @@ async function readBlendPoolPositions(
  * exit adapter reads the queue itself to decide which.
  */
 async function readBlendBackstopPositions(
-  rpc: LedgerReader,
+  read: LedgerBatchReader,
   backstop: ContractRegistryEntry,
   entries: ContractRegistryEntry[],
   address: string,
@@ -383,7 +427,7 @@ async function readBlendBackstopPositions(
   );
   if (pools.length === 0) return [];
   const keys = pools.map((pool) => backstopBalanceKey(backstop.address, pool.address, address));
-  const results = await batchRead(rpc, [instanceKey(backstop.address), ...keys]);
+  const results = await read([instanceKey(backstop.address), ...keys]);
   const instance = results.get(instanceKey(backstop.address).toXdr("base64"));
   // The backstop keeps its config under bare symbols (`BToken` is the deposit token).
   const backstopToken = instance
@@ -435,27 +479,9 @@ const entryVal = (entry: xdr.LedgerEntryData | undefined): xdr.ScVal | undefined
 
 // ─── Soroswap: every pair the factory deployed ───────────────────────────────
 
-/** Stellar RPC caps getLedgerEntries at 200 keys per call; stay under it with room to spare. */
-export const LEDGER_KEYS_PER_CALL = 150;
-
 /** A factory or router past this size is not enumerated. The registered mainnet Soroswap
  *  factory (~215 pairs) and Aquarius router (~640 pools) are both swept under this cap. */
 const MAX_FACTORY_PAIRS = 2_000;
-
-/** Every chunk is issued at once; the reader's own concurrency limit paces them. */
-async function batchReadChunked(
-  rpc: LedgerReader,
-  keys: xdr.LedgerKey[]
-): Promise<Map<string, xdr.LedgerEntryData>> {
-  const chunks: xdr.LedgerKey[][] = [];
-  for (let i = 0; i < keys.length; i += LEDGER_KEYS_PER_CALL) {
-    chunks.push(keys.slice(i, i + LEDGER_KEYS_PER_CALL));
-  }
-  const parts = await Promise.all(chunks.map((chunk) => batchRead(rpc, chunk)));
-  const out = new Map<string, xdr.LedgerEntryData>();
-  for (const part of parts) for (const [k, v] of part) out.set(k, v);
-  return out;
-}
 
 interface ParsedInstance {
   /** The code the instance names, before an external reference is followed. */
@@ -481,14 +507,6 @@ function parseInstance(val: xdr.LedgerEntryData): ParsedInstance {
   return { ref: codeRefOf(instance), storage };
 }
 
-/** The live code behind each instance, following external references in one batched read. */
-function resolveCodes(
-  rpc: LedgerReader,
-  refs: ReadonlyArray<CodeRef | null>
-): Promise<Array<CodeIdentity | null>> {
-  return resolveCodeRefs((keys) => batchReadChunked(rpc, keys), refs);
-}
-
 const instanceKey = (contractAddress: string): xdr.LedgerKey =>
   new Contract(contractAddress).getFootprint();
 
@@ -509,7 +527,7 @@ const asAddress = (val: xdr.ScVal | undefined): string | null => {
  * beyond a fixed number of reads. On today's mainnet this is six ledger reads for ~215 pairs.
  */
 async function readSoroswapFactoryPairs(
-  rpc: LedgerReader,
+  read: LedgerBatchReader,
   factory: ContractRegistryEntry,
   entries: ContractRegistryEntry[],
   address: string,
@@ -520,7 +538,7 @@ async function readSoroswapFactoryPairs(
   };
 
   const factoryKey = instanceKey(factory.address);
-  const factoryVal = (await batchRead(rpc, [factoryKey])).get(factoryKey.toXdr("base64"));
+  const factoryVal = (await read([factoryKey])).get(factoryKey.toXdr("base64"));
   const total = factoryVal
     ? scValToNative(parseInstance(factoryVal).storage.get('["TotalPairs"]') ?? xdr.ScVal.scvVoid())
     : null;
@@ -540,7 +558,7 @@ async function readSoroswapFactoryPairs(
   const indexKeys = Array.from({ length: count }, (_, i) =>
     contractDataKey(factory.address, variantVal("PairAddressesNIndexed", xdr.ScVal.scvU32(i)))
   );
-  const indexed = await batchReadChunked(rpc, indexKeys);
+  const indexed = await read(indexKeys);
   const pairs = new Set<string>();
   for (const key of indexKeys) {
     const pair = asAddress(entryVal(indexed.get(key.toXdr("base64"))));
@@ -560,7 +578,7 @@ async function readSoroswapFactoryPairs(
   const balanceKeys = pairList.map((pair) =>
     contractDataKey(pair, variantVal("Balance", addressVal(address)))
   );
-  const balances = await batchReadChunked(rpc, balanceKeys);
+  const balances = await read(balanceKeys);
   const held: Array<{ pair: string; shares: bigint }> = [];
   for (let i = 0; i < pairList.length; i++) {
     const shares = asBigInt(contractDataScVal(balances.get(balanceKeys[i]!.toXdr("base64"))));
@@ -570,7 +588,7 @@ async function readSoroswapFactoryPairs(
   if (held.length === 0) return [];
 
   const heldKeys = held.map(({ pair }) => instanceKey(pair));
-  const instances = await batchReadChunked(rpc, heldKeys);
+  const instances = await read(heldKeys);
   const pairEntries = entries.filter(
     (e) => e.network === factory.network && e.protocol === "soroswap" && e.kind === "pair"
   );
@@ -578,8 +596,8 @@ async function readSoroswapFactoryPairs(
     const val = instances.get(key.toXdr("base64"));
     return val ? parseInstance(val) : null;
   });
-  const codes = await resolveCodes(
-    rpc,
+  const codes = await resolveCodeRefs(
+    read,
     parsed.map((p) => p?.ref ?? null)
   );
 
@@ -688,16 +706,25 @@ export interface AquariusPoolView {
  * live integration test can assert the sweep enumerates real pools - a change in the router's
  * storage shape must fail loudly there, never read as "this account holds nothing".
  */
-export async function enumerateAquariusPools(
+export function enumerateAquariusPools(
   reader: LedgerReader,
   router: ContractRegistryEntry,
   flag: (rawType: string, reason: string) => void
 ): Promise<AquariusPoolView[] | null> {
-  // Callers inside this module hand in a limited reader already; an outside caller (the live
-  // integration test) gets the same concurrency bound rather than an unbounded fan-out.
-  const rpc = limitReads(reader, LEDGER_READ_CONCURRENCY);
+  return enumerateRouterPools(
+    mergedReads(limitReads(reader, LEDGER_READ_CONCURRENCY)),
+    router,
+    flag
+  );
+}
+
+async function enumerateRouterPools(
+  read: LedgerBatchReader,
+  router: ContractRegistryEntry,
+  flag: (rawType: string, reason: string) => void
+): Promise<AquariusPoolView[] | null> {
   const routerKey = instanceKey(router.address);
-  const routerVal = (await batchRead(rpc, [routerKey])).get(routerKey.toXdr("base64"));
+  const routerVal = (await read([routerKey])).get(routerKey.toXdr("base64"));
   const count = routerVal
     ? asU128(parseInstance(routerVal).storage.get('["TokensSetCounter"]'))
     : null;
@@ -722,7 +749,7 @@ export async function enumerateAquariusPools(
       variantVal("TokensSet", nativeToScVal(BigInt(i), { type: "u128" }))
     )
   );
-  const sets = await batchReadChunked(rpc, setKeys);
+  const sets = await read(setKeys);
   const tokenSets: string[][] = [];
   for (const key of setKeys) {
     const val = sets.get(key.toXdr("base64"));
@@ -735,7 +762,7 @@ export async function enumerateAquariusPools(
       variantVal("TokensSetPools", xdr.ScVal.scvBytes(aquariusTokensHash(tokens)))
     )
   );
-  const poolMaps = await batchReadChunked(rpc, poolKeys);
+  const poolMaps = await read(poolKeys);
   const pools = new Set<string>();
   let poolMapsMissing = 0;
   let poolEntriesUnrecognized = 0;
@@ -775,13 +802,13 @@ export async function enumerateAquariusPools(
 
   const poolList = [...pools];
   const poolInstanceKeys = poolList.map((pool) => instanceKey(pool));
-  const poolInstances = await batchReadChunked(rpc, poolInstanceKeys);
+  const poolInstances = await read(poolInstanceKeys);
   const parsed = poolInstanceKeys.map((key) => {
     const val = poolInstances.get(key.toXdr("base64"));
     return val ? parseInstance(val) : null;
   });
-  const codes = await resolveCodes(
-    rpc,
+  const codes = await resolveCodeRefs(
+    read,
     parsed.map((p) => p?.ref ?? null)
   );
   const views: AquariusPoolView[] = [];
@@ -827,7 +854,7 @@ export async function enumerateAquariusPools(
  * shares and are skipped by this read (OctoPos reports them on mainnet).
  */
 async function readAquariusRouterPools(
-  rpc: LedgerReader,
+  read: LedgerBatchReader,
   router: ContractRegistryEntry,
   entries: ContractRegistryEntry[],
   address: string,
@@ -850,7 +877,7 @@ async function readAquariusRouterPools(
     knownCodes.push({ entry: e, type });
   }
 
-  const views = await enumerateAquariusPools(rpc, router, flag);
+  const views = await enumerateRouterPools(read, router, flag);
   if (views === null) return [];
 
   const readable: Array<
@@ -880,7 +907,7 @@ async function readAquariusRouterPools(
   const balanceKeys = readable.map((v) =>
     contractDataKey(v.shareToken, variantVal("Balance", addressVal(address)))
   );
-  const balances = await batchReadChunked(rpc, balanceKeys);
+  const balances = await read(balanceKeys);
   const positions: DefiPosition[] = [];
   for (let i = 0; i < readable.length; i++) {
     const view = readable[i]!;
@@ -921,21 +948,21 @@ async function readAquariusRouterPools(
  * with the LP and its verifier knows the token the withdrawal returns.
  */
 async function readPhoenixPosition(
-  rpc: LedgerReader,
+  read: LedgerBatchReader,
   entry: ContractRegistryEntry,
   address: string,
   verifiedStakes: ReadonlySet<string>,
   unrecognized: UnrecognizedDefiPosition[]
 ): Promise<DefiPosition[]> {
   const configKey = phoenixConfigKey(entry.address);
-  const config = (await batchRead(rpc, [configKey])).get(configKey.toXdr("base64"));
+  const config = (await read([configKey])).get(configKey.toXdr("base64"));
   const shareToken = config ? phoenixShareToken(config) : null;
   if (!config || !shareToken) return [];
   const stakeContract = phoenixStakeContract(config);
 
   const balanceKey = contractDataKey(shareToken, variantVal("Balance", addressVal(address)));
   const bondingKey = stakeContract ? bondingInfoKey(stakeContract, address) : null;
-  const results = await batchRead(rpc, bondingKey ? [balanceKey, bondingKey] : [balanceKey]);
+  const results = await read(bondingKey ? [balanceKey, bondingKey] : [balanceKey]);
 
   const positions: DefiPosition[] = [];
   const native = contractDataScVal(results.get(balanceKey.toXdr("base64")));
@@ -1009,7 +1036,7 @@ async function readPhoenixPosition(
  * keys vaults by and, per denomination, `Currency(denomination)`: the stablecoin a repay burns.
  */
 async function readFxdaoVaults(
-  rpc: LedgerReader,
+  read: LedgerBatchReader,
   entry: ContractRegistryEntry,
   instance: xdr.LedgerEntryData,
   address: string
@@ -1021,7 +1048,7 @@ async function readFxdaoVaults(
       variantVal("Vault", xdr.ScVal.scvVec([addressVal(address), symbolVal(denom)]))
     )
   );
-  const results = await batchRead(rpc, keys);
+  const results = await read(keys);
 
   const positions: DefiPosition[] = [];
   denominations.forEach((denomination, i) => {
@@ -1057,7 +1084,7 @@ interface EntryOutcome {
 }
 
 async function readEntry(
-  rpc: LedgerReader,
+  read: LedgerBatchReader,
   entry: ContractRegistryEntry,
   instance: xdr.LedgerEntryData | undefined,
   liveCode: CodeIdentity | null,
@@ -1073,21 +1100,23 @@ async function readEntry(
 
   if (entry.protocol === "blend" && entry.kind === "backstop") {
     positions.push(
-      ...(await readBlendBackstopPositions(rpc, entry, entries, address, unrecognized))
+      ...(await readBlendBackstopPositions(read, entry, entries, address, unrecognized))
     );
   } else if (entry.kind === "backstop") {
     // Only Blend's backstop has a documented read.
   } else if (entry.protocol === "soroswap" && entry.kind === "factory") {
-    positions.push(...(await readSoroswapFactoryPairs(rpc, entry, entries, address, unrecognized)));
+    positions.push(
+      ...(await readSoroswapFactoryPairs(read, entry, entries, address, unrecognized))
+    );
   } else if (entry.protocol === "aquarius" && entry.kind === "router") {
-    positions.push(...(await readAquariusRouterPools(rpc, entry, entries, address, unrecognized)));
+    positions.push(...(await readAquariusRouterPools(read, entry, entries, address, unrecognized)));
   } else if (entry.protocol === "blend" && entry.kind === "pool") {
-    positions.push(...(await readBlendPoolPositions(rpc, entry, address)));
+    positions.push(...(await readBlendPoolPositions(read, entry, address)));
   } else if (entry.protocol === "fxdao" && entry.kind === "vault") {
-    positions.push(...(await readFxdaoVaults(rpc, entry, instance, address)));
+    positions.push(...(await readFxdaoVaults(read, entry, instance, address)));
   } else if (entry.protocol === "phoenix" && entry.kind === "pool") {
     positions.push(
-      ...(await readPhoenixPosition(rpc, entry, address, verifiedStakes, unrecognized))
+      ...(await readPhoenixPosition(read, entry, address, verifiedStakes, unrecognized))
     );
   }
   return { positions, unrecognized };
@@ -1117,12 +1146,51 @@ function probedEntries(entries: ContractRegistryEntry[]): ContractRegistryEntry[
   });
 }
 
-export async function detectDefiPositionsViaDirectRead(
+type SweepsInFlight = Map<string, Promise<DefiPositionsResult>>;
+
+/** Sweeps running now, by reader, then registry, then network and address. Nothing is kept once a
+ *  sweep settles: this shares a sweep between concurrent requests, it never caches one. */
+const sweepsInFlight = new WeakMap<LedgerReader, WeakMap<object, SweepsInFlight>>();
+const BUNDLED_REGISTRY = {};
+
+/**
+ * Concurrent detections of one account on one network against the same reader and registry share
+ * a single sweep, so an analysis and a plan read together cost one. Every caller gets its own copy
+ * of the result, and a sweep that fails fails every caller sharing it.
+ */
+export function detectDefiPositionsViaDirectRead(
   address: string,
   network: Network = "testnet",
   deps: DirectReadDeps = {}
 ): Promise<DefiPositionsResult> {
-  const rpc = limitReads(deps.rpc ?? getRpcServer(network), LEDGER_READ_CONCURRENCY);
+  const rpc = deps.rpc ?? getRpcServer(network);
+  const registry = deps.registryEntries ?? BUNDLED_REGISTRY;
+  let byRegistry = sweepsInFlight.get(rpc);
+  if (!byRegistry) {
+    byRegistry = new WeakMap();
+    sweepsInFlight.set(rpc, byRegistry);
+  }
+  let sweeps = byRegistry.get(registry);
+  if (!sweeps) {
+    sweeps = new Map();
+    byRegistry.set(registry, sweeps);
+  }
+  const running = sweeps;
+  const key = `${network}\n${address}`;
+  let shared = running.get(key);
+  if (!shared) {
+    shared = sweep(address, network, { ...deps, rpc }).finally(() => running.delete(key));
+    running.set(key, shared);
+  }
+  return shared.then((result) => structuredClone(result));
+}
+
+async function sweep(
+  address: string,
+  network: Network,
+  deps: DirectReadDeps
+): Promise<DefiPositionsResult> {
+  const read = mergedReads(limitReads(deps.rpc ?? getRpcServer(network), LEDGER_READ_CONCURRENCY));
   const entries = deps.registryEntries ?? entriesForNetwork(network);
   const probed = probedEntries(entries);
 
@@ -1130,11 +1198,11 @@ export async function detectDefiPositionsViaDirectRead(
   // once. Outcomes are joined in registry order so the result does not depend on which RPC call
   // happened to return first.
   const instanceKeys = probed.map((entry) => instanceKey(entry.address));
-  const instances = await batchReadChunked(rpc, instanceKeys);
+  const instances = await read(instanceKeys);
   const instanceOf = (i: number): xdr.LedgerEntryData | undefined =>
     instances.get(instanceKeys[i]!.toXdr("base64"));
-  const liveCodes = await resolveCodes(
-    rpc,
+  const liveCodes = await resolveCodeRefs(
+    read,
     probed.map((_, i) => {
       const val = instanceOf(i);
       return val ? parseInstance(val).ref : null;
@@ -1157,7 +1225,7 @@ export async function detectDefiPositionsViaDirectRead(
   );
   const outcomes = await Promise.all(
     probed.map((entry, i) =>
-      readEntry(rpc, entry, instanceOf(i), liveCodeOf(i), entries, address, verifiedStakes)
+      readEntry(read, entry, instanceOf(i), liveCodeOf(i), entries, address, verifiedStakes)
     )
   );
   const positions = outcomes.flatMap((o) => o.positions);

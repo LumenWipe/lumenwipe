@@ -1565,12 +1565,7 @@ function tracingRpc(
   return { rpc, sizes, maxInFlight: () => maxInFlight };
 }
 
-const contractOf = (key: xdr.LedgerKey): string => {
-  if (key.type !== "contractData") throw new Error("expected a contract data key");
-  return Address.fromScAddress(key.contractData.contract).toString();
-};
-
-test("every registered contract is verified in one ledger read, not one round trip per entry", async () => {
+test("every registered contract is verified in one ledger read, and their own reads share the next", async () => {
   const entries = [
     registryEntry(),
     registryEntry({
@@ -1602,20 +1597,42 @@ test("every registered contract is verified in one ledger read, not one round tr
     registryEntries: entries,
   });
   expect(result.unrecognizedPositions).toEqual([]);
-  // One call carrying all three instance keys, then one read per verified contract.
-  expect(sizes[0]).toBe(3);
-  expect(sizes).toHaveLength(4);
+  expect(sizes).toEqual([3, 4]);
 });
 
-test("protocol reads run at the same time, and positions still come back in registry order", async () => {
+test("a key two reads ask for in the same tick goes out once, and both get its entry", async () => {
+  const { rpc, sizes } = tracingRpc(
+    mockRpc([
+      contractInstanceEntry(BLEND_POOL, BLEND_WASM_HASH),
+      contractDataEntry(BLEND_POOL, symbolVal("ResList"), addressListVal([ASSET_A])),
+      contractDataEntry(
+        BLEND_POOL,
+        variantVal("Positions", addressVal(USER)),
+        structVal({
+          supply: u32MapVal([[0, 5_0000000n]]),
+          collateral: u32MapVal([]),
+          liabilities: u32MapVal([]),
+        })
+      ),
+    ])
+  );
+  const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
+    rpc,
+    registryEntries: [registryEntry(), registryEntry()],
+  });
+  expect(sizes).toEqual([1, 2]);
+  expect(result.positions).toHaveLength(2);
+});
+
+test("protocol reads share calls, and positions still come back in registry order", async () => {
   const entries = [
-    registryEntry(),
     registryEntry({
       address: PHOENIX_POOL,
       protocol: "phoenix",
       kind: "pool",
       wasmHash: PHOENIX_WASM_HASH,
     }),
+    registryEntry(),
   ];
   const inner = mockRpc([
     contractInstanceEntry(BLEND_POOL, BLEND_WASM_HASH),
@@ -1633,18 +1650,15 @@ test("protocol reads run at the same time, and positions still come back in regi
     phoenixConfigEntry(),
     contractDataEntry(PHOENIX_SHARE, variantVal("Balance", addressVal(USER)), i128Val(7_0000000n)),
   ]);
-  // Blend's read is held open longer than Phoenix's, so completion order is the reverse of
-  // registry order; the result must not depend on which finished first.
-  const { rpc, maxInFlight } = tracingRpc(inner, (keys) =>
-    contractOf(keys[0]!) === BLEND_POOL ? 30 : 1
-  );
+  // Blend completes a round before Phoenix, the reverse of registry order.
+  const { rpc, sizes } = tracingRpc(inner);
   const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
     rpc,
     registryEntries: entries,
   });
   expect(result.unrecognizedPositions).toEqual([]);
-  expect(result.positions.map((p) => p.protocol)).toEqual(["blend", "phoenix"]);
-  expect(maxInFlight()).toBeGreaterThanOrEqual(2);
+  expect(result.positions.map((p) => p.protocol)).toEqual(["phoenix", "blend"]);
+  expect(sizes).toEqual([2, 3, 2]);
 });
 
 const randomContract = (): string =>
@@ -1673,14 +1687,14 @@ test("two detections against the same RPC server share one concurrency budget", 
   const pairs = Array.from({ length: MANY_PAIRS }, randomContract);
   const inner = mockRpc([...factoryEntries(pairs), ...pairEntries(pairs[0]!, 1n)]);
   const { rpc, maxInFlight } = tracingRpc(inner, () => 5);
-  const run = () =>
-    detectDefiPositionsViaDirectRead(USER, "testnet", {
+  const run = (account: string) =>
+    detectDefiPositionsViaDirectRead(account, "testnet", {
       rpc,
       registryEntries: SOROSWAP_REGISTRY(),
     });
-  const [a, b] = await Promise.all([run(), run()]);
+  const [a, b] = await Promise.all([run(USER), run(Keypair.random().publicKey())]);
   expect(a.positions).toHaveLength(1);
-  expect(b.positions).toHaveLength(1);
+  expect(b.positions).toHaveLength(0);
   expect(maxInFlight()).toBeGreaterThanOrEqual(2);
   expect(maxInFlight()).toBeLessThanOrEqual(LEDGER_READ_CONCURRENCY);
 });
