@@ -158,6 +158,71 @@ const marketingSyntax = [
   ...goldFill,
 ];
 
+// The web parses, verifies and signs what the API built, and never builds a transaction itself.
+const NOT_BUILT_HERE =
+  "apps/web never builds a transaction: the API builds it, and the web parses, verifies and signs it (TransactionBuilder.fromXDR is fine).";
+const STELLAR_SDK = "/^@stellar\\/stellar-(?:sdk|base)(?:\\/|$)/";
+
+const txConstruction = [
+  "NewExpression[callee.name='TransactionBuilder']",
+  "MemberExpression[object.name='TransactionBuilder'][property.name=/^(?:buildFeeBumpTransaction|cloneFrom)$/]",
+  "ImportSpecifier[imported.name='TransactionBuilder'][local.name!='TransactionBuilder']",
+  `ImportDeclaration[source.value=${STELLAR_SDK}] > :matches(ImportNamespaceSpecifier, ImportDefaultSpecifier)`,
+  `ImportExpression[source.value=${STELLAR_SDK}]`,
+].map((selector) => ({ selector, message: NOT_BUILT_HERE }));
+
+const envelopeConstruction = [
+  "NewExpression[callee.object.name='xdr'][callee.property.name=/^(?:Transaction|TransactionV0|TransactionV1Envelope|TransactionV0Envelope|FeeBumpTransaction|FeeBumpTransactionEnvelope|Operation)$/]",
+  "MemberExpression[object.object.name='xdr'][object.property.name='TransactionEnvelope'][property.name=/^envelopeType/]",
+  "MemberExpression[object.object.name='xdr'][object.property.name='OperationBody']:not([property.name='fromXDR'])",
+].map((selector) => ({ selector, message: NOT_BUILT_HERE }));
+
+const noTxBuilding = [...txConstruction, ...envelopeConstruction];
+
+const operationBuilders = {
+  "@typescript-eslint/no-restricted-imports": [
+    "error",
+    {
+      patterns: [
+        {
+          group: ["@stellar/stellar-sdk", "@stellar/stellar-sdk/*"],
+          importNames: ["Operation", "Account", "MuxedAccount", "Contract", "SorobanDataBuilder"],
+          allowTypeImports: true,
+          message: NOT_BUILT_HERE,
+        },
+      ],
+    },
+  ],
+};
+
+// Web code may import only its own source and packages/*. The one exception is the registry data
+// the API owns and validates, which the web bundles through `@registry/*` as an offline floor.
+const appZones = {
+  "import/no-restricted-paths": [
+    "error",
+    {
+      basePath: import.meta.dirname,
+      zones: [
+        {
+          target: "./",
+          from: "../api",
+          except: ["./src/config/exchange-registry.json", "./src/config/contract-registry.json"],
+          message:
+            "apps/web must not import apps/api source. Reach the backend through @lumenwipe/sdk; only the two registry JSON files are shared.",
+        },
+        {
+          target: "./",
+          from: "../playground",
+          message:
+            "apps/web must not import apps/playground. It is isolated on purpose - its custodial demo-account code must never reach production.",
+        },
+      ],
+    },
+  ],
+};
+
+const NOT_SHIPPED = ["tests/**", "scripts/**"];
+
 const config = [
   { ignores: [".next/**", "node_modules/**", "next-env.d.ts"] },
   ...coreWebVitals,
@@ -173,27 +238,6 @@ const config = [
         {
           patterns: [
             {
-              group: [
-                "@/lib/stellar/tx-builder",
-                "@/lib/stellar/tx-builder/*",
-                "@/lib/stellar/step-engine",
-                "@/lib/stellar/fast-path",
-                "@/lib/stellar/submit",
-                "@/lib/stellar/account",
-                "@/lib/stellar/account-state",
-                "@/lib/stellar/horizon-adapter",
-                "@/lib/stellar/horizon-http",
-                "@/lib/stellar/path-finding",
-                "@/lib/stellar/scan-fallback",
-                "@/lib/stellar/rpc",
-                "@/lib/stellar/mediator-server",
-                "@/lib/close-api",
-                "@/lib/close-api/*",
-              ],
-              message:
-                "Account-closing logic lives in the API. Reach the backend through @lumenwipe/sdk (via the /api proxy routes), never a local closing module.",
-            },
-            {
               group: ["@lumenwipe/api", "@lumenwipe/api/*"],
               message: "The web must not import apps/api directly. Use @lumenwipe/sdk.",
             },
@@ -205,28 +249,49 @@ const config = [
           ],
         },
       ],
+      ...appZones,
     },
+  },
+  {
+    ignores: NOT_SHIPPED,
+    rules: { "no-restricted-syntax": ["error", ...noTxBuilding] },
+  },
+  { files: ["**/*.{ts,tsx}"], ignores: NOT_SHIPPED, rules: operationBuilders },
+  // Re-wraps the transaction body the user reviewed with the cosigners' signatures: signing only.
+  {
+    files: ["lib/cosign/merge.ts"],
+    rules: { "no-restricted-syntax": ["error", ...txConstruction] },
   },
   {
     files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}"],
     ignores: ["components/ui/**"],
-    rules: { "no-restricted-syntax": ["error", ...dimWhiteText, ...rawStyling, ...goldAction] },
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        ...noTxBuilding,
+        ...dimWhiteText,
+        ...rawStyling,
+        ...goldAction,
+      ],
+    },
   },
   {
     files: MARKETING,
-    rules: { "no-restricted-syntax": ["error", ...marketingSyntax] },
+    rules: { "no-restricted-syntax": ["error", ...noTxBuilding, ...marketingSyntax] },
   },
   {
     files: DICTIONARY_COPY.filter((file) => !file.startsWith("lib/")),
-    rules: { "no-restricted-syntax": ["error", ...marketingSyntax, ...hardCodedCopy] },
+    rules: {
+      "no-restricted-syntax": ["error", ...noTxBuilding, ...marketingSyntax, ...hardCodedCopy],
+    },
   },
   {
     files: DICTIONARY_COPY.filter((file) => file.startsWith("lib/")),
-    rules: { "no-restricted-syntax": ["error", ...hardCodedCopy] },
+    rules: { "no-restricted-syntax": ["error", ...noTxBuilding, ...hardCodedCopy] },
   },
   {
     files: ["components/ui/**/*.{ts,tsx}"],
-    rules: { "no-restricted-syntax": ["error", ...dimWhiteText, ...goldAction] },
+    rules: { "no-restricted-syntax": ["error", ...noTxBuilding, ...dimWhiteText, ...goldAction] },
   },
   {
     files: ["tests/**/*.ts", "tests/**/*.tsx"],

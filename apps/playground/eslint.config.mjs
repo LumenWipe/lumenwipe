@@ -16,12 +16,47 @@ const appPatterns = [
     group: ["@lumenwipe/api", "@lumenwipe/api/*", "@lumenwipe/web", "@lumenwipe/web/*"],
     message: "apps/playground must not import apps/api or apps/web directly.",
   },
-  {
-    group: ["**/apps/web", "**/apps/web/**", "**/../web/**"],
-    message:
-      "apps/playground verifies with @lumenwipe/verify, the published build of the web's trust anchor, never by reaching into apps/web.",
-  },
 ];
+
+// Playground code may import only its own source and packages/*, with no exception.
+const appZones = {
+  "import/no-restricted-paths": [
+    "error",
+    {
+      basePath: import.meta.dirname,
+      zones: [
+        {
+          target: "./",
+          from: "../web",
+          message:
+            "apps/playground verifies with @lumenwipe/verify, the published build of the web's trust anchor, never by reaching into apps/web.",
+        },
+        {
+          target: "./",
+          from: "../api",
+          message:
+            "apps/playground must not import apps/api source. It closes through @lumenwipe/sdk against the real API.",
+        },
+      ],
+    },
+  ],
+};
+
+// The verifier checks what the API built and never builds a transaction itself.
+const NOT_BUILT_HERE =
+  "The playground's verifier never builds a transaction: it parses and checks what the API built (TransactionBuilder.fromXDR is fine).";
+const STELLAR_SDK = "/^@stellar\\/stellar-(?:sdk|base)(?:\\/|$)/";
+
+const verifierBuilds = [
+  "NewExpression[callee.name='TransactionBuilder']",
+  "MemberExpression[object.name='TransactionBuilder'][property.name=/^(?:buildFeeBumpTransaction|cloneFrom)$/]",
+  "ImportSpecifier[imported.name='TransactionBuilder'][local.name!='TransactionBuilder']",
+  `ImportDeclaration[source.value=${STELLAR_SDK}] > :matches(ImportNamespaceSpecifier, ImportDefaultSpecifier)`,
+  `ImportExpression[source.value=${STELLAR_SDK}]`,
+  "NewExpression[callee.object.name='xdr'][callee.property.name=/^(?:Transaction|TransactionV0|TransactionV1Envelope|TransactionV0Envelope|FeeBumpTransaction|FeeBumpTransactionEnvelope|Operation)$/]",
+  "MemberExpression[object.object.name='xdr'][object.property.name='TransactionEnvelope'][property.name=/^envelopeType/]",
+  "MemberExpression[object.object.name='xdr'][object.property.name='OperationBody']:not([property.name='fromXDR'])",
+].map((selector) => ({ selector, message: NOT_BUILT_HERE }));
 
 const restrict = (...extra) => ({
   "no-restricted-imports": ["error", { patterns: [...appPatterns, ...extra] }],
@@ -51,7 +86,7 @@ const config = [
   ...coreWebVitals,
   prettier,
   { files: ["**/*.{ts,tsx}"], rules: { "@typescript-eslint/no-explicit-any": "error" } },
-  { rules: restrict() },
+  { rules: { ...restrict(), ...appZones } },
   { files: ["lib/scenarios/**"], rules: restrict(...registryPatterns) },
   {
     files: [
@@ -65,6 +100,31 @@ const config = [
       group: ["**/mess-builders", "**/soroban-seed", "**/soroban-submit"],
       message: "The verifier never imports the mess executors or the seeding they use.",
     }),
+  },
+  {
+    files: ["lib/verify*.ts"],
+    rules: {
+      "no-restricted-syntax": ["error", ...verifierBuilds],
+      "@typescript-eslint/no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["@stellar/stellar-sdk", "@stellar/stellar-sdk/*"],
+              importNames: [
+                "Operation",
+                "Account",
+                "MuxedAccount",
+                "Contract",
+                "SorobanDataBuilder",
+              ],
+              allowTypeImports: true,
+              message: NOT_BUILT_HERE,
+            },
+          ],
+        },
+      ],
+    },
   },
   {
     files: ["lib/mess-builders.ts", "lib/soroban-seed.ts", "lib/soroban-submit.ts"],

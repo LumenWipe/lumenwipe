@@ -66,18 +66,18 @@ describe("raw styling lint", () => {
     expect(messages[0]).toMatch(/white opacity at or below 55/);
   }, 30_000);
 
-  test("the closing module boundary still fires in app, components and components/ui", async () => {
-    const code = `import { buildClose } from "@/lib/close-api";\nexport const a = buildClose;\n`;
+  test("the app boundary still fires in app, components and components/ui", async () => {
+    const code = `import { networks } from "@registry/networks";\nexport const a = networks;\n`;
     for (const file of [
       "components/plan/Fixture.tsx",
       "components/ui/fixture.tsx",
       "app/fixture/page.tsx",
     ]) {
       const restricted = (await lint(code, file)).filter(
-        (m) => m.ruleId === "no-restricted-imports"
+        (m) => m.ruleId === "import/no-restricted-paths"
       );
       expect(restricted).toHaveLength(1);
-      expect(restricted[0].message).toMatch(/Account-closing logic lives in the API/);
+      expect(restricted[0].message).toMatch(/must not import apps\/api source/);
     }
   }, 30_000);
 });

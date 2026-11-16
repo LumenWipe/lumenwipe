@@ -25,7 +25,9 @@ import embeddedRegistry from "@registry/contract-registry.json";
 import { exitExpectations } from "@/lib/stellar/exit-expectations";
 import { isContractRegistryUsable } from "@/lib/contract-registry";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
-import realAggregatorSwap from "../../../api/tests/unit/fixtures/soroswap-aggregator-v2-swap.json";
+// A frozen copy of apps/api/tests/unit/fixtures/soroswap-aggregator-v2-swap.json as of 4e34afb1
+// (captured 2026-09-29, see its capturedAt): the web may not import API files.
+import realAggregatorSwap from "./fixtures/soroswap-aggregator-v2-swap.json";
 
 const SRC = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
