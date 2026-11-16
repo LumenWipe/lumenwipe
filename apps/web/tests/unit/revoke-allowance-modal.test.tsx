@@ -467,23 +467,37 @@ function clickScrim(): void {
   fireEvent.click(document.querySelector("[data-dialog-scrim]") as Element);
 }
 
-function holdFetch(): (response: Response) => void {
-  let release: (response: Response) => void = () => {};
-  globalThis.fetch = (() =>
-    new Promise<Response>((resolve) => {
-      release = resolve;
-    })) as unknown as typeof fetch;
-  return (response) => release(response);
+/** A fetch that stays pending until the test settles it: `requested` resolves once the modal has
+ *  asked, and `response` is the promise the modal awaits. */
+function holdFetch(): {
+  requested: Promise<void>;
+  response: Promise<Response>;
+  fail: (error: Error) => void;
+} {
+  let asked: () => void = () => {};
+  const requested = new Promise<void>((resolve) => {
+    asked = resolve;
+  });
+  let fail: (error: Error) => void = () => {};
+  const response = new Promise<Response>((_resolve, reject) => {
+    fail = reject;
+  });
+  globalThis.fetch = (() => {
+    asked();
+    return response;
+  }) as unknown as typeof fetch;
+  return { requested, response, fail };
 }
 
 test("RevokeAllowanceModal › while a revoke is in flight nothing closes it, and a failure can", async () => {
   stubWalletKit();
-  const release = holdFetch();
+  const held = holdFetch();
   const onClose = mock(() => {});
   renderSecretKeyModal(onClose);
 
   fireEvent.click(screen.getByRole("button", { name: /revoke allowance/i }));
-  await waitFor(() => expect(screen.getByRole("button", { name: /revoking/i })).toBeTruthy());
+  await act(() => held.requested);
+  expect(screen.getByRole("button", { name: /revoking/i })).toBeTruthy();
 
   pressEscape();
   fireEvent.keyDown(document.body, { key: "Escape" });
@@ -491,8 +505,11 @@ test("RevokeAllowanceModal › while a revoke is in flight nothing closes it, an
   expect(screen.queryByRole("button", { name: "Close" })).toBeNull();
   expect(onClose).not.toHaveBeenCalled();
 
-  release(new Response(JSON.stringify({ message: "nope" }), { status: 500 }));
-  await waitFor(() => expect(screen.getByRole("button", { name: "Close" })).toBeTruthy());
+  await act(async () => {
+    held.fail(new TypeError("Failed to fetch"));
+    await held.response.catch(() => {});
+  });
+  expect(screen.getByRole("button", { name: "Close" })).toBeTruthy();
   pressEscape();
   expect(onClose).toHaveBeenCalledTimes(1);
   clickScrim();

@@ -45,6 +45,7 @@ import {
 import * as activeSignerHook from "@/hooks/useActiveSigner";
 import * as secretKeyInputModule from "@/components/account-entry/SecretKeyInput";
 import * as walletKitClient from "@/lib/wallet-kit/client";
+import { VARIAL_ID } from "@/lib/wallet-kit/wallet-ids";
 import type { CloseProgress } from "@/lib/execution/progress";
 import { hashFingerprint, type SigningPrompt } from "@/lib/execution/signing-prompt";
 import { expectFocused, expectFocusedNow, expectSameElement } from "./fixtures/focus";
@@ -132,6 +133,23 @@ function stubWalletKit(): void {
         ...currentWalletState,
       }) as unknown as ReturnType<typeof walletKit.useWalletKitConnection>
   );
+  // The real walletKitSigner refuses until the kit's code has loaded, which no test here does: a
+  // connected address stands for a loaded kit, so it gets a signer, the same one per address.
+  const signers = new Map<string, WalletKitSigner>();
+  spyOn(walletKitClient, "walletKitSigner").mockImplementation((network, address) => {
+    const key = `${network}|${address}`;
+    const signer =
+      signers.get(key) ??
+      new WalletKitSigner(
+        address,
+        async () => {
+          throw new Error("no wallet answers in this test");
+        },
+        { walletId: VARIAL_ID }
+      );
+    signers.set(key, signer);
+    return signer;
+  });
 }
 
 // The app's real resumable session mechanism is IndexedDB via saveSession

@@ -1,10 +1,24 @@
 import { test, expect, afterEach } from "bun:test";
-import { mkdtempSync, writeFileSync, rmSync } from "fs";
+import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { loadEnvFiles } from "@/env";
+import { parse } from "dotenv";
 
 const originalCwd = process.cwd();
+
+// `@/env` loads `.env.local` and `.env` from the cwd as it is imported. Imported from an empty
+// directory, it reads no developer's env file into this process, whose environment the #88 child
+// below inherits and every later test file in the run shares.
+const { loadEnvFiles } = await (async () => {
+  const empty = mkdtempSync(join(tmpdir(), "lumenwipe-env-import-"));
+  try {
+    process.chdir(empty);
+    return await import("@/env");
+  } finally {
+    process.chdir(originalCwd);
+    rmSync(empty, { recursive: true, force: true });
+  }
+})();
 const cleanupKeys: string[] = [];
 const cleanupDirs: string[] = [];
 
@@ -62,36 +76,47 @@ test("loadEnvFiles never overrides a real shell/OS environment variable", () => 
   expect(process.env[key]).toBe("from-shell");
 });
 
-test("main.ts's import order lets config/networks.ts see a fresh .env.local with no shell var (issue #88)", async () => {
+const SRC = join(import.meta.dir, "..", "..", "src");
+
+test("main.ts imports env.ts before anything else (issue #88)", () => {
+  const firstImport = readFileSync(join(SRC, "main.ts"), "utf8").match(/^import .+$/m)?.[0];
+  expect(firstImport).toBe('import "./env";');
+});
+
+/** Imports env.ts then config/networks.ts, as main.ts does, in a child whose cwd holds only a
+ *  .env.local with the legacy name, and returns what networks.ts read. */
+async function importOrderHarness(
+  parentEnv: Record<string, string | undefined>
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const dir = tempDirWithEnvFiles({
     ".env.local": "NEXT_PUBLIC_PATH_ROUTING_API_TESTNET=https://example-routing.test\n",
   });
-  const envPath = join(import.meta.dir, "..", "..", "src", "env.ts");
-  const networksPath = join(import.meta.dir, "..", "..", "src", "config", "networks.ts");
   const harnessPath = join(dir, "harness.ts");
   writeFileSync(
     harnessPath,
     [
-      `import "${envPath}";`,
-      `import { PATH_ROUTING_API_URLS } from "${networksPath}";`,
+      `import "${join(SRC, "env.ts")}";`,
+      `import { PATH_ROUTING_API_URLS } from "${join(SRC, "config", "networks.ts")}";`,
       "process.stdout.write(PATH_ROUTING_API_URLS.testnet);",
       "",
     ].join("\n")
   );
 
-  // Rule out a real shell export so the temp .env.local is the only source of truth.
-  const envWithoutShellOverride = { ...process.env };
-  delete envWithoutShellOverride.NEXT_PUBLIC_PATH_ROUTING_API_TESTNET;
+  // Rule out the parent's value under either name, so the temp .env.local is the only source of
+  // truth: config/networks.ts takes the new name whenever it is present, even empty.
+  const env = { ...parentEnv };
+  delete env.PATH_ROUTING_API_TESTNET;
+  delete env.NEXT_PUBLIC_PATH_ROUTING_API_TESTNET;
   // Bun itself auto-loads .env.local, which would mask the bug this test targets
   // (config/networks.ts's own import-time read, independent of any runtime's
   // built-in env loading). NODE_ENV=test makes Bun skip that auto-load, isolating
   // the assertion to env.ts's own dotenv bootstrap - same as the actual bug, which
   // surfaces under plain Node (`node dist/main.js` / nest's spawned dev process).
-  envWithoutShellOverride.NODE_ENV = "test";
+  env.NODE_ENV = "test";
 
   const proc = Bun.spawn(["bun", "run", harnessPath], {
     cwd: dir,
-    env: envWithoutShellOverride,
+    env,
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -100,8 +125,25 @@ test("main.ts's import order lets config/networks.ts see a fresh .env.local with
     new Response(proc.stderr).text(),
     proc.exited,
   ]);
+  return { stdout, stderr, exitCode };
+}
 
-  expect(exitCode).toBe(0);
-  expect(stderr).toBe("");
-  expect(stdout).toBe("https://example-routing.test");
+test("main.ts's import order lets config/networks.ts see a fresh .env.local with no shell var (issue #88)", async () => {
+  expect(await importOrderHarness(process.env)).toEqual({
+    stdout: "https://example-routing.test",
+    stderr: "",
+    exitCode: 0,
+  });
+});
+
+test("the import order check holds when the runner already carries a .env.local made from .env.example", async () => {
+  // What `cp .env.example .env.local` (CONTRIBUTING's setup) puts in an environment, including
+  // PATH_ROUTING_API_TESTNET set to empty.
+  const contributorEnv = parse(readFileSync(join(import.meta.dir, "..", "..", ".env.example")));
+  expect(contributorEnv).toHaveProperty("PATH_ROUTING_API_TESTNET");
+  expect(await importOrderHarness({ ...process.env, ...contributorEnv })).toEqual({
+    stdout: "https://example-routing.test",
+    stderr: "",
+    exitCode: 0,
+  });
 });
