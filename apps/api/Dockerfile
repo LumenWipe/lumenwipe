@@ -3,13 +3,14 @@
 # Build context = repo root:  docker build -f apps/api/Dockerfile -t lumenwipe-api .
 # Runtime target = Google Cloud Run (listens on $PORT / 0.0.0.0, SIGTERM-aware).
 #
-# Every base image and the syntax frontend are pinned by version AND digest, so the same commit
-# builds from the same bases on any day. Renovate moves the tag and the digest together. The Bun tag
-# is the Bun in .tool-versions and CI, and the Node tag is the Node in .tool-versions;
-# scripts/check-image-pins.ts fails CI when either drifts or a pin loses its digest. dumb-init is the
-# one input left to the Debian archive at build time; the SBOM CI writes records its version.
+# Every base image and the syntax frontend are pinned by tag AND digest, so the same commit builds
+# from the same bases on any day, with nothing fetched from the Debian archive. Renovate moves the
+# tags and digests. The Bun tag is the Bun in .tool-versions and CI; the distroless runtime's tag
+# carries no Node version, so its image name must name the Node major in .tool-versions and the CI
+# api image job checks the built image's `node --version` against .tool-versions exactly.
+# scripts/check-image-pins.ts fails CI when a version drifts or a pin loses its digest.
 
-# ── Stage 1: builder - Bun on Debian/glibc (ABI-matches node:24-slim runtime) ──
+# ── Stage 1: builder - Bun on Debian 13/glibc (ABI-matches the distroless Debian 13 runtime) ──
 FROM oven/bun:1.4.4@sha256:1d22548f177f4ff38e0c15baa3c2c46c6c2060ba2d1bc573bb4720b407548f1d AS builder
 WORKDIR /app
 # bun install --frozen-lockfile needs EVERY workspace manifest present, even when
@@ -50,24 +51,24 @@ COPY tools/lab/package.json tools/lab/
 # copy the whole tree into the runtime stage below.
 RUN bun install --frozen-lockfile --production --filter '@lumenwipe/api'
 
-# ── Stage 3: runtime - Node (matches start:prod), glibc slim, non-root ──
-FROM node:26.13.1-slim@sha256:e6bedef217677b276c591795e169840edd9096dbf13f29df8ef8d1856b8820bc AS runtime
+# ── Stage 3: runtime - distroless Node (matches start:prod), glibc, non-root ──
+# Node and the libraries it links (glibc, libstdc++, libgcc_s, libatomic), with no shell, package
+# manager, npm or other tool the API never runs.
+FROM gcr.io/distroless/nodejs26-debian13:nonroot@sha256:1d736cf8b5716c07a245301f92717143215d248fd55771ee1936ef4b3302e531 AS runtime
 ENV NODE_ENV=production
-# dumb-init as PID 1 forwards Cloud Run's SIGTERM to node so Nest's shutdown hooks
-# run within the grace window (can't pass `docker run --init` on Cloud Run).
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends dumb-init \
-  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app/apps/api
 # Hoisted deps live at /app/node_modules, so copy the whole prod-deps tree, then
 # overlay the compiled output. Node resolves modules by walking up from apps/api.
-COPY --from=prod-deps --chown=node:node /app /app
-COPY --from=builder --chown=node:node /app/apps/api/dist /app/apps/api/dist
+# Owned by root, so the process can read its code but not change it.
+COPY --from=prod-deps /app /app
+COPY --from=builder /app/apps/api/dist /app/apps/api/dist
 # The commit this image was built from, reported at `/`. Declared last so a new commit
 # invalidates no earlier layer.
 ARG GIT_SHA=""
 ENV GIT_SHA=${GIT_SHA}
-USER node
-# Cloud Run injects PORT (default 8080); main.ts binds 0.0.0.0. EXPOSE is doc-only.
-ENTRYPOINT ["dumb-init", "--"]
-CMD ["node", "dist/main.js"]
+USER nonroot
+# Node runs as PID 1 with no init: app.enableShutdownHooks() (main.ts) installs the SIGTERM handler
+# that runs Nest's shutdown hooks when Cloud Run stops the instance, and the API starts no child
+# processes to reap. Cloud Run injects PORT (default 8080); main.ts binds 0.0.0.0.
+ENTRYPOINT ["/nodejs/bin/node"]
+CMD ["dist/main.js"]
