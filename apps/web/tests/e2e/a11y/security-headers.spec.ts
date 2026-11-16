@@ -59,7 +59,7 @@ test("the app, sign-in and 404 responses keep today's nonce policy byte for byte
     expect(nonce, path).toBeTruthy();
     expect(policy.replace(`'nonce-${nonce}'`, "'nonce-NONCE'"), path).toBe(NONCE_POLICY[path]);
     expect(res.headers()["cache-control"], path).toContain("no-store");
-    const scripts = [...(await res.text()).matchAll(/<script\b([^>]*)>/g)].map((m) => m[1]);
+    const scripts = [...(await res.text()).matchAll(/<script\b([^>]*)>/gi)].map((m) => m[1]);
     for (const attrs of scripts.filter((a) => !a.includes('type="application/ld+json"'))) {
       expect(attrs, `${path}: every script carries the response's nonce`).toContain(
         `nonce="${nonce}"`

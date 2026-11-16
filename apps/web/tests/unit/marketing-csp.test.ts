@@ -77,6 +77,11 @@ describe("pageScripts", () => {
     expect(external).toEqual(["/_next/static/chunks/main.js"]);
   });
 
+  test("end tags with whitespace or attributes and upper-case tags still close a script", () => {
+    const html = "<SCRIPT>a()</SCRIPT ><script>b()</script\t\n bar><script>c()</script>";
+    expect(pageScripts(html).inline).toEqual(["a()", "b()", "c()"]);
+  });
+
   test("a module script is executable, a JSON data block is not", () => {
     const html = '<script type="module">a()</script><script type="application/json">{}</script>';
     expect(pageScripts(html).inline).toEqual(["a()"]);

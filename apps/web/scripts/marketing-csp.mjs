@@ -41,7 +41,7 @@ function fail(message) {
 export function pageScripts(html) {
   const inline = [];
   const external = [];
-  for (const [, attrs, body] of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)) {
+  for (const [, attrs, body] of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\b[^>]*>/gi)) {
     const src = /\ssrc\s*=\s*"([^"]*)"/i.exec(attrs)?.[1];
     const type = (/\stype\s*=\s*"([^"]*)"/i.exec(attrs)?.[1] ?? "").toLowerCase();
     if (!SCRIPT_TYPES.has(type)) continue;
