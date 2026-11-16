@@ -69,6 +69,12 @@ export const STROOPS_PER_XLM = 10_000_000;
  *  fee (a Blend withdraw on testnet charged ~25,000 stroops); this is a deliberate over-estimate
  *  so the review page never understates what a close with positions will cost. */
 export const SOROBAN_EXIT_FEE_ESTIMATE_STROOPS = 100_000;
+/** Plan-time fee bound for one Soroban token swap. A swap through the Soroswap aggregator routes
+ *  across several pools and can cost far more than an exit: a read-only sample of 49 mainnet
+ *  swaps (2026-11-10 to 2026-11-11) found an aggregator `swap_exact_in` charged 696,081 stroops,
+ *  with a declared resource fee of 921,890. The bound sits above both, so the figures it feeds
+ *  lean low on what a close delivers. */
+export const SOROBAN_SWAP_FEE_ESTIMATE_STROOPS = 1_000_000;
 /** Ceiling on the total fee of one exit transaction as assembled from simulation. A real exit
  *  costs a few thousand stroops; a fee anywhere near this is a simulation gone wrong or an
  *  attempt to grief the account through the fee pool, and is refused rather than offered. */

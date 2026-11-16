@@ -133,9 +133,10 @@ describe("the plan for a position whose exit cannot be built", () => {
     });
   }
 
-  const preflight =
-    (blocked: Record<string, ExitTargetBlock>) => async (): Promise<Map<string, ExitTargetBlock>> =>
-      new Map(Object.entries(blocked));
+  const preflight = (blocked: Record<string, ExitTargetBlock>) => async () => ({
+    blocked: new Map(Object.entries(blocked)),
+    simulatedFeeStroops: new Map<string, bigint>(),
+  });
 
   test("blocks the merge by name, offers no exit for it, and asks whether to leave it behind", async () => {
     arrange(state([supply(POOL), supply(POOL_2)]));
@@ -172,7 +173,7 @@ describe("the plan for a position whose exit cannot be built", () => {
       {
         preflightExits: async () => {
           preflighted++;
-          return new Map();
+          return { blocked: new Map(), simulatedFeeStroops: new Map() };
         },
       }
     );

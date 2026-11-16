@@ -106,6 +106,26 @@ export interface DecisionAnswer {
   };
 }
 
+/**
+ * The plan's fee estimate. `feeStroops` is the sum of every step's fee and of the three
+ * `feeParts`, which say how each part is known.
+ */
+export interface PlanEstimate {
+  /** Estimated total fee across every transaction, in stroops, Soroban resource fees included. */
+  feeStroops: string;
+  freedReserveXlm: string;
+  feeParts: {
+    /** The base fee of every classic operation. */
+    classicStroops: string;
+    /** Soroban transactions the plan simulated: each assembled envelope's total fee, the most
+     *  the network may charge it. */
+    sorobanSimulatedStroops: string;
+    /** Soroban transactions the plan did not simulate, at a per-transaction bound that leans
+     *  high: token swaps and transfers, and DeFi exits past the first or without a simulation. */
+    sorobanBoundStroops: string;
+  };
+}
+
 /** One transaction the close is expected to take. */
 export interface ExecutionTxBreakdown {
   /** Position among the transactions, from 0, in the order they are built and submitted. */
@@ -121,7 +141,7 @@ export interface PlanResponse {
   steps: unknown[]; // PlannedStep[] serialized; reuse types/plan PlannedStep
   decisionPoints: DecisionPoint[];
   blockers: { code: string; message: string; helpUrl?: string }[];
-  estimate: { feeStroops: string; freedReserveXlm: string };
+  estimate: PlanEstimate;
   /**
    * The transactions this close is expected to take, counted with the splitter the builder
    * packs them with: Soroban token moves, the claim round, the classic close split at the

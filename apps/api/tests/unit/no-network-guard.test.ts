@@ -9,7 +9,7 @@ import {
   createServer as createNetServer,
 } from "node:net";
 import { rpc } from "@stellar/stellar-sdk";
-import { isLoopback, takeBlockedRequests } from "../no-network";
+import { isLoopback, takeBlockedRequests, testFrameIn } from "../no-network";
 
 afterEach(() => {
   takeBlockedRequests();
@@ -158,4 +158,15 @@ test("loopback is never refused, through fetch or node:http", async () => {
 test("loopback is only localhost and 127.0.0.0/8 and ::1", () => {
   expect(["localhost", "127.0.0.1", "127.1.2.3", "::1", "[::1]"].every(isLoopback)).toBe(true);
   expect(["soroban-testnet.stellar.org", "10.0.0.1", "127.example"].some(isLoopback)).toBe(false);
+});
+
+test("a test frame is matched on the package's tests directory, not a parent named *tests", () => {
+  const testsDir = "/home/dev/deterministic-flaky-tests/apps/api/tests/";
+  const stack = [
+    "Error",
+    "    at refuse (/home/dev/deterministic-flaky-tests/apps/api/src/lib/net.ts:9:3)",
+    "    at <anonymous> (/home/dev/deterministic-flaky-tests/apps/api/tests/unit/x.test.ts:12:5)",
+  ].join("\n");
+  expect(testFrameIn(stack, testsDir)).toBe("tests/unit/x.test.ts:12");
+  expect(testFrameIn("    at f (/home/dev/other-tests/y.test.ts:3:1)", testsDir)).toBeNull();
 });

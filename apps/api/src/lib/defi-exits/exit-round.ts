@@ -1,3 +1,4 @@
+import { TransactionBuilder } from "@stellar/stellar-sdk";
 import type { ErrorCode } from "@lumenwipe/types";
 import { isErrorCode } from "@/common/error-codes";
 import type { AccountState, CloseTransaction, Network } from "@lumenwipe/types";
@@ -173,27 +174,49 @@ export async function buildExitRound(
   return null;
 }
 
+export interface ExitPreflightReport {
+  /** Targets, by contract, whose exit cannot be built right now. */
+  blocked: Map<string, ExitTargetBlock>;
+  /** Targets, by contract, whose first exit transaction was simulated: the assembled envelope's
+   *  total fee in stroops, the most the network may charge it. */
+  simulatedFeeStroops: Map<string, bigint>;
+}
+
+/** The fee an assembled envelope declares, or undefined when it does not parse. */
+function envelopeFeeStroops(txXdr: string, network: Network): bigint | undefined {
+  try {
+    return BigInt(TransactionBuilder.fromXDR(txXdr, NETWORK_PASSPHRASES[network]).fee);
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * The plan's view of the exit round: runs every target the way the round would, against the
- * account read the plan uses, and reports the ones whose exit cannot be built right now. Nothing
- * here is offered for signing; the round re-runs every check against live state before it builds.
+ * account read the plan uses, and reports the ones whose exit cannot be built right now, and the
+ * fee of each first exit transaction it simulated. Nothing here is offered for signing; the round
+ * re-runs every check against live state before it builds.
  */
 export async function preflightExitTargets(
   accountState: AccountState,
   network: Network,
   deps: Pick<ExitRoundDeps, "rpc" | "now" | "runExitAdapter">
-): Promise<Map<string, ExitTargetBlock>> {
-  const blocked = new Map<string, ExitTargetBlock>();
+): Promise<ExitPreflightReport> {
+  const report: ExitPreflightReport = { blocked: new Map(), simulatedFeeStroops: new Map() };
   const targets = groupExitTargets(accountState.defiPositions.positions);
-  if (targets.length === 0) return blocked;
+  if (targets.length === 0) return report;
   const ctx = exitContext(accountState, network, accountState.sequence, deps.now);
   const run = deps.runExitAdapter ?? runExitAdapter;
   const outcomes = await Promise.all(targets.map((t) => assessTarget(t, ctx, run, deps.rpc)));
   outcomes.forEach((outcome, i) => {
+    const contract = targets[i]!.contract;
     if (outcome.kind === "blocked") {
       const { code, message, leaveEligible } = outcome;
-      blocked.set(targets[i]!.contract, { code, message, leaveEligible });
+      report.blocked.set(contract, { code, message, leaveEligible });
+    } else if (outcome.kind === "exitable") {
+      const fee = envelopeFeeStroops(outcome.result.next.simulation.txXdr, network);
+      if (fee !== undefined) report.simulatedFeeStroops.set(contract, fee);
     }
   });
-  return blocked;
+  return report;
 }

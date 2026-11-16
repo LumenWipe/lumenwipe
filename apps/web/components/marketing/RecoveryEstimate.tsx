@@ -35,9 +35,6 @@ function assumptions(range: Estimate["range"]): string[] {
   if (range.unconvertibleAssets > 0) {
     lines.push(T.assumptions.unconvertible(range.unconvertibleAssets));
   }
-  if (range.tokenSwaps > 0) {
-    lines.push(T.assumptions.tokenSwaps);
-  }
   if (range.leavesOutDefiExits) {
     lines.push(T.assumptions.defiExits);
   }

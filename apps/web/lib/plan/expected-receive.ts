@@ -30,8 +30,6 @@ export interface ExpectedReceive {
   estimated: boolean;
   /** Chosen swaps whose plan carried no estimate, so the figure counts nothing for them. */
   unquotedSwaps: number;
-  /** Chosen token swaps: each pays a Soroban resource fee the plan's fee estimate does not hold. */
-  tokenSwaps: number;
   /** Chosen token swaps whose quote was flagged (a high or unmeasured price impact, or quotes
    *  that disagree) and that the user confirmed anyway. */
   flaggedSwaps: number;
@@ -85,11 +83,9 @@ export function expectedReceive(input: ExpectedReceiveInput): ExpectedReceive {
 
   let swaps = ZERO;
   let unquotedSwaps = 0;
-  let tokenSwaps = 0;
   let flaggedSwaps = 0;
   for (const c of input.conversions) {
     if (!c.convertible || input.dispositions[c.asset] !== "convert") continue;
-    if (c.token) tokenSwaps += 1;
     if ((c.token?.quote?.flags.length ?? 0) > 0) flaggedSwaps += 1;
     const floor = c.token
       ? c.token.quote?.minAmountOut
@@ -116,7 +112,6 @@ export function expectedReceive(input: ExpectedReceiveInput): ExpectedReceive {
     claimStroops: claims.toString(),
     estimated: swaps > ZERO || claims > ZERO,
     unquotedSwaps,
-    tokenSwaps,
     flaggedSwaps,
     leavesOutDefiExits: account.defiPositions.positions.length > 0,
   };
@@ -147,8 +142,6 @@ export interface RecoveryRange {
   convertedAssets: number;
   /** Convertible assets with no quote, which the high figure counts as nothing. */
   unquotedSwaps: number;
-  /** Token conversions, whose Soroban resource fee neither figure counts. */
-  tokenSwaps: number;
   /** Assets with no route to XLM, which neither figure counts. */
   unconvertibleAssets: number;
   /** DeFi position exits, which may pay XLM neither figure counts. */
@@ -191,7 +184,6 @@ export function recoveryRange(
     feeStroops: low.feeStroops,
     convertedAssets: convertible.length,
     unquotedSwaps: high.unquotedSwaps,
-    tokenSwaps: high.tokenSwaps,
     unconvertibleAssets: conversions.length - convertible.length,
     leavesOutDefiExits: low.leavesOutDefiExits,
     blockers: hardBlockersOf(plan.blockers).length,

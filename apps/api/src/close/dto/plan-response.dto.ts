@@ -7,6 +7,7 @@ import type {
   DecisionOption,
   DecisionPoint,
   ExecutionTxBreakdown,
+  PlanEstimate,
   PlanResponse,
   QuoteInfo,
 } from "@lumenwipe/types";
@@ -56,7 +57,10 @@ export class PlannedStepDto implements PlannedStep {
   operationCount!: number;
 
   @ApiProperty({
-    description: "Estimated fee in XLM, before the step actually builds/submits.",
+    description:
+      "Estimated fee in XLM, before the step actually builds/submits. A Soroban step (a token " +
+      "move or a DeFi exit) includes its resource fee: from simulation for an exit's first " +
+      "transaction when the plan simulated it, otherwise a per-transaction bound.",
     example: "0.0000100",
   })
   estimatedFeeLumens!: string;
@@ -222,12 +226,43 @@ export class PlanResponseBlockerDto {
   helpUrl?: string;
 }
 
-class PlanEstimateDto {
-  @ApiProperty({ description: "Estimated total fee across every transaction, in stroops." })
+class PlanFeePartsDto {
+  @ApiProperty({ description: "The base fee of every classic operation, in stroops." })
+  classicStroops!: string;
+
+  @ApiProperty({
+    description:
+      "Soroban transactions the plan simulated (the first transaction of each DeFi exit it " +
+      "could build): each assembled envelope's total fee, the most the network may charge it, " +
+      "in stroops.",
+  })
+  sorobanSimulatedStroops!: string;
+
+  @ApiProperty({
+    description:
+      "Soroban transactions the plan did not simulate, at a per-transaction bound that leans " +
+      "high, in stroops: 1,000,000 for a token swap or a token not decided yet, 100,000 for a " +
+      "token transfer and for each DeFi exit transaction without a simulation.",
+  })
+  sorobanBoundStroops!: string;
+}
+
+class PlanEstimateDto implements PlanEstimate {
+  @ApiProperty({
+    description:
+      "Estimated total fee across every transaction, in stroops: the sum of the steps' fees " +
+      "and of `feeParts`, Soroban resource fees included.",
+  })
   feeStroops!: string;
 
   @ApiProperty({ description: "Estimated XLM freed by removing subentries, in XLM." })
   freedReserveXlm!: string;
+
+  @ApiProperty({
+    type: PlanFeePartsDto,
+    description: "How each part of `feeStroops` is known.",
+  })
+  feeParts!: PlanEstimate["feeParts"];
 }
 
 class PlanExecutionDto {
@@ -263,7 +298,7 @@ export class PlanResponseDto implements PlanResponse {
   blockers!: { code: string; message: string; helpUrl?: string }[];
 
   @ApiProperty({ type: PlanEstimateDto })
-  estimate!: { feeStroops: string; freedReserveXlm: string };
+  estimate!: PlanEstimate;
 
   @ApiProperty({ type: PlanExecutionDto })
   execution!: { estimatedTransactionCount: number | null; transactions: ExecutionTxBreakdown[] };

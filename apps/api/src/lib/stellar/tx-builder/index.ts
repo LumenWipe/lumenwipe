@@ -16,7 +16,7 @@ import type {
 import type { SponsorshipAffordability } from "@/lib/stellar/sponsorship-affordability";
 import { assessDefiPositionsGate } from "@/lib/defi-positions/positions-gate";
 import { planExitSteps, type ExitPreflight } from "@/lib/defi-exits/plan-exits";
-import { estimateFeeLumens } from "@/lib/utils/amounts";
+import { estimateFeeLumens, stroopsToXlm } from "@/lib/utils/amounts";
 import {
   claimStatus,
   claimableFromEpoch,
@@ -29,9 +29,12 @@ import {
   claimReserveShortMessage,
   claimTrustlineCostStroops,
   closeFeeShortMessage,
+  exitRoundsFeeStroops,
   laterOwnFeesStroops,
   ownFeeShortfallStroops,
+  tokenRoundFeeBoundStroops,
   tokenRoundsAhead,
+  tokenRoundsFeeStroops,
   trustlineReserveShortfallStroops,
   trustlineShortfallNote,
 } from "@/lib/stellar/claim-reserve";
@@ -541,8 +544,12 @@ export function buildPlan(
       ? 0n
       : ownFeeShortfallStroops(
           accountState,
-          laterOwnFeesStroops(accountState, sorobanRounds, mediatorRequired) +
-            claimTrustlineCostStroops(accountState, claimableBalanceSelections)
+          laterOwnFeesStroops(
+            accountState,
+            exitRoundsFeeStroops(2 * detectedPositions.length) +
+              tokenRoundsFeeStroops(accountState, dispositions),
+            mediatorRequired
+          ) + claimTrustlineCostStroops(accountState, claimableBalanceSelections)
         );
   if (ownFeeShort > 0n) {
     blockers.push({ code: "close_fee_balance_short", message: closeFeeShortMessage(ownFeeShort) });
@@ -597,6 +604,7 @@ export function buildPlan(
       steps.push(
         step(idx++, "HANDLE_ASSETS", labels.title, labels.description, labels.operationCount, {
           affectedAsset: token.contract,
+          estimatedFeeLumens: stroopsToXlm(tokenRoundFeeBoundStroops(dispositions[token.contract])),
         })
       );
     }

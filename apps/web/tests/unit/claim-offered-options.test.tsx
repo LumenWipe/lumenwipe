@@ -38,7 +38,11 @@ function planWith(options: unknown, currentlyClaimable = false): PlanResponse {
     status: "needs_decisions",
     steps: [],
     blockers: [],
-    estimate: { feeStroops: "0", freedReserveXlm: "0" },
+    estimate: {
+      feeStroops: "0",
+      freedReserveXlm: "0",
+      feeParts: { classicStroops: "0", sorobanSimulatedStroops: "0", sorobanBoundStroops: "0" },
+    },
     execution: { estimatedTransactionCount: 0, transactions: [] },
     decisionPoints: [
       {

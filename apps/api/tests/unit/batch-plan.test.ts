@@ -6,6 +6,12 @@ import { TruncatedCollectionError } from "@/lib/stellar/horizon-http";
 import type { PlanResponse } from "@lumenwipe/types";
 import { ALL_ON } from "@/config/kill-switches";
 
+const NO_FEE_PARTS = {
+  classicStroops: "0",
+  sorobanSimulatedStroops: "0",
+  sorobanBoundStroops: "0",
+};
+
 // `deps.buildAccountPlan` is injected rather than mocked via `mock.module` - see
 // account-state.test.ts's header comment for why this codebase avoids that: it is
 // process-global in Bun and would leak a stub into every other suite in the run.
@@ -17,7 +23,7 @@ function readyPlan(planHash: string): PlanResponse {
     steps: [],
     decisionPoints: [],
     blockers: [],
-    estimate: { feeStroops: "0", freedReserveXlm: "0.0000000" },
+    estimate: { feeStroops: "0", freedReserveXlm: "0.0000000", feeParts: NO_FEE_PARTS },
     execution: { estimatedTransactionCount: 0, transactions: [] },
   };
 }

@@ -96,7 +96,6 @@ test("with nothing to convert the range is one figure: the balance less the fees
     feeStroops: FEE.toString(),
     convertedAssets: 0,
     unquotedSwaps: 0,
-    tokenSwaps: 0,
     unconvertibleAssets: 0,
     leavesOutDefiExits: false,
     blockers: 0,
@@ -124,7 +123,6 @@ test("the high figure adds each conversion's floor and the claimable XLM; the lo
   expect(range.highStroops).toBe((LOW + swaps + BigInt(50_000_000)).toString());
   expect(range.convertedAssets).toBe(3);
   expect(range.unquotedSwaps).toBe(1);
-  expect(range.tokenSwaps).toBe(1);
   expect(range.unconvertibleAssets).toBe(1);
 });
 
@@ -155,7 +153,16 @@ test("DeFi positions are flagged as not counted", () => {
 
 test("a plan with no usable fee yields no figure at all", () => {
   expect(
-    recoveryRange(account, plan({ estimate: { feeStroops: "", freedReserveXlm: "0" } }))
+    recoveryRange(
+      account,
+      plan({
+        estimate: {
+          feeStroops: "",
+          freedReserveXlm: "0",
+          feeParts: { classicStroops: "0", sorobanSimulatedStroops: "0", sorobanBoundStroops: "0" },
+        },
+      })
+    )
   ).toBeNull();
 });
 

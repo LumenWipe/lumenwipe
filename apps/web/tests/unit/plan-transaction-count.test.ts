@@ -9,7 +9,11 @@ function plan(over: Record<string, unknown> = {}): PlanResponse {
     steps: [],
     decisionPoints: [],
     blockers: [],
-    estimate: { feeStroops: "300", freedReserveXlm: "1.5000000" },
+    estimate: {
+      feeStroops: "300",
+      freedReserveXlm: "1.5000000",
+      feeParts: { classicStroops: "300", sorobanSimulatedStroops: "0", sorobanBoundStroops: "0" },
+    },
     execution: { estimatedTransactionCount: 2, transactions: [] },
     ...over,
   } as PlanResponse;

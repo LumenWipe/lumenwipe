@@ -5,6 +5,7 @@ import type {
   DecisionAnswer,
   DecisionPoint,
   ExecutionTxBreakdown,
+  PlanEstimate,
   PlanResponse,
   PlannedStep,
   StepType,
@@ -136,7 +137,7 @@ export function assemblePlanResponse(args: {
    *  - and a re-analyze that remembered its answers rendered no cards at all. */
   pendingDecisionPoints?: DecisionPoint[];
   planHash: string;
-  estimate: { feeStroops: string; freedReserveXlm: string };
+  estimate: PlanEstimate;
   execution: ExecutionBreakdownInput;
 }): PlanResponse {
   const { buildResult, decisionPoints, planHash, estimate } = args;
