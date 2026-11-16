@@ -4,7 +4,12 @@ import path from "path";
 import { ROOT_VIEWPORT } from "@/lib/site/root-metadata";
 
 const css = fs.readFileSync(path.join(process.cwd(), "app/globals.css"), "utf8");
-const layout = fs.readFileSync(path.join(process.cwd(), "app/layout.tsx"), "utf8");
+// Every root layout, and the 404 that renders its own document.
+const ROOT_DOCUMENTS = [
+  "app/(app)/layout.tsx",
+  "app/(marketing)/layout.tsx",
+  "app/global-not-found.tsx",
+];
 
 function blocks(source: string, at: string): string[] {
   const out: string[] = [];
@@ -83,9 +88,13 @@ describe("dark color scheme", () => {
     expect(root).toMatch(/color-scheme:\s*dark;/);
   });
 
-  test("the root layout exports a dark viewport whose themeColor equals the page background token", () => {
+  test("every root layout exports a dark viewport whose themeColor equals the page background token", () => {
     const bg = css.match(/--bg:\s*([^;]+);/)?.[1].trim() ?? "";
-    expect(layout).toContain("export const viewport: Viewport = ROOT_VIEWPORT;");
+    for (const file of ROOT_DOCUMENTS) {
+      expect(fs.readFileSync(path.join(process.cwd(), file), "utf8"), file).toContain(
+        "export const viewport: Viewport = ROOT_VIEWPORT;"
+      );
+    }
     expect(ROOT_VIEWPORT.colorScheme).toBe("dark");
     expect(String(ROOT_VIEWPORT.themeColor).toLowerCase()).toBe(hslToHex(bg));
   });

@@ -3,11 +3,11 @@ import { Suspense } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Keypair } from "@stellar/stellar-sdk";
 import * as navigation from "next/navigation";
-import AnalyzePage from "@/app/[network]/analyze/page";
-import CompletePage from "@/app/[network]/complete/page";
-import ExecutePage from "@/app/[network]/execute/page";
-import HomePage from "@/app/[network]/page";
-import ReviewPage from "@/app/[network]/review/page";
+import AnalyzePage from "@/app/(app)/[network]/analyze/page";
+import CompletePage from "@/app/(app)/[network]/complete/page";
+import ExecutePage from "@/app/(app)/[network]/execute/page";
+import HomePage from "@/app/(app)/[network]/page";
+import ReviewPage from "@/app/(app)/[network]/review/page";
 import * as sessionRecovery from "@/hooks/useSessionRecovery";
 import * as snapshots from "@/lib/session/decision-snapshot";
 import {

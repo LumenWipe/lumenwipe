@@ -1,19 +1,16 @@
-import type { Metadata, Viewport } from "next";
-import { headers } from "next/headers";
+import type { ReactNode } from "react";
 import { Toaster } from "sonner";
 import RedactedAnalytics from "@/components/analytics/RedactedAnalytics";
 import { UMAMI_BEFORE_SEND, UMAMI_BEFORE_SEND_SCRIPT } from "@/lib/analytics/redact";
-import { ROOT_METADATA, ROOT_VIEWPORT } from "@/lib/site/root-metadata";
 import { siteFontVars } from "./fonts";
 import "./globals.css";
 
-export const viewport: Viewport = ROOT_VIEWPORT;
-
-export const metadata: Metadata = ROOT_METADATA;
-
-export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const nonce = (await headers()).get("x-nonce") ?? undefined;
-
+/**
+ * The html and body every root layout renders. App and sign-in routes pass the request's nonce;
+ * marketing pages are prerendered without one, and the build hashes their inline scripts instead
+ * (scripts/marketing-csp.mjs).
+ */
+export default function RootDocument({ nonce, children }: { nonce?: string; children: ReactNode }) {
   return (
     <html lang="en" className="dark">
       <head>

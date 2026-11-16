@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Keypair } from "@stellar/stellar-sdk";
 import * as navigation from "next/navigation";
-import NetworkLayout from "@/app/[network]/layout";
+import NetworkLayout from "@/app/(app)/[network]/layout";
 import AccountEntryForm from "@/components/account-entry/AccountEntryForm";
 import * as statsHook from "@/hooks/useStats";
 import * as walletConnection from "@/hooks/useWalletKitConnection";
