@@ -13,6 +13,8 @@ import { mirrorSnapshot } from "./fixtures/ledger-trustlines";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 import { authorizationOf } from "./fixtures/trustline";
+import { fakeRpcServer } from "../support/rpc-server";
+import { latestLedger } from "../support/rpc-fixtures";
 
 // The transactions this builder produces for the playground's dispositions scenario, where each
 // of its two tokens is burned, converted to XLM or transferred to the session's own recipient.
@@ -113,16 +115,18 @@ function standingRoute(asset: string, amount: string): pathFinding.PathResult {
 
 async function build(recipe: Recipe) {
   const state = accountState();
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-    getAccount: () => Promise.resolve(new Account(DEMO, "100")),
-    getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
-    // The recipient trusts each token it is sent, with room for it.
-    getLedgerEntries: mirrorSnapshot(
-      DEMO,
-      () => state.trustlines,
-      Object.fromEntries(CODES.map((code) => [`${RECIPIENT}|${assetOf(code)}`, { balance: 0n }]))
-    ),
-  })) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    fakeRpcServer({
+      getAccount: () => Promise.resolve(new Account(DEMO, "100")),
+      getLatestLedger: () => Promise.resolve(latestLedger(1000)),
+      // The recipient trusts each token it is sent, with room for it.
+      getLedgerEntries: mirrorSnapshot(
+        DEMO,
+        () => state.trustlines,
+        Object.fromEntries(CODES.map((code) => [`${RECIPIENT}|${assetOf(code)}`, { balance: 0n }]))
+      ),
+    })
+  );
   const dispositions = Object.fromEntries(
     CODES.map((code) => {
       const choice = recipe.choices[code];

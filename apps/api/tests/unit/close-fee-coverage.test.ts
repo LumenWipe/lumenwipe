@@ -23,9 +23,9 @@ import { DEGRADED_SOURCE_CONFIRMED } from "@/lib/defi-positions/resolve-defi-pos
 import { buildPlan } from "@/lib/stellar/tx-builder";
 import { SOROBAN_EXIT_FEE_ESTIMATE_STROOPS } from "@/config/constants";
 import { stroopsToFixedXlm } from "@/lib/utils/amounts";
-import { mirrorSnapshot } from "./fixtures/ledger-trustlines";
+import { ledgerRpcServer, mirrorSnapshot } from "./fixtures/ledger-trustlines";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
-import { rawSimulation } from "./fixtures/fake-exit-adapter";
+import { contractSimulation } from "./fixtures/fake-exit-adapter";
 import { authorizationOf } from "./fixtures/trustline";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
@@ -103,24 +103,12 @@ function withToken(balanceStroops: bigint, over: Partial<AccountState> = {}): Ac
   });
 }
 
-function rpcServerStub() {
-  return {
-    getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
-    getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
-    getLedgerEntries: mirrorSnapshot(SOURCE, () => snapshot),
-  };
-}
-
 function tokenRpc(): { simulateTransaction: rpc.Server["simulateTransaction"] } {
   return {
     async simulateTransaction(tx) {
       const call = callOf(onlyOperation(tx as Transaction));
       if (call.functionName.toString() === "balance") {
-        const base = rawSimulation("ok", [], "100") as unknown as Record<string, unknown>;
-        return {
-          ...base,
-          results: [{ auth: [], xdr: nativeToScVal(250n, { type: "i128" }).toXDR("base64") }],
-        } as unknown as rpc.Api.SimulateTransactionResponse;
+        return contractSimulation("ok", [], "100", nativeToScVal(250n, { type: "i128" }));
       }
       const auth = new xdr.SorobanAuthorizationEntry({
         credentials: xdr.SorobanCredentials.sorobanCredentialsSourceAccount(),
@@ -135,7 +123,7 @@ function tokenRpc(): { simulateTransaction: rpc.Server["simulateTransaction"] } 
           subInvocations: [],
         }),
       }).toXDR("base64");
-      return rawSimulation("ok", [auth], "1000");
+      return contractSimulation("ok", [auth], "1000");
     },
   };
 }
@@ -260,8 +248,12 @@ async function tokenTransferFee(): Promise<bigint> {
 beforeEach(() => {
   stubIssuance();
   stubLedgerConfirmation();
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(
+      SOURCE,
+      mirrorSnapshot(SOURCE, () => snapshot)
+    )
+  );
 });
 
 afterEach(() => {
@@ -488,8 +480,12 @@ test("exchange cleanup › a conversion's destination minimum counts toward what
   mock.restore();
   stubIssuance();
   stubLedgerConfirmation();
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(
+      SOURCE,
+      mirrorSnapshot(SOURCE, () => snapshot)
+    )
+  );
   viaExchange();
   route("0.0000199");
   const short = await refusal(

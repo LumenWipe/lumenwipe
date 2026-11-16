@@ -32,12 +32,13 @@ import {
 import { RECORD_TIMEOUT_MS } from "@/metering/metering.service";
 import { FirestoreUsageStore, InMemoryUsageStore, type UsageStore } from "@/metering/usage-store";
 import { OFFLINE_SOROBAN_TOKENS } from "./fixtures/fake-soroban-tokens";
+import { fakeFetch } from "../support/fetch";
 
 const BASE = "https://horizon.example";
 const NO_RETRY = { client: undefined, policy: { maxRetries: 0 } };
 
 function respondWith(status: number): typeof globalThis.fetch {
-  return (async () => new Response("{}", { status })) as unknown as typeof globalThis.fetch;
+  return fakeFetch(async () => new Response("{}", { status }));
 }
 
 function counts(): Record<string, number> {
@@ -68,10 +69,12 @@ describe("counting", () => {
   });
 
   test("a timeout counts as one, and each retry is a request of its own", async () => {
-    const hang = ((_: unknown, init: RequestInit) =>
-      new Promise((_resolve, reject) => {
-        init.signal?.addEventListener("abort", () => reject(new Error("aborted")));
-      })) as unknown as typeof globalThis.fetch;
+    const hang = fakeFetch(
+      (_: unknown, init?: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+        })
+    );
     await upstreamGetJson(BASE, "/x", {
       target: "paths",
       network: "mainnet",
@@ -214,11 +217,11 @@ describe("rpc", () => {
   /** The RPC's HTTP layer: one answer per request, the last one repeating. */
   function serve(...answers: Array<() => Response | Promise<never>>): { calls: () => number } {
     let calls = 0;
-    globalThis.fetch = (async () => {
+    globalThis.fetch = fakeFetch(async () => {
       const answer = answers[Math.min(calls, answers.length - 1)]!;
       calls++;
       return answer();
-    }) as unknown as typeof globalThis.fetch;
+    });
     return { calls: () => calls };
   }
   const result = (value: unknown) => () =>
@@ -305,7 +308,7 @@ describe("rpc", () => {
 describe("calls per request", () => {
   test("a representative account read makes exactly these calls", async () => {
     const address = Keypair.random().publicKey();
-    const fetch = (async (input: string | URL | Request) => {
+    const fetch = fakeFetch(async (input: string | URL | Request) => {
       const url = typeof input === "string" ? input : input.toString();
       const account = {
         sequence: "42",
@@ -322,7 +325,7 @@ describe("calls per request", () => {
         status: 200,
         headers: { "Latest-Ledger": "7" },
       });
-    }) as unknown as typeof globalThis.fetch;
+    });
 
     const tally = await inRequestContext(async () => {
       await readAccountStateFrom(

@@ -4,6 +4,7 @@ import { MAX_SNAPSHOT_LEDGER_SPAN, readAccountStateFrom } from "@/lib/stellar/ac
 import { AccountStateChangedError } from "@/lib/utils/errors";
 import type { ResolveDefiPositionsDeps } from "@/lib/defi-positions/resolve-defi-positions";
 import { OFFLINE_SOROBAN_TOKENS } from "./fixtures/fake-soroban-tokens";
+import { fakeFetch } from "../support/fetch";
 
 const BASE = "https://horizon.example";
 const ADDRESS = Keypair.random().publicKey();
@@ -39,7 +40,7 @@ const account = {
  *  stamped with the ledger `ledgerFor` gives that request; `null` sends no ledger header. */
 function provider(ledgerFor: (url: string, call: number) => number | null) {
   const calls: string[] = [];
-  const fetch = (async (input: string | URL | Request) => {
+  const fetch = fakeFetch(async (input: string | URL | Request) => {
     const url = typeof input === "string" ? input : input.toString();
     calls.push(url);
     const body = url.includes("cursor=page2")
@@ -55,7 +56,7 @@ function provider(ledgerFor: (url: string, call: number) => number | null) {
     const ledger = ledgerFor(url, calls.length);
     const headers = ledger === null ? undefined : { "Latest-Ledger": String(ledger) };
     return new Response(JSON.stringify(body), { status: 200, headers });
-  }) as unknown as typeof globalThis.fetch;
+  });
   return { deps: { baseUrl: BASE, fetch }, calls };
 }
 

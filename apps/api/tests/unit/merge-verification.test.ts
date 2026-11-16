@@ -14,6 +14,11 @@ import {
   summarizeMerges,
   verifyMerge,
 } from "@/stats/merge-verification";
+import {
+  failedTransaction,
+  missingTransaction,
+  successfulTransaction,
+} from "../support/rpc-fixtures";
 
 const SOURCE = Keypair.random();
 const DESTINATION = Keypair.random().publicKey();
@@ -140,25 +145,14 @@ describe("signedXdrHasAccountMerge", () => {
 });
 
 describe("verifyMerge", () => {
-  const base = {
-    txHash: HASH,
-    latestLedger: 10,
-    latestLedgerCloseTime: 0,
-    oldestLedger: 1,
-    oldestLedgerCloseTime: 0,
-  };
-
   const success = (env: xdr.TransactionEnvelope, result: xdr.TransactionResult) =>
-    ({
-      ...base,
-      status: rpc.Api.GetTransactionStatus.SUCCESS,
+    successfulTransaction({
+      envelope: env,
+      result,
       ledger: 9,
       createdAt: 1_760_000_000,
-      applicationOrder: 1,
-      feeBump: false,
-      envelopeXdr: env,
-      resultXdr: result,
-    }) as unknown as rpc.Api.GetTransactionResponse;
+      txHash: HASH,
+    });
 
   test("returns the verified close, timestamped by its ledger close time", async () => {
     const env = envelope([merge()]);
@@ -175,12 +169,13 @@ describe("verifyMerge", () => {
   });
 
   test("rejects a missing or failed transaction", async () => {
-    for (const status of [
-      rpc.Api.GetTransactionStatus.NOT_FOUND,
-      rpc.Api.GetTransactionStatus.FAILED,
+    const env = envelope([merge()]);
+    const result = txResult([mergeSuccess("1")]);
+    for (const response of [
+      missingTransaction(hashOf(env)),
+      failedTransaction({ envelope: env, result, txHash: hashOf(env) }),
     ]) {
-      const response = { ...base, status } as unknown as rpc.Api.GetTransactionResponse;
-      expect(await verifyMerge(HASH, "testnet", async () => response)).toBeNull();
+      expect(await verifyMerge(hashOf(env), "testnet", async () => response)).toBeNull();
     }
   });
 

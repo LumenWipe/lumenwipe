@@ -18,12 +18,12 @@
  * bisection). `spyOn` patches one named export on the already-loaded module object in place.
  */
 import { test, expect, spyOn, afterEach, mock, beforeEach } from "bun:test";
-import { Account, Keypair, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
+import { Keypair, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
 import * as rpcModule from "@/lib/stellar/rpc";
 import * as sponsorshipAffordabilityModule from "@/lib/stellar/sponsorship-affordability";
 import { buildCloseTransactions } from "@/lib/close-api/build-transactions";
 import type { AccountState, SponsoredEntry, Trustline } from "@lumenwipe/types";
-import { mirrorSnapshot } from "../unit/fixtures/ledger-trustlines";
+import { ledgerRpcServer, mirrorSnapshot } from "../unit/fixtures/ledger-trustlines";
 import { emptyDefiPositionsResult } from "../unit/fixtures/defi-positions";
 import { stubIssuance } from "../unit/fixtures/issuance";
 import { stubLedgerConfirmation } from "../unit/fixtures/ledger-confirmation";
@@ -44,14 +44,6 @@ const USDC = `USDC:${ISSUER}`;
 afterEach(() => {
   mock.restore();
 });
-
-function rpcServerStub() {
-  return {
-    getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
-    getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
-    getLedgerEntries: mirrorSnapshot(SOURCE, () => snapshot),
-  } as unknown as ReturnType<typeof rpcModule.getRpcServer>;
-}
 
 const SPONSORED_ENTRIES: SponsoredEntry[] = [{ kind: "trustline", owner: OWNER, asset: USDC }];
 
@@ -92,7 +84,12 @@ function opsOf(xdr: string) {
 }
 
 test("build-transactions refuses a sponsorship the live re-read marks unaffordable, before any round", async () => {
-  spyOn(rpcModule, "getRpcServer").mockReturnValue(rpcServerStub());
+  spyOn(rpcModule, "getRpcServer").mockReturnValue(
+    ledgerRpcServer(
+      SOURCE,
+      mirrorSnapshot(SOURCE, () => snapshot)
+    )
+  );
   // Build-time: the live read now reports the owner as unaffordable - a real drift between
   // when a caller might have called /close/plan (which could have seen "affordable") and when
   // it calls /close/transactions. The revoke cannot be built, so the account would still sponsor
@@ -109,7 +106,12 @@ test("build-transactions refuses a sponsorship the live re-read marks unaffordab
 });
 
 test("build-transactions refuses an account that sponsors a claimable balance", async () => {
-  spyOn(rpcModule, "getRpcServer").mockReturnValue(rpcServerStub());
+  spyOn(rpcModule, "getRpcServer").mockReturnValue(
+    ledgerRpcServer(
+      SOURCE,
+      mirrorSnapshot(SOURCE, () => snapshot)
+    )
+  );
   // A claimable-balance sponsorship cannot be revoked by its sponsor, so the merge would fail
   // with ACCOUNT_MERGE_IS_SPONSOR whatever else the close does.
   const state = {
@@ -124,7 +126,12 @@ test("build-transactions refuses an account that sponsors a claimable balance", 
 });
 
 test("build-transactions includes the revoke when the live read confirms it's affordable", async () => {
-  spyOn(rpcModule, "getRpcServer").mockReturnValue(rpcServerStub());
+  spyOn(rpcModule, "getRpcServer").mockReturnValue(
+    ledgerRpcServer(
+      SOURCE,
+      mirrorSnapshot(SOURCE, () => snapshot)
+    )
+  );
   spyOn(sponsorshipAffordabilityModule, "assessSponsorshipAffordability").mockResolvedValue({
     revocable: SPONSORED_ENTRIES,
     unverifiedOwners: [],

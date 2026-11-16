@@ -16,7 +16,8 @@ import {
 import type { DefiPosition } from "@lumenwipe/types";
 import type { AccountReadOptions } from "@/lib/stellar/account-state";
 import type { SorobanTokenRpc, SorobanTokensDeps } from "@/lib/stellar/soroban-tokens";
-import { rawSimulation } from "./fake-exit-adapter";
+import { contractSimulation } from "./fake-exit-adapter";
+import { eventsPage, latestLedger } from "../../support/rpc-fixtures";
 
 export interface FakeToken {
   contract: string;
@@ -86,11 +87,7 @@ function calledFunction(tx: Transaction): { contract: string; fn: string } | nul
 }
 
 function simulationWith(retval: xdr.ScVal): rpc.Api.SimulateTransactionResponse {
-  const base = rawSimulation("ok", [], "1000") as unknown as Record<string, unknown>;
-  return {
-    ...base,
-    results: [{ auth: [], xdr: retval.toXdr("base64") }],
-  } as unknown as rpc.Api.SimulateTransactionResponse;
+  return contractSimulation("ok", [], "1000", retval);
 }
 
 export interface FakeEventRequest {
@@ -109,11 +106,7 @@ export function fakeSorobanRpc(world: FakeSorobanWorld): SorobanTokenRpc & {
   return {
     eventRequests,
     async getLatestLedger() {
-      return {
-        id: "x",
-        sequence: world.latestLedger ?? 1_000_000,
-        protocolVersion: 25,
-      } as unknown as rpc.Api.GetLatestLedgerResponse;
+      return latestLedger(world.latestLedger ?? 1_000_000);
     },
     async getLedgerEntries(...keys: xdr.LedgerKey[]) {
       const entries: rpc.Api.LedgerEntryResult[] = [];
@@ -159,13 +152,12 @@ export function fakeSorobanRpc(world: FakeSorobanWorld): SorobanTokenRpc & {
       const all = [...inWindow, ...spilled];
       const limit = r.limit ?? 1_000;
       const page = all.slice(offset, offset + limit);
-      const events = page.map(({ contract, ledger }, i) => ({
+      const events = page.map(({ contract, ledger }, i): rpc.Api.EventResponse => ({
         type: "contract",
         ledger,
         ledgerClosedAt: "2026-01-01T00:00:00Z",
         contractId: new Contract(contract),
         id: `${start}-${offset + i}`,
-        pagingToken: `${start}-${offset + i}`,
         inSuccessfulContractCall: true,
         txHash: "00".repeat(32),
         topic: [],
@@ -173,31 +165,31 @@ export function fakeSorobanRpc(world: FakeSorobanWorld): SorobanTokenRpc & {
         operationIndex: 0,
         transactionIndex: 0,
       }));
-      return {
-        latestLedger: world.latestLedger ?? 1_000_000,
+      return eventsPage(
         events,
-        cursor: `${start}/${end}/${offset + page.length}`,
-      } as unknown as rpc.Api.GetEventsResponse;
+        `${start}/${end}/${offset + page.length}`,
+        world.latestLedger ?? 1_000_000
+      );
     },
     async simulateTransaction(tx) {
       const call = calledFunction(tx as Transaction);
-      if (!call) return rawSimulation("error", [], "0");
+      if (!call) return contractSimulation("error", [], "0");
       const token = tokens.get(call.contract);
-      if (!token) return rawSimulation("error", [], "0");
+      if (!token) return contractSimulation("error", [], "0");
       if (call.fn === "balance") {
         if (token.hangs) return never as never;
-        if (token.balance === null) return rawSimulation("error", [], "0");
+        if (token.balance === null) return contractSimulation("error", [], "0");
         return simulationWith(nativeToScVal(token.balance, { type: "i128" }));
       }
       if (call.fn === "symbol") {
-        if (token.symbol === null) return rawSimulation("error", [], "0");
+        if (token.symbol === null) return contractSimulation("error", [], "0");
         return simulationWith(nativeToScVal(token.symbol ?? "TKN", { type: "string" }));
       }
       if (call.fn === "decimals") {
-        if (token.decimals === null) return rawSimulation("error", [], "0");
+        if (token.decimals === null) return contractSimulation("error", [], "0");
         return simulationWith(nativeToScVal(token.decimals ?? 7, { type: "u32" }));
       }
-      return rawSimulation("error", [], "0");
+      return contractSimulation("error", [], "0");
     },
   };
 }

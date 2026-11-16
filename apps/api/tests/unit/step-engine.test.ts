@@ -9,6 +9,7 @@ import { ledgerEntries } from "./fixtures/ledger-trustlines";
 import { getRpcServer } from "@/lib/stellar/rpc";
 import type { ClaimableBalance, Trustline } from "@lumenwipe/types";
 import { authorizationOf } from "./fixtures/trustline";
+import { fakeRpcServer } from "../support/rpc-server";
 
 type RpcServer = ReturnType<typeof getRpcServer>;
 
@@ -27,7 +28,7 @@ const TL: Trustline = {
 const LINE = (balance: bigint) => ({ [`${ACCOUNT}|USDC:${ISSUER}`]: { balance } });
 
 function stubServer(getLedgerEntries: RpcServer["getLedgerEntries"]): RpcServer {
-  return { getLedgerEntries } as unknown as RpcServer;
+  return fakeRpcServer({ getLedgerEntries });
 }
 
 test("fetchLiveTrustlineBalance › reads the live balance from the ledger entry, in lumens", async () => {

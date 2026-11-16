@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
-import { Account, Keypair, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
+import { Keypair, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
 import type { AccountState, ClaimableBalance, ClaimPredicate } from "@lumenwipe/types";
 import { CLAIM_PREDICATE_MARGIN_SECONDS } from "@/config/constants";
 import {
@@ -11,11 +11,13 @@ import {
 import { deriveClaimableBalanceDecisionPoints } from "@/lib/close-api/decisions";
 import { buildPlan } from "@/lib/stellar/tx-builder";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
-import { ledgerEntries } from "./fixtures/ledger-trustlines";
+import { ledgerEntries, ledgerRpcServer } from "./fixtures/ledger-trustlines";
+import { latestLedger } from "../support/rpc-fixtures";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 import * as rpcModule from "@/lib/stellar/rpc";
 import { ALL_ON } from "@/config/kill-switches";
+import { fakeRpcServer } from "../support/rpc-server";
 
 beforeEach(() => {
   stubIssuance();
@@ -155,14 +157,6 @@ test("buildPlan › unknown ledger time fails closed for a time-bound balance", 
   );
 });
 
-function rpcStub(closeTime: number) {
-  return {
-    getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
-    getLatestLedger: () => Promise.resolve({ sequence: 1000, closeTime: String(closeTime) }),
-    getLedgerEntries: ledgerEntries({}),
-  };
-}
-
 function claimIds(xdr: string): number {
   return TransactionBuilder.fromXDR(xdr, Networks.TESTNET).operations.filter(
     (o) => o.type === "claimClaimableBalance"
@@ -170,8 +164,9 @@ function claimIds(xdr: string): number {
 }
 
 test("buildCloseTransactions › one expired and one good balance claim only the good one", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcStub(NOW)) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(SOURCE, ledgerEntries({}), NOW)
+  );
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
   const expired = balance("a", before(NOW - 1));
   const good = balance("b", { type: "unconditional" });
@@ -192,8 +187,9 @@ test("buildCloseTransactions › one expired and one good balance claim only the
 });
 
 test("buildCloseTransactions › an expired balance with no answer is refused, never merged around", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcStub(NOW)) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(SOURCE, ledgerEntries({}), NOW)
+  );
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
   await expect(
     buildCloseTransactions(ALL_ON, state([balance("a", before(NOW - 1))]), DEST, {}, "testnet")
@@ -201,8 +197,9 @@ test("buildCloseTransactions › an expired balance with no answer is refused, n
 });
 
 test("buildCloseTransactions › a balance claimable at plan time that closed by build time is refused", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcStub(NOW + 300)) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(SOURCE, ledgerEntries({}), NOW + 300)
+  );
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
   const flips = balance("a", before(NOW + 400));
   await expect(
@@ -211,8 +208,9 @@ test("buildCloseTransactions › a balance claimable at plan time that closed by
 });
 
 test("buildCloseTransactions › a claim answer for a balance that needs a trustline is refused", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcStub(NOW)) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(SOURCE, ledgerEntries({}), NOW)
+  );
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
   const needsTrustline = balance("a", { type: "unconditional" }, "USDC:GX");
   await expect(
@@ -223,8 +221,9 @@ test("buildCloseTransactions › a claim answer for a balance that needs a trust
 });
 
 test("buildCloseTransactions › an explicit forfeit of a closed balance still builds the merge", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcStub(NOW)) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(SOURCE, ledgerEntries({}), NOW)
+  );
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
   const closed = balance("a", before(NOW - 1));
   const result = await buildCloseTransactions(ALL_ON, state([closed]), DEST, {}, "testnet", null, {
@@ -238,8 +237,9 @@ test("buildCloseTransactions › an explicit forfeit of a closed balance still b
 });
 
 test("buildCloseTransactions › a stale claim answer for a balance now closed is refused, not skipped", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcStub(NOW)) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(SOURCE, ledgerEntries({}), NOW)
+  );
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
   const aboutToExpire = balance("a", before(NOW + 30));
   await expect(
@@ -266,13 +266,15 @@ test("an absurdly distant opening date cannot break the plan or the decisions", 
   );
 });
 
-test.each([["NaN"], ["0"], ["-5"], [undefined]])(
+test.each([["NaN"], ["0"], ["-5"], [""]])(
   "buildCloseTransactions › an unusable ledger close time (%p) is unknown, so a time-bound balance is refused",
   async (closeTime) => {
-    spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-      ...rpcStub(NOW),
-      getLatestLedger: () => Promise.resolve({ sequence: 1000, closeTime }),
-    })) as unknown as typeof rpcModule.getRpcServer);
+    spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+      fakeRpcServer({
+        ...ledgerRpcServer(SOURCE, ledgerEntries({}), NOW),
+        getLatestLedger: () => Promise.resolve({ ...latestLedger(1000), closeTime }),
+      })
+    );
     const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
     await expect(
       buildCloseTransactions(

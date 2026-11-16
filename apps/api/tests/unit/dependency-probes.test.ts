@@ -17,6 +17,7 @@ import {
   RPC_URLS,
 } from "@/config/networks";
 import { drainUpstreamCounts } from "@/lib/stellar/upstream-metrics";
+import { fakeFetch } from "../support/fetch";
 
 function probe(run: DependencyProbe["run"], ttlMs = 1000): DependencyProbe {
   return { upstream: "horizon", network: "testnet", ttlMs, run };
@@ -150,12 +151,12 @@ test("the route exposes only the fixed fields, whatever the providers answered",
   RPC_URLS.mainnet = url;
   RPC_URLS.testnet = url;
   const seen: string[] = [];
-  globalThis.fetch = (async (input: string | URL | Request) => {
+  globalThis.fetch = fakeFetch(async (input: string | URL | Request) => {
     seen.push(String(input));
     return new Response(JSON.stringify({ detail: `failed at ${url}`, balance: "9.99" }), {
       status: 503,
     });
-  }) as unknown as typeof globalThis.fetch;
+  });
   const health = spyOn(rpc.Server.prototype, "getHealth").mockRejectedValue(new Error(url));
   try {
     const moduleRef = await Test.createTestingModule({

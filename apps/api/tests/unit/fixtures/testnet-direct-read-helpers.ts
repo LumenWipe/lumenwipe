@@ -10,6 +10,7 @@
  */
 import { Address, Contract, nativeToScVal, xdr } from "@stellar/stellar-sdk";
 import type { getRpcServer } from "@/lib/stellar/rpc";
+import { fakeRpcServer } from "../../support/rpc-server";
 
 type RpcServer = ReturnType<typeof getRpcServer>;
 type LedgerEntry = { key: xdr.LedgerKey; val: xdr.LedgerEntryData };
@@ -134,7 +135,7 @@ export function mockRpc(entries: LedgerEntry[]): RpcServer {
       latestLedger: 1,
     };
   };
-  return { getLedgerEntries } as unknown as RpcServer;
+  return fakeRpcServer({ getLedgerEntries });
 }
 
 /** A Phoenix LP holding as the ledger keeps it: the pool's persistent `CONFIG` naming its share

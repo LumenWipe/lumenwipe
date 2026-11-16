@@ -61,6 +61,27 @@ export function latestLedger(sequence: number, closeTime = 0): rpc.Api.GetLatest
   };
 }
 
+/** A getEvents page holding `events`, continued from `cursor`. */
+export function eventsPage(
+  events: rpc.Api.EventResponse[],
+  cursor: string,
+  latestLedger: number
+): rpc.Api.GetEventsResponse {
+  return {
+    events,
+    cursor,
+    latestLedger,
+    oldestLedger: 1,
+    latestLedgerCloseTime: "0",
+    oldestLedgerCloseTime: "0",
+  };
+}
+
+/** A getHealth answer from a node that is serving. */
+export function healthy(): rpc.Api.GetHealthResponse {
+  return { status: "healthy", latestLedger: 1000, oldestLedger: 1, ledgerRetentionWindow: 999 };
+}
+
 /** A sendTransaction answer with `status`. */
 export function sendResult(
   status: rpc.Api.SendTransactionStatus,
@@ -81,11 +102,68 @@ export function missingTransaction(txHash = "0".repeat(64)): rpc.Api.GetMissingT
   };
 }
 
+interface LandedTransaction {
+  envelope?: xdr.TransactionEnvelope;
+  result?: xdr.TransactionResult;
+  ledger?: number;
+  createdAt?: number;
+  txHash?: string;
+}
+
+function transactionResult(success: boolean): xdr.TransactionResult {
+  return new xdr.TransactionResult({
+    feeCharged: 100n,
+    result: success
+      ? xdr.TransactionResultResult.txSuccess([])
+      : xdr.TransactionResultResult.txFailed([]),
+    ext: xdr.TransactionResultExt.v0(),
+  });
+}
+
+function landed(success: boolean, landing: LandedTransaction) {
+  return {
+    txHash: landing.txHash ?? "0".repeat(64),
+    latestLedger: (landing.ledger ?? 1) + 1,
+    latestLedgerCloseTime: 0,
+    oldestLedger: 1,
+    oldestLedgerCloseTime: 0,
+    ledger: landing.ledger ?? 1,
+    createdAt: landing.createdAt ?? 0,
+    applicationOrder: 1,
+    feeBump: false,
+    envelopeXdr: landing.envelope ?? sampleTransaction().toEnvelope(),
+    resultXdr: landing.result ?? transactionResult(success),
+    resultMetaXdr: xdr.TransactionMeta.operations([]),
+    events: { transactionEventsXdr: [], contractEventsXdr: [] },
+  };
+}
+
+/** A getTransaction answer for a transaction that landed and succeeded. */
+export function successfulTransaction(
+  landing: LandedTransaction = {}
+): rpc.Api.GetSuccessfulTransactionResponse {
+  return { ...landed(true, landing), status: rpc.Api.GetTransactionStatus.SUCCESS };
+}
+
+/** A getTransaction answer for a transaction that landed and failed. */
+export function failedTransaction(
+  landing: LandedTransaction = {}
+): rpc.Api.GetFailedTransactionResponse {
+  return { ...landed(false, landing), status: rpc.Api.GetTransactionStatus.FAILED };
+}
+
 /** A simulateTransaction answer that failed with `error`. */
 export function simulationError(
   error = "simulation failed"
 ): rpc.Api.SimulateTransactionErrorResponse {
   return { id: "1", latestLedger: 1, events: [], _parsed: true, error };
+}
+
+/** A simulateTransaction answer parsed from the wire shape the node sends, as `rpc.Server` returns it. */
+export function simulation(
+  raw: Omit<rpc.Api.RawSimulateTransactionResponse, "id" | "latestLedger">
+): rpc.Api.SimulateTransactionResponse {
+  return rpc.parseRawSimulation({ id: "1", latestLedger: 1, ...raw });
 }
 
 /** A testnet transaction with a single bumpSequence from a random account. */

@@ -3,6 +3,7 @@ import { PATH_ROUTING_API_URLS } from "@/config/networks";
 import { fetchConversionPath, routeOrNull } from "@/lib/stellar/path-finding";
 import { UpstreamError } from "@/lib/stellar/upstream-client";
 import { EMPTY_MARKET, MAINNET_DUST_SHX, MAINNET_LIQUID_USDC } from "./fixtures/horizon-paths";
+import { fakeFetch, replay } from "../support/fetch";
 
 const ISSUER = "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H";
 const USDC = `USDC:${ISSUER}`;
@@ -24,11 +25,11 @@ const route = (amount: string): Response =>
 
 function sequence(...responses: Array<Response | Error>) {
   let n = 0;
-  const fetch = (async () => {
+  const fetch = fakeFetch(async () => {
     const next = responses[Math.min(n++, responses.length - 1)]!;
     if (next instanceof Error) throw next;
-    return next.clone();
-  }) as unknown as typeof globalThis.fetch;
+    return replay(next);
+  });
   return { fetch, count: () => n };
 }
 

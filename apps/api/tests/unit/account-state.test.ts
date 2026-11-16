@@ -19,6 +19,7 @@ import { AccountNotFoundError, UnusableProviderResponseError } from "@/lib/utils
 import type { ResolveDefiPositionsDeps } from "@/lib/defi-positions/resolve-defi-positions";
 import type { ContractRegistryEntry } from "@/lib/contract-registry";
 import { mockRpc, phoenixLpEntries } from "./fixtures/testnet-direct-read-helpers";
+import { fakeFetch } from "../support/fetch";
 
 // Every fixture below reports `num_sponsoring: 0`, which `enumerateSponsoredEntries` treats as
 // a complete answer and returns without any I/O of its own. That keeps these tests measuring
@@ -65,7 +66,7 @@ function accountBody(overrides: Record<string, unknown> = {}) {
 
 function stubProvider(account: Record<string, unknown>) {
   const calls: string[] = [];
-  const fetch = (async (input: string | URL | Request) => {
+  const fetch = fakeFetch(async (input: string | URL | Request) => {
     const url = typeof input === "string" ? input : input.toString();
     calls.push(url);
     const body = url.includes("/offers")
@@ -74,7 +75,7 @@ function stubProvider(account: Record<string, unknown>) {
         ? { _embedded: { records: [] } }
         : account;
     return new Response(JSON.stringify(body), { status: 200 });
-  }) as unknown as typeof globalThis.fetch;
+  });
   return { deps: { baseUrl: BASE, fetch }, calls };
 }
 
@@ -149,8 +150,7 @@ describe("readNativeBalance", () => {
   });
 
   test("throws AccountNotFoundError for a nonexistent account, same as the full reader", async () => {
-    const fetch = (async () =>
-      new Response(null, { status: 404 })) as unknown as typeof globalThis.fetch;
+    const fetch = fakeFetch(async () => new Response(null, { status: 404 }));
     await expect(readNativeBalance(ADDRESS, "testnet", { baseUrl: BASE, fetch })).rejects.toThrow(
       AccountNotFoundError
     );
@@ -196,8 +196,7 @@ test("a fully enumerated account reports no mismatch", async () => {
 });
 
 test("a missing account is not found rather than an empty state", async () => {
-  const fetch = (async () =>
-    new Response("", { status: 404 })) as unknown as typeof globalThis.fetch;
+  const fetch = fakeFetch(async () => new Response("", { status: 404 }));
   await expect(
     readAccountStateFrom(
       ADDRESS,
@@ -221,7 +220,7 @@ test("a missing account is not found rather than an empty state", async () => {
 test("every account-state request goes to the configured provider", async () => {
   const other = "https://horizon.other-provider.example";
   const calls: string[] = [];
-  const fetch = (async (input: string | URL | Request) => {
+  const fetch = fakeFetch(async (input: string | URL | Request) => {
     const url = typeof input === "string" ? input : input.toString();
     calls.push(url);
     const body =
@@ -229,7 +228,7 @@ test("every account-state request goes to the configured provider", async () => 
         ? { _embedded: { records: [] } }
         : accountBody();
     return new Response(JSON.stringify(body), { status: 200 });
-  }) as unknown as typeof globalThis.fetch;
+  });
 
   await readAccountStateFrom(
     ADDRESS,
@@ -391,8 +390,7 @@ test("a detected Phoenix position's share token is never offered as its own toke
 // the first time in the account-read path rather than only in unit tests of the gate itself).
 test("a degraded DeFi read surfaces as a warning, not a silent empty result", async () => {
   const { deps } = stubProvider(accountBody());
-  const octoposFetch = (async () =>
-    new Response("", { status: 401 })) as unknown as typeof globalThis.fetch;
+  const octoposFetch = fakeFetch(async () => new Response("", { status: 401 }));
   const defiDeps: ResolveDefiPositionsDeps = {
     octopos: { baseUrl: "https://octopos.example", fetch: octoposFetch },
     directRead: { registryEntries: [] },

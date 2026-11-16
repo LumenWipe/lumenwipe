@@ -35,6 +35,8 @@ import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 import { ALL_ON } from "@/config/kill-switches";
 import { inertStats } from "../support/close-controller";
+import { fakeRpcServer } from "../support/rpc-server";
+import { latestLedger } from "../support/rpc-fixtures";
 
 const SOURCE = Keypair.random().publicKey();
 const OTHER_ACCOUNT = Keypair.random().publicKey();
@@ -119,9 +121,11 @@ describe("positionsLeftBehind", () => {
 describe("the plan for a position whose exit cannot be built", () => {
   function arrange(account: AccountState): void {
     spyOn(readAccountModule, "readAccountState").mockResolvedValue(account);
-    spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-      getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
-    })) as unknown as typeof rpcModule.getRpcServer);
+    spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+      fakeRpcServer({
+        getLatestLedger: () => Promise.resolve(latestLedger(1000)),
+      })
+    );
     spyOn(accountStateModule, "readTrustlinesOnly").mockResolvedValue({
       address: DEST,
       trustlines: [],
@@ -241,11 +245,13 @@ describe("the plan for a position whose exit cannot be built", () => {
 
 describe("building a close past a position the user left behind", () => {
   function stubRpc(): void {
-    spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-      getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
-      getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
-      getLedgerEntries: () => Promise.reject(new Error("not stubbed")),
-    })) as unknown as typeof rpcModule.getRpcServer);
+    spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+      fakeRpcServer({
+        getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
+        getLatestLedger: () => Promise.resolve(latestLedger(1000)),
+        getLedgerEntries: () => Promise.reject(new Error("not stubbed")),
+      })
+    );
   }
 
   const failingExit = async (): Promise<ExitRunResult> => ({
@@ -298,9 +304,11 @@ describe("building a close past a position the user left behind", () => {
 
   test("POST close/transactions hands the user's leave answers to the builder", async () => {
     spyOn(readAccountModule, "readAccountState").mockResolvedValue(state([supply(POOL)]));
-    spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-      getLedgerEntries: () => Promise.resolve({ entries: [], latestLedger: 1000 }),
-    })) as unknown as typeof rpcModule.getRpcServer);
+    spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+      fakeRpcServer({
+        getLedgerEntries: () => Promise.resolve({ entries: [], latestLedger: 1000 }),
+      })
+    );
     let seen: ReadonlySet<string> | undefined;
     const service = new CloseService(
       inertStats(),

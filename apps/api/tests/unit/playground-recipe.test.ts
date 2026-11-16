@@ -12,6 +12,8 @@ import { ledgerEntries } from "./fixtures/ledger-trustlines";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 import { authorizationOf } from "./fixtures/trustline";
+import { fakeRpcServer } from "../support/rpc-server";
+import { latestLedger } from "../support/rpc-fixtures";
 
 // The transactions this builder produces for the playground's recipes, kept as a fixture that
 // apps/playground's unit tests run through the playground's verifier
@@ -115,16 +117,18 @@ function accountState(recipe: Recipe): AccountState {
 async function build(recipe: Recipe) {
   const state = accountState(recipe);
   const balances = new Map(state.trustlines.map((t) => [`${DEMO}|${t.asset}`, t.balance]));
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-    getAccount: () => Promise.resolve(new Account(DEMO, "100")),
-    getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
-    getLedgerEntries: ledgerEntries((id) => {
-      const balance = balances.get(id);
-      return balance === undefined
-        ? undefined
-        : { balance: BigInt(Math.round(Number(balance) * 10_000_000)) };
-    }),
-  })) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    fakeRpcServer({
+      getAccount: () => Promise.resolve(new Account(DEMO, "100")),
+      getLatestLedger: () => Promise.resolve(latestLedger(1000)),
+      getLedgerEntries: ledgerEntries((id) => {
+        const balance = balances.get(id);
+        return balance === undefined
+          ? undefined
+          : { balance: BigInt(Math.round(Number(balance) * 10_000_000)) };
+      }),
+    })
+  );
   const dispositions = Object.fromEntries(
     state.trustlines.map((t) => [t.asset, "issuer" as const])
   );

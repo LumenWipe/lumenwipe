@@ -16,6 +16,11 @@ import {
   type HorizonTransactionReader,
   type HorizonTransactionRecord,
 } from "@/lib/close-api/delivered-amount";
+import {
+  failedTransaction,
+  missingTransaction,
+  successfulTransaction,
+} from "../support/rpc-fixtures";
 
 const SOURCE = Keypair.random();
 const RELAY = Keypair.random().publicKey();
@@ -139,21 +144,10 @@ function feeBumpShape(
 type RpcAnswer = Awaited<ReturnType<rpc.Server["getTransaction"]>>;
 
 const confirmed = (built: Built, result: xdr.TransactionResult): RpcAnswer =>
-  ({
-    status: "SUCCESS",
-    ledger: LEDGER,
-    envelopeXdr: built.envelope,
-    resultXdr: result,
-  }) as unknown as RpcAnswer;
+  successfulTransaction({ envelope: built.envelope, result, ledger: LEDGER, txHash: built.hash });
 const rejected = (built: Built, result: xdr.TransactionResult): RpcAnswer =>
-  ({ ...confirmed(built, result), status: "FAILED" }) as unknown as RpcAnswer;
-const NOT_FOUND = {
-  status: "NOT_FOUND",
-  oldestLedger: 1,
-  oldestLedgerCloseTime: "1",
-  latestLedger: 2,
-  latestLedgerCloseTime: "2",
-} as unknown as RpcAnswer;
+  failedTransaction({ envelope: built.envelope, result, ledger: LEDGER, txHash: built.hash });
+const NOT_FOUND = missingTransaction();
 
 const horizonRecord = (
   built: Built,

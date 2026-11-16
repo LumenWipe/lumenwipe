@@ -16,6 +16,9 @@ import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 import { EMPTY_MARKET, MAINNET_DUST_SHX, MAINNET_LIQUID_USDC } from "./fixtures/horizon-paths";
 import { ALL_ON } from "@/config/kill-switches";
+import { fakeFetch } from "../support/fetch";
+import { fakeRpcServer } from "../support/rpc-server";
+import { latestLedger } from "../support/rpc-fixtures";
 
 const SOURCE = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
@@ -70,16 +73,17 @@ function state(balance: string): AccountState {
 }
 
 function answerWith(status: number, body: unknown): void {
-  globalThis.fetch = (async () =>
-    new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
+  globalThis.fetch = fakeFetch(async () => new Response(JSON.stringify(body), { status }));
 }
 
 function stubChain(): void {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-    getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
-    getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
-    getLedgerEntries: ledgerEntries(() => ({ balance: 10000000000n })),
-  })) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    fakeRpcServer({
+      getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
+      getLatestLedger: () => Promise.resolve(latestLedger(1000)),
+      getLedgerEntries: ledgerEntries(() => ({ balance: 10000000000n })),
+    })
+  );
 }
 
 type Outcome = "route" | "no_market" | "dust" | "unknown";

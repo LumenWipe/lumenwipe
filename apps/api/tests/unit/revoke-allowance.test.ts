@@ -19,7 +19,7 @@ import {
   RevokeAllowanceBlockedError,
   buildRevokeAllowanceTransaction,
 } from "@/lib/stellar/revoke-allowance";
-import { rawSimulation } from "./fixtures/fake-exit-adapter";
+import { contractSimulation } from "./fixtures/fake-exit-adapter";
 
 const OWNER = Keypair.random().publicKey();
 const TOKEN = Address.contract(Buffer.alloc(32, 1)).toString();
@@ -102,9 +102,9 @@ function fakeRpc(options: FakeOptions = {}): {
     },
     async simulateTransaction(tx) {
       const call = calledFunction(tx as Transaction);
-      if (call.fn !== "approve") return rawSimulation("error", [], "0");
+      if (call.fn !== "approve") return contractSimulation("error", [], "0");
       const a = options.approve ?? {};
-      return rawSimulation(
+      return contractSimulation(
         a.mode ?? "ok",
         [authEntry(call.contract, call.args, a.auth ?? {})],
         a.minResourceFee ?? "1000"

@@ -17,6 +17,7 @@ import {
   type Transaction,
 } from "@stellar/stellar-sdk";
 import type { ExitRpc } from "@/lib/defi-exits";
+import { simulation as parsedSimulation } from "../../support/rpc-fixtures";
 
 const contractAddr = (byte: number): string => StrKey.encodeContract(Buffer.alloc(32, byte));
 
@@ -148,7 +149,7 @@ function simulation(
     .setResources(1_000, 2_000, 300)
     .build()
     .toXdr("base64");
-  const base = { id: "1", latestLedger: 1, events: [] as string[] };
+  const base = { events: [] };
   const body =
     mode === "error"
       ? { ...base, error: "HostError: Error(Contract, #1)" }
@@ -161,7 +162,7 @@ function simulation(
             ? { restorePreamble: { minResourceFee: "500", transactionData } }
             : {}),
         };
-  return body as unknown as rpc.Api.SimulateTransactionResponse;
+  return parsedSimulation(body);
 }
 
 export function fakePhoenixRpc(

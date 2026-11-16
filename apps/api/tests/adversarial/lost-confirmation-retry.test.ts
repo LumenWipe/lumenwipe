@@ -19,6 +19,13 @@ import { Account, Keypair, Operation, TransactionBuilder, Networks } from "@stel
 import * as rpcModule from "@/lib/stellar/rpc";
 import { submitAndWait } from "@/lib/stellar/submit";
 import { TxSubmitError } from "@/lib/utils/errors";
+import {
+  failedTransaction,
+  missingTransaction,
+  sendResult,
+  successfulTransaction,
+} from "../support/rpc-fixtures";
+import { fakeRpcServer } from "../support/rpc-server";
 
 const SOURCE = Keypair.random();
 
@@ -39,25 +46,12 @@ function signedXdr(): string {
   return tx.toXDR();
 }
 
-function rpcServerStub(overrides: Partial<ReturnType<typeof rpcModule.getRpcServer>>) {
-  return {
-    sendTransaction: () => Promise.reject(new Error("sendTransaction should not be called")),
-    getTransaction: () => Promise.reject(new Error("not stubbed")),
-    ...overrides,
-  } as unknown as ReturnType<typeof rpcModule.getRpcServer>;
-}
-
 test("an already-confirmed transaction is detected via getTransaction and never resubmitted", async () => {
   const sendTransactionSpy = mock(() => Promise.reject(new Error("must not be called")));
   spyOn(rpcModule, "getRpcServer").mockReturnValue(
-    rpcServerStub({
-      getTransaction: () =>
-        Promise.resolve({ status: "SUCCESS", ledger: 42 } as unknown as Awaited<
-          ReturnType<ReturnType<typeof rpcModule.getRpcServer>["getTransaction"]>
-        >),
-      sendTransaction: sendTransactionSpy as unknown as ReturnType<
-        typeof rpcModule.getRpcServer
-      >["sendTransaction"],
+    fakeRpcServer({
+      getTransaction: () => Promise.resolve(successfulTransaction({ ledger: 42 })),
+      sendTransaction: sendTransactionSpy,
     })
   );
 
@@ -68,25 +62,15 @@ test("an already-confirmed transaction is detected via getTransaction and never 
 });
 
 test("a transaction the network has never seen proceeds through the normal send-and-poll path", async () => {
-  const sendTransactionSpy = mock(() =>
-    Promise.resolve({ status: "PENDING", hash: "abc" } as unknown as Awaited<
-      ReturnType<ReturnType<typeof rpcModule.getRpcServer>["sendTransaction"]>
-    >)
-  );
+  const sendTransactionSpy = mock(() => Promise.resolve(sendResult("PENDING")));
   let reads = 0;
   spyOn(rpcModule, "getRpcServer").mockReturnValue(
-    rpcServerStub({
+    fakeRpcServer({
       getTransaction: () =>
         Promise.resolve(
-          (reads++ === 0
-            ? { status: "NOT_FOUND" }
-            : { status: "SUCCESS", ledger: 7 }) as unknown as Awaited<
-            ReturnType<ReturnType<typeof rpcModule.getRpcServer>["getTransaction"]>
-          >
+          reads++ === 0 ? missingTransaction() : successfulTransaction({ ledger: 7 })
         ),
-      sendTransaction: sendTransactionSpy as unknown as ReturnType<
-        typeof rpcModule.getRpcServer
-      >["sendTransaction"],
+      sendTransaction: sendTransactionSpy,
     })
   );
 
@@ -98,15 +82,9 @@ test("a transaction the network has never seen proceeds through the normal send-
 
 test("a transaction that genuinely failed on-chain is not swallowed as a false success", async () => {
   spyOn(rpcModule, "getRpcServer").mockReturnValue(
-    rpcServerStub({
-      getTransaction: () =>
-        Promise.resolve({ status: "FAILED" } as unknown as Awaited<
-          ReturnType<ReturnType<typeof rpcModule.getRpcServer>["getTransaction"]>
-        >),
-      sendTransaction: () =>
-        Promise.resolve({ status: "ERROR", hash: "abc" } as unknown as Awaited<
-          ReturnType<ReturnType<typeof rpcModule.getRpcServer>["sendTransaction"]>
-        >),
+    fakeRpcServer({
+      getTransaction: () => Promise.resolve(failedTransaction()),
+      sendTransaction: () => Promise.resolve(sendResult("ERROR")),
     })
   );
 

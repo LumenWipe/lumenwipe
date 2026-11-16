@@ -18,7 +18,13 @@ import {
 } from "@/config/constants";
 import { submitAndWait, type SubmitClock } from "@/lib/stellar/submit";
 import { TxPendingError, TxSubmitError, TxUnsettledError } from "@/lib/utils/errors";
-import { sendResult } from "../support/rpc-fixtures";
+import {
+  failedTransaction,
+  missingTransaction,
+  sendResult,
+  successfulTransaction,
+} from "../support/rpc-fixtures";
+import { fakeRpcServer } from "../support/rpc-server";
 
 const SOURCE = Keypair.random();
 
@@ -71,23 +77,23 @@ function rejected(type: string): rpc.Api.SendTransactionResponse {
     result: RESULTS[type]!(),
     ext: xdr.TransactionResultExt.v0(),
   });
-  return { status: "ERROR", errorResult } as unknown as rpc.Api.SendTransactionResponse;
+  return { ...sendResult("ERROR"), errorResult };
 }
 
 const pending = sendResult("PENDING");
-const notFound = { status: "NOT_FOUND" };
-const success = { status: "SUCCESS", ledger: 77 };
+const notFound = missingTransaction();
+const success = successfulTransaction({ ledger: 77 });
 
 interface Script {
   /** Answers in order; the last repeats. A thrown value is rethrown. */
-  reads: unknown[];
-  sends: unknown[];
+  reads: Array<rpc.Api.GetTransactionResponse | Error>;
+  sends: Array<rpc.Api.SendTransactionResponse | Error>;
 }
 
 function stub({ reads, sends }: Script) {
   const counts = { reads: 0, sends: 0 };
   const take = <T>(list: T[], i: number): T => list[Math.min(i, list.length - 1)]!;
-  const server = {
+  const server = fakeRpcServer({
     getTransaction: async () => {
       const answer = take(reads, counts.reads++);
       if (answer instanceof Error) throw answer;
@@ -98,7 +104,7 @@ function stub({ reads, sends }: Script) {
       if (answer instanceof Error) throw answer;
       return answer;
     },
-  } as unknown as rpc.Server;
+  });
   return { server, counts };
 }
 
@@ -195,14 +201,14 @@ describe("an answer short of acceptance is settled by hash", () => {
   test("TRY_AGAIN_LATER, what re-sending a confirmed transaction answers, reads by hash", async () => {
     const { result, counts } = run({
       reads: [notFound, success],
-      sends: [{ status: "TRY_AGAIN_LATER" }],
+      sends: [sendResult("TRY_AGAIN_LATER")],
     });
     expect((await result).ledger).toBe(77);
     expect(counts.sends).toBe(3);
   });
 
   test("TRY_AGAIN_LATER with nothing on the ledger stays an unsettled, retryable failure", async () => {
-    const { result } = run({ reads: [notFound], sends: [{ status: "TRY_AGAIN_LATER" }] });
+    const { result } = run({ reads: [notFound], sends: [sendResult("TRY_AGAIN_LATER")] });
     await expect(result).rejects.toBeInstanceOf(TxUnsettledError);
   });
 });
@@ -216,7 +222,7 @@ describe("the pre-check", () => {
 
   test("a transaction that failed on the ledger is reported without a send", async () => {
     const { result, counts } = run({
-      reads: [{ status: "FAILED" }],
+      reads: [failedTransaction()],
       sends: [new Error("must not send")],
     });
     await expect(result).rejects.toBeInstanceOf(TxSubmitError);
@@ -252,21 +258,21 @@ describe("the budget", () => {
   });
 
   test("a failed verdict while polling is a rejection", async () => {
-    const { result } = run({ reads: [notFound, { status: "FAILED" }], sends: [pending] });
+    const { result } = run({ reads: [notFound, failedTransaction()], sends: [pending] });
     await expect(result).rejects.toBeInstanceOf(TxSubmitError);
   });
 
   test("a send that outlives the budget is awaited, then answered as pending", async () => {
     const clock = fakeClock();
     let finished = false;
-    const server = {
+    const server = fakeRpcServer({
       getTransaction: async () => notFound,
       sendTransaction: async () => {
         await clock.sleep(SUBMIT_BUDGET_MS + 1_000);
         finished = true;
         return pending;
       },
-    } as unknown as rpc.Server;
+    });
     await expect(
       submitAndWait(
         envelope().signed,
@@ -282,15 +288,15 @@ describe("the budget", () => {
 
   test("no retry after TRY_AGAIN_LATER starts unless a full send still fits the budget", async () => {
     const clock = fakeClock();
-    const script: Script = { reads: [notFound], sends: [{ status: "TRY_AGAIN_LATER" }] };
+    const script: Script = { reads: [notFound], sends: [sendResult("TRY_AGAIN_LATER")] };
     const { server, counts } = stub(script);
-    const slowFirstRead = {
+    const slowFirstRead = fakeRpcServer({
       getTransaction: async () => {
         await clock.sleep(SUBMIT_BUDGET_MS - 12_000);
         return server.getTransaction("");
       },
       sendTransaction: server.sendTransaction.bind(server),
-    } as unknown as rpc.Server;
+    });
     await expect(
       submitAndWait(
         envelope().signed,

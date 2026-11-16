@@ -17,6 +17,7 @@ import { providerFailoverCount, resetProviderFailoverCount } from "@/lib/stellar
 import { submitAndWait } from "@/lib/stellar/submit";
 import { UpstreamError } from "@/lib/stellar/upstream-client";
 import { drainUpstreamCounts } from "@/lib/stellar/upstream-metrics";
+import { fakeFetch } from "../support/fetch";
 
 const A = "https://rpc-a.test";
 const B = "https://rpc-b.test";
@@ -40,7 +41,7 @@ interface Call {
 
 function fakeRpc(hosts: Record<string, Handler>): Call[] {
   const calls: Call[] = [];
-  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+  globalThis.fetch = fakeFetch(async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(typeof input === "string" ? input : input.toString());
     const { method } = JSON.parse(String(init?.body)) as { method: string };
     calls.push({ host: url.origin, method });
@@ -56,7 +57,7 @@ function fakeRpc(hosts: Record<string, Handler>): Call[] {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
-  }) as unknown as typeof globalThis.fetch;
+  });
   return calls;
 }
 

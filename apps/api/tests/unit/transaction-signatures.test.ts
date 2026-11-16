@@ -22,6 +22,8 @@ import {
 import { checkTransactionSignatures, InvalidSignatureError } from "@/lib/stellar/signature";
 import { submitAndWait } from "@/lib/stellar/submit";
 import type { StatsService } from "@/stats/stats.service";
+import { missingTransaction, sendResult, successfulTransaction } from "../support/rpc-fixtures";
+import { fakeRpcServer } from "../support/rpc-server";
 
 const SOURCE = Keypair.random();
 const OTHER = Keypair.random();
@@ -54,22 +56,25 @@ function withCorruptedSignature(): Transaction {
   return tx;
 }
 
-function serverSending(answer: unknown): { server: rpc.Server; sends: () => number } {
+function serverSending(answer: rpc.Api.SendTransactionResponse): {
+  server: rpc.Server;
+  sends: () => number;
+} {
   let sends = 0;
   let reads = 0;
-  const server = {
+  const server = fakeRpcServer({
     // The first read is the pre-send history check; every later one is the confirmation poll.
     getTransaction: async () =>
-      reads++ === 0 ? { status: "NOT_FOUND" } : { status: "SUCCESS", ledger: 9 },
+      reads++ === 0 ? missingTransaction() : successfulTransaction({ ledger: 9 }),
     sendTransaction: async () => {
       sends++;
       return answer;
     },
-  } as unknown as rpc.Server;
+  });
   return { server, sends: () => sends };
 }
 
-const pending = { status: "PENDING" };
+const pending = sendResult("PENDING");
 
 function controllerOn(server: rpc.Server): CloseController {
   return new CloseController(
@@ -140,7 +145,7 @@ test("close/submit refuses a signature that names the source key but does not ve
 
 test("close/submit answers an envelope the network refuses for signing weight with a plain-language 422", async () => {
   const badAuth = {
-    status: "ERROR",
+    ...sendResult("ERROR"),
     errorResult: new xdr.TransactionResult({
       feeCharged: 100n,
       result: xdr.TransactionResultResult.txBadAuth(),

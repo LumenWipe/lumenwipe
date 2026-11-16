@@ -12,6 +12,8 @@ import { mirrorSnapshot } from "./fixtures/ledger-trustlines";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 import { authorizationOf } from "./fixtures/trustline";
+import { fakeRpcServer } from "../support/rpc-server";
+import { latestLedger } from "../support/rpc-fixtures";
 
 // The transactions this builder produces for the playground's claimable-balance and
 // sponsored-reserve scenarios, kept as fixtures that apps/playground's verifier must accept
@@ -110,11 +112,13 @@ function accountState(over: Partial<AccountState>): AccountState {
 }
 
 function stubLedger(state: AccountState): void {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-    getAccount: () => Promise.resolve(new Account(DEMO, state.sequence)),
-    getLatestLedger: () => Promise.resolve({ sequence: 1000, closeTime: String(BUILT_AT_SECONDS) }),
-    getLedgerEntries: mirrorSnapshot(DEMO, () => state.trustlines),
-  })) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    fakeRpcServer({
+      getAccount: () => Promise.resolve(new Account(DEMO, state.sequence)),
+      getLatestLedger: () => Promise.resolve(latestLedger(1000, BUILT_AT_SECONDS)),
+      getLedgerEntries: mirrorSnapshot(DEMO, () => state.trustlines),
+    })
+  );
 }
 
 // The playground's answers (apps/playground/lib/demolish.ts): each recorded balance by its intent,

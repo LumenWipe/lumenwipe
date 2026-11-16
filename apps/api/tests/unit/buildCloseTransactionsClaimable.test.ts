@@ -1,7 +1,7 @@
 import { afterEach, expect, mock, spyOn, test, beforeEach } from "bun:test";
-import { Account, Keypair, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
+import { Keypair, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
 import type { AccountState, SponsoredEntry, Trustline } from "@lumenwipe/types";
-import { ledgerEntries, mirrorSnapshot } from "./fixtures/ledger-trustlines";
+import { ledgerEntries, ledgerRpcServer, mirrorSnapshot } from "./fixtures/ledger-trustlines";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import * as rpcModule from "@/lib/stellar/rpc";
 import { authorizationOf } from "./fixtures/trustline";
@@ -77,13 +77,6 @@ function claimableBalance(hexChar: string, asset: string, amount = "10.0000000")
 // getLedgerEntries is left unimplemented (rejects) so filterExistingClaimableBalances falls
 // back to its documented "keep the full batch" behavior - the "still exists on-chain" filter
 // is not what these tests are about.
-function rpcServerStub() {
-  return {
-    getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
-    getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
-    getLedgerEntries: mirrorSnapshot(SOURCE, () => snapshot),
-  };
-}
 
 // The affordability check is patched with spyOn on the real module object, never with
 // mock.module: a process-wide module replacement leaks into
@@ -99,8 +92,12 @@ function opsOf(xdr: string) {
 }
 
 test("buildCloseTransactions › add_trustline_then_claim balance → changeTrust immediately precedes claimClaimableBalance", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(
+      SOURCE,
+      mirrorSnapshot(SOURCE, () => snapshot)
+    )
+  );
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
 
   const balance = claimableBalance("a", USDC);
@@ -122,8 +119,12 @@ test("buildCloseTransactions › add_trustline_then_claim balance → changeTrus
 });
 
 test("buildCloseTransactions › forfeited unclaimable balance → excluded from the claim round entirely", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(
+      SOURCE,
+      mirrorSnapshot(SOURCE, () => snapshot)
+    )
+  );
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
 
   const balance = claimableBalance("b", USDC);
@@ -142,8 +143,12 @@ test("buildCloseTransactions › forfeited unclaimable balance → excluded from
 });
 
 test("buildCloseTransactions › unresolved unclaimable balance → refused rather than stranded by the merge", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(
+      SOURCE,
+      mirrorSnapshot(SOURCE, () => snapshot)
+    )
+  );
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
 
   const balance = claimableBalance("c", USDC);
@@ -155,8 +160,12 @@ test("buildCloseTransactions › unresolved unclaimable balance → refused rath
 });
 
 test("buildCloseTransactions › currently-claimable balance defaults to claim when unresolved (opt-out)", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(
+      SOURCE,
+      mirrorSnapshot(SOURCE, () => snapshot)
+    )
+  );
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
 
   const balance = claimableBalance("d", "native");
@@ -170,8 +179,12 @@ test("buildCloseTransactions › currently-claimable balance defaults to claim w
 });
 
 test("buildCloseTransactions › currently-claimable balance explicitly forfeited is excluded", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(
+      SOURCE,
+      mirrorSnapshot(SOURCE, () => snapshot)
+    )
+  );
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
 
   const balance = claimableBalance("e", "native");
@@ -197,8 +210,12 @@ const SPONSORED_ENTRY: SponsoredEntry = {
 };
 
 test("buildCloseTransactions › sponsored entry the live re-read marks revocable → REVOKE_SPONSORSHIP is included", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(
+      SOURCE,
+      mirrorSnapshot(SOURCE, () => snapshot)
+    )
+  );
   spyOn(sponsorshipAffordability, "assessSponsorshipAffordability").mockResolvedValue({
     revocable: [SPONSORED_ENTRY],
     unverifiedOwners: [],
@@ -216,8 +233,12 @@ test("buildCloseTransactions › sponsored entry the live re-read marks revocabl
 });
 
 test("buildCloseTransactions › sponsored entry the live re-read marks unaffordable → refused, nothing built", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(
+      SOURCE,
+      mirrorSnapshot(SOURCE, () => snapshot)
+    )
+  );
   spyOn(sponsorshipAffordability, "assessSponsorshipAffordability").mockResolvedValue({
     revocable: [],
     unverifiedOwners: [],
@@ -249,13 +270,15 @@ function heldUsdc(balance: string): Trustline {
 }
 
 function useTransferLedger(destinationLimit: bigint): void {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-    ...rpcServerStub(),
-    getLedgerEntries: ledgerEntries({
-      [`${SOURCE}|${USDC}`]: { balance: 50n * XLM },
-      [`${TRANSFER_TO}|${USDC}`]: { balance: 0n, limit: destinationLimit },
-    }),
-  })) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(
+      SOURCE,
+      ledgerEntries({
+        [`${SOURCE}|${USDC}`]: { balance: 50n * XLM },
+        [`${TRANSFER_TO}|${USDC}`]: { balance: 0n, limit: destinationLimit },
+      })
+    )
+  );
 }
 
 async function buildTransferWithClaim(selection: "forfeit" | undefined) {

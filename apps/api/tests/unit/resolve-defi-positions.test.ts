@@ -13,14 +13,13 @@ import {
   detectDefiPositionsViaDirectRead,
 } from "@/lib/defi-positions/testnet-direct-read";
 import type { ContractRegistryEntry } from "@/lib/contract-registry";
-import type { getRpcServer } from "@/lib/stellar/rpc";
 import {
   contractInstanceEntry,
   mockRpc,
   phoenixLpEntries,
 } from "./fixtures/testnet-direct-read-helpers";
-
-type RpcServer = ReturnType<typeof getRpcServer>;
+import { fakeFetch } from "../support/fetch";
+import { fakeRpcServer } from "../support/rpc-server";
 
 const ADDRESS = Keypair.random().publicKey();
 const OCTOPOS_BASE = "https://octopos.example";
@@ -34,10 +33,6 @@ function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
     headers: { "Content-Type": "application/json" },
     ...init,
   });
-}
-
-function fakeFetch(handler: () => Response | Promise<Response>): typeof globalThis.fetch {
-  return (async () => handler()) as unknown as typeof globalThis.fetch;
 }
 
 // ─── testnet: designed primary path, never touches OctoPos ─────────────────
@@ -349,11 +344,11 @@ test("a degraded mainnet fallback still surfaces positions the direct read actua
 
 test("never throws even when both OctoPos and the direct-read RPC dependency fail", async () => {
   const octoposFetch = fakeFetch(() => new Response("", { status: 500 }));
-  const failingRpc = {
+  const failingRpc = fakeRpcServer({
     getLedgerEntries: async () => {
       throw new Error("ECONNRESET");
     },
-  } as unknown as RpcServer;
+  });
 
   const entry: ContractRegistryEntry = {
     network: "mainnet",

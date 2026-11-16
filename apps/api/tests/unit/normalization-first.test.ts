@@ -17,6 +17,8 @@ import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { authorizationOf } from "./fixtures/trustline";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
+import { fakeRpcServer } from "../support/rpc-server";
+import { latestLedger } from "../support/rpc-fixtures";
 
 const SOURCE = Keypair.random().publicKey();
 const COSIGNER_B = Keypair.random().publicKey();
@@ -117,12 +119,14 @@ const sentinel = (name: string) => (): never => {
 };
 
 function stubRpc(): void {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-    getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
-    getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
-    getLedgerEntries: sentinel("claim"),
-    simulateTransaction: sentinel("rpc simulation"),
-  })) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    fakeRpcServer({
+      getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
+      getLatestLedger: () => Promise.resolve(latestLedger(1000)),
+      getLedgerEntries: sentinel("claim"),
+      simulateTransaction: sentinel("rpc simulation"),
+    })
+  );
   spyOn(pathFinding, "fetchConversionPath").mockImplementation(sentinel("classic conversion"));
 }
 

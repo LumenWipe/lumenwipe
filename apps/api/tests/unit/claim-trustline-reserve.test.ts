@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
-import { Account, Keypair, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
+import { Keypair, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
 import type { AccountState, ClaimableBalance } from "@lumenwipe/types";
 import { trustlineReserveShortfallStroops } from "@/lib/stellar/claim-reserve";
 import { deriveClaimableBalanceDecisionPoints } from "@/lib/close-api/decisions";
 import { buildPlan } from "@/lib/stellar/tx-builder";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
-import { ledgerEntries } from "./fixtures/ledger-trustlines";
+import { ledgerEntries, ledgerRpcServer } from "./fixtures/ledger-trustlines";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 import * as rpcModule from "@/lib/stellar/rpc";
@@ -146,17 +146,10 @@ test("plan › several balances of one asset share one new reserve", () => {
   expect(short.blockers.map((x) => x.code)).toContain("claimable_balance_reserve_short");
 });
 
-function rpcStub() {
-  return {
-    getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
-    getLatestLedger: () => Promise.resolve({ sequence: 1000, closeTime: "1800000000" }),
-    getLedgerEntries: ledgerEntries({}),
-  };
-}
-
 async function build(s: AccountState, selections: Record<string, "add_trustline_then_claim">) {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcStub()) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(SOURCE, ledgerEntries({}), 1800000000)
+  );
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
   return buildCloseTransactions(ALL_ON, s, DEST, {}, "testnet", null, selections);
 }

@@ -8,6 +8,8 @@ import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 import * as rpcModule from "@/lib/stellar/rpc";
 import { ALL_ON } from "@/config/kill-switches";
 import { buildCloseTransactions, planRefusal } from "@/lib/close-api/build-transactions";
+import { fakeRpcServer } from "../support/rpc-server";
+import { latestLedger } from "../support/rpc-fixtures";
 
 // `close/transactions` rebuilds the plan and refuses every blocker except the few it is built
 // past on purpose, before any round. Without that, a caller that never read /close/plan got a
@@ -64,11 +66,13 @@ function state(over: Partial<AccountState> = {}): AccountState {
 }
 
 function stubRpc(): void {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-    getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
-    getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
-    getLedgerEntries: mirrorSnapshot(SOURCE, () => snapshot),
-  })) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    fakeRpcServer({
+      getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
+      getLatestLedger: () => Promise.resolve(latestLedger(1000)),
+      getLedgerEntries: mirrorSnapshot(SOURCE, () => snapshot),
+    })
+  );
 }
 
 function unaffordable() {

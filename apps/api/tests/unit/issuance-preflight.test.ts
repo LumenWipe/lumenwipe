@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { Keypair } from "@stellar/stellar-sdk";
+import { Account, Keypair } from "@stellar/stellar-sdk";
 import type { AccountState } from "@lumenwipe/types";
 import * as pathFinding from "@/lib/stellar/path-finding";
 import * as readAccount from "@/lib/close-api/read-account";
@@ -27,6 +27,9 @@ import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 import { authorizationOf } from "./fixtures/trustline";
 import { ALL_ON } from "@/config/kill-switches";
+import { fakeFetch } from "../support/fetch";
+import { fakeRpcServer } from "../support/rpc-server";
+import { latestLedger } from "../support/rpc-fixtures";
 
 const SOURCE = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
@@ -95,14 +98,14 @@ function horizon(answer: { status: number; body?: unknown } | Error): {
   requests: string[];
 } {
   const requests: string[] = [];
-  const fetch = (async (input: string | URL | Request) => {
+  const fetch = fakeFetch(async (input: string | URL | Request) => {
     const url = new URL(typeof input === "string" ? input : input.toString());
     requests.push(`${url.pathname}${url.search}`);
     if (answer instanceof Error) throw answer;
     return new Response(answer.body === undefined ? null : JSON.stringify(answer.body), {
       status: answer.status,
     });
-  }) as unknown as typeof globalThis.fetch;
+  });
   return {
     requests,
     deps: {
@@ -233,9 +236,11 @@ function arrangePlan(): void {
       destMin: "1",
     },
   });
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-    getLatestLedger: () => Promise.resolve({ sequence: 1_000_000 }),
-  })) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    fakeRpcServer({
+      getLatestLedger: () => Promise.resolve(latestLedger(1_000_000)),
+    })
+  );
   spyOn(accountStateModule, "readTrustlinesOnly").mockResolvedValue({
     address: DEST,
     trustlines: [],
@@ -244,10 +249,12 @@ function arrangePlan(): void {
 }
 
 function arrangeBuild(): void {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-    getAccount: async () => ({ sequenceNumber: () => "100" }),
-    getLatestLedger: async () => ({ sequence: 1_000_000 }),
-  })) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    fakeRpcServer({
+      getAccount: async () => new Account(SOURCE, "100"),
+      getLatestLedger: async () => latestLedger(1_000_000),
+    })
+  );
 }
 
 const PARITY: Array<[string, typeof ISSUING | null, boolean, string | null]> = [
@@ -333,12 +340,14 @@ describe("plan and build refuse the same issuance state", () => {
       started.push("account");
       return "100";
     });
-    spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-      getLatestLedger: async () => {
-        started.push("ledger");
-        return { sequence: 1_000_000 };
-      },
-    })) as unknown as typeof rpcModule.getRpcServer);
+    spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+      fakeRpcServer({
+        getLatestLedger: async () => {
+          started.push("ledger");
+          return latestLedger(1_000_000);
+        },
+      })
+    );
     spyOn(issuancePreflight, "assessIssuance").mockImplementation(async () => {
       started.push("supply");
       return null;

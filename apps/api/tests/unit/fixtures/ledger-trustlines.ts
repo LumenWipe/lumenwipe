@@ -1,6 +1,8 @@
-import { Asset, Keypair, StrKey, xdr } from "@stellar/stellar-sdk";
+import { Account, Asset, Keypair, StrKey, rpc, xdr } from "@stellar/stellar-sdk";
 import type { Trustline } from "@lumenwipe/types";
 import { xlmToStroops } from "@/lib/utils/amounts";
+import { latestLedger } from "../../support/rpc-fixtures";
+import { fakeRpcServer } from "../../support/rpc-server";
 
 export interface LineSpec {
   balance: bigint;
@@ -47,18 +49,36 @@ function entryFor(
   };
 }
 
+/** A live claimable balance for `key`, which is how the ledger answers a balance that still exists. */
+function claimableBalanceEntry(key: xdr.LedgerKey): rpc.Api.LedgerEntryResult {
+  if (key.type !== "claimableBalance") throw new Error("not a claimable balance key");
+  return {
+    key,
+    lastModifiedLedgerSeq: 1000,
+    val: xdr.LedgerEntryData.claimableBalance(
+      new xdr.ClaimableBalanceEntry({
+        balanceId: key.claimableBalance.balanceId,
+        claimants: [],
+        asset: xdr.Asset.assetTypeNative(),
+        amount: 1n,
+        ext: xdr.ClaimableBalanceEntryExt.v0(),
+      })
+    ),
+  };
+}
+
 /**
  * A `getLedgerEntries` answering trustline keys from `lines`, keyed `account|CODE:ISSUER`; a key
  * with no line comes back as an empty result, which is how the ledger reports absence.
  */
 export function ledgerEntries(
   lines: Record<string, LineSpec> | ((id: string) => LineSpec | undefined)
-): (...keys: xdr.LedgerKey[]) => Promise<{ latestLedger: number; entries: unknown[] }> {
+): rpc.Server["getLedgerEntries"] {
   return async (...keys) => {
-    const entries: unknown[] = [];
+    const entries: rpc.Api.LedgerEntryResult[] = [];
     for (const key of keys) {
       if (key.type === "claimableBalance") {
-        entries.push({ key });
+        entries.push(claimableBalanceEntry(key));
         continue;
       }
       if (key.type !== "trustline") throw new Error("not stubbed");
@@ -68,7 +88,7 @@ export function ledgerEntries(
       const asset = Asset.fromOperation(xdr.Asset.fromXdr(tl.asset.toXdr()));
       const id = `${account}|${asset.getCode()}:${asset.getIssuer()}`;
       const spec = typeof lines === "function" ? lines(id) : lines[id];
-      if (spec) entries.push(entryFor(account, asset, spec));
+      if (spec) entries.push({ ...entryFor(account, asset, spec), lastModifiedLedgerSeq: 1000 });
     }
     return { latestLedger: 1000, entries };
   };
@@ -98,3 +118,16 @@ export function mirrorSnapshot(
 
 /** Every trustline read comes back funded with nothing. */
 export const emptyLines = ledgerEntries(() => ({ balance: 0n }));
+
+/** An RPC node at ledger 1000 that knows `source` and answers ledger reads with `getLedgerEntries`. */
+export function ledgerRpcServer(
+  source: string,
+  getLedgerEntries: rpc.Server["getLedgerEntries"],
+  closeTime = 0
+): rpc.Server {
+  return fakeRpcServer({
+    getAccount: () => Promise.resolve(new Account(source, "100")),
+    getLatestLedger: () => Promise.resolve(latestLedger(1000, closeTime)),
+    getLedgerEntries,
+  });
+}

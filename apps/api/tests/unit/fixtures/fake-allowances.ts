@@ -6,7 +6,8 @@
 import { Address, Contract, nativeToScVal, rpc, xdr, type Transaction } from "@stellar/stellar-sdk";
 import type { ContractRegistryEntry } from "@/lib/contract-registry";
 import type { AllowanceRpc, AllowancesDeps } from "@/lib/stellar/allowances";
-import { rawSimulation } from "./fake-exit-adapter";
+import { contractSimulation } from "./fake-exit-adapter";
+import { eventsPage, latestLedger } from "../../support/rpc-fixtures";
 
 export const OWNER = "GBUYBKHUCCAKG4LM76DONHABFRZSZEHK7ARNEEXBZ3CMVIYKZXPLPVRG";
 
@@ -62,11 +63,7 @@ function calledInvocation(
 }
 
 function simulationWith(retval: xdr.ScVal): rpc.Api.SimulateTransactionResponse {
-  const base = rawSimulation("ok", [], "1000") as unknown as Record<string, unknown>;
-  return {
-    ...base,
-    results: [{ auth: [], xdr: retval.toXDR("base64") }],
-  } as unknown as rpc.Api.SimulateTransactionResponse;
+  return contractSimulation("ok", [], "1000", retval);
 }
 
 export interface FakeEventRequest {
@@ -130,11 +127,7 @@ export function fakeAllowanceRpc(world: FakeAllowancesWorld): AllowanceRpc & {
   return {
     eventRequests,
     async getLatestLedger() {
-      return {
-        id: "x",
-        sequence: world.latestLedger ?? 1_000_000,
-        protocolVersion: 25,
-      } as unknown as rpc.Api.GetLatestLedgerResponse;
+      return latestLedger(world.latestLedger ?? 1_000_000);
     },
     // Pages like the real RPC: a cursor request carries no end ledger, so events past the
     // requested window's own end still come back and must be dropped by the caller.
@@ -169,13 +162,12 @@ export function fakeAllowanceRpc(world: FakeAllowancesWorld): AllowanceRpc & {
       );
       const limit = r.limit ?? 1_000;
       const page = all.slice(offset, offset + limit);
-      const events = page.map((e, i) => ({
+      const events = page.map((e, i): rpc.Api.EventResponse => ({
         type: "contract",
         ledger: e.ledger,
         ledgerClosedAt: "2026-01-01T00:00:00Z",
         contractId: new Contract(e.token),
         id: `${start}-${offset + i}`,
-        pagingToken: `${start}-${offset + i}`,
         inSuccessfulContractCall: true,
         txHash: "00".repeat(32),
         topic: approveTopics(e.spender, e.sacAsset),
@@ -186,15 +178,15 @@ export function fakeAllowanceRpc(world: FakeAllowancesWorld): AllowanceRpc & {
         operationIndex: e.operationIndex ?? 0,
         transactionIndex: e.transactionIndex ?? 0,
       }));
-      return {
-        latestLedger: world.latestLedger ?? 1_000_000,
+      return eventsPage(
         events,
-        cursor: `${start}/${end}/${offset + page.length}`,
-      } as unknown as rpc.Api.GetEventsResponse;
+        `${start}/${end}/${offset + page.length}`,
+        world.latestLedger ?? 1_000_000
+      );
     },
     async simulateTransaction(tx) {
       const call = calledInvocation(tx as Transaction);
-      if (!call) return rawSimulation("error", [], "0");
+      if (!call) return contractSimulation("error", [], "0");
       if (call.fn === "allowance") {
         const spender = Address.fromScVal(call.args[1]!).toString();
         const entry = allowances.get(`${call.contract}:${spender}`);
@@ -205,17 +197,17 @@ export function fakeAllowanceRpc(world: FakeAllowancesWorld): AllowanceRpc & {
       if (call.fn === "symbol") {
         const entry = [...allowances.values()].find((a) => a.token === call.contract);
         if (entry?.symbolHangs) return never as never;
-        if (entry?.symbol === null) return rawSimulation("error", [], "0");
+        if (entry?.symbol === null) return contractSimulation("error", [], "0");
         return simulationWith(nativeToScVal(entry?.symbol ?? "TKN", { type: "string" }));
       }
       if (call.fn === "decimals") {
         const entry = [...allowances.values()].find((a) => a.token === call.contract);
         if (entry?.decimals === null || entry?.decimals === undefined) {
-          return rawSimulation("error", [], "0");
+          return contractSimulation("error", [], "0");
         }
         return simulationWith(nativeToScVal(entry.decimals, { type: "u32" }));
       }
-      return rawSimulation("error", [], "0");
+      return contractSimulation("error", [], "0");
     },
   };
 }

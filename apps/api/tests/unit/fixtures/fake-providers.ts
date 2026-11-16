@@ -1,3 +1,4 @@
+import { fakeFetch } from "../../support/fetch";
 export interface FakeAnswer {
   status?: number;
   body?: unknown;
@@ -30,7 +31,7 @@ export function fakeProviders(
   callsOn: (host: string) => FakeCall[];
 } {
   const calls: FakeCall[] = [];
-  const fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+  const fetch = fakeFetch(async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(typeof input === "string" ? input : input.toString());
     const path = `${url.pathname}${url.search}`;
     calls.push({
@@ -41,7 +42,7 @@ export function fakeProviders(
     const handler = hosts[url.hostname];
     if (!handler) throw new Error(`unrouted host ${url.hostname}`);
     return answer(await handler(path, init!.signal!));
-  }) as unknown as typeof globalThis.fetch;
+  });
   return { fetch, calls, callsOn: (host) => calls.filter((c) => c.host === host) };
 }
 

@@ -9,16 +9,19 @@
  */
 import { test, expect } from "bun:test";
 import { fetchClaimableBalancesForClaimant } from "@/lib/stellar/horizon-adapter";
+import { fakeFetch } from "../support/fetch";
 
 const BASE = "https://horizon.example";
 const CLAIMANT = "GBXIT5W7J7BWYPAZUPFV3RHDVGD5EKIIHKTSYOL5GSADD3YGMIHPLNQX";
 
 function stubHorizon(records: unknown[]) {
-  const fetch = (async () =>
-    new Response(JSON.stringify({ _embedded: { records } }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    })) as unknown as typeof globalThis.fetch;
+  const fetch = fakeFetch(
+    async () =>
+      new Response(JSON.stringify({ _embedded: { records } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+  );
   return { baseUrl: BASE, fetch };
 }
 

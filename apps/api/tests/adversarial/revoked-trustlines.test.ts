@@ -20,6 +20,8 @@ import type { AccountState } from "@lumenwipe/types";
 import { emptyDefiPositionsResult } from "../unit/fixtures/defi-positions";
 import { authorizationOf } from "../unit/fixtures/trustline";
 import { ALL_ON } from "@/config/kill-switches";
+import { fakeFetch } from "../support/fetch";
+import { fakeRpcServer } from "../support/rpc-server";
 
 const SOURCE = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
@@ -45,14 +47,14 @@ function accountBody(balance: Record<string, unknown>) {
 }
 
 function stubFetch(balance: Record<string, unknown>) {
-  return (async (input: string | URL | Request) => {
+  return fakeFetch(async (input: string | URL | Request) => {
     const url = typeof input === "string" ? input : input.toString();
     const body =
       url.includes("/offers") || url.includes("/claimable_balances")
         ? { _embedded: { records: [] } }
         : accountBody(balance);
     return new Response(JSON.stringify(body), { status: 200 });
-  }) as unknown as typeof globalThis.fetch;
+  });
 }
 
 afterEach(() => {
@@ -69,14 +71,16 @@ const REFUSED_STATES = [
 test.each(REFUSED_STATES)(
   "close/transactions refuses to build for a %s trustline holding a balance",
   async (authorization, code) => {
-    spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-      getAccount: () => {
-        throw new Error("should be refused before any live read");
-      },
-      getLatestLedger: () => {
-        throw new Error("should be refused before any live read");
-      },
-    })) as unknown as typeof rpcModule.getRpcServer);
+    spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+      fakeRpcServer({
+        getAccount: () => {
+          throw new Error("should be refused before any live read");
+        },
+        getLatestLedger: () => {
+          throw new Error("should be refused before any live read");
+        },
+      })
+    );
 
     const accountState: AccountState = {
       address: SOURCE,

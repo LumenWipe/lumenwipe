@@ -13,7 +13,7 @@ import {
   type Transaction,
 } from "@stellar/stellar-sdk";
 import type { ExitRpc } from "@/lib/defi-exits";
-import { rawSimulation } from "./fake-exit-adapter";
+import { contractSimulation } from "./fake-exit-adapter";
 
 export const SOROSWAP_PAIR_HASH =
   "8447525edd62f72ffaf52136358034657ea0511a8fec1cd0ebde649f86cca464";
@@ -175,7 +175,7 @@ export function fakeSoroswapRpc(
     },
     async simulateTransaction(tx: Transaction) {
       simulateCalls.push(tx);
-      return rawSimulation(options.simulation ?? "ok", [], "12345");
+      return contractSimulation(options.simulation ?? "ok", [], "12345");
     },
   };
 }

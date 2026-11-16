@@ -10,6 +10,8 @@ import { assessTrustlineAuthorizationBlockers, buildPlan } from "@/lib/stellar/t
 import { UnusableProviderResponseError } from "@/lib/utils/errors";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { ALL_ON } from "@/config/kill-switches";
+import { fakeFetch } from "../support/fetch";
+import { fakeRpcServer } from "../support/rpc-server";
 
 const SOURCE = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
@@ -110,11 +112,13 @@ test.each(PARITY_CASES)(
     spyOn(stateDrift, "confirmLedgerState").mockImplementation(async () => {
       throw liveRead;
     });
-    spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-      getLatestLedger: async () => {
-        throw liveRead;
-      },
-    })) as unknown as typeof rpcModule.getRpcServer);
+    spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+      fakeRpcServer({
+        getLatestLedger: async () => {
+          throw liveRead;
+        },
+      })
+    );
 
     const err = await buildCloseTransactions(ALL_ON, account, DEST, {}, "testnet").catch(
       (e: unknown) => e
@@ -137,10 +141,12 @@ test("an asset decision carries the line's authorization state and clawback flag
 });
 
 function fetchOf(balance: Record<string, unknown>): typeof globalThis.fetch {
-  return (async () =>
-    new Response(JSON.stringify({ balances: [balance] }), {
-      status: 200,
-    })) as unknown as typeof globalThis.fetch;
+  return fakeFetch(
+    async () =>
+      new Response(JSON.stringify({ balances: [balance] }), {
+        status: 200,
+      })
+  );
 }
 
 const HORIZON_CREDIT_LINE = {
@@ -186,10 +192,12 @@ test("a destination line with no is_authorized fails the read instead of reading
 
 test("a destination's config.memo_required data entry is read from the same account response", async () => {
   const withData = (data: Record<string, string> | undefined) =>
-    (async () =>
-      new Response(JSON.stringify({ balances: [HORIZON_CREDIT_LINE], data }), {
-        status: 200,
-      })) as unknown as typeof globalThis.fetch;
+    fakeFetch(
+      async () =>
+        new Response(JSON.stringify({ balances: [HORIZON_CREDIT_LINE], data }), {
+          status: 200,
+        })
+    );
   const read = (data: Record<string, string> | undefined) =>
     readTrustlinesOnly(DEST, "testnet", {
       baseUrl: "https://horizon.example",

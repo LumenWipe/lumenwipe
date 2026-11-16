@@ -15,6 +15,8 @@ import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { mirrorSnapshot } from "./fixtures/ledger-trustlines";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
+import { fakeRpcServer } from "../support/rpc-server";
+import { latestLedger } from "../support/rpc-fixtures";
 
 // The transactions this API builds and co-signs for the playground's exchange close, kept as a
 // fixture that apps/playground's relay verifier must accept (apps/playground/tests/unit/
@@ -76,11 +78,13 @@ function accountState(over: Partial<AccountState>): AccountState {
 }
 
 function stubLedger(state: AccountState): void {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-    getAccount: () => Promise.resolve(new Account(DEMO.publicKey(), state.sequence)),
-    getLatestLedger: () => Promise.resolve({ sequence: 1000, closeTime: String(BUILT_AT_SECONDS) }),
-    getLedgerEntries: mirrorSnapshot(DEMO.publicKey(), () => state.trustlines),
-  })) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    fakeRpcServer({
+      getAccount: () => Promise.resolve(new Account(DEMO.publicKey(), state.sequence)),
+      getLatestLedger: () => Promise.resolve(latestLedger(1000, BUILT_AT_SECONDS)),
+      getLedgerEntries: mirrorSnapshot(DEMO.publicKey(), () => state.trustlines),
+    })
+  );
 }
 
 const build = (state: AccountState) =>
