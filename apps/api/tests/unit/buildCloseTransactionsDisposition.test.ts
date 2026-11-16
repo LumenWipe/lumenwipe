@@ -3,7 +3,6 @@ import * as pathFinding from "@/lib/stellar/path-finding";
 import type { PathResult } from "@/lib/stellar/path-finding";
 import * as rpcModule from "@/lib/stellar/rpc";
 import {
-  Account,
   Keypair,
   Operation,
   Transaction,
@@ -13,7 +12,7 @@ import {
 import { AssetRouteLostError } from "@/lib/utils/errors";
 import type { AccountState, Trustline } from "@lumenwipe/types";
 import { buildCloseTransactions } from "@/lib/close-api/build-transactions";
-import { ledgerEntries } from "./fixtures/ledger-trustlines";
+import { ledgerEntries, ledgerRpcServer } from "./fixtures/ledger-trustlines";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { authorizationOf } from "./fixtures/trustline";
 import { stubIssuance } from "./fixtures/issuance";
@@ -76,13 +75,6 @@ function accountState(): AccountState {
 
 // A live trustline balance read that mirrors the scan-time balance: the asset is
 // funded, so the close must dispose of it (it cannot just be removed).
-function rpcServerStub() {
-  return {
-    getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
-    getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
-    getLedgerEntries: ledgerEntries(() => ({ balance: 100000000n })),
-  };
-}
 
 afterEach(() => {
   mock.restore();
@@ -99,8 +91,12 @@ test("close build › issuer disposition returns the balance to the issuer witho
   spyOn(pathFinding, "fetchConversionPath").mockImplementation(
     fetcher as unknown as typeof pathFinding.fetchConversionPath
   );
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(
+      SOURCE,
+      ledgerEntries(() => ({ balance: 100000000n }))
+    )
+  );
 
   const result = await buildCloseTransactions(
     ALL_ON,
@@ -132,8 +128,12 @@ test("close build › a genuinely lost route for a convert asset still surfaces 
   spyOn(pathFinding, "fetchConversionPath").mockImplementation(
     fetcher as unknown as typeof pathFinding.fetchConversionPath
   );
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(
+      SOURCE,
+      ledgerEntries(() => ({ balance: 100000000n }))
+    )
+  );
 
   await expect(
     buildCloseTransactions(ALL_ON, accountState(), DEST, { [NOSWAP]: "convert" }, "testnet")
@@ -155,8 +155,12 @@ function routeAt(destMin: string): PathResult {
 
 test("close build › a conversion is refused when the route no longer clears the minimum the plan showed", async () => {
   spyOn(pathFinding, "fetchConversionPath").mockResolvedValue(routeAt("4.9999999"));
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(
+      SOURCE,
+      ledgerEntries(() => ({ balance: 100000000n }))
+    )
+  );
 
   const build = (floor: bigint) =>
     buildCloseTransactions(
@@ -188,8 +192,12 @@ test("close build › an unlisted destination's memo goes on chain with the type
       kind: "none",
       reason: "no_market",
     })) as unknown as typeof pathFinding.fetchConversionPath);
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(
+      SOURCE,
+      ledgerEntries(() => ({ balance: 100000000n }))
+    )
+  );
   const memoOf = async (memoType: "text" | "id" | null) => {
     const result = await buildCloseTransactions(
       ALL_ON,

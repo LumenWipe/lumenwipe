@@ -9,6 +9,7 @@ import {
   type ContractResponse,
 } from "@/lib/monitors/provider-contract";
 import { UpstreamError } from "@/lib/stellar/upstream-client";
+import { fakeFetch } from "../support/fetch";
 
 const SELLER = Keypair.random().publicKey();
 const CLAIMANT = Keypair.random().publicKey();
@@ -309,11 +310,11 @@ test.each([
       logged.push(JSON.stringify(line));
     })
   );
-  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+  globalThis.fetch = fakeFetch(async (input: string | URL | Request, init?: RequestInit) => {
     methods.push(init?.method ?? "GET");
     requested.push(String(input));
     return new Response(JSON.stringify({ error: `failed at ${url}` }), { status: 400 });
-  }) as unknown as typeof globalThis.fetch;
+  });
   try {
     const reports = await checkProviders("testnet", [{ url, headers: {} }]);
     const output = JSON.stringify(reports) + logged.join("\n");

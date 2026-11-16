@@ -24,6 +24,7 @@ import {
   structVal,
   u32MapVal,
 } from "./fixtures/testnet-direct-read-helpers";
+import { fakeRpcServer } from "../support/rpc-server";
 
 const USER = Keypair.random().publicKey();
 const ASSET_A = Keypair.random().publicKey();
@@ -384,12 +385,12 @@ test("FxDAO: every denomination the instance registers is probed, and only the h
     contractInstanceEntry(FXDAO_VAULTS, FXDAO_WASM_HASH, storage),
     fxdaoVault(FXDAO_VAULTS, "EUR", 10n, 4n),
   ]);
-  const rpc = {
+  const rpc = fakeRpcServer({
     getLedgerEntries: async (...keys: xdr.LedgerKey[]) => {
       for (const key of keys) queried.push(key.toXdr("base64"));
       return ledger.getLedgerEntries(...keys);
     },
-  } as unknown as typeof ledger;
+  });
   const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
     rpc,
     registryEntries: fxdaoEntries(),
@@ -666,12 +667,14 @@ test("Phoenix: stakes held on a stake contract the registry does not verify are 
 test("Phoenix: the bonding entry is read in the same call as the share balance, under the bare account key", async () => {
   const keysSeen: xdr.LedgerKey[][] = [];
   const inner = mockRpc(phoenixLedger(phoenixShares(0n), bondingEntry([[7n, 9n]])));
-  const { rpc, sizes } = tracingRpc({
-    getLedgerEntries: async (...keys: xdr.LedgerKey[]) => {
-      keysSeen.push(keys);
-      return inner.getLedgerEntries(...keys);
-    },
-  } as unknown as TracedRpc);
+  const { rpc, sizes } = tracingRpc(
+    fakeRpcServer({
+      getLedgerEntries: async (...keys: xdr.LedgerKey[]) => {
+        keysSeen.push(keys);
+        return inner.getLedgerEntries(...keys);
+      },
+    })
+  );
   const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
     rpc,
     registryEntries: phoenixStakeRegistry(),
@@ -684,12 +687,12 @@ test("Phoenix: the bonding entry is read in the same call as the share balance, 
 
 test("Phoenix: a failing stake read rejects the account read rather than reporting no stake", async () => {
   const inner = mockRpc(phoenixLedger(phoenixShares(0n), bondingEntry([[7n, 9n]])));
-  const rpc = {
+  const rpc = fakeRpcServer({
     getLedgerEntries: async (...keys: xdr.LedgerKey[]) => {
       if (keys.some((k) => k.toXdr("base64") === BARE_BONDING_KEY)) throw new Error("boom");
       return inner.getLedgerEntries(...keys);
     },
-  } as unknown as TracedRpc;
+  });
   await expect(
     detectDefiPositionsViaDirectRead(USER, "testnet", {
       rpc,
@@ -921,12 +924,12 @@ test("Soroswap: a large factory is read in chunks that stay under the RPC's key 
   );
   const inner = mockRpc([...factoryEntries(pairs), ...pairEntries(pairs[229]!, 1n)]);
   const sizes: number[] = [];
-  const rpc = {
+  const rpc = fakeRpcServer({
     getLedgerEntries: async (...keys: xdr.LedgerKey[]) => {
       sizes.push(keys.length);
       return inner.getLedgerEntries(...keys);
     },
-  } as unknown as typeof inner;
+  });
   const result = await detectDefiPositionsViaDirectRead(USER, "testnet", {
     rpc,
     registryEntries: SOROSWAP_REGISTRY(),
@@ -1426,12 +1429,12 @@ test("Aquarius: every pool's tag is resolved in one batched read, deduplicated a
     ...releasePool(AQ_POOL_STABLE, AQ_TAGS.constant, AQ_CONSTANT_HASH, constantStorage()),
     ...releasePool(AQ_POOL_CONCENTRATED, AQ_TAGS.concentrated, AQ_CONCENTRATED_HASH, []),
   ]);
-  const rpc = {
+  const rpc = fakeRpcServer({
     getLedgerEntries: async (...keys: xdr.LedgerKey[]) => {
       calls.push(keys.map((k) => k.toXdr("base64")));
       return inner.getLedgerEntries(...keys);
     },
-  } as unknown as typeof inner;
+  });
   await detectDefiPositionsViaDirectRead(USER, "testnet", {
     rpc,
     registryEntries: aquariusRegistry(),
@@ -1546,7 +1549,7 @@ function tracingRpc(
   const sizes: number[] = [];
   let inFlight = 0;
   let maxInFlight = 0;
-  const rpc = {
+  const rpc = fakeRpcServer({
     getLedgerEntries: async (...keys: xdr.LedgerKey[]) => {
       sizes.push(keys.length);
       inFlight += 1;
@@ -1558,7 +1561,7 @@ function tracingRpc(
         inFlight -= 1;
       }
     },
-  } as unknown as TracedRpc;
+  });
   return { rpc, sizes, maxInFlight: () => maxInFlight };
 }
 
@@ -1686,7 +1689,7 @@ test("once one read fails, the detection rejects and its queued reads never reac
   const pairs = Array.from({ length: MANY_PAIRS }, randomContract);
   const inner = mockRpc([...factoryEntries(pairs), ...pairEntries(pairs[0]!, 1n)]);
   let thrown = false;
-  const failingOnce = {
+  const failingOnce = fakeRpcServer({
     getLedgerEntries: async (...keys: xdr.LedgerKey[]) => {
       // The first full-size chunk (an index chunk of the factory sweep) fails, like a 429 would.
       if (!thrown && keys.length === LEDGER_KEYS_PER_CALL) {
@@ -1695,7 +1698,7 @@ test("once one read fails, the detection rejects and its queued reads never reac
       }
       return inner.getLedgerEntries(...keys);
     },
-  } as unknown as TracedRpc;
+  });
   const { rpc, sizes } = tracingRpc(failingOnce, () => 5);
   await expect(
     detectDefiPositionsViaDirectRead(USER, "testnet", { rpc, registryEntries: SOROSWAP_REGISTRY() })

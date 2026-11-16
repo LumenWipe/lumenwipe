@@ -2,7 +2,13 @@ import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import { Account, Keypair, Networks, Operation, TransactionBuilder } from "@stellar/stellar-sdk";
 import { rpc } from "@stellar/stellar-sdk";
 import { inRequestContext } from "../support/request-context";
-import { latestLedger as parsedLatestLedger } from "../support/rpc-fixtures";
+import {
+  failedTransaction,
+  latestLedger as parsedLatestLedger,
+  missingTransaction,
+  successfulTransaction,
+} from "../support/rpc-fixtures";
+import { fakeRpcServer } from "../support/rpc-server";
 import { RPC_FALLBACKS, RPC_HEADERS, RPC_URLS } from "@/config/networks";
 import { blendSdkNetwork } from "@/lib/blend-sdk";
 import {
@@ -16,6 +22,7 @@ import { providerFailoverCount, resetProviderFailoverCount } from "@/lib/stellar
 import { submitAndWait, type SubmitClock } from "@/lib/stellar/submit";
 import { UpstreamError } from "@/lib/stellar/upstream-client";
 import { TxSubmitError } from "@/lib/utils/errors";
+import { fakeFetch } from "../support/fetch";
 
 const A = "https://rpc-a.test";
 const B = "https://rpc-b.test";
@@ -47,7 +54,7 @@ type Handler = (method: string) => unknown;
 /** An injected fetch speaking JSON-RPC; a handler that throws is a dead provider. */
 function fakeRpc(hosts: Record<string, Handler>): Call[] {
   const calls: Call[] = [];
-  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+  globalThis.fetch = fakeFetch(async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(typeof input === "string" ? input : input.toString());
     const { method } = JSON.parse(String(init?.body)) as { method: string };
     calls.push({ host: url.origin, method, headers: new Headers(init?.headers) });
@@ -56,7 +63,7 @@ function fakeRpc(hosts: Record<string, Handler>): Call[] {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
-  }) as unknown as typeof globalThis.fetch;
+  });
   return calls;
 }
 
@@ -306,7 +313,7 @@ function signedXdr(): string {
 }
 
 /** Counts submit traffic per provider across every server instance. */
-function submitSpies(afterSend: () => unknown) {
+function submitSpies(afterSend: () => rpc.Api.GetTransactionResponse) {
   const sends: string[] = [];
   const lookups: string[] = [];
   const send = spyOn(rpc.Server.prototype, "sendTransaction").mockImplementation(function (
@@ -319,9 +326,7 @@ function submitSpies(afterSend: () => unknown) {
     this: rpc.Server
   ) {
     lookups.push(this.serverURL.toString());
-    return Promise.resolve(
-      (sends.length === 0 ? { status: "NOT_FOUND" } : afterSend()) as rpc.Api.GetTransactionResponse
-    );
+    return Promise.resolve(sends.length === 0 ? missingTransaction() : afterSend());
   });
   return {
     sends,
@@ -345,7 +350,7 @@ const instantClock = (): SubmitClock => {
 
 test("a failed send is never replayed: one send anywhere, one by-hash look at the next provider", async () => {
   fakeRpc({ [A]: alive(100), [B]: alive(100) });
-  const spies = submitSpies(() => ({ status: "NOT_FOUND" }));
+  const spies = submitSpies(() => missingTransaction());
   try {
     await expect(
       inRequestContext(() =>
@@ -362,7 +367,7 @@ test("a failed send is never replayed: one send anywhere, one by-hash look at th
 
 test("the by-hash look turning up a success reports the success", async () => {
   fakeRpc({ [A]: alive(100), [B]: alive(100) });
-  const spies = submitSpies(() => ({ status: "SUCCESS", ledger: 321 }));
+  const spies = submitSpies(() => successfulTransaction({ ledger: 321 }));
   try {
     const result = await inRequestContext(() => submitAndWait(signedXdr(), "testnet"));
     expect(result.ledger).toBe(321);
@@ -374,7 +379,7 @@ test("the by-hash look turning up a success reports the success", async () => {
 
 test("the by-hash look turning up a failure reports a rejection", async () => {
   fakeRpc({ [A]: alive(100), [B]: alive(100) });
-  const spies = submitSpies(() => ({ status: "FAILED", ledger: 321 }));
+  const spies = submitSpies(() => failedTransaction({ ledger: 321 }));
   try {
     await expect(
       inRequestContext(() => submitAndWait(signedXdr(), "testnet"))
@@ -386,17 +391,17 @@ test("the by-hash look turning up a failure reports a rejection", async () => {
 });
 
 test("a by-hash look that itself fails leaves the original error", async () => {
-  const server = {
-    getTransaction: async () => ({ status: "NOT_FOUND" }),
+  const server = fakeRpcServer({
+    getTransaction: async () => missingTransaction(),
     sendTransaction: async () => {
       throw new Error("socket hang up");
     },
-  } as unknown as rpc.Server;
-  const failing = {
+  });
+  const failing = fakeRpcServer({
     getTransaction: async () => {
       throw new Error("also down");
     },
-  } as unknown as rpc.Server;
+  });
   await expect(
     submitAndWait(
       signedXdr(),
@@ -411,7 +416,7 @@ test("a by-hash look that itself fails leaves the original error", async () => {
 
 test("a one-entry list reads the only provider by hash and never replays the send", async () => {
   RPC_FALLBACKS.testnet = [];
-  const spies = submitSpies(() => ({ status: "SUCCESS", ledger: 1 }));
+  const spies = submitSpies(() => successfulTransaction({ ledger: 1 }));
   try {
     const result = await submitAndWait(signedXdr(), "testnet");
     expect(result.ledger).toBe(1);

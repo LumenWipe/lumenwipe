@@ -1,5 +1,5 @@
 import { afterEach, expect, mock, spyOn, test, beforeEach } from "bun:test";
-import { Account, Keypair } from "@stellar/stellar-sdk";
+import { Keypair } from "@stellar/stellar-sdk";
 import { HttpException } from "@nestjs/common";
 import type { AccountState } from "@lumenwipe/types";
 import * as pathFinding from "@/lib/stellar/path-finding";
@@ -12,20 +12,24 @@ import { PRICE_SOURCE_UNAVAILABLE } from "@/lib/close-api/decisions";
 import { AccountController } from "@/account/account.controller";
 import { AssetRouteLostError } from "@/lib/utils/errors";
 import { UpstreamError } from "@/lib/stellar/upstream-client";
-import { mirrorSnapshot } from "./fixtures/ledger-trustlines";
+import { ledgerRpcServer, mirrorSnapshot } from "./fixtures/ledger-trustlines";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { authorizationOf } from "./fixtures/trustline";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 import { ALL_ON } from "@/config/kill-switches";
+import { fakeRpcServer } from "../support/rpc-server";
+import { latestLedger } from "../support/rpc-fixtures";
 
 beforeEach(() => {
   stubIssuance();
   stubLedgerConfirmation();
   stubLedgerConfirmation();
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-    getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
-  })) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    fakeRpcServer({
+      getLatestLedger: () => Promise.resolve(latestLedger(1000)),
+    })
+  );
 });
 
 const SOURCE = Keypair.random().publicKey();
@@ -113,11 +117,12 @@ test("plan: a genuine empty market still offers return to issuer without a defau
 test("transactions: an unavailable price source is a 503, never a quote_drifted 409", async () => {
   unavailable();
   let snapshot = state().trustlines;
-  spyOn(rpcModule, "getRpcServer").mockReturnValue({
-    getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
-    getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
-    getLedgerEntries: mirrorSnapshot(SOURCE, () => snapshot),
-  } as unknown as ReturnType<typeof rpcModule.getRpcServer>);
+  spyOn(rpcModule, "getRpcServer").mockReturnValue(
+    ledgerRpcServer(
+      SOURCE,
+      mirrorSnapshot(SOURCE, () => snapshot)
+    )
+  );
 
   const failure = await buildCloseTransactions(ALL_ON, state(), DEST, {}, "testnet").catch(
     (e: unknown) => e

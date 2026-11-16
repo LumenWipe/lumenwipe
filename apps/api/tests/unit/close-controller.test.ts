@@ -54,6 +54,7 @@ import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { OFFLINE_SOROBAN_TOKENS } from "./fixtures/fake-soroban-tokens";
 import { authorizationOf } from "./fixtures/trustline";
 import { readKillSwitches, type KillSwitches } from "@/config/kill-switches";
+import { fakeFetch } from "../support/fetch";
 
 const SOURCE = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -1275,7 +1276,7 @@ describe("transactions verifies the supplied plan hash", () => {
         headers: { "Latest-Ledger": "100" },
       });
     };
-    const fetch = (async (url: string) => lagging(url)) as unknown as typeof globalThis.fetch;
+    const fetch = fakeFetch(async (url: string) => lagging(url));
     const { fakes, builds } = counting(() => "77");
     const { controller } = await makeController({
       ...fakes,

@@ -25,7 +25,7 @@ import {
   reencodeSwapArg,
   reencodeWithRefs,
 } from "../support/xbull-conversion-test-helpers";
-import { rawSimulation } from "./fixtures/fake-exit-adapter";
+import { contractSimulation } from "./fixtures/fake-exit-adapter";
 import fixture from "../fixtures/xbull-strict-send-sample.json";
 
 const XBULL_ROUTER = "CCKXBE5GKJOCE7IKL64HLYKW3IJSUPVOLC4CS77GQT5QQHDZLDYV3DFT";
@@ -213,7 +213,7 @@ function fakeXBullDeps(
 ) {
   return {
     rpc: {
-      simulateTransaction: async () => rawSimulation("ok", [], minResourceFee),
+      simulateTransaction: async () => contractSimulation("ok", [], minResourceFee),
     },
     xbull: {
       fetch: (async () =>

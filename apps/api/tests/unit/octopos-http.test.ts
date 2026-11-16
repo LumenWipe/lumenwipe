@@ -1,5 +1,6 @@
 import { test, expect } from "bun:test";
 import { fetchOctoPosPortfolio } from "@/lib/defi-positions/octopos-http";
+import { fakeFetch } from "../support/fetch";
 
 const BASE = "https://octopos.example";
 const ADDRESS = "GDQNY3PBOJOKYZSRMK2S7LHHGWZIUISD4QORETLMXEWXBI7KFZZMKTL3";
@@ -17,11 +18,11 @@ function recordingFetch(
   handler: (url: string, init?: RequestInit) => Response | Promise<Response>
 ) {
   const calls: { url: string; init?: RequestInit }[] = [];
-  const fn = (async (input: string | URL | Request, init?: RequestInit) => {
+  const fn = fakeFetch(async (input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input.toString();
     calls.push({ url, init });
     return handler(url, init);
-  }) as unknown as typeof globalThis.fetch;
+  });
   return { fetch: fn, calls };
 }
 
@@ -93,9 +94,9 @@ test("gives up after 2 attempts on sustained 5xx failures, not 3", async () => {
 });
 
 test("a network failure becomes an unavailable result rather than a rejection", async () => {
-  const fn = (async () => {
+  const fn = fakeFetch(async () => {
     throw new Error("ECONNRESET");
-  }) as unknown as typeof globalThis.fetch;
+  });
   const result = await fetchOctoPosPortfolio(ADDRESS, { baseUrl: BASE, fetch: fn });
   expect(result).toEqual({ ok: false, reason: "unavailable", detail: expect.any(String) });
 });

@@ -19,6 +19,8 @@ import { ledgerEntries } from "../unit/fixtures/ledger-trustlines";
 import { stubIssuance } from "../unit/fixtures/issuance";
 import { stubLedgerConfirmation } from "../unit/fixtures/ledger-confirmation";
 import { ALL_ON } from "@/config/kill-switches";
+import { fakeRpcServer } from "../support/rpc-server";
+import { latestLedger } from "../support/rpc-fixtures";
 
 beforeEach(() => {
   stubIssuance();
@@ -85,13 +87,15 @@ function state(openOffers: AccountState["openOffers"], balance = BALANCE): Accou
 
 function stubChain(balance = BALANCE): void {
   const stroops = BigInt(balance.replace(".", ""));
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-    getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
-    getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
-    getLedgerEntries: ledgerEntries((id) =>
-      id.startsWith(`${TRANSFER_TO}|`) ? { balance: 0n } : { balance: stroops }
-    ),
-  })) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    fakeRpcServer({
+      getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
+      getLatestLedger: () => Promise.resolve(latestLedger(1000)),
+      getLedgerEntries: ledgerEntries((id) =>
+        id.startsWith(`${TRANSFER_TO}|`) ? { balance: 0n } : { balance: stroops }
+      ),
+    })
+  );
 }
 
 type Op = {

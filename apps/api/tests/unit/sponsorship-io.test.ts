@@ -5,6 +5,7 @@ import {
   fetchOwnerLiveState,
   fetchOwnerLiveStatesBounded,
 } from "@/lib/stellar/sponsorship";
+import { fakeFetch } from "../support/fetch";
 
 // sponsorship.ts reads its Horizon-compatible base URL from PATH_ROUTING_API_URLS, which
 // defaults to "" unless NEXT_PUBLIC_PATH_ROUTING_API_TESTNET is set - this worktree has no
@@ -36,8 +37,8 @@ function jsonResponse(body: unknown, status = 200): Response {
 // map of path patterns (substring match, checked in insertion order - first match wins).
 // Unmatched URLs throw loudly so a test's routing gap surfaces immediately, not as a
 // silent 200 with an empty body that would mask what's actually being exercised.
-function routedFetch(routes: Array<[string | RegExp, () => Response]>) {
-  return mock(async (url: string) => {
+function routedFetch(routes: Array<[string | RegExp, () => Response]>): typeof fetch {
+  return fakeFetch(async (url) => {
     for (const [pattern, respond] of routes) {
       const matches = typeof pattern === "string" ? url.includes(pattern) : pattern.test(url);
       if (matches) return respond();
@@ -56,7 +57,7 @@ afterEach(() => {
 test("fetchOwnerLiveState › owner account 404s → terminal, not a failure, reserve null", async () => {
   globalThis.fetch = routedFetch([
     [`/accounts/${OWNER}`, () => new Response(null, { status: 404 })],
-  ]) as unknown as typeof fetch;
+  ]);
 
   const result = await fetchOwnerLiveState(OWNER, "testnet");
 
@@ -68,7 +69,7 @@ test("fetchOwnerLiveState › owner account 404s → terminal, not a failure, re
 test("fetchOwnerLiveState › owner account fetch returns a non-OK, non-404 status → fetchFailed", async () => {
   globalThis.fetch = routedFetch([
     [`/accounts/${OWNER}`, () => new Response(null, { status: 503 })],
-  ]) as unknown as typeof fetch;
+  ]);
 
   const result = await fetchOwnerLiveState(OWNER, "testnet");
 
@@ -114,7 +115,7 @@ test("fetchOwnerLiveState › a healthy account sweeps trustlines, signers, rese
           data: { config: "c29tZS12YWx1ZQ==" },
         }),
     ],
-  ]) as unknown as typeof fetch;
+  ]);
 
   const result = await fetchOwnerLiveState(OWNER, "testnet");
 
@@ -153,7 +154,7 @@ test("fetchOwnerLiveState › a data-entry key present in `data` but 404 on the 
           data: { config: "dmFsdWU=" },
         }),
     ],
-  ]) as unknown as typeof fetch;
+  ]);
 
   const result = await fetchOwnerLiveState(OWNER, "testnet");
 
@@ -173,7 +174,7 @@ test("fetchOwnerLiveState › the offers fetch failing → the whole read is fet
           signers: [],
         }),
     ],
-  ]) as unknown as typeof fetch;
+  ]);
 
   const result = await fetchOwnerLiveState(OWNER, "testnet");
 
@@ -182,9 +183,11 @@ test("fetchOwnerLiveState › the offers fetch failing → the whole read is fet
 });
 
 test("fetchOwnerLiveState › a thrown network error anywhere degrades to fetchFailed, never throws out", async () => {
-  globalThis.fetch = mock(() => {
-    throw new Error("ECONNRESET");
-  }) as unknown as typeof fetch;
+  globalThis.fetch = fakeFetch(
+    mock(() => {
+      throw new Error("ECONNRESET");
+    })
+  );
 
   const result = await fetchOwnerLiveState(OWNER, "testnet");
 
@@ -197,14 +200,16 @@ test("fetchOwnerLiveState › a thrown network error anywhere degrades to fetchF
 test("fetchOwnerLiveStatesBounded › every owner across multiple concurrency batches ends up in the result map", async () => {
   const owners = Array.from({ length: 23 }, (_, i) => `GOWNER${i.toString().padStart(50, "0")}`);
 
-  globalThis.fetch = mock(async (url: string) => {
-    if (url.includes("/offers")) return jsonResponse({ _embedded: { records: [] } });
-    return jsonResponse({
-      subentry_count: 0,
-      balances: [{ asset_type: "native", balance: "1.0000000" }],
-      signers: [],
-    });
-  }) as unknown as typeof fetch;
+  globalThis.fetch = fakeFetch(
+    mock(async (url: string) => {
+      if (url.includes("/offers")) return jsonResponse({ _embedded: { records: [] } });
+      return jsonResponse({
+        subentry_count: 0,
+        balances: [{ asset_type: "native", balance: "1.0000000" }],
+        signers: [],
+      });
+    })
+  );
 
   const result = await fetchOwnerLiveStatesBounded(owners, "testnet");
 
@@ -218,7 +223,7 @@ test("fetchOwnerLiveStatesBounded › every owner across multiple concurrency ba
 
 test("enumerateSponsoredEntries › a trusted zero short-circuits without calling fetch at all", async () => {
   const fetcher = mock(async () => jsonResponse({}));
-  globalThis.fetch = fetcher as unknown as typeof fetch;
+  globalThis.fetch = fakeFetch(fetcher);
 
   const result = await enumerateSponsoredEntries(SPONSOR, "testnet", 0, true);
 
@@ -230,7 +235,7 @@ test("enumerateSponsoredEntries › an untrusted zero still does real work and i
   globalThis.fetch = routedFetch([
     [`/accounts/${SPONSOR}/operations`, () => jsonResponse({ _embedded: { records: [] } })],
     [`/claimable_balances`, () => jsonResponse({ _embedded: { records: [] } })],
-  ]) as unknown as typeof fetch;
+  ]);
 
   const result = await enumerateSponsoredEntries(SPONSOR, "testnet", 0, false);
 
@@ -280,7 +285,7 @@ test("enumerateSponsoredEntries › end to end: a sponsored trustline discovered
           signers: [],
         }),
     ],
-  ]) as unknown as typeof fetch;
+  ]);
 
   const result = await enumerateSponsoredEntries(SPONSOR, "testnet", 1, true);
 
@@ -295,13 +300,15 @@ test("enumerateSponsoredEntries › end to end: a sponsored trustline discovered
 });
 
 test("enumerateSponsoredEntries › a malformed/unexpected response degrades to incomplete rather than throwing out", async () => {
-  globalThis.fetch = mock(
-    async () =>
-      new Response("<html>not json</html>", {
-        status: 200,
-        headers: { "Content-Type": "text/html" },
-      })
-  ) as unknown as typeof fetch;
+  globalThis.fetch = fakeFetch(
+    mock(
+      async () =>
+        new Response("<html>not json</html>", {
+          status: 200,
+          headers: { "Content-Type": "text/html" },
+        })
+    )
+  );
 
   const result = await enumerateSponsoredEntries(SPONSOR, "testnet", 1, true);
 
@@ -357,7 +364,7 @@ test("enumerateSponsoredEntries › one transient 5xx per request no longer mark
         })
       ),
     ],
-  ]) as unknown as typeof fetch;
+  ]);
 
   const result = await enumerateSponsoredEntries(SPONSOR, "testnet", 1, true);
 
@@ -367,7 +374,7 @@ test("enumerateSponsoredEntries › one transient 5xx per request no longer mark
 
 test("enumerateSponsoredEntries › a provider that keeps failing still degrades to incomplete, after retries", async () => {
   const fetchMock = mock(async () => new Response(null, { status: 503 }));
-  globalThis.fetch = fetchMock as unknown as typeof fetch;
+  globalThis.fetch = fakeFetch(fetchMock);
 
   const result = await enumerateSponsoredEntries(SPONSOR, "testnet", 1, true);
 
@@ -380,24 +387,26 @@ test("fetchOwnerLiveStatesBounded › owner fan-out narrows once a 429 has been 
   let rateLimited = false;
   let inflight = 0;
   const laterMax: number[] = [];
-  globalThis.fetch = mock(async (url: string) => {
-    const index = owners.findIndex((o) => url.includes(`/accounts/${o}`));
-    if (index === 0 && !rateLimited) {
-      rateLimited = true;
-      return new Response(null, { status: 429, headers: { "Retry-After": "0" } });
-    }
-    inflight++;
-    if (index >= 10) laterMax.push(inflight);
-    await new Promise((r) => setTimeout(r, 15));
-    inflight--;
-    return url.endsWith("/offers?limit=200")
-      ? jsonResponse({ _embedded: { records: [] } })
-      : jsonResponse({
-          subentry_count: 0,
-          balances: [{ asset_type: "native", balance: "5.0000000" }],
-          signers: [],
-        });
-  }) as unknown as typeof fetch;
+  globalThis.fetch = fakeFetch(
+    mock(async (url: string) => {
+      const index = owners.findIndex((o) => url.includes(`/accounts/${o}`));
+      if (index === 0 && !rateLimited) {
+        rateLimited = true;
+        return new Response(null, { status: 429, headers: { "Retry-After": "0" } });
+      }
+      inflight++;
+      if (index >= 10) laterMax.push(inflight);
+      await new Promise((r) => setTimeout(r, 15));
+      inflight--;
+      return url.endsWith("/offers?limit=200")
+        ? jsonResponse({ _embedded: { records: [] } })
+        : jsonResponse({
+            subentry_count: 0,
+            balances: [{ asset_type: "native", balance: "5.0000000" }],
+            signers: [],
+          });
+    })
+  );
 
   const result = await fetchOwnerLiveStatesBounded(owners, "testnet");
 

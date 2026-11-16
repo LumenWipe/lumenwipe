@@ -11,6 +11,7 @@ import {
 } from "@/lib/defi-positions/resolve-defi-positions";
 import { defiPositionsDepsFor } from "@/lib/stellar/account-state";
 import { fakeRpcServer } from "../support/rpc-server";
+import { healthy } from "../support/rpc-fixtures";
 
 // Wiring coverage for #59's "real health check" item: `/health/deep` (HealthController.deep())
 // actually reflects whether Stellar RPC is reachable, on both networks independently, rather
@@ -65,9 +66,11 @@ test("check() reports whether octopos is configured on this deployment", async (
 });
 
 test("reports up on every network when RPC responds", async () => {
-  spyOn(rpcModule, "buildRpcServer").mockReturnValue({
-    getHealth: () => Promise.resolve({ status: "healthy" }),
-  } as unknown as ReturnType<typeof rpcModule.buildRpcServer>);
+  spyOn(rpcModule, "buildRpcServer").mockReturnValue(
+    fakeRpcServer({
+      getHealth: () => Promise.resolve(healthy()),
+    })
+  );
 
   const controller = await buildController();
   const result = await controller.deep();
@@ -78,9 +81,11 @@ test("reports up on every network when RPC responds", async () => {
 });
 
 test("reports the exchange registry days remaining without failing the probe", async () => {
-  spyOn(rpcModule, "buildRpcServer").mockReturnValue({
-    getHealth: () => Promise.resolve({ status: "healthy" }),
-  } as unknown as ReturnType<typeof rpcModule.buildRpcServer>);
+  spyOn(rpcModule, "buildRpcServer").mockReturnValue(
+    fakeRpcServer({
+      getHealth: () => Promise.resolve(healthy()),
+    })
+  );
 
   const controller = await buildController();
   const result = await controller.deep();
@@ -94,12 +99,14 @@ test("reports the exchange registry days remaining without failing the probe", a
 });
 
 test("throws (503) when one network's RPC is unreachable, naming which one", async () => {
-  spyOn(rpcModule, "buildRpcServer").mockImplementation(((network: string) => ({
-    getHealth: () =>
-      network === "mainnet"
-        ? Promise.reject(new Error("connection refused"))
-        : Promise.resolve({ status: "healthy" }),
-  })) as unknown as typeof rpcModule.buildRpcServer);
+  spyOn(rpcModule, "buildRpcServer").mockImplementation((network) =>
+    fakeRpcServer({
+      getHealth: () =>
+        network === "mainnet"
+          ? Promise.reject(new Error("connection refused"))
+          : Promise.resolve(healthy()),
+    })
+  );
 
   const controller = await buildController();
   let caught: unknown;
@@ -116,9 +123,11 @@ test("throws (503) when one network's RPC is unreachable, naming which one", asy
 });
 
 test("uses a dedicated, short-timeout server per network - never the shared transaction-building singleton", async () => {
-  const buildSpy = spyOn(rpcModule, "buildRpcServer").mockReturnValue({
-    getHealth: () => Promise.resolve({ status: "healthy" }),
-  } as unknown as ReturnType<typeof rpcModule.buildRpcServer>);
+  const buildSpy = spyOn(rpcModule, "buildRpcServer").mockReturnValue(
+    fakeRpcServer({
+      getHealth: () => Promise.resolve(healthy()),
+    })
+  );
   const getSpy = spyOn(rpcModule, "getRpcServer");
 
   const controller = await buildController();
@@ -130,9 +139,11 @@ test("uses a dedicated, short-timeout server per network - never the shared tran
 });
 
 test("coalesces requests within the cache window into one shared result, without re-hitting RPC", async () => {
-  const buildSpy = spyOn(rpcModule, "buildRpcServer").mockReturnValue({
-    getHealth: () => Promise.resolve({ status: "healthy" }),
-  } as unknown as ReturnType<typeof rpcModule.buildRpcServer>);
+  const buildSpy = spyOn(rpcModule, "buildRpcServer").mockReturnValue(
+    fakeRpcServer({
+      getHealth: () => Promise.resolve(healthy()),
+    })
+  );
 
   const controller = await buildController();
   const [first, second] = await Promise.all([controller.deep(), controller.deep()]);
@@ -158,12 +169,14 @@ const PROVIDER_ERROR =
 
 test("a failed RPC probe reports only a fixed status and latency, never the upstream error text", async () => {
   spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
-  spyOn(rpcModule, "buildRpcServer").mockImplementation(((network: string) => ({
-    getHealth: () =>
-      network === "mainnet"
-        ? Promise.reject(new Error(PROVIDER_ERROR))
-        : Promise.resolve({ status: "healthy" }),
-  })) as unknown as typeof rpcModule.buildRpcServer);
+  spyOn(rpcModule, "buildRpcServer").mockImplementation((network) =>
+    fakeRpcServer({
+      getHealth: () =>
+        network === "mainnet"
+          ? Promise.reject(new Error(PROVIDER_ERROR))
+          : Promise.resolve(healthy()),
+    })
+  );
 
   const response = await deepFailure(await buildController());
   const details = response.details as Record<string, Record<string, unknown>>;
@@ -184,9 +197,11 @@ test("a failed RPC probe reports only a fixed status and latency, never the upst
 
 test("a non-Error rejection is reported with the same fixed status", async () => {
   spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
-  spyOn(rpcModule, "buildRpcServer").mockReturnValue({
-    getHealth: () => Promise.reject(PROVIDER_ERROR),
-  } as unknown as ReturnType<typeof rpcModule.buildRpcServer>);
+  spyOn(rpcModule, "buildRpcServer").mockReturnValue(
+    fakeRpcServer({
+      getHealth: () => Promise.reject(PROVIDER_ERROR),
+    })
+  );
 
   const response = await deepFailure(await buildController());
   const details = response.details as Record<string, Record<string, unknown>>;
@@ -200,15 +215,17 @@ test("a probe that runs out its timeout reports timeout", async () => {
   spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
   let clock = 1_000_000;
   spyOn(Date, "now").mockImplementation(() => clock);
-  spyOn(rpcModule, "buildRpcServer").mockImplementation(((network: string) => ({
-    getHealth: () =>
-      network === "mainnet"
-        ? Promise.resolve().then(() => {
-            clock += 60_000;
-            throw new Error(PROVIDER_ERROR);
-          })
-        : Promise.resolve({ status: "healthy" }),
-  })) as unknown as typeof rpcModule.buildRpcServer);
+  spyOn(rpcModule, "buildRpcServer").mockImplementation((network) =>
+    fakeRpcServer({
+      getHealth: () =>
+        network === "mainnet"
+          ? Promise.resolve().then(() => {
+              clock += 60_000;
+              throw new Error(PROVIDER_ERROR);
+            })
+          : Promise.resolve(healthy()),
+    })
+  );
 
   const response = await deepFailure(await buildController());
   const details = response.details as Record<string, Record<string, unknown>>;
@@ -219,12 +236,14 @@ test("a probe that runs out its timeout reports timeout", async () => {
 
 test("the upstream detail is logged with the provider reduced to its host", async () => {
   const warn = spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
-  spyOn(rpcModule, "buildRpcServer").mockImplementation(((network: string) => ({
-    getHealth: () =>
-      network === "mainnet"
-        ? Promise.reject(new Error(PROVIDER_ERROR))
-        : Promise.resolve({ status: "healthy" }),
-  })) as unknown as typeof rpcModule.buildRpcServer);
+  spyOn(rpcModule, "buildRpcServer").mockImplementation((network) =>
+    fakeRpcServer({
+      getHealth: () =>
+        network === "mainnet"
+          ? Promise.reject(new Error(PROVIDER_ERROR))
+          : Promise.resolve(healthy()),
+    })
+  );
 
   await deepFailure(await buildController());
 

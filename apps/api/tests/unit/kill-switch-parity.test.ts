@@ -19,7 +19,7 @@ import * as rpcModule from "@/lib/stellar/rpc";
 import * as registry from "@/lib/exchange-registry";
 import * as networks from "@/config/networks";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
-import { mirrorSnapshot } from "./fixtures/ledger-trustlines";
+import { ledgerRpcServer, mirrorSnapshot } from "./fixtures/ledger-trustlines";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 
@@ -259,17 +259,17 @@ beforeEach(() => {
   rpcReads = 0;
   stubIssuance();
   stubLedgerConfirmation();
-  spyOn(rpcModule, "getRpcServer").mockImplementation(((): unknown => {
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() => {
     rpcReads++;
-    return {
-      getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
-      getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
-      getLedgerEntries: mirrorSnapshot(SOURCE, () => []),
-    };
-  }) as unknown as typeof rpcModule.getRpcServer);
-  spyOn(rpcModule, "pinRpcProvider").mockImplementation((async () => {
+    return ledgerRpcServer(
+      SOURCE,
+      mirrorSnapshot(SOURCE, () => [])
+    );
+  });
+  spyOn(rpcModule, "pinRpcProvider").mockImplementation(async () => {
     rpcReads++;
-  }) as unknown as typeof rpcModule.pinRpcProvider);
+    return { endpoint: { url: "https://rpc.invalid", headers: {} }, ledger: null };
+  });
   spyOn(networks, "getMediatorPublicKey").mockReturnValue(MEDIATOR);
 });
 

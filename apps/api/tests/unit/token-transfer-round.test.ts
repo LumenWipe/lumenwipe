@@ -21,7 +21,7 @@ import {
   buildTokenTransferRound,
 } from "@/lib/close-api/token-transfer-round";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
-import { rawSimulation } from "./fixtures/fake-exit-adapter";
+import { contractSimulation } from "./fixtures/fake-exit-adapter";
 
 const SOURCE = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -140,30 +140,26 @@ function fakeRpc(options: FakeOptions): {
       simulated.push({ contract: call.contract, fn: call.fn });
       if (call.fn === "balance") {
         const balance = options.balances[call.contract];
-        if (balance === undefined) return rawSimulation("error", [], "0");
-        const base = rawSimulation("ok", [], "100") as unknown as Record<string, unknown>;
-        return {
-          ...base,
-          results: [
-            {
-              auth: [],
-              // A hostile or exotic token may answer with a u128 past what a transfer can carry.
-              xdr: nativeToScVal(balance, {
-                type: balance > 2n ** 127n - 1n ? "u128" : "i128",
-              }).toXDR("base64"),
-            },
-          ],
-        } as unknown as rpc.Api.SimulateTransactionResponse;
+        if (balance === undefined) return contractSimulation("error", [], "0");
+        return contractSimulation(
+          "ok",
+          [],
+          "100",
+          // A hostile or exotic token may answer with a u128 past what a transfer can carry.
+          nativeToScVal(balance, {
+            type: balance > 2n ** 127n - 1n ? "u128" : "i128",
+          })
+        );
       }
       if (call.fn === "transfer") {
         const t = options.transfer ?? {};
-        return rawSimulation(
+        return contractSimulation(
           t.mode ?? "ok",
           [authEntry(call.contract, call.args, t.auth ?? {})],
           t.minResourceFee ?? "1000"
         );
       }
-      return rawSimulation("error", [], "0");
+      return contractSimulation("error", [], "0");
     },
   };
 }
@@ -374,7 +370,7 @@ describe("the Soroban token transfer round", () => {
     const original = rpcNoAuth.simulateTransaction.bind(rpcNoAuth);
     rpcNoAuth.simulateTransaction = (async (tx) => {
       const call = calledFunction(tx as Transaction);
-      if (call.fn === "transfer") return rawSimulation("ok", [], "1000");
+      if (call.fn === "transfer") return contractSimulation("ok", [], "1000");
       return original(tx);
     }) as typeof rpcNoAuth.simulateTransaction;
     await expect(
@@ -395,7 +391,7 @@ describe("the Soroban token transfer round", () => {
       const call = calledFunction(tx as Transaction);
       if (call.fn === "transfer") {
         const swapped = [call.args[0]!, new Address(OTHER_DEST).toScVal(), call.args[2]!];
-        return rawSimulation("ok", [authEntry(TOKEN_A, swapped)], "1000");
+        return contractSimulation("ok", [authEntry(TOKEN_A, swapped)], "1000");
       }
       return orig2(tx);
     }) as typeof rpcOtherArgs.simulateTransaction;

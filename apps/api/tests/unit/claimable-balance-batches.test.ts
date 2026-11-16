@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
-import { Account, Keypair, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
+import { Keypair, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
 import type {
   AccountState,
   ClaimableBalance,
@@ -15,11 +15,12 @@ import {
 } from "@/lib/close-api/decisions";
 import { buildPlan } from "@/lib/stellar/tx-builder";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
-import { ledgerEntries } from "./fixtures/ledger-trustlines";
+import { ledgerEntries, ledgerRpcServer } from "./fixtures/ledger-trustlines";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 import * as rpcModule from "@/lib/stellar/rpc";
 import { ALL_ON } from "@/config/kill-switches";
+import { fakeFetch } from "../support/fetch";
 
 beforeEach(() => {
   stubIssuance();
@@ -85,7 +86,7 @@ function horizonWith(total: number) {
     last_modified_time: "2026-01-01T00:00:00Z",
     claimants: [{ destination: SOURCE, predicate: { unconditional: true } }],
   });
-  const fetch = (async (input: string | URL | Request) => {
+  const fetch = fakeFetch(async (input: string | URL | Request) => {
     const url = new URL(typeof input === "string" ? input : input.toString());
     const limit = Number(url.searchParams.get("limit"));
     const cursor = Number(url.searchParams.get("cursor") ?? 0);
@@ -97,7 +98,7 @@ function horizonWith(total: number) {
       JSON.stringify({ _embedded: { records }, _links: { next: { href: next } } }),
       { status: 200 }
     );
-  }) as unknown as typeof globalThis.fetch;
+  });
   return { baseUrl: BASE, fetch };
 }
 
@@ -119,14 +120,6 @@ test("a collection that fits the ceiling exactly still reads as complete", async
   expect(read.more).toBe(false);
 });
 
-function rpcStub() {
-  return {
-    getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
-    getLatestLedger: () => Promise.resolve({ sequence: 1000, closeTime: String(NOW) }),
-    getLedgerEntries: ledgerEntries({}),
-  };
-}
-
 function opTypes(xdrs: string[]): string[] {
   return xdrs.flatMap((x) =>
     TransactionBuilder.fromXDR(x, Networks.TESTNET).operations.map((o) => o.type)
@@ -134,8 +127,9 @@ function opTypes(xdrs: string[]): string[] {
 }
 
 async function build(s: AccountState, selections: Record<string, ClaimableBalanceSelection> = {}) {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcStub()) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(SOURCE, ledgerEntries({}), NOW)
+  );
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
   return buildCloseTransactions(ALL_ON, s, DEST, {}, "testnet", null, selections);
 }

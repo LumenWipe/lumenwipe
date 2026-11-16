@@ -16,6 +16,7 @@ import {
 } from "@stellar/stellar-sdk";
 import type { ExitRpc } from "@/lib/defi-exits";
 import { v1Transaction } from "../../support/v1-transaction";
+import { simulation as parsedSimulation } from "../../support/rpc-fixtures";
 
 export const AQ_CONSTANT_HASH = "70476939e1ce8b4f7d6898d7a1403bd0752ba0535ad6c4aea3c4b500ad4715e0";
 export const AQ_STABLE_HASH = "278f6f02d18ea4fcee8ecb208a5e2ea5ad8e81ff2a1015574161d44c6f325558";
@@ -247,7 +248,7 @@ function simulation(
   const builder = new SorobanDataBuilder().setResourceFee(12_345n).setResources(1_000, 2_000, 300);
   if (footprint) builder.setFootprint(footprint.readOnly, footprint.readWrite);
   const transactionData = builder.build().toXdr("base64");
-  const base = { id: "1", latestLedger: 1, events: [] as string[] };
+  const base = { events: [] };
   const body =
     mode === "error"
       ? { ...base, error: "HostError: Error(Contract, #3)" }
@@ -260,7 +261,7 @@ function simulation(
             ? { restorePreamble: { minResourceFee: "500", transactionData } }
             : {}),
         };
-  return body as unknown as rpc.Api.SimulateTransactionResponse;
+  return parsedSimulation(body);
 }
 
 /** The contract function a simulated transaction's single invocation calls, or null. */

@@ -11,6 +11,7 @@ import {
   upstreamGetJson,
   UpstreamError,
 } from "@/lib/stellar/upstream-client";
+import { fakeFetch, replay } from "../support/fetch";
 
 const BASE = "https://horizon.example";
 const PATH = "/accounts/GSECRETADDRESS";
@@ -20,12 +21,12 @@ const json = (body: unknown, init: ResponseInit = {}): Response =>
 
 function script(...responses: Array<Response | Error>) {
   const calls: string[] = [];
-  const fetch = (async (input: string | URL | Request) => {
+  const fetch = fakeFetch(async (input: string | URL | Request) => {
     calls.push(String(input));
     const next = responses[Math.min(calls.length - 1, responses.length - 1)]!;
     if (next instanceof Error) throw next;
-    return next.clone();
-  }) as unknown as typeof globalThis.fetch;
+    return replay(next);
+  });
   return { fetch, calls };
 }
 
@@ -38,12 +39,12 @@ beforeEach(() => resetUpstreamCounters());
 
 test("a stalled upstream ends in a typed timeout at the deadline and is never retried past it", async () => {
   let calls = 0;
-  const fetch = ((_url: string, init: RequestInit) => {
+  const fetch = fakeFetch((_url: string, init?: RequestInit) => {
     calls++;
     return new Promise((_, reject) =>
-      init.signal!.addEventListener("abort", () => reject(new Error("aborted")))
+      init?.signal?.addEventListener("abort", () => reject(new Error("aborted")))
     );
-  }) as unknown as typeof globalThis.fetch;
+  });
 
   const started = Date.now();
   const failure = await upstreamGetJson(BASE, PATH, {
@@ -63,15 +64,15 @@ test("a stalled upstream ends in a typed timeout at the deadline and is never re
 
 test("an attempt never outlives what is left of the deadline", async () => {
   const seen: number[] = [];
-  const fetch = ((_url: string, init: RequestInit) => {
+  const fetch = fakeFetch((_url: string, init?: RequestInit) => {
     const startedAt = Date.now();
     return new Promise((_, reject) =>
-      init.signal!.addEventListener("abort", () => {
+      init?.signal?.addEventListener("abort", () => {
         seen.push(Date.now() - startedAt);
         reject(new Error("aborted"));
       })
     );
-  }) as unknown as typeof globalThis.fetch;
+  });
 
   await upstreamGetJson(BASE, PATH, {
     target: "horizon",

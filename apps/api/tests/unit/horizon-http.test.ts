@@ -8,6 +8,7 @@ import {
   resetRateLimitHits,
   TruncatedCollectionError,
 } from "@/lib/stellar/horizon-http";
+import { fakeFetch } from "../support/fetch";
 
 const BASE = "https://horizon.example";
 const NO_WAIT = { sleep: async (): Promise<void> => {} };
@@ -23,11 +24,11 @@ function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
 /** Records every URL requested, so tests can assert call counts and hosts. */
 function recordingFetch(handler: (url: string) => Response | Promise<Response>) {
   const calls: string[] = [];
-  const fn = (async (input: string | URL | Request) => {
+  const fn = fakeFetch(async (input: string | URL | Request) => {
     const url = typeof input === "string" ? input : input.toString();
     calls.push(url);
     return handler(url);
-  }) as unknown as typeof globalThis.fetch;
+  });
   return { fetch: fn, calls };
 }
 
@@ -359,14 +360,14 @@ test("refuses a protocol-relative pagination link", async () => {
 
 test("one deadline bounds a whole paginated read, not each page", async () => {
   let pages = 0;
-  const fetch = (async () => {
+  const fetch = fakeFetch(async () => {
     pages++;
     await new Promise((r) => setTimeout(r, 40));
     return jsonResponse({
       _embedded: { records: [{ id: pages }, { id: pages + 0.5 }] },
       _links: { next: { href: `${BASE}/offers?cursor=${pages}` } },
     });
-  }) as unknown as typeof globalThis.fetch;
+  });
 
   const started = Date.now();
   const failure = await horizonPaginate(

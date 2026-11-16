@@ -36,6 +36,8 @@ import { emptyDefiPositionsResult } from "../unit/fixtures/defi-positions";
 import { stubIssuance } from "../unit/fixtures/issuance";
 import { stubLedgerConfirmation } from "../unit/fixtures/ledger-confirmation";
 import { ALL_ON } from "@/config/kill-switches";
+import { latestLedger } from "../support/rpc-fixtures";
+import { fakeRpcServer } from "../support/rpc-server";
 
 beforeEach(() => {
   stubIssuance();
@@ -52,12 +54,12 @@ afterEach(() => {
 });
 
 function rpcServerStub() {
-  return {
+  return fakeRpcServer({
     getAccount: () => Promise.resolve(new Account(MASTER, "100")),
-    getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
+    getLatestLedger: () => Promise.resolve(latestLedger(1000)),
     getLedgerEntries: () => Promise.reject(new Error("should be refused before any live read")),
     getAssetBalance: () => Promise.reject(new Error("should be refused before any live read")),
-  } as unknown as ReturnType<typeof rpcModule.getRpcServer>;
+  });
 }
 
 function accountState(

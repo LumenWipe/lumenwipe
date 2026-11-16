@@ -15,13 +15,13 @@
  * entirely.
  */
 import { test, expect, spyOn, afterEach, mock, beforeEach } from "bun:test";
-import { Account, Keypair, TransactionBuilder, Networks, Operation } from "@stellar/stellar-sdk";
+import { Keypair, TransactionBuilder, Networks, Operation } from "@stellar/stellar-sdk";
 import { applySlippage } from "@/lib/stellar/path-finding";
 import * as pathFindingModule from "@/lib/stellar/path-finding";
 import * as rpcModule from "@/lib/stellar/rpc";
 import { buildCloseTransactions } from "@/lib/close-api/build-transactions";
 import type { AccountState, ConversionPath, Trustline } from "@lumenwipe/types";
-import { mirrorSnapshot } from "../unit/fixtures/ledger-trustlines";
+import { ledgerRpcServer, mirrorSnapshot } from "../unit/fixtures/ledger-trustlines";
 import { emptyDefiPositionsResult } from "../unit/fixtures/defi-positions";
 import { authorizationOf } from "../unit/fixtures/trustline";
 import { stubIssuance } from "../unit/fixtures/issuance";
@@ -108,14 +108,6 @@ function accountState(...args: Parameters<typeof makeState>): AccountState {
   return state;
 }
 
-function rpcServerStub() {
-  return {
-    getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
-    getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
-    getLedgerEntries: mirrorSnapshot(SOURCE, () => snapshot),
-  } as unknown as ReturnType<typeof rpcModule.getRpcServer>;
-}
-
 function destMinOf(xdr: string): string {
   const op = TransactionBuilder.fromXDR(xdr, Networks.TESTNET).operations.find(
     (o) => o.type === "pathPaymentStrictSend"
@@ -124,7 +116,12 @@ function destMinOf(xdr: string): string {
 }
 
 test("a build called twice embeds each call's own fresh quote, never a cached or stale one", async () => {
-  spyOn(rpcModule, "getRpcServer").mockReturnValue(rpcServerStub());
+  spyOn(rpcModule, "getRpcServer").mockReturnValue(
+    ledgerRpcServer(
+      SOURCE,
+      mirrorSnapshot(SOURCE, () => snapshot)
+    )
+  );
 
   const worsePath: ConversionPath = {
     fromAsset: USDC,

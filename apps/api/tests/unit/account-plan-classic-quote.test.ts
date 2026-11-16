@@ -12,6 +12,8 @@ import { authorizationOf } from "./fixtures/trustline";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 import { ALL_ON } from "@/config/kill-switches";
+import { fakeRpcServer } from "../support/rpc-server";
+import { latestLedger } from "../support/rpc-fixtures";
 
 const SOURCE = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
@@ -20,9 +22,11 @@ const USDC = `USDC:${ISSUER}`;
 beforeEach(() => {
   stubIssuance();
   stubLedgerConfirmation();
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-    getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
-  })) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    fakeRpcServer({
+      getLatestLedger: () => Promise.resolve(latestLedger(1000)),
+    })
+  );
 });
 
 afterEach(() => {

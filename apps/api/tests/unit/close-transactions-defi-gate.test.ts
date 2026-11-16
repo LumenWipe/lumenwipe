@@ -8,6 +8,8 @@ import * as rpcModule from "@/lib/stellar/rpc";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 import { ALL_ON } from "@/config/kill-switches";
+import { fakeRpcServer } from "../support/rpc-server";
+import { latestLedger } from "../support/rpc-fixtures";
 
 beforeEach(() => {
   stubIssuance();
@@ -88,11 +90,13 @@ afterEach(() => {
 // manually can acknowledge it instead - passed through all the way from the request's own
 // `decisions`, not something this function can be told to skip by any other means.
 test("an explicit user acknowledgement lets the build proceed instead of refusing", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-    getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
-    getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
-    getLedgerEntries: () => Promise.reject(new Error("not stubbed")),
-  })) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    fakeRpcServer({
+      getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
+      getLatestLedger: () => Promise.resolve(latestLedger(1000)),
+      getLedgerEntries: () => Promise.reject(new Error("not stubbed")),
+    })
+  );
 
   const result = await buildCloseTransactions(
     ALL_ON,
@@ -142,11 +146,13 @@ test("the acknowledgement does not bypass the gate when the sweep actually found
 });
 
 test("a confirmed-empty degraded result on a zero-trustline account does not refuse the build", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-    getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
-    getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
-    getLedgerEntries: () => Promise.reject(new Error("not stubbed")),
-  })) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    fakeRpcServer({
+      getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
+      getLatestLedger: () => Promise.resolve(latestLedger(1000)),
+      getLedgerEntries: () => Promise.reject(new Error("not stubbed")),
+    })
+  );
 
   const result = await buildCloseTransactions(
     ALL_ON,
@@ -166,11 +172,13 @@ test("a confirmed-empty degraded result on a zero-trustline account does not ref
 // (blend-exit-adapter.test.ts); this only proves the confirmation gate is not why this fails -
 // whatever happens deeper in the exit round (RPC is not fully stubbed here) is out of scope.
 test("a confirmed sweep with a real detected position is never refused by the confirmation gate", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-    getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
-    getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
-    getLedgerEntries: () => Promise.reject(new Error("not stubbed")),
-  })) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    fakeRpcServer({
+      getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
+      getLatestLedger: () => Promise.resolve(latestLedger(1000)),
+      getLedgerEntries: () => Promise.reject(new Error("not stubbed")),
+    })
+  );
 
   const promise = buildCloseTransactions(
     ALL_ON,

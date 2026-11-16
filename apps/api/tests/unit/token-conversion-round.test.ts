@@ -49,8 +49,9 @@ import { xlmContractId, type ConversionSdk } from "@/lib/soroswap/conversion-quo
 import { soroswapConversionContracts } from "@/lib/contract-registry";
 import realSwap from "./fixtures/soroswap-aggregator-v2-swap.json";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
-import { rawSimulation } from "./fixtures/fake-exit-adapter";
+import { contractSimulation } from "./fixtures/fake-exit-adapter";
 import xbullFixture from "../fixtures/xbull-strict-send-sample.json";
+import { fakeFetch } from "../support/fetch";
 
 const ACCOUNT = Keypair.random().publicKey();
 const OTHER_ACCOUNT = Keypair.random().publicKey();
@@ -566,14 +567,8 @@ function roundDeps(world: RoundWorld) {
   return {
     rpc: {
       async simulateTransaction() {
-        if (world.balance === null) return rawSimulation("error", [], "0");
-        const base = rawSimulation("ok", [], "100") as unknown as Record<string, unknown>;
-        return {
-          ...base,
-          results: [
-            { auth: [], xdr: nativeToScVal(world.balance, { type: "i128" }).toXDR("base64") },
-          ],
-        } as unknown as rpc.Api.SimulateTransactionResponse;
+        if (world.balance === null) return contractSimulation("error", [], "0");
+        return contractSimulation("ok", [], "100", nativeToScVal(world.balance, { type: "i128" }));
       },
       async getLedgerEntries(...keys: xdr.LedgerKey[]) {
         const key0 = keys[0]!;
@@ -587,7 +582,7 @@ function roundDeps(world: RoundWorld) {
         return {
           latestLedger: 1,
           entries: [instanceEntry(contract, hash)],
-        } as unknown as rpc.Api.GetLedgerEntriesResponse;
+        };
       },
     },
     conversion: { sdk: world.forbidSoroswap ? forbiddenSdk : sdk, now: () => NOW * 1000 },
@@ -595,7 +590,7 @@ function roundDeps(world: RoundWorld) {
     xbull: {
       rpc: {
         async simulateTransaction() {
-          return rawSimulation("ok", world.xbullAuth ?? [], world.xbullResourceFee ?? "0");
+          return contractSimulation("ok", world.xbullAuth ?? [], world.xbullResourceFee ?? "0");
         },
       },
       xbull: {
@@ -780,7 +775,7 @@ describe("the token conversion round", () => {
    *  the quote always clears `quoteTokenToXlmViaXBull`'s `quotedIn !== amountIn` check regardless
    *  of which balance a given test uses. */
   function xbullFetchStub(toAmount: string, contractArgsXDR: string | null): typeof fetch {
-    return (async (input: string | URL) => {
+    return fakeFetch(async (input: string | URL) => {
       const url = new URL(input.toString());
       if (url.pathname === "/swaps/quote") {
         return new Response(
@@ -801,7 +796,7 @@ describe("the token conversion round", () => {
         });
       }
       return new Response("not found", { status: 404 });
-    }) as unknown as typeof fetch;
+    });
   }
 
   /** A bare `strict_send` root authorization, with no sub-invocations - the round's own dispatch
@@ -922,7 +917,7 @@ describe("resolveXBullPath (via defaultTokenConversionRoundDeps)", () => {
         const index = indexVal.u32;
         const address = map[String(index)];
         if (address === undefined) {
-          return { latestLedger: 1, entries: [] } as unknown as rpc.Api.GetLedgerEntriesResponse;
+          return { latestLedger: 1, entries: [] };
         }
         const val = xdr.LedgerEntryData.contractData(
           new xdr.ContractDataEntry({
@@ -936,7 +931,7 @@ describe("resolveXBullPath (via defaultTokenConversionRoundDeps)", () => {
         return {
           latestLedger: 1,
           entries: [{ key: keys[0]!, val, lastModifiedLedgerSeq: 1, liveUntilLedgerSeq: 100 }],
-        } as unknown as rpc.Api.GetLedgerEntriesResponse;
+        };
       },
       async simulateTransaction() {
         throw new Error("resolveXBullPath must never simulate a transaction");

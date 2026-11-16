@@ -22,6 +22,7 @@ import { TruncatedCollectionError } from "@/lib/stellar/horizon-http";
 import type { ResolveDefiPositionsDeps } from "@/lib/defi-positions/resolve-defi-positions";
 import type { SponsoredEntry } from "@lumenwipe/types";
 import { authorizationOf } from "../unit/fixtures/trustline";
+import { fakeFetch } from "../support/fetch";
 
 const MASTER = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -165,7 +166,7 @@ test("an account whose own open-offer count exceeds the enumeration cap fails th
     amount: "1",
     price: "1",
   }));
-  const fetch = (async (input: string | URL | Request) => {
+  const fetch = fakeFetch(async (input: string | URL | Request) => {
     const url = typeof input === "string" ? input : input.toString();
     if (url.includes("/offers")) {
       return new Response(JSON.stringify({ _embedded: { records: oversizedOffers } }), {
@@ -176,7 +177,7 @@ test("an account whose own open-offer count exceeds the enumeration cap fails th
       return new Response(JSON.stringify({ _embedded: { records: [] } }), { status: 200 });
     }
     return new Response(JSON.stringify(account), { status: 200 });
-  }) as unknown as typeof globalThis.fetch;
+  });
 
   await expect(
     readAccountStateFrom(

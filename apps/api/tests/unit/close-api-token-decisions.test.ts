@@ -39,6 +39,8 @@ import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { stubIssuance } from "./fixtures/issuance";
 import { servedRegistry } from "@/lib/exchange-registry";
 import { ALL_ON } from "@/config/kill-switches";
+import { fakeRpcServer } from "../support/rpc-server";
+import { latestLedger } from "../support/rpc-fixtures";
 
 const TOKEN_A = Address.contract(Buffer.alloc(32, 1)).toString();
 const TOKEN_B = Address.contract(Buffer.alloc(32, 2)).toString();
@@ -307,9 +309,11 @@ test("the plan still asks about a held token whose only answer is the discovery 
     defiPositionsWarnings: [],
     ...withTokens([held(TOKEN_A, "3")]),
   });
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-    getLatestLedger: () => Promise.resolve({ sequence: 1_000_000 }),
-  })) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    fakeRpcServer({
+      getLatestLedger: () => Promise.resolve(latestLedger(1_000_000)),
+    })
+  );
   spyOn(accountStateModule, "readTrustlinesOnly").mockResolvedValue({
     address: destination,
     trustlines: [],
@@ -372,9 +376,11 @@ test("the plan blocks a token sent to a listed exchange or to an account that re
     defiPositionsWarnings: [],
     ...withTokens([held(TOKEN_A, "3"), held(TOKEN_B, "4")]),
   });
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-    getLatestLedger: () => Promise.resolve({ sequence: 1_000_000 }),
-  })) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    fakeRpcServer({
+      getLatestLedger: () => Promise.resolve(latestLedger(1_000_000)),
+    })
+  );
   spyOn(accountStateModule, "readTrustlinesOnly").mockImplementation(async (address) => ({
     address,
     trustlines: [],
@@ -577,9 +583,11 @@ test("the plan gates a flagged conversion on its confirmation, and marks a token
     defiPositionsWarnings: [],
     ...withTokens(many),
   });
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-    getLatestLedger: () => Promise.resolve({ sequence: 1_000_000 }),
-  })) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    fakeRpcServer({
+      getLatestLedger: () => Promise.resolve(latestLedger(1_000_000)),
+    })
+  );
   spyOn(accountStateModule, "readTrustlinesOnly").mockResolvedValue({
     address: destination,
     trustlines: [],

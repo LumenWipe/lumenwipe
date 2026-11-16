@@ -22,6 +22,8 @@ import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 import { ALL_ON } from "@/config/kill-switches";
+import { fakeRpcServer } from "../support/rpc-server";
+import { latestLedger } from "../support/rpc-fixtures";
 
 const SOURCE = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -248,10 +250,12 @@ describe("POST close/transactions", () => {
 
   function arrange(destination: string, opts: { exists: boolean | Error }): void {
     spyOn(readAccountModule, "readAccountState").mockResolvedValue(state());
-    spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-      getLatestLedger: () => Promise.resolve({ sequence: LEDGER }),
-      getLedgerEntries: () => Promise.resolve({ entries: [], latestLedger: LEDGER }),
-    })) as unknown as typeof rpcModule.getRpcServer);
+    spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+      fakeRpcServer({
+        getLatestLedger: () => Promise.resolve(latestLedger(LEDGER)),
+        getLedgerEntries: () => Promise.resolve({ entries: [], latestLedger: LEDGER }),
+      })
+    );
     spyOn(accountStateModule, "readTrustlinesOnly").mockImplementation(async () => {
       if (opts.exists instanceof Error) throw opts.exists;
       return opts.exists ? { address: destination, trustlines: [], memoRequired: false } : null;
@@ -316,9 +320,11 @@ describe("POST close/plan", () => {
 
   function arrange(account: AccountState, exists: boolean): void {
     spyOn(readAccountModule, "readAccountState").mockResolvedValue(account);
-    spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-      getLatestLedger: () => Promise.resolve({ sequence: LEDGER }),
-    })) as unknown as typeof rpcModule.getRpcServer);
+    spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+      fakeRpcServer({
+        getLatestLedger: () => Promise.resolve(latestLedger(LEDGER)),
+      })
+    );
     spyOn(accountStateModule, "readTrustlinesOnly").mockImplementation(async () =>
       exists ? { address: DEST, trustlines: [], memoRequired: false } : null
     );

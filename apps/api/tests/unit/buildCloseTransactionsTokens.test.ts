@@ -4,7 +4,6 @@ import { SupportedPlatforms } from "@soroswap/sdk";
 import { soroswapQuote } from "../support/quotes";
 import * as rpcModule from "@/lib/stellar/rpc";
 import {
-  Account,
   Address,
   Keypair,
   Networks,
@@ -16,9 +15,9 @@ import {
 } from "@stellar/stellar-sdk";
 import type { AccountState, Trustline } from "@lumenwipe/types";
 import { buildPlan } from "@/lib/stellar/tx-builder";
-import { mirrorSnapshot } from "./fixtures/ledger-trustlines";
+import { ledgerRpcServer, mirrorSnapshot } from "./fixtures/ledger-trustlines";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
-import { rawSimulation } from "./fixtures/fake-exit-adapter";
+import { contractSimulation } from "./fixtures/fake-exit-adapter";
 import { authorizationOf } from "./fixtures/trustline";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
@@ -91,25 +90,13 @@ function withToken(balance: string, over: Partial<AccountState> = {}): AccountSt
   });
 }
 
-function rpcServerStub() {
-  return {
-    getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
-    getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
-    getLedgerEntries: mirrorSnapshot(SOURCE, () => snapshot),
-  };
-}
-
 /** Answers the token's `balance` and simulates its `transfer` under source-account credentials. */
 function tokenRpc(balance: bigint): { simulateTransaction: rpc.Server["simulateTransaction"] } {
   return {
     async simulateTransaction(tx) {
       const call = callOf(onlyOperation(tx as Transaction));
       if (call.functionName.toString() === "balance") {
-        const base = rawSimulation("ok", [], "100") as unknown as Record<string, unknown>;
-        return {
-          ...base,
-          results: [{ auth: [], xdr: nativeToScVal(balance, { type: "i128" }).toXDR("base64") }],
-        } as unknown as rpc.Api.SimulateTransactionResponse;
+        return contractSimulation("ok", [], "100", nativeToScVal(balance, { type: "i128" }));
       }
       const auth = new xdr.SorobanAuthorizationEntry({
         credentials: xdr.SorobanCredentials.sorobanCredentialsSourceAccount(),
@@ -124,7 +111,7 @@ function tokenRpc(balance: bigint): { simulateTransaction: rpc.Server["simulateT
           subInvocations: [],
         }),
       }).toXDR("base64");
-      return rawSimulation("ok", [auth], "1000");
+      return contractSimulation("ok", [auth], "1000");
     },
   };
 }
@@ -134,8 +121,12 @@ afterEach(() => {
 });
 
 test("a token chosen for transfer is its own first transaction, and the close asks to be called again", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(
+      SOURCE,
+      mirrorSnapshot(SOURCE, () => snapshot)
+    )
+  );
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
 
   const result = await buildCloseTransactions(
@@ -169,8 +160,12 @@ test("a token chosen for transfer is its own first transaction, and the close as
 });
 
 test("a token left on record needs no transaction: the classic close builds straight away", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(
+      SOURCE,
+      mirrorSnapshot(SOURCE, () => snapshot)
+    )
+  );
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
 
   const result = await buildCloseTransactions(
@@ -198,8 +193,12 @@ test("a token left on record needs no transaction: the classic close builds stra
 });
 
 test("a trustline cannot be left: the answer is refused by name, never converted in silence", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(
+      SOURCE,
+      mirrorSnapshot(SOURCE, () => snapshot)
+    )
+  );
   const { buildCloseTransactions, CloseBuildError } =
     await import("@/lib/close-api/build-transactions");
   const promise = buildCloseTransactions(
@@ -275,8 +274,12 @@ test("a token without a decision yet still keeps the close out of the fused shap
 });
 
 test("a trustline answered leave is refused before any token moves: the token round never runs", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(
+      SOURCE,
+      mirrorSnapshot(SOURCE, () => snapshot)
+    )
+  );
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
   let simulated = 0;
   const promise = buildCloseTransactions(
@@ -303,8 +306,12 @@ test("a trustline answered leave is refused before any token moves: the token ro
 });
 
 test("convert for a Soroban token is refused by name while conversion is off, never left to the merge", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(
+      SOURCE,
+      mirrorSnapshot(SOURCE, () => snapshot)
+    )
+  );
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
   const promise = buildCloseTransactions(
     { ...ALL_ON, sorobanConversion: false, xbullConversion: false },
@@ -320,8 +327,12 @@ test("convert for a Soroban token is refused by name while conversion is off, ne
 });
 
 test("with conversion switched off a token's convert answer is refused; switched on, the conversion round runs after the transfers", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(
+      SOURCE,
+      mirrorSnapshot(SOURCE, () => snapshot)
+    )
+  );
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
   const off = buildCloseTransactions(
     { ...ALL_ON, sorobanConversion: false, xbullConversion: false },

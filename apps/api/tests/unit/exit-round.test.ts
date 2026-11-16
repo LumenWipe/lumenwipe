@@ -26,10 +26,7 @@ import {
   validateContractRegistry,
   type ContractRegistryEntry,
 } from "@/lib/contract-registry";
-import {
-  detectDefiPositionsViaDirectRead,
-  type DirectReadDeps,
-} from "@/lib/defi-positions/testnet-direct-read";
+import { detectDefiPositionsViaDirectRead } from "@/lib/defi-positions/testnet-direct-read";
 import { fakeExitRpc } from "./fixtures/fake-exit-adapter";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import {
@@ -39,6 +36,7 @@ import {
   STAKE_CONTRACT,
   fakePhoenixRpc,
 } from "./fixtures/fake-phoenix-pool";
+import { fakeRpcServer } from "../support/rpc-server";
 
 const SOURCE = Keypair.random().publicKey();
 const POOL = "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF";
@@ -498,7 +496,7 @@ describe("buildExitRound on a Phoenix account that bonded every share", () => {
       stakes: [{ amount: 40_000_000n, timestamp: 1_700_000_000n }],
     });
     const read = await detectDefiPositionsViaDirectRead(SOURCE, "testnet", {
-      rpc: ledger as unknown as NonNullable<DirectReadDeps["rpc"]>,
+      rpc: fakeRpcServer(ledger),
       registryEntries: [
         phoenixEntry({}),
         phoenixEntry({ address: STAKE_CONTRACT, wasmHash: PHX_STAKE_HASH, kind: "stake" }),

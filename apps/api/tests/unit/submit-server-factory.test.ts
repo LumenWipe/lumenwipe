@@ -4,6 +4,8 @@ import type { rpc } from "@stellar/stellar-sdk";
 import { submitterFor } from "@/common/ports";
 import * as rpcModule from "@/lib/stellar/rpc";
 import { submitAndWait } from "@/lib/stellar/submit";
+import { successfulTransaction } from "../support/rpc-fixtures";
+import { fakeRpcServer } from "../support/rpc-server";
 
 const SOURCE = Keypair.random();
 
@@ -20,9 +22,7 @@ function signedXdr(): string {
 }
 
 function confirmedServer(ledger: number): rpc.Server {
-  return {
-    getTransaction: async () => ({ status: "SUCCESS", ledger }),
-  } as unknown as rpc.Server;
+  return fakeRpcServer({ getTransaction: async () => successfulTransaction({ ledger }) });
 }
 
 afterEach(() => {

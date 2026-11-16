@@ -24,6 +24,8 @@ import { mirrorSnapshot } from "./fixtures/ledger-trustlines";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
+import { fakeRpcServer } from "../support/rpc-server";
+import { latestLedger } from "../support/rpc-fixtures";
 
 const STAND_IN = Keypair.random().publicKey();
 const EVERYWHERE = Keypair.random().publicKey();
@@ -157,11 +159,13 @@ describe("close plan", () => {
   beforeEach(() => {
     stubIssuance();
     stubLedgerConfirmation();
-    spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-      getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
-      getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
-      getLedgerEntries: mirrorSnapshot(SOURCE, () => snapshot),
-    })) as unknown as typeof rpcModule.getRpcServer);
+    spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+      fakeRpcServer({
+        getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
+        getLatestLedger: () => Promise.resolve(latestLedger(1000)),
+        getLedgerEntries: mirrorSnapshot(SOURCE, () => snapshot),
+      })
+    );
     spyOn(registry, "lookupExchange").mockImplementation(lookups.lookup);
     spyOn(registry, "requiresMediatorForAddress").mockImplementation(lookups.requiresMediator);
     spyOn(networks, "getMediatorPublicKey").mockReturnValue(MEDIATOR.publicKey());

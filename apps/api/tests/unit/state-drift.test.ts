@@ -27,6 +27,8 @@ import {
 } from "./fixtures/live-ledger";
 import { authorizationOf } from "./fixtures/trustline";
 import { ALL_ON } from "@/config/kill-switches";
+import { fakeFetch } from "../support/fetch";
+import { fakeRpcServer } from "../support/rpc-server";
 
 const SOURCE = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -140,10 +142,12 @@ const agreeing: AccountEntrySpec = { sequence: SEQUENCE, numSubEntries: 0 };
 
 function useLedger(spec: AccountEntrySpec | null) {
   const server = ledgerServer(() => (spec ? [accountLedgerEntry(SOURCE, spec)] : []));
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-    ...server,
-    getLatestLedger: async () => ({ sequence: 1000 }),
-  })) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    fakeRpcServer({
+      ...server,
+      getLatestLedger: async () => latestLedger(1000),
+    })
+  );
   return server;
 }
 
@@ -311,10 +315,12 @@ describe("the build round confirms the enumerated account over RPC", () => {
   });
 
   test("a failed confirmation read fails the round closed", async () => {
-    spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-      getLedgerEntries: () => Promise.reject(new Error("rpc down")),
-      getLatestLedger: async () => ({ sequence: 1000 }),
-    })) as unknown as typeof rpcModule.getRpcServer);
+    spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+      fakeRpcServer({
+        getLedgerEntries: () => Promise.reject(new Error("rpc down")),
+        getLatestLedger: async () => latestLedger(1000),
+      })
+    );
     await expect(build()).rejects.toBeInstanceOf(LiveReadError);
   });
 });
@@ -334,7 +340,7 @@ describe("an RPC behind the snapshot, with more than one provider configured", (
     RPC_FALLBACKS.testnet = realFallbacks;
   });
 
-  function atLedger(latestLedger: number) {
+  function atLedger(sequence: number) {
     const held = ledgerServer(() => [
       accountLedgerEntry(SOURCE, { ...agreeing, numSubEntries: 1 }),
     ]);
@@ -342,13 +348,15 @@ describe("an RPC behind the snapshot, with more than one provider configured", (
       ...held,
       getLedgerEntries: async (...keys: xdr.LedgerKey[]) => ({
         ...(await held.getLedgerEntries(...keys)),
-        latestLedger,
+        latestLedger: sequence,
       }),
     };
-    spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-      ...server,
-      getLatestLedger: async () => ({ sequence: latestLedger }),
-    })) as unknown as typeof rpcModule.getRpcServer);
+    spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+      fakeRpcServer({
+        ...server,
+        getLatestLedger: async () => latestLedger(sequence),
+      })
+    );
     return server;
   }
 
@@ -400,10 +408,10 @@ describe("an RPC behind the snapshot, with more than one provider configured", (
   test("the round's issuance read, inside its Promise.all, sees the snapshot's pin", async () => {
     spyOn(issuance, "assessIssuance").mockRestore();
     const hosts: string[] = [];
-    const fetch = (async (input: string | URL | Request) => {
+    const fetch = fakeFetch(async (input: string | URL | Request) => {
       hosts.push(new URL(String(input)).hostname);
       return new Response(JSON.stringify({ _embedded: { records: [] } }), { status: 200 });
-    }) as unknown as typeof globalThis.fetch;
+    });
     spyOn(rpc.Server.prototype, "getLatestLedger").mockResolvedValue(
       latestLedger(1000, Math.floor(Date.now() / 1000))
     );

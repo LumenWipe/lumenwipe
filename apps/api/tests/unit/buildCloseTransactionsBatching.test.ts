@@ -1,8 +1,8 @@
 import { afterEach, expect, mock, spyOn, test, beforeEach } from "bun:test";
 import * as rpcModule from "@/lib/stellar/rpc";
-import { Account, Keypair, Networks, TransactionBuilder } from "@stellar/stellar-sdk";
+import { Keypair, Networks, TransactionBuilder } from "@stellar/stellar-sdk";
 import type { AccountState, Trustline } from "@lumenwipe/types";
-import { mirrorSnapshot } from "./fixtures/ledger-trustlines";
+import { ledgerRpcServer, mirrorSnapshot } from "./fixtures/ledger-trustlines";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { authorizationOf } from "./fixtures/trustline";
 import { stubIssuance } from "./fixtures/issuance";
@@ -74,14 +74,6 @@ function accountState(...args: Parameters<typeof makeState>): AccountState {
   return state;
 }
 
-function rpcServerStub() {
-  return {
-    getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
-    getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
-    getLedgerEntries: mirrorSnapshot(SOURCE, () => snapshot),
-  };
-}
-
 afterEach(() => {
   mock.restore();
 });
@@ -91,8 +83,12 @@ function opsOf(xdr: string) {
 }
 
 test("a direct close under the op cap still finishes in one round", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(
+      SOURCE,
+      mirrorSnapshot(SOURCE, () => snapshot)
+    )
+  );
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
 
   const state = accountState({ trustlines: manyTrustlines(3), numSubEntries: 3 });
@@ -105,8 +101,12 @@ test("a direct close under the op cap still finishes in one round", async () => 
 });
 
 test("a direct close over the op cap asks for another call instead of expiring later chunks", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(
+      SOURCE,
+      mirrorSnapshot(SOURCE, () => snapshot)
+    )
+  );
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
 
   const state = accountState({ trustlines: manyTrustlines(150), numSubEntries: 150 });
@@ -121,8 +121,12 @@ test("a direct close over the op cap asks for another call instead of expiring l
 });
 
 test("a follow-up call against the reduced live state converges to the merge", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(
+      SOURCE,
+      mirrorSnapshot(SOURCE, () => snapshot)
+    )
+  );
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
 
   // Not an arbitrary smaller account: exactly what the 150-trustline case's first round (a
@@ -139,8 +143,12 @@ test("a follow-up call against the reduced live state converges to the merge", a
 test("an exchange close whose balance cannot cover the forward fee is a typed 422", async () => {
   const registry = await import("@/lib/exchange-registry");
   const networks = await import("@/config/networks");
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(
+      SOURCE,
+      mirrorSnapshot(SOURCE, () => snapshot)
+    )
+  );
   spyOn(registry, "requiresMediatorForAddress").mockReturnValue(true);
   spyOn(networks, "getMediatorPublicKey").mockReturnValue(Keypair.random().publicKey());
   const { buildCloseTransactions, CloseBuildError } =

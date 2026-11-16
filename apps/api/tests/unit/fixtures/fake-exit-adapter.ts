@@ -35,6 +35,7 @@ import { MIN_RECEIVED_REQUIRED, clampToBalance, minReceivedFromQuote } from "@/l
 import { contractDataEntry } from "@/lib/stellar/contract-data";
 import { contractDataKey, symbolVal } from "@/lib/defi-positions/testnet-direct-read";
 import { v1Transaction } from "../../support/v1-transaction";
+import { simulation } from "../../support/rpc-fixtures";
 
 export const POSITION_CONTRACT = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
 export const OTHER_CONTRACT = "CAIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRDB3V";
@@ -340,17 +341,18 @@ function balanceEntry(contract: string, balance: string): xdr.LedgerEntryData {
 
 const BALANCE_KEY_XDR = symbolVal("Balance").toXdr("base64");
 
-/** Raw (unparsed) simulation responses, the shape the SDK's own parser and assembler accept. */
-export function rawSimulation(
+/** A contract-call simulation answer, parsed as `rpc.Server.simulateTransaction` returns it. */
+export function contractSimulation(
   mode: "ok" | "error" | "restore",
   auth: string[],
-  minResourceFee: string
+  minResourceFee: string,
+  retval: xdr.ScVal = xdr.ScVal.scvVoid()
 ): rpc.Api.SimulateTransactionResponse {
   const transactionData = new SorobanDataBuilder()
     .setResourceFee(BigInt(minResourceFee))
     .build()
     .toXdr("base64");
-  const base = { id: "1", latestLedger: 1, events: [] as string[] };
+  const base = { events: [] };
   const body =
     mode === "error"
       ? { ...base, error: "HostError: Error(Contract, #3)" }
@@ -358,12 +360,12 @@ export function rawSimulation(
           ...base,
           minResourceFee,
           transactionData,
-          results: [{ auth, xdr: xdr.ScVal.scvVoid().toXdr("base64") }],
+          results: [{ auth, xdr: retval.toXdr("base64") }],
           ...(mode === "restore"
             ? { restorePreamble: { minResourceFee: "500", transactionData } }
             : {}),
         };
-  return body as unknown as rpc.Api.SimulateTransactionResponse;
+  return simulation(body);
 }
 
 /** Serves each contract's instance entry (or nothing) and one Balance entry, by exact key. */
@@ -403,7 +405,7 @@ export function fakeExitRpc(options: FakeRpcOptions): ExitRpc & {
     ): Promise<rpc.Api.SimulateTransactionResponse> {
       simulateCalls.push(tx);
       simulateLeeway.push(leeway);
-      return rawSimulation(
+      return contractSimulation(
         options.simulation ?? "ok",
         options.simulatedAuth ?? [],
         options.simulatedResourceFee ?? "12345"

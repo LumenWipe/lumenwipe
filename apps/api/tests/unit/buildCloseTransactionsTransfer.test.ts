@@ -1,11 +1,12 @@
 import { afterEach, expect, mock, spyOn, test, beforeEach } from "bun:test";
 import * as rpcModule from "@/lib/stellar/rpc";
-import { Account, Keypair, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
+import { Keypair, TransactionBuilder, Networks } from "@stellar/stellar-sdk";
 import type { AccountState, Trustline } from "@lumenwipe/types";
 import {
   AUTHORIZED,
   AUTHORIZED_TO_MAINTAIN_LIABILITIES,
   ledgerEntries,
+  ledgerRpcServer,
   mirrorSnapshot,
   type LineSpec,
 } from "./fixtures/ledger-trustlines";
@@ -76,15 +77,9 @@ function accountState(...args: Parameters<typeof makeState>): AccountState {
 }
 
 /** Reports the trustline balance unchanged, so the live re-read is not what these test. */
-function rpcServerStub() {
-  return {
-    getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
-    getLatestLedger: () => Promise.resolve({ sequence: 1000 }),
-    getLedgerEntries: mirrorSnapshot(SOURCE, () => snapshot, {
-      [`${TRANSFER_TO}|${USDC}`]: { balance: 0n },
-    }),
-  };
-}
+const transferLines = mirrorSnapshot(SOURCE, () => snapshot, {
+  [`${TRANSFER_TO}|${USDC}`]: { balance: 0n },
+});
 
 afterEach(() => {
   mock.restore();
@@ -95,8 +90,7 @@ function opsOf(xdr: string) {
 }
 
 test("a transfer disposition reaches the builder as a payment to the chosen account", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() => ledgerRpcServer(SOURCE, transferLines));
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
 
   const state = accountState({ trustlines: [trustline(USDC, "100")] });
@@ -124,8 +118,7 @@ test("a transfer disposition reaches the builder as a payment to the chosen acco
 });
 
 test("the payment precedes the changeTrust that removes the same trustline", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() => ledgerRpcServer(SOURCE, transferLines));
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
 
   const state = accountState({ trustlines: [trustline(USDC, "100")] });
@@ -153,8 +146,7 @@ test("the payment precedes the changeTrust that removes the same trustline", asy
 });
 
 test("a transfer disposition with no destination refuses instead of converting", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() => ledgerRpcServer(SOURCE, transferLines));
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
   const { MissingTransferDestinationError } = await import("@/lib/close-api/decisions");
 
@@ -168,8 +160,7 @@ test("a transfer disposition with no destination refuses instead of converting",
 });
 
 test("transfer composes with issuer on another asset in the same close", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() => ledgerRpcServer(SOURCE, transferLines));
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
 
   const otherIssuer = Keypair.random().publicKey();
@@ -198,8 +189,7 @@ test("transfer composes with issuer on another asset in the same close", async (
 });
 
 test("the summary names the destination, not just a count", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() =>
-    rpcServerStub()) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() => ledgerRpcServer(SOURCE, transferLines));
   const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
 
   const state = accountState({ trustlines: [trustline(USDC, "100")] });
@@ -231,10 +221,9 @@ function useLedger(live: bigint | null, destination: LineSpec | null): void {
   const lines: Record<string, LineSpec> = {};
   if (live !== null) lines[`${SOURCE}|${USDC}`] = { balance: live };
   if (destination) lines[`${TRANSFER_TO}|${USDC}`] = destination;
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-    ...rpcServerStub(),
-    getLedgerEntries: ledgerEntries(lines),
-  })) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(SOURCE, ledgerEntries(lines))
+  );
 }
 
 async function buildTransfer(snapshotBalance = "100") {
@@ -252,10 +241,9 @@ async function buildTransfer(snapshotBalance = "100") {
 }
 
 test("a failed live balance read is refused, never replaced by the snapshot balance", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-    ...rpcServerStub(),
-    getLedgerEntries: () => Promise.reject(new Error("rpc down")),
-  })) as unknown as typeof rpcModule.getRpcServer);
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(SOURCE, () => Promise.reject(new Error("rpc down")))
+  );
   await expect(buildTransfer()).rejects.toBeInstanceOf(LiveReadError);
 });
 
@@ -319,16 +307,15 @@ test("a destination that lost its trustline since the plan is refused", async ()
 });
 
 test("a failed destination read is a retryable error, not a missing trustline", async () => {
-  spyOn(rpcModule, "getRpcServer").mockImplementation((() => ({
-    ...rpcServerStub(),
-    getLedgerEntries: (...keys: Parameters<ReturnType<typeof ledgerEntries>>) => {
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    ledgerRpcServer(SOURCE, (...keys: Parameters<ReturnType<typeof ledgerEntries>>) => {
       const key = keys[0]!;
       const accountId = key.type === "trustline" ? key.trustLine.accountId : null;
       const owner = accountId?.type === "publicKeyTypeEd25519" ? accountId.ed25519.toBytes() : null;
       return owner && Buffer.from(owner).equals(Keypair.fromPublicKey(SOURCE).rawPublicKey())
         ? ledgerEntries({ [`${SOURCE}|${USDC}`]: { balance: 100n * XLM } })(...keys)
         : Promise.reject(new Error("rpc down"));
-    },
-  })) as unknown as typeof rpcModule.getRpcServer);
+    })
+  );
   await expect(buildTransfer("100")).rejects.toBeInstanceOf(DestinationReadError);
 });
