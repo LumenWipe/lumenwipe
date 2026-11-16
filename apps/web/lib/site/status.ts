@@ -4,17 +4,17 @@ import {
   EXIT_FUNCTIONS,
   isContractRegistryUsable,
 } from "@/lib/contract-registry";
+import { SITE_LOCALE } from "@/lib/i18n/locale";
+import { SITE } from "@/lib/i18n/messages/site";
 import { PROTOCOL_LABELS } from "@/lib/plan/describe-position";
 import type { DefiPosition } from "@/types/account";
 
 /** Live means available on mainnet; testnet-only means it runs on testnet and not yet on mainnet. */
 export type SiteStatus = "live" | "testnet-only" | "soon";
 
-export const STATUS_LABEL: Record<SiteStatus, string> = {
-  live: "Live",
-  "testnet-only": "Testnet only",
-  soon: "Soon",
-};
+const COPY = SITE[SITE_LOCALE];
+
+export const STATUS_LABEL: Record<SiteStatus, string> = COPY.statusLabel;
 
 export type ExitProtocol = DefiPosition["protocol"];
 
@@ -70,28 +70,17 @@ export const LIVE_EXIT_PROTOCOLS = protocolsWithStatus("live");
 
 /** "A, B and C". */
 export function listNames(items: readonly { name: string }[]): string {
-  const names = items.map((i) => i.name);
-  if (names.length <= 1) return names.join("");
-  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  return COPY.list(items.map((i) => i.name));
 }
+
+type FeatureState = Pick<SiteFeature, "id" | "status"> & { href?: string };
 
 // Exchange closes and sponsored fees follow the mainnet rows of the service-account inventory in
 // docs/monitoring-plan.md; tests/unit/site-status-docs.test.ts fails when the two disagree.
-export const FEATURES: readonly SiteFeature[] = [
-  {
-    id: "classic-close",
-    title: "Classic account close",
-    noun: "classic closes",
-    summary:
-      "Removes signers, data entries, offers and trustlines, converts or returns leftover assets, and merges the account into a wallet you choose.",
-    status: "live",
-  },
+const FEATURE_STATES: readonly FeatureState[] = [
+  { id: "classic-close", status: "live" },
   {
     id: "defi-exits",
-    title: "Soroban DeFi exits",
-    noun: "Soroban DeFi exits",
-    summary:
-      "Detects positions through OctoPos and exits each one with its own protocol adapter, repaying loans, withdrawing liquidity and unstaking, before the trustline is removed.",
     status:
       LIVE_EXIT_PROTOCOLS.length > 0
         ? "live"
@@ -99,48 +88,25 @@ export const FEATURES: readonly SiteFeature[] = [
           ? "testnet-only"
           : "soon",
   },
-  {
-    id: "exchange-close",
-    title: "Exchange-compatible close",
-    noun: "exchange closes",
-    summary:
-      "A shared relay account receives the merge and pays the balance on to an exchange deposit address, with the memo the exchange requires, in the same transaction.",
-    status: "testnet-only",
-  },
-  {
-    id: "sponsored-fees",
-    title: "Sponsored fees",
-    noun: "sponsored fees",
-    summary:
-      "Pays the network fee for an account sitting at its minimum balance, through a fee-bump envelope around the transaction you signed.",
-    status: "testnet-only",
-  },
-  {
-    id: "allowance-inspector",
-    title: "Allowance inspector",
-    noun: "the allowance inspector",
-    summary:
-      "See every token approval your account granted to DeFi contracts, and revoke risky ones, even without closing.",
-    status: "live",
-    link: { href: "/mainnet/allowances", label: "Open the allowance inspector" },
-  },
-  {
-    id: "resumable-sessions",
-    title: "Resumable sessions",
-    noun: "resumable sessions",
-    summary:
-      "Close the tab mid-flow and resume in the same browser: the account is re-read and a fresh plan covers only what is left, so confirmed work is not repeated.",
-    status: "live",
-  },
-  {
-    id: "deterministic-plan",
-    title: "Deterministic, auditable plan",
-    noun: "deterministic plans",
-    summary:
-      "The same account state always produces the same ordered plan: testable, reviewable, never built on stale data.",
-    status: "live",
-  },
+  { id: "exchange-close", status: "testnet-only" },
+  { id: "sponsored-fees", status: "testnet-only" },
+  { id: "allowance-inspector", status: "live", href: "/mainnet/allowances" },
+  { id: "resumable-sessions", status: "live" },
+  { id: "deterministic-plan", status: "live" },
 ];
+
+export const FEATURES: readonly SiteFeature[] = FEATURE_STATES.map(({ id, status, href }) => {
+  const { title, noun, summary, linkLabel } = COPY.features[id];
+  if (href && !linkLabel) throw new Error(`Feature ${id} links to ${href} with no label`);
+  return {
+    id,
+    title,
+    noun,
+    summary,
+    status,
+    ...(href && linkLabel ? { link: { href, label: linkLabel } } : {}),
+  };
+});
 
 export function feature(id: FeatureId): SiteFeature {
   const found = FEATURES.find((f) => f.id === id);
@@ -150,11 +116,9 @@ export function feature(id: FeatureId): SiteFeature {
 
 /** What runs on testnet but not yet on mainnet, as one sentence; "" when nothing does. */
 export function testnetOnlySentence(): string {
-  const items = [
-    ...FEATURES.filter((f) => f.status === "testnet-only").map((f) => ({ name: f.noun })),
-    ...protocolsWithStatus("testnet-only").map((p) => ({ name: `${p.name} exits` })),
+  const names = [
+    ...FEATURES.filter((f) => f.status === "testnet-only").map((f) => f.noun),
+    ...protocolsWithStatus("testnet-only").map((p) => COPY.protocolExits(p.name)),
   ];
-  if (items.length === 0) return "";
-  const list = listNames(items);
-  return `${list.charAt(0).toUpperCase()}${list.slice(1)} run on testnet only today.`;
+  return names.length === 0 ? "" : COPY.testnetOnly(names);
 }

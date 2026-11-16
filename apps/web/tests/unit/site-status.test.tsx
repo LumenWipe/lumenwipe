@@ -103,7 +103,11 @@ describe("no status is written by hand in a page", () => {
   }
 
   test("marketing pages and components carry no status literal", () => {
-    const files = [...sources("app/(marketing)"), ...sources("components/marketing")];
+    const files = [
+      ...sources("app/(marketing)"),
+      ...sources("components/marketing"),
+      ...sources("lib/i18n/messages").filter((file) => !file.endsWith("site.ts")),
+    ];
     expect(files.length).toBeGreaterThan(0);
     for (const file of files) {
       const source = readFileSync(file, "utf8");

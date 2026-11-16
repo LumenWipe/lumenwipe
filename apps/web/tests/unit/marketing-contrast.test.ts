@@ -13,6 +13,7 @@ const MARKETING = [
   "app/(app)/api-keys",
   "components/marketing",
   "components/blog",
+  "lib/i18n/messages",
 ];
 // The ink and the card surface marketing text sits on.
 const SURFACES = ["bg", "surface-raised"] as const;

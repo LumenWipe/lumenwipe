@@ -12,7 +12,13 @@ import {
   PRIMARY_LINKS,
   type SiteLink,
 } from "@/lib/site/navigation";
+import { SITE_LOCALE } from "@/lib/i18n/locale";
+import { COMMON } from "@/lib/i18n/messages/common";
+import { NAV } from "@/lib/i18n/messages/nav";
 import Logo from "./Logo";
+
+const T = NAV[SITE_LOCALE];
+const NEW_TAB = COMMON[SITE_LOCALE].newTab;
 
 const DESKTOP = "(min-width: 1024px)";
 const FOCUSABLE = "a[href], button:not([disabled])";
@@ -22,7 +28,7 @@ function linkProps(l: SiteLink) {
 }
 
 function NewTab() {
-  return <span className="sr-only"> (opens in a new tab)</span>;
+  return <span className="sr-only">{NEW_TAB}</span>;
 }
 
 function DevelopersMenu({ pathname }: { pathname: string }) {
@@ -68,7 +74,7 @@ function DevelopersMenu({ pathname }: { pathname: string }) {
           current || open ? "text-white" : "text-fg-muted hover:text-white"
         }`}
       >
-        Developers
+        {T.developers}
         <ChevronDown
           aria-hidden
           className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`}
@@ -177,10 +183,10 @@ export default function MarketingNav() {
       }`}
     >
       <nav
-        aria-label="Main"
+        aria-label={T.mainLabel}
         className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 lg:px-8"
       >
-        <Link href="/" aria-label="LumenWipe home" className="shrink-0">
+        <Link href="/" aria-label={T.homeLabel} className="shrink-0">
           <Logo wordClassName="max-[359px]:sr-only" />
         </Link>
 
@@ -222,13 +228,13 @@ export default function MarketingNav() {
 
         <div className="flex items-center gap-2">
           <Button asChild variant="secondary" size="sm" className="whitespace-nowrap">
-            <Link href={APP_HREF}>Open the app</Link>
+            <Link href={APP_HREF}>{T.openApp}</Link>
           </Button>
           <button
             ref={toggle}
             type="button"
             onClick={() => setOpen((v) => !v)}
-            aria-label={open ? "Close menu" : "Open menu"}
+            aria-label={open ? T.closeMenu : T.openMenu}
             aria-expanded={open}
             aria-controls={sheetId}
             className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-white/10 text-white lg:hidden"
@@ -254,7 +260,7 @@ export default function MarketingNav() {
             pathname={pathname}
             onNavigate={() => setOpen(false)}
           />
-          <p className="mkt-eyebrow mt-3 px-3 pb-1 text-fg-muted">Developers</p>
+          <p className="mkt-eyebrow mt-3 px-3 pb-1 text-fg-muted">{T.developers}</p>
           <MobileLinks
             links={DEVELOPER_LINKS}
             pathname={pathname}

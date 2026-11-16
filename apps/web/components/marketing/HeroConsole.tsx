@@ -2,18 +2,27 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Check } from "lucide-react";
+import { formatNumber, TWO_DECIMALS } from "@/lib/i18n/format";
+import { SITE_LOCALE } from "@/lib/i18n/locale";
+import { HERO } from "@/lib/i18n/messages/hero";
 import { BASE_RESERVE_XLM, MINIMUM_BALANCE_RESERVES } from "@/lib/site/reserve";
+
+const T = HERO[SITE_LOCALE].console;
+
+function xlm(amount: number): string {
+  return formatNumber(SITE_LOCALE, amount, TWO_DECIMALS);
+}
 
 type Row = { n: string; label: string; amount: number };
 
 // Reserve released per step of an example account (step 04 is the swap, it frees no reserve).
 const ROWS: Row[] = [
-  { n: "01", label: "Normalize signers", amount: 1 * BASE_RESERVE_XLM },
-  { n: "02", label: "Clear data entries", amount: 1 * BASE_RESERVE_XLM },
-  { n: "03", label: "Cancel open offers", amount: 2 * BASE_RESERVE_XLM },
-  { n: "04", label: "Convert assets to XLM", amount: 0 },
-  { n: "05", label: "Remove trustlines", amount: 4 * BASE_RESERVE_XLM },
-  { n: "06", label: "Merge to destination", amount: MINIMUM_BALANCE_RESERVES * BASE_RESERVE_XLM },
+  { n: "01", label: T.steps.signers, amount: 1 * BASE_RESERVE_XLM },
+  { n: "02", label: T.steps.data, amount: 1 * BASE_RESERVE_XLM },
+  { n: "03", label: T.steps.offers, amount: 2 * BASE_RESERVE_XLM },
+  { n: "04", label: T.steps.convert, amount: 0 },
+  { n: "05", label: T.steps.trustlines, amount: 4 * BASE_RESERVE_XLM },
+  { n: "06", label: T.steps.merge, amount: MINIMUM_BALANCE_RESERVES * BASE_RESERVE_XLM },
 ];
 
 const TOTAL = ROWS.reduce((s, r) => s + r.amount, 0);
@@ -74,10 +83,10 @@ export default function HeroConsole() {
   return (
     <div className="mkt-card mx-auto max-w-4xl overflow-hidden text-left">
       <div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-3.5 mkt-mono text-caption uppercase tracking-wider text-fg-subtle">
-        <span>account · GABC…WXYZ</span>
+        <span>{T.account}</span>
         <span className="inline-flex items-center gap-2 text-accent">
           <span className="h-1.5 w-1.5 rounded-full bg-accent mkt-pulse" />
-          {scanning ? "scanning" : "complete"}
+          {scanning ? T.scanning : T.complete}
         </span>
       </div>
       <div className="grid sm:grid-cols-[1.4fr_1fr]">
@@ -109,7 +118,7 @@ export default function HeroConsole() {
                       done ? "text-fg-muted" : "text-fg-subtle"
                     }`}
                   >
-                    {r.amount > 0 ? `+${r.amount.toFixed(2)}` : "-"}
+                    {r.amount > 0 ? `+${xlm(r.amount)}` : "-"}
                   </span>
                 </div>
               );
@@ -118,10 +127,10 @@ export default function HeroConsole() {
         </div>
         <div className="flex flex-col justify-center p-5">
           <span className="mkt-mono text-caption uppercase tracking-wider text-fg-subtle">
-            Recoverable reserve
+            {T.recoverable}
           </span>
           <div className="mkt-display mt-2 text-4xl font-extrabold text-value tabular-nums">
-            {recovered.toFixed(2)} <span className="text-lg font-normal text-fg-subtle">XLM</span>
+            {xlm(recovered)} <span className="text-lg font-normal text-fg-subtle">XLM</span>
           </div>
           <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
             <span
@@ -130,7 +139,7 @@ export default function HeroConsole() {
             />
           </div>
           <p className="mt-3 text-label leading-normal text-fg-muted">
-            Example account · {active} of {ROWS.length} steps · {TOTAL.toFixed(2)} XLM total
+            {T.progress(active, ROWS.length, xlm(TOTAL))}
           </p>
         </div>
       </div>

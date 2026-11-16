@@ -9,40 +9,45 @@ import {
   PRIMARY_LINKS,
   type SiteLink,
 } from "@/lib/site/navigation";
+import { SITE_LOCALE } from "@/lib/i18n/locale";
+import { FOOTER } from "@/lib/i18n/messages/footer";
 import Logo from "./Logo";
+
+const T = FOOTER[SITE_LOCALE];
+const L = T.links;
 
 const COLS: { title: string; links: readonly SiteLink[] }[] = [
   {
-    title: "Product",
+    title: T.columns.product,
     links: [
-      { label: "Open the app", href: APP_HREF },
-      { label: "Try on testnet", href: "/testnet" },
+      { label: L.openApp, href: APP_HREF },
+      { label: L.testnet, href: "/testnet" },
       ...PRIMARY_LINKS.filter((l) => l.href !== "/content"),
-      { label: "FAQ", href: "/faq" },
-      { label: "Stats", href: "/stats" },
-      { label: "Exchange registry", href: "/registry" },
+      { label: L.faq, href: "/faq" },
+      { label: L.stats, href: "/stats" },
+      { label: L.registry, href: "/registry" },
     ],
   },
   {
-    title: "Guides",
+    title: T.columns.guides,
     links: [
-      { label: "Guides and videos", href: "/content" },
-      { label: "Blog", href: "/blog" },
+      { label: L.guidesAndVideos, href: "/content" },
+      { label: L.blog, href: "/blog" },
     ],
   },
   {
-    title: "Developers",
+    title: T.columns.developers,
     links: [
       ...DEVELOPER_LINKS,
-      { label: "Architecture", href: `${DOCS_URL}/architecture`, external: true },
+      { label: L.architecture, href: `${DOCS_URL}/architecture`, external: true },
     ],
   },
   {
-    title: "Open source",
+    title: T.columns.openSource,
     links: [
-      { label: "Security policy", href: `${GITHUB_URL}/blob/main/SECURITY.md`, external: true },
-      { label: "Contributing", href: `${GITHUB_URL}/blob/main/CONTRIBUTING.md`, external: true },
-      { label: "Apache 2.0 license", href: `${GITHUB_URL}/blob/main/LICENSE`, external: true },
+      { label: L.securityPolicy, href: `${GITHUB_URL}/blob/main/SECURITY.md`, external: true },
+      { label: L.contributing, href: `${GITHUB_URL}/blob/main/CONTRIBUTING.md`, external: true },
+      { label: L.license, href: `${GITHUB_URL}/blob/main/LICENSE`, external: true },
     ],
   },
 ];
@@ -54,16 +59,13 @@ export default function MarketingFooter() {
         <div className="grid gap-10 sm:grid-cols-2 md:grid-cols-[1.4fr_1fr_1fr_1fr_1fr]">
           <div>
             <Logo />
-            <p className="mt-4 max-w-xs text-sm leading-relaxed text-fg-muted">
-              Close any Stellar account cleanly and recover the XLM locked in its reserves.
-              Non-custodial, signed in your browser, open source.
-            </p>
+            <p className="mt-4 max-w-xs text-sm leading-relaxed text-fg-muted">{T.tagline}</p>
             <div className="mt-5 flex items-center gap-2">
               <a
                 href={GITHUB_URL}
                 target="_blank"
                 rel="noopener noreferrer"
-                aria-label="GitHub"
+                aria-label={T.githubLabel}
                 className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-fg-muted transition-colors hover:border-white/20 hover:text-white"
               >
                 <GithubIcon className="h-4 w-4" />
@@ -96,8 +98,8 @@ export default function MarketingFooter() {
         </div>
 
         <div className="mt-12 flex flex-col items-start justify-between gap-3 border-t border-white/8 pt-6 text-xs text-fg-muted sm:flex-row sm:items-center">
-          <p>© {new Date().getUTCFullYear()} LumenWipe · Open source under Apache 2.0.</p>
-          <p className="mkt-mono">Non-custodial · Signed in your browser</p>
+          <p>{T.copyright(new Date().getUTCFullYear())}</p>
+          <p className="mkt-mono">{T.promise}</p>
         </div>
       </div>
     </footer>

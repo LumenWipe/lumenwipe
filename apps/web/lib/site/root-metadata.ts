@@ -1,10 +1,13 @@
 import type { Metadata, Viewport } from "next";
 import { INK } from "@/brand/tokens";
+import { LOCALE_TAGS, SITE_LOCALE } from "@/lib/i18n/locale";
+import { SITE } from "@/lib/i18n/messages/site";
 import { SHARE_IMAGE, SITE_NAME } from "@/lib/site/pages";
 import { siteOrigin } from "@/lib/site/url";
 
-export const SITE_DESCRIPTION =
-  "Close your Stellar account safely. Recover locked XLM reserves, remove trustlines, cancel open offers, and exit Soroban DeFi positions in one non-custodial workflow.";
+const COPY = SITE[SITE_LOCALE].metadata;
+
+export const SITE_DESCRIPTION = COPY.description;
 
 /** The root layout's viewport: the browser chrome takes the ink. */
 export const ROOT_VIEWPORT: Viewport = {
@@ -16,34 +19,23 @@ export const ROOT_VIEWPORT: Viewport = {
  *  the icons and the manifest. */
 export const ROOT_METADATA: Metadata = {
   title: {
-    default: "LumenWipe - Close a Stellar Account",
+    default: COPY.defaultTitle,
     template: "%s | LumenWipe",
   },
   description: SITE_DESCRIPTION,
-  keywords: [
-    "Stellar",
-    "XLM",
-    "Lumens",
-    "account merge",
-    "non-custodial",
-    "Soroban",
-    "DeFi",
-    "trustline",
-    "blockchain",
-    "LumenWipe",
-  ],
+  keywords: COPY.keywords,
   metadataBase: new URL(siteOrigin()),
   openGraph: {
-    title: "LumenWipe - Close a Stellar Account",
+    title: COPY.defaultTitle,
     description: SITE_DESCRIPTION,
     siteName: SITE_NAME,
     type: "website",
-    locale: "en_US",
+    locale: LOCALE_TAGS[SITE_LOCALE].openGraph,
     images: [SHARE_IMAGE],
   },
   twitter: {
     card: "summary_large_image",
-    title: "LumenWipe - Close a Stellar Account",
+    title: COPY.defaultTitle,
     description: SITE_DESCRIPTION,
     images: [SHARE_IMAGE],
   },

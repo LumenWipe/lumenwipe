@@ -1,5 +1,7 @@
 "use client";
 
+import { formatDate } from "@/lib/i18n/format";
+import { SITE_LOCALE } from "@/lib/i18n/locale";
 import { useState } from "react";
 import type { FeedData, DailyActivity, MergeRecord } from "@/hooks/useFeed";
 
@@ -234,7 +236,7 @@ export default function CalendarHeatmap({ feed }: { feed: FeedData | null }) {
           <div className="flex items-start gap-4">
             <div className="shrink-0">
               <span className="mkt-mono text-caption text-fg-subtle">
-                {new Date(hovered.date + "T00:00:00Z").toLocaleDateString("en-US", {
+                {formatDate(SITE_LOCALE, `${hovered.date}T00:00:00Z`, {
                   month: "long",
                   day: "numeric",
                   year: "numeric",

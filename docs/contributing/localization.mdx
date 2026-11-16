@@ -1,0 +1,91 @@
+---
+title: "Localization"
+description: "How the marketing site holds its copy per locale, how a Spanish locale will be routed, and the rules its translation follows."
+icon: "language"
+---
+
+The marketing site renders in English only. Its copy is held in a typed dictionary keyed by locale, so a second locale is a set of translated entries plus routing, not a rewrite of every page. This page records how the copy is held today, how a Spanish locale will be routed, and the language rules for the translation. The app flow (`/mainnet`, `/testnet` and their pages) is out of scope.
+
+## How the copy is held
+
+- `apps/web/lib/i18n/locale.ts` declares the locales (`en` only), `SITE_LOCALE`, and for each locale the `<html lang>` value, the tag dates and numbers are formatted with, and the `og:locale` value.
+- `SITE_LOCALE` is a build-time constant. Nothing reads a header or a cookie to choose the locale, so every page under `app/(marketing)` stays prerendered and keeps its per-page hash policy (`apps/web/scripts/marketing-csp.mjs`).
+- `apps/web/lib/i18n/messages/` holds one module per surface (`nav`, `footer`, `not-found`, `landing`, `faq`, `hero`, `site`, `common`), each a `Record<Locale, Copy>`. A client component imports only its own section, so the browser never downloads the whole dictionary.
+- A sentence built from data is a function of that data, never a frozen string. The status registry (`lib/site/status.ts`) keeps each feature's id, status and link; its title, noun and summary come from the dictionary, and the sentences that list testnet-only features or live protocol exits are dictionary functions called with the registry's names. The FAQ answers are a function of the registry facts and the trust statements (`lib/site/trust.ts`), and the FAQ structured data reads the same answers.
+- A sentence with a link or other markup inside it is a function that takes the element, so a translation can move the link within its sentence.
+- `apps/web/lib/i18n/format.ts` formats every date and number on these pages with the locale's tag. Nothing in this scope calls `toLocaleString`, `toLocaleDateString` or `Intl` directly.
+- The lint rule in `apps/web/eslint.config.mjs` (`DICTIONARY_COPY`) fails on text in markup, on a literal in a user-facing attribute or rendered as a child, on a literal page title or description, and on a three-word literal anywhere else in those files. Class names, URLs, roles, import paths, directives, error messages and comparisons pass. The asset code `XLM` is the one word allowed in markup.
+
+## Routing
+
+### Options
+
+The App Router has no configuration-based locale routing: the `i18n` option in `next.config` belongs to the Pages Router, and the App Router guide routes locales with an `app/[lang]` segment, a Proxy redirect and `generateStaticParams` ([Next.js internationalization guide](https://nextjs.org/docs/app/guides/internationalization), updated 2026-11-06, checked 2026-11-16). That leaves two ways to add Spanish.
+
+**A dynamic `[locale]` segment.** Every marketing route moves under `app/(marketing)/[locale]`. English then either gains a prefix, or keeps its URLs through a Proxy rewrite:
+
+- An `/en/` prefix changes every canonical URL, every sitemap entry and every backlink, and needs a redirect for each old path.
+- A rewrite from `/faq` to `/en/faq` means the Proxy runs on every marketing path. Today the Proxy matcher in `apps/web/proxy.ts` lists the marketing paths literally so that it skips them: a CDN hit on a prerendered page costs no function call, and the page's only policy is the hash header the build writes. A rewrite gives that up.
+- The hash policy is keyed by the requested path. `marketing-csp.mjs` reads the prerendered paths from Next's manifest (`/en/faq`), while the header has to match the path the browser asked for (`/faq`), so the script would need a rewrite map. Its group check (`/(marketing)/`) and plain-path check hold, but the prerender gate would report `/[locale]/faq` routes and their params instead of one route per path.
+- The `web vercel build (adapter)` CI job would have to prove that each header route matches the rewritten path, which no test covers today.
+- Choosing the locale from `Accept-Language` reads a header, which makes the Proxy or the page dynamic.
+
+**A second route group with a literal prefix (chosen).** English stays at its current URLs under `app/(marketing)`. Spanish lives under `app/(marketing-es)/es/`, a route group with its own root layout that passes `locale="es"` to the shared root document, so `<html lang>` is right without reading a request. Each Spanish page is a thin module that renders the same page component with the Spanish dictionary and builds its metadata with `pageMetadata` for that locale.
+
+- Every page stays static, and the prerender gate, the per-path hash policy and the adapter job work unchanged in mechanism.
+- The Proxy matcher gains the literal `es/...` paths, with the test in `apps/web/tests/unit/proxy-matcher.test.ts` extended to them, and `marketing-csp.mjs` accepts both groups.
+- Moving between the two root layouts reloads the page, which is acceptable for a language switch.
+- There is no automatic redirect by browser language. A visitor switches with a link in the header and footer, and search engines find the Spanish pages through `hreflang`.
+
+### `hreflang`, canonical and Open Graph
+
+- `pageMetadata()` (`apps/web/lib/site/pages.ts`) keeps a self-referencing canonical per locale: `/faq` is canonical for English and `/es/faq` for Spanish. A Spanish page never points its canonical at the English page.
+- `pageMetadata()` gains `alternates.languages` only for pages that exist in both locales: `en` to the English URL, `es` to the Spanish URL, and `x-default` to the English URL. Google ignores a pair that does not point at each other, and each version must list itself as well as the others ([Google Search Central, localized versions](https://developers.google.com/search/docs/specialty/international/localized-versions), checked 2026-11-16). This extends the canonical and share image work of #527 rather than replacing it.
+- The sitemap lists the alternates of each page that has a Spanish version.
+- `og:locale` is `en_US` or `es_LA`, and each page lists the other as `og:locale:alternate`. The structured data carries `inLanguage`.
+
+### Locale tags
+
+| Use               | English | Spanish  | Why                                                                                                                                                                                                                                                                                                            |
+| ----------------- | ------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<html lang>`     | `en`    | `es-419` | A region subtag is used only when it adds information; `es-419` means Spanish as spoken in Latin America ([W3C, choosing a language tag](https://www.w3.org/International/questions/qa-choosing-language-tags), checked 2026-11-16).                                                                           |
+| `hreflang`        | `en`    | `es`     | Google supports only ISO 639-1 language codes and ISO 3166-1 alpha-2 regions, and names `es-419` as unsupported ([Google Search Central](https://developers.google.com/search/docs/specialty/international/localized-versions), checked 2026-11-16). `es` targets every Spanish reader, which is the audience. |
+| `og:locale`       | `en_US` | `es_LA`  | Open Graph uses `language_TERRITORY` ([ogp.me](https://ogp.me/), checked 2026-11-16), and Meta uses `es_LA` as its umbrella Spanish locale ([Meta JavaScript SDK localization](https://developers.facebook.com/docs/javascript/internationalization), checked 2026-11-16).                                     |
+| Dates and numbers | `en-US` | `es-419` | The same tag as the document.                                                                                                                                                                                                                                                                                  |
+
+## Language
+
+- **Neutral Latin American Spanish.** No regional vocabulary, no voseo, no vosotros, and no idiom that reads as one country's. Amounts keep the formatting of `es-419` from the format helper.
+- **Tú, not usted.** The wallets and exchanges our readers already use address them as tú, and usted reads distant on a page that asks them to sign.
+- **Protocol terms stay in English**, because they are what wallets, explorers and the Stellar docs show. On a page's first use, the term is followed by a gloss in parentheses; after that it stands alone.
+
+| Term                 | Gloss on first use                             |
+| -------------------- | ---------------------------------------------- |
+| trustline            | línea de confianza con un emisor de activos    |
+| merge, account merge | fusión que cierra la cuenta y envía su saldo   |
+| offer                | orden abierta en el libro de órdenes           |
+| data entry           | dato guardado en la cuenta                     |
+| signer               | firmante adicional de la cuenta                |
+| subentry             | elemento que bloquea reserva                   |
+| base reserve         | reserva mínima por elemento                    |
+| claimable balance    | saldo reclamable                               |
+| fee bump             | sobre que paga la comisión de otra transacción |
+| memo                 | memo que identifica el depósito                |
+| relay account        | cuenta intermedia que reenvía el saldo         |
+
+Product names (LumenWipe, Stellar, Soroban, the protocol names), asset codes (XLM) and code identifiers are never translated.
+
+## Rollout
+
+Two pull requests under #534 do the extraction: the dictionary, the helpers, the guard, the navigation, footer, 404, landing and FAQ first, then security and how it works. Translation is a separate epic, with these issues in order:
+
+1. **[web] Move the copy of the stats, registry, playground and content pages and the blog index into the locale dictionary.** The same extraction for the pages #534 leaves out, with the guard extended to them.
+2. **[web] Serve a Spanish locale under `/es`.** The `(marketing-es)` route group and its root layout, the locale tags, a language switcher, the Proxy matcher entries and their test, `marketing-csp.mjs` coverage of the second group, and the sitemap alternates. No page is translated yet: the group starts with the landing page in English behind `noindex`.
+3. **[web] Add `hreflang`, Open Graph and structured data alternates for localized pages.** `alternates.languages` with `x-default` in `pageMetadata()`, `og:locale:alternate`, `inLanguage`, and the remaining English strings in `lib/site/structured-data.ts`.
+4. **[web] Translate the navigation, footer, 404 and landing page into Spanish.**
+5. **[web] Translate the FAQ and its structured data into Spanish.**
+6. **[web] Translate the security and how it works pages into Spanish.**
+7. **[web] Translate the five merge-blocker articles into Spanish.** Extra signers, open offers, trustlines, data entries and claimable balances, each with its own canonical and `hreflang` pair.
+8. **[web] Give Spanish pages Spanish share images.**
+
+Each translation issue removes `noindex` from the pages it ships and adds them to the sitemap.

@@ -18,6 +18,11 @@ import Reveal from "@/components/marketing/Reveal";
 import HeroConsole from "@/components/marketing/HeroConsole";
 import HeroAccountInput from "@/components/marketing/HeroAccountInput";
 import { Button } from "@/components/ui/button";
+import { formatNumber, TWO_DECIMALS } from "@/lib/i18n/format";
+import { SITE_LOCALE } from "@/lib/i18n/locale";
+import { COMMON } from "@/lib/i18n/messages/common";
+import { FAQ } from "@/lib/i18n/messages/faq";
+import { LANDING } from "@/lib/i18n/messages/landing";
 import { BASE_RESERVE_XLM, MINIMUM_BALANCE_RESERVES } from "@/lib/site/reserve";
 import {
   heroOutcome,
@@ -35,7 +40,11 @@ import {
   type FeatureId,
 } from "@/lib/site/status";
 
-const DESCRIPTION = `LumenWipe closes a Stellar account end to end and recovers the XLM locked in its reserves. Unwind trustlines, offers, data entries and Soroban DeFi positions, then merge out to ${feature("exchange-close").status === "live" ? "your wallet or exchange" : "your wallet"}. Non-custodial, open source.`;
+const T = LANDING[SITE_LOCALE];
+const FAQ_COPY = FAQ[SITE_LOCALE];
+const NEW_TAB = COMMON[SITE_LOCALE].newTab;
+
+const DESCRIPTION = T.description(feature("exchange-close").status === "live");
 
 export const metadata: Metadata = pageMetadata({
   path: "/",
@@ -63,18 +72,18 @@ const TESTNET = "/testnet";
 const TRUTHS = [
   {
     icon: RefreshCw,
-    title: "One mistake and it all reverts",
-    body: "A single leftover entry makes the final merge fail. Every offer, position, asset and entry must clear in the right order first.",
+    title: T.problem.truths.reverts.title,
+    body: T.problem.truths.reverts.body,
   },
   {
     icon: Building2,
-    title: "Exchanges can't merge",
-    body: `No major exchange accepts an account merge as a deposit. Pay your XLM out to an exchange instead and the ${MINIMUM_BALANCE_RESERVES * BASE_RESERVE_XLM} XLM minimum stays locked in the account.`,
+    title: T.problem.truths.exchanges.title,
+    body: T.problem.truths.exchanges.body(MINIMUM_BALANCE_RESERVES * BASE_RESERVE_XLM),
   },
   {
     icon: Layers,
-    title: "DeFi positions hide outside the account",
-    body: "A Blend loan, Aquarius liquidity or a Soroswap position lives in the protocol's contract. Merge the account while one is open and the funds stay stranded there, so each has to be exited through its own contract first.",
+    title: T.problem.truths.defi.title,
+    body: T.problem.truths.defi.body,
   },
 ];
 
@@ -82,6 +91,10 @@ const CARD_FEATURES = CARD_IDS.map((id) => ({ ...feature(id), icon: FEATURE_ICON
 
 const DEFI = feature("defi-exits");
 const TESTNET_ONLY_EXITS = protocolsWithStatus("testnet-only");
+
+function xlm(amount: number): string {
+  return formatNumber(SITE_LOCALE, amount, TWO_DECIMALS);
+}
 
 function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
@@ -102,13 +115,15 @@ export default function LandingPage() {
         <div className="mb-8 flex items-center justify-center gap-4">
           <span className="hidden h-px w-12 bg-white/15 sm:block" />
           <span className="mkt-mono text-caption uppercase tracking-[0.18em] text-fg-subtle">
-            Recover your locked XLM
+            {T.hero.label}
           </span>
           <span className="hidden h-px w-12 bg-white/15 sm:block" />
         </div>
 
         <h1 className="mkt-display mx-auto max-w-[15ch] text-display font-extrabold leading-[0.95] text-white sm:text-6xl lg:text-hero">
-          Close the account. Keep the <span className="text-value">lumens.</span>
+          {T.hero.headline((text) => (
+            <span className="text-value">{text}</span>
+          ))}
         </h1>
 
         <p className="mx-auto mt-6 max-w-xl text-body leading-relaxed text-white/70">
@@ -125,14 +140,14 @@ export default function LandingPage() {
             href={APP}
             className="group inline-flex items-center gap-1 font-semibold text-accent underline-offset-4 hover:underline"
           >
-            Open the app
+            {T.hero.openApp}
             <ArrowRight
               aria-hidden
               className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5"
             />
           </Link>
           <Link href="/how-it-works" className="text-accent underline-offset-4 hover:underline">
-            See how it works
+            {T.hero.howItWorks}
           </Link>
         </div>
 
@@ -155,22 +170,21 @@ export default function LandingPage() {
                 {s.value}
               </dd>
               <dd className="order-3 mt-2 mkt-mono text-caption text-fg-muted">
-                {s.source.kind === "external" ? (
-                  <>
-                    As of {monthYear(s.source.asOf)} ·{" "}
-                    <a
-                      href={s.source.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="underline underline-offset-4 hover:text-white"
-                    >
-                      Source: {s.source.label}
-                      <span className="sr-only"> (opens in a new tab)</span>
-                    </a>
-                  </>
-                ) : (
-                  "From the contract registry"
-                )}
+                {s.source.kind === "external"
+                  ? T.stats.asOf(
+                      monthYear(s.source.asOf),
+                      <a
+                        href={s.source.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline underline-offset-4 hover:text-white"
+                      >
+                        {T.stats.source}
+                        {s.source.label}
+                        <span className="sr-only">{NEW_TAB}</span>
+                      </a>
+                    )
+                  : T.stats.registry}
               </dd>
             </div>
           ))}
@@ -180,29 +194,25 @@ export default function LandingPage() {
       {/* ============================ PROBLEM ============================ */}
       <section className="mx-auto max-w-6xl px-5 py-20 lg:px-8 lg:py-24">
         <Reveal>
-          <Eyebrow>The problem</Eyebrow>
+          <Eyebrow>{T.problem.eyebrow}</Eyebrow>
           <h2 className="mkt-display mt-4 max-w-2xl text-3xl font-bold text-white sm:text-display sm:leading-[1.05]">
-            Your lumens are locked, and the exit is a maze.
+            {T.problem.heading}
           </h2>
-          <p className="mt-5 max-w-2xl text-body leading-relaxed text-white/70">
-            Every Stellar account holds XLM in reserve: 1 XLM for the account, plus 0.5 for every
-            trustline, offer, data entry and signer. That reserve is only recoverable by closing the
-            account, and closing one cleanly is harder than it sounds.
-          </p>
+          <p className="mt-5 max-w-2xl text-body leading-relaxed text-white/70">{T.problem.body}</p>
         </Reveal>
 
         <div className="mt-11 grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
           <Reveal className="mkt-card p-6">
             <div className="flex items-center justify-between">
-              <span className="mkt-eyebrow text-fg-subtle">Locked reserve</span>
-              <span className="mkt-mono text-caption text-fg-muted">Example account</span>
+              <span className="mkt-eyebrow text-fg-subtle">{T.problem.reserve}</span>
+              <span className="mkt-mono text-caption text-fg-muted">{T.problem.example}</span>
             </div>
             <div className="mt-5 space-y-3.5">
               {RESERVE_EXAMPLE.map((r) => (
                 <div key={r.label}>
                   <div className="flex items-baseline justify-between text-sm">
                     <span className="text-white/75">{r.label}</span>
-                    <span className="mkt-mono text-value tabular-nums">{r.xlm.toFixed(2)}</span>
+                    <span className="mkt-mono text-value tabular-nums">{xlm(r.xlm)}</span>
                   </div>
                   <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-white/[0.08]">
                     <div
@@ -214,9 +224,9 @@ export default function LandingPage() {
               ))}
             </div>
             <div className="mt-5 flex items-baseline justify-between border-t border-white/10 pt-4">
-              <span className="text-sm font-semibold text-white">Total locked</span>
+              <span className="text-sm font-semibold text-white">{T.problem.total}</span>
               <span className="mkt-display text-2xl font-bold text-value tabular-nums">
-                {RESERVE_EXAMPLE_TOTAL.toFixed(2)}{" "}
+                {xlm(RESERVE_EXAMPLE_TOTAL)}{" "}
                 <span className="text-sm font-normal text-fg-muted">XLM</span>
               </span>
             </div>
@@ -241,9 +251,9 @@ export default function LandingPage() {
       {/* ============================ CAPABILITIES ============================ */}
       <section className="mx-auto max-w-6xl border-t border-white/[0.07] px-5 py-20 lg:px-8 lg:py-24">
         <Reveal className="max-w-2xl">
-          <Eyebrow>What you get</Eyebrow>
+          <Eyebrow>{T.capabilities.eyebrow}</Eyebrow>
           <h2 className="mkt-display mt-4 text-3xl font-bold text-white sm:text-display sm:leading-[1.05]">
-            Built for the messy reality of real accounts.
+            {T.capabilities.heading}
           </h2>
         </Reveal>
 
@@ -261,7 +271,7 @@ export default function LandingPage() {
               <h3 className="mt-4 text-lg font-semibold text-white">{DEFI.title}</h3>
               <p className="mt-2 max-w-md text-sm leading-relaxed text-white/70">{DEFI.summary}</p>
               <ul
-                aria-label="Protocol exits live on mainnet"
+                aria-label={T.capabilities.liveExits}
                 className="mt-5 flex flex-wrap gap-2"
                 data-site-status="live"
               >
@@ -328,28 +338,26 @@ export default function LandingPage() {
         className="mx-auto max-w-3xl scroll-mt-20 border-t border-white/[0.07] px-5 py-20 lg:px-8 lg:py-24"
       >
         <Reveal className="text-center">
-          <Eyebrow>FAQ</Eyebrow>
+          <Eyebrow>{FAQ_COPY.eyebrow}</Eyebrow>
           <h2 className="mkt-display mt-4 text-3xl font-bold text-white sm:text-display">
-            Questions, answered.
+            {FAQ_COPY.heading}
           </h2>
-          <p className="mt-4 text-white/70">
-            Closing an account is irreversible. Here&apos;s exactly how LumenWipe keeps it safe.
-          </p>
+          <p className="mt-4 text-white/70">{FAQ_COPY.lede}</p>
         </Reveal>
         <div className="mt-10">
           <Faq />
         </div>
         <p className="mt-6 text-center text-sm text-fg-muted">
-          Still curious?{" "}
-          <a
-            href="https://docs.lumenwipe.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-accent underline-offset-4 hover:underline"
-          >
-            Read the full documentation
-          </a>
-          .
+          {T.faq.stillCurious(
+            <a
+              href="https://docs.lumenwipe.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-accent underline-offset-4 hover:underline"
+            >
+              {T.faq.docs}
+            </a>
+          )}
         </p>
       </section>
 
@@ -358,32 +366,32 @@ export default function LandingPage() {
         <Reveal>
           <div className="mkt-card px-6 py-14 text-center sm:px-12 sm:py-20">
             <h2 className="mkt-display mx-auto max-w-2xl text-3xl font-bold leading-[1.05] text-white sm:text-5xl">
-              Reclaim the XLM that&apos;s been sitting locked.
+              {T.cta.heading}
             </h2>
-            <p className="mx-auto mt-5 max-w-lg text-body text-white/70">
-              Try the entire flow on testnet with no funds at risk, then switch to mainnet for the
-              real close.
-            </p>
+            <p className="mx-auto mt-5 max-w-lg text-body text-white/70">{T.cta.body}</p>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
               <Button asChild size="lg" className="group">
                 <Link href={APP}>
-                  Open the app
+                  {T.cta.openApp}
                   <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                 </Link>
               </Button>
               <Button asChild size="lg" variant="secondary">
-                <Link href={TESTNET}>Try on testnet</Link>
+                <Link href={TESTNET}>{T.cta.testnet}</Link>
               </Button>
             </div>
             <div className="mt-7 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 mkt-mono text-caption text-fg-muted">
               <span className="inline-flex items-center gap-1.5">
-                <Check className="h-3.5 w-3.5 text-accent" /> No signup
+                <Check className="h-3.5 w-3.5 text-accent" />
+                {` ${T.cta.noSignup}`}
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <Check className="h-3.5 w-3.5 text-accent" /> Signed in your browser
+                <Check className="h-3.5 w-3.5 text-accent" />
+                {` ${T.cta.signedInBrowser}`}
               </span>
               <span className="inline-flex items-center gap-1.5">
-                <Check className="h-3.5 w-3.5 text-accent" /> Open source
+                <Check className="h-3.5 w-3.5 text-accent" />
+                {` ${T.cta.openSource}`}
               </span>
             </div>
           </div>

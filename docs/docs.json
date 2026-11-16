@@ -193,7 +193,7 @@
       },
       {
         "group": "Contributing",
-        "pages": ["contributing/add-a-protocol-exit"]
+        "pages": ["contributing/add-a-protocol-exit", "contributing/localization"]
       },
       {
         "group": "Design",
