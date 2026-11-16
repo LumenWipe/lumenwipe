@@ -13,6 +13,10 @@ release is cut.
   protocols with at least one contract an exit may touch on that network, by the same rule the
   verifier applies. It is not exported from the package entry point, and verification is
   unchanged.
+- The bundled contract registry module gains an internal export of the registry's
+  `lastVerified` and `validUntil` dates, and the bundled exchange registry module splits its
+  fetch-and-merge step out of the function that adopts the served copy. Neither is exported from
+  the package entry point, and verification and the bundled registry are unchanged.
 
 ### Changed
 

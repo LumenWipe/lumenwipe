@@ -99,6 +99,11 @@ export default function SecurityPage() {
           >
             read verify.ts on GitHub<span className="sr-only"> (opens in a new tab)</span>
           </a>
+          . The exchanges and memo rules it checks against, and the protocols it can exit, are
+          listed in the{" "}
+          <Link href="/registry" className="text-accent underline underline-offset-4">
+            exchange registry
+          </Link>
           .
         </p>
       </div>

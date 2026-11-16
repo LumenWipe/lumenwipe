@@ -81,31 +81,30 @@ export function isRegistryUsable(now: Date = new Date()): boolean {
  *  not a slow response. */
 const REGISTRY_FETCH_TIMEOUT_MS = 8_000;
 
+type RegistryFetch = (input: string) => Promise<Response>;
+
 /**
- * Fetches the served registry and merges it over the bundled floor.
- *
- * A failure is not fatal - the floor stays in place, and whether it may be relied on is decided
- * by its own expiry rather than by whether this call succeeded. What must never happen is
- * adopting a payload with no freshness fields: with nothing to expire, the fail-closed gate
- * silently becomes a no-op.
+ * Fetches the served registry and merges it over the bundled floor, or returns null when the
+ * endpoint fails or answers with something that is not a registry. Reads nothing from, and
+ * writes nothing to, the snapshot the verifier uses: a page that only displays the registry
+ * calls this, so viewing it can never change what a close is checked against.
  */
-export async function loadServedRegistry(
+export async function fetchServedRegistry(
   // Narrower than `typeof fetch` on purpose: this only ever GETs one path, and the full
   // signature drags in properties (`preconnect`) a test double has no reason to implement.
-  fetchImpl: (input: string) => Promise<Response> = (input) =>
+  fetchImpl: RegistryFetch = (input) =>
     fetch(input, { signal: AbortSignal.timeout(REGISTRY_FETCH_TIMEOUT_MS) })
-): Promise<RegistrySnapshot> {
+): Promise<RegistrySnapshot | null> {
   try {
     // Bounded. A failure degrades to the floor, but a hang does not degrade at all - the
     // analyze page awaits this between the account read and the plan fetch, so an endpoint
     // that accepts the connection and never answers leaves the user on the spinner with no
     // error, no retry and no way out but a reload.
     const res = await fetchImpl("/api/config/exchange-registry");
-    if (!res.ok) return current;
+    if (!res.ok) return null;
     const merged = mergeServedRegistry(EMBEDDED, await res.json());
-    if (merged === null) return current;
-
-    current = {
+    if (merged === null) return null;
+    return {
       // Every embedded address survives: a served payload cannot make the client forget an
       // exchange it already knew, which would turn a known deposit address back into an
       // "unrecognized" one and route it through a confirmation instead of the mediator.
@@ -115,10 +114,23 @@ export async function loadServedRegistry(
       served: true,
       memoTypeDisputes: merged.memoTypeDisputes,
     };
-    return current;
   } catch {
-    return current;
+    return null;
   }
+}
+
+/**
+ * Fetches the served registry, merges it over the bundled floor and makes it the active snapshot.
+ *
+ * A failure is not fatal - the floor stays in place, and whether it may be relied on is decided
+ * by its own expiry rather than by whether this call succeeded. What must never happen is
+ * adopting a payload with no freshness fields: with nothing to expire, the fail-closed gate
+ * silently becomes a no-op.
+ */
+export async function loadServedRegistry(fetchImpl?: RegistryFetch): Promise<RegistrySnapshot> {
+  const served = await fetchServedRegistry(fetchImpl);
+  if (served !== null) current = served;
+  return current;
 }
 
 function byAddress(network: Network): Map<string, RegistryEntry> {

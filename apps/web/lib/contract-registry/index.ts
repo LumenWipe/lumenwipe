@@ -25,6 +25,7 @@ interface RegistryEntry {
 }
 
 interface Registry {
+  lastVerified: string;
   validUntil: string;
   /** Per protocol, the code versions registered only to be recognized and refused. */
   noExitVersions?: Record<string, string[]>;
@@ -72,6 +73,13 @@ export const EXIT_FUNCTIONS: Record<
   aquarius: { position: ["withdraw", "claim"], router: [], backstop: [], stake: [] },
   phoenix: { position: ["withdraw_liquidity"], router: [], backstop: [], stake: ["unbond"] },
   fxdao: { position: ["pay_debt"], router: [], backstop: [], stake: [] },
+};
+
+/** When the bundled registry was last checked against the live contracts, and until when it is
+ *  relied on. */
+export const CONTRACT_REGISTRY_DATES: { lastVerified: string; validUntil: string } = {
+  lastVerified: REGISTRY.lastVerified,
+  validUntil: REGISTRY.validUntil,
 };
 
 export function isContractRegistryUsable(now: Date = new Date()): boolean {

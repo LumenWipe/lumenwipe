@@ -22,7 +22,12 @@ test("the home page carries no noindex", async ({ page }) => {
   await expect(page.locator('meta[name="robots"][content*="noindex"]')).toHaveCount(0);
 });
 
-for (const path of ["/faq", "/security", "/blog/how-do-i-remove-a-trustline-on-stellar"]) {
+for (const path of [
+  "/faq",
+  "/security",
+  "/registry",
+  "/blog/how-do-i-remove-a-trustline-on-stellar",
+]) {
   test(`${path} has no serious accessibility violations`, async ({ page }) => {
     await page.goto(path);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
@@ -49,6 +54,40 @@ for (const [name, path] of [
     await expectNoAxeViolations(page, name);
   });
 }
+
+test("the registry shows the API's copy through the web's proxy route", async ({ page }) => {
+  await page.route("**/api/config/exchange-registry", (route) =>
+    route.fulfill({
+      json: {
+        lastVerified: "2026-11-01",
+        validUntil: "2026-12-01",
+        entries: [
+          {
+            address: "GB5CLRWUCBQ6DFK2LR5ZMWJ7QCVEB3XKMPTQUYCDIYB4DRZJBEW6M26D",
+            name: "Coinbase",
+            domain: "coinbase.com",
+            requiresMediator: true,
+            requiresMemo: true,
+            memoType: "text",
+          },
+        ],
+      },
+    })
+  );
+  await page.goto("/registry");
+  await expect(page.getByText("Shown: the API's copy, read when this page loaded.")).toBeVisible();
+  await expect(page.getByText("Last checked 2026-11-01", { exact: false })).toBeVisible();
+});
+
+test("the prerendered registry says it is not current once its validUntil has passed", async ({
+  page,
+}) => {
+  await page.clock.setFixedTime(new Date("2099-01-01T00:00:00Z"));
+  await page.goto("/registry");
+  await expect(page.getByText(/This list is past .* so it is not current/)).toBeVisible();
+  await expect(page.getByText(/contract list is past .* not current/)).toBeVisible();
+  await expect(page.getByText("Current.", { exact: true })).toHaveCount(0);
+});
 
 test("the content hub lists published and planned articles in a table", async ({ page }) => {
   await page.goto("/content");

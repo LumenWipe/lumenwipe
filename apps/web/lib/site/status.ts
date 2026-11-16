@@ -1,4 +1,9 @@
-import { exitCapableProtocols, EXIT_FUNCTIONS } from "@/lib/contract-registry";
+import {
+  CONTRACT_REGISTRY_DATES,
+  exitCapableProtocols,
+  EXIT_FUNCTIONS,
+  isContractRegistryUsable,
+} from "@/lib/contract-registry";
 import { PROTOCOL_LABELS } from "@/lib/plan/describe-position";
 import type { DefiPosition } from "@/types/account";
 
@@ -47,6 +52,15 @@ function protocolStatus(id: ExitProtocol): SiteStatus {
 export const PROTOCOLS: readonly SiteProtocol[] = (
   Object.keys(EXIT_FUNCTIONS) as ExitProtocol[]
 ).map((id) => ({ id, name: PROTOCOL_LABELS[id], status: protocolStatus(id) }));
+
+/** The protocol statuses are read from the bundled contract registry, so they are as current as
+ *  its last check, and are not relied on past its `validUntil`. */
+export const PROTOCOLS_VERIFIED = CONTRACT_REGISTRY_DATES;
+
+/** Whether the protocol statuses may still be relied on at `now`. */
+export function protocolStatusUsable(now: Date): boolean {
+  return isContractRegistryUsable(now);
+}
 
 export function protocolsWithStatus(status: SiteStatus): readonly SiteProtocol[] {
   return PROTOCOLS.filter((p) => p.status === status);

@@ -45,6 +45,7 @@ export const INDEXED_PAGES: readonly IndexedPage[] = [
   { path: "/blog", priority: 0.8, changeFrequency: "weekly" },
   { path: "/content", priority: 0.7, changeFrequency: "weekly" },
   { path: "/stats", priority: 0.6, changeFrequency: "daily" },
+  { path: "/registry", priority: 0.6, changeFrequency: "monthly" },
   { path: "/playground", priority: 0.6, changeFrequency: "monthly" },
   { path: "/mainnet", priority: 0.5, changeFrequency: "monthly" },
 ];

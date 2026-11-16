@@ -73,6 +73,7 @@ const PAGE_TITLES: Record<string, Metadata["title"]> = {
   "/faq": "FAQ",
   "/how-it-works": "How it works",
   "/playground": "Playground",
+  "/registry": "Exchange registry",
   "/security": "Security",
   "/stats": "Stats",
 };
