@@ -286,6 +286,72 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
 
+  # The web app built the way Vercel builds it: `vercel build --prod`, with Next's build adapter on
+  # (NEXT_ENABLE_ADAPTER=1, which Vercel's build machines set), then scripts/marketing-csp.mjs
+  # check-output on the result. It proves every prerendered marketing page leaves the build with
+  # its hash policy in the Build Output config Vercel serves, and the network and sign-in routes
+  # with the proxy's nonce policy, on the real builder rather than `next start`. No token and no
+  # pulled settings: a placeholder project file is enough for a local build, and the public build
+  # variables are placeholders. Runs on a PR that changes what the web app is built from (the same
+  # gate as Lighthouse) and on every push to main. Nothing is deployed.
+  web-vercel-build:
+    name: web vercel build (adapter)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      # renovate: datasource=npm depName=vercel
+      VERCEL_CLI_VERSION: 65.16.0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.4
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Detect web changes
+        id: web
+        if: github.event_name == 'pull_request'
+        working-directory: apps/web
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          run=$(git diff --name-only "origin/${BASE_REF}...HEAD" | bun scripts/lighthouse-report.ts gate)
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          echo "Web app changed: $run"
+
+      - name: Build with the Vercel builder
+        if: github.event_name != 'pull_request' || steps.web.outputs.run == 'true'
+        env:
+          NEXT_ENABLE_ADAPTER: "1"
+          NEXT_TELEMETRY_DISABLED: "1"
+          VERCEL_TELEMETRY_DISABLED: "1"
+          NEXT_PUBLIC_APP_URL: https://www.lumenwipe.com
+          NEXT_PUBLIC_STELLAR_WALLET_CONNECT_PROJECT_ID: 0123456789abcdef0123456789abcdef
+          NEXT_PUBLIC_UMAMI_WEBSITE_ID: 00000000-0000-4000-8000-000000000001
+        run: |
+          mkdir -p .vercel
+          echo '{"orgId":"team_ci","projectId":"prj_ci","settings":{"framework":"nextjs","rootDirectory":"apps/web","buildCommand":null,"installCommand":null,"outputDirectory":null,"devCommand":null,"nodeVersion":"24.x"}}' > .vercel/project.json
+          bunx "vercel@${VERCEL_CLI_VERSION}" build --prod --yes
+
+      - name: Check the marketing policies in the build output
+        if: github.event_name != 'pull_request' || steps.web.outputs.run == 'true'
+        working-directory: apps/web
+        run: node scripts/marketing-csp.mjs check-output ../../.vercel/output
+
   # The same gate for the playground: its own production build, every /api call answered by
   # fixtures in the browser, so no API, no secret and no testnet. A serious or critical violation
   # fails it.

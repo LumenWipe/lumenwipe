@@ -3,7 +3,7 @@ import { StrictMode } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Keypair } from "@stellar/stellar-sdk";
 import * as navigation from "next/navigation";
-import AnalyzePage from "@/app/[network]/analyze/page";
+import AnalyzePage from "@/app/(app)/[network]/analyze/page";
 import UnresolvedGate from "@/components/execution/UnresolvedGate";
 import AccountEntryForm from "@/components/account-entry/AccountEntryForm";
 import * as walletConnection from "@/hooks/useWalletKitConnection";

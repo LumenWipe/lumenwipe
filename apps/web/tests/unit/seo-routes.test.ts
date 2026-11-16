@@ -17,6 +17,9 @@ import {
 import { siteOrigin, siteUrl } from "@/lib/site/url";
 
 const MARKETING = join(import.meta.dir, "..", "..", "app", "(marketing)");
+// The API keys page is public too, but signs in with a wallet, so it renders under the nonce policy
+// of the (app) group.
+const API_KEYS = join(import.meta.dir, "..", "..", "app", "(app)", "api-keys");
 
 /** Every page file under app/(marketing), as its route path. */
 function marketingRoutes(dir = MARKETING): string[] {
@@ -39,8 +42,9 @@ interface Page {
 
 async function resolvePages(): Promise<Page[]> {
   const pages: Page[] = [];
-  for (const route of marketingRoutes()) {
-    const dir = join(MARKETING, ...route.split("/").filter(Boolean));
+  for (const route of [...marketingRoutes(), "/api-keys"]) {
+    const dir =
+      route === "/api-keys" ? API_KEYS : join(MARKETING, ...route.split("/").filter(Boolean));
     const mod = await import(join(dir, "page.tsx"));
     if (route === "/blog/[slug]") {
       for (const post of getAllPostMetas()) {
@@ -73,7 +77,7 @@ const PAGE_TITLES: Record<string, Metadata["title"]> = {
   "/stats": "Stats",
 };
 
-describe("every page under app/(marketing)", () => {
+describe("every public page under app/(marketing), and /api-keys", () => {
   test("is found, including every published post", () => {
     expect(PAGES.map((p) => p.route).sort()).toEqual(
       [...Object.keys(PAGE_TITLES), ...getAllPostMetas().map((p) => `/blog/${p.slug}`)].sort()

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Keypair } from "@stellar/stellar-sdk";
 import * as navigation from "next/navigation";
-import AnalyzePage from "@/app/[network]/analyze/page";
+import AnalyzePage from "@/app/(app)/[network]/analyze/page";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import { freshAccount, freshPlan } from "./fixtures/fresh-plan";

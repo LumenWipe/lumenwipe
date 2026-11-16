@@ -10,7 +10,7 @@ import {
 } from "@testing-library/react";
 import * as navigation from "next/navigation";
 import { StrictMode } from "react";
-import ReceiptPage from "@/app/[network]/receipt/[id]/page";
+import ReceiptPage from "@/app/(app)/[network]/receipt/[id]/page";
 import ReceiptHeadline from "@/components/receipt/ReceiptHeadline";
 import { useReceivedLumens } from "@/hooks/useReceivedLumens";
 import { getHistory, saveHistory } from "@/lib/session/history";

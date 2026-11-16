@@ -1,5 +1,8 @@
 // Read by next.config.mjs, so plain JavaScript: the config is loaded before anything is compiled.
-// The Content-Security-Policy is not here: it carries a per-request nonce, so proxy.ts sets it.
+// The Content-Security-Policy is not here. The app and sign-in routes carry a per-request nonce,
+// so proxy.ts sets theirs; each prerendered marketing page gets one hashing its own inline scripts,
+// written after the build by scripts/marketing-csp.mjs into the Build Output config Vercel serves
+// (or the routes manifest, for `next start`).
 
 const YOUTUBE_EMBED = '"https://www.youtube-nocookie.com"';
 

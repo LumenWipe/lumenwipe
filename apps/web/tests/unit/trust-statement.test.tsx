@@ -66,7 +66,7 @@ describe("no surface overstates the trust model", () => {
       expect(overclaims(String(meta.description))).toEqual([]);
     }
     for (const file of [
-      ["app", "layout.tsx"],
+      ["app", "root-document.tsx"],
       ["lib", "site", "root-metadata.ts"],
       ["lib", "site", "structured-data.ts"],
     ]) {

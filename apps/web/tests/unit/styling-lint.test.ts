@@ -38,7 +38,7 @@ describe("raw styling lint", () => {
   ][]) {
     test(`flags ${cls} outside components/ui with a message naming the replacement`, async () => {
       const code = `export const a = "flex ${cls}";\nexport const b = \`flex ${cls} \${a}\`;\n`;
-      for (const file of ["components/plan/Fixture.tsx", "app/[network]/fixture/page.tsx"]) {
+      for (const file of ["components/plan/Fixture.tsx", "app/(app)/[network]/fixture/page.tsx"]) {
         const messages = await syntaxMessages(code, file);
         expect(messages).toHaveLength(2);
         for (const message of messages) expect(message).toMatch(MESSAGES[name]);
@@ -118,7 +118,7 @@ describe("gold is never an action", () => {
 
   test("the text of a gold fill is flagged on marketing pages, even held in a constant", async () => {
     const code = 'export const btn = "rounded-xl px-5 text-value-fg";\n';
-    for (const file of ["components/marketing/Fixture.tsx", "app/not-found.tsx"]) {
+    for (const file of ["components/marketing/Fixture.tsx", "app/global-not-found.tsx"]) {
       const messages = await syntaxMessages(code, file);
       expect(messages).toHaveLength(1);
       expect(messages[0]).toMatch(FILL);
@@ -133,7 +133,7 @@ describe("marketing text alpha floor", () => {
     const code = 'export const a = "text-white/65";\nexport const b = "hover:text-white/56";\n';
     for (const file of [
       "app/(marketing)/fixture/page.tsx",
-      "app/not-found.tsx",
+      "app/global-not-found.tsx",
       "components/marketing/Fixture.tsx",
       "components/blog/Fixture.tsx",
     ]) {
