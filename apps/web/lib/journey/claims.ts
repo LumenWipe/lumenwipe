@@ -33,7 +33,8 @@ const DURING_SIGNING: readonly ClaimKey[] = [
 ];
 
 /** True in every state, whatever the close has done: a secret key entered on the signing screen is
- *  held in memory and is never stored or sent, and every signature is given in this browser. */
+ *  held in memory and is never stored or sent, and a signature is given in this browser except on
+ *  a transaction "Sign on another device" collects. */
 const IN_EVERY_STATE: readonly ClaimKey[] = ["key-stays-in-browser", "same-browser-signing"];
 
 /** Which claims may be rendered in each state. Anything not listed is false in some reachable
@@ -156,10 +157,8 @@ export const CLAIM_PATTERNS: Record<ClaimKey, RegExp> = {
   // The XLM the destination received, as the ledger's result for the merge reports it. Only a
   // finished close has one; in the source the figure is an expression.
   "amount-received": /\breceived (?:[\d,]+(?:\.\d+)?|\{[^}]*\}) XLM\b/i,
-  // Where signatures are given: every signer in this browser, until signing from another device
-  // ships.
-  "same-browser-signing":
-    /must (?:also )?sign here, in this browser|signing from another device is not supported/i,
+  // Where signatures are given: in this browser, said only of a close another device cannot sign.
+  "same-browser-signing": /must (?:also )?sign here, in this browser/i,
 };
 
 export function permittedClaims(journey: Journey): ClaimKey[] {

@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { Keypair } from "@stellar/stellar-sdk";
+import {
+  Account,
+  Keypair,
+  Networks,
+  Operation,
+  TransactionBuilder,
+  xdr,
+} from "@stellar/stellar-sdk";
+import type { PendingRound } from "@lumenwipe/sdk";
 import {
   cosignRequirement,
   cosignStatement,
@@ -7,6 +15,8 @@ import {
   type CosignRequirement,
 } from "@/lib/stellar/cosign-requirement";
 import { CLAIM_PATTERNS } from "@/lib/journey/claims";
+import { COSIGN_UNAVAILABLE, cosignExport } from "@/lib/cosign/merge";
+import { toHex } from "@/lib/stellar/hex";
 import { findBannedWords } from "@/lib/glossary";
 import type { AccountSigner } from "@/types/account";
 import type { ExecutionTxBreakdown } from "@/types/close-api";
@@ -305,12 +315,39 @@ describe("cosignRequirement › K", () => {
   });
 });
 
+describe("cosignRequirement › crossDevice", () => {
+  test("a removal transaction that covers nothing else can be signed on another device", () => {
+    expect(req({ transactions: [tx(0, "NORMALIZE_SIGNERS"), tx(1, "MERGE")] }).crossDevice).toBe(
+      "removal"
+    );
+  });
+
+  test("a removal that carries other steps, or none at all, cannot", () => {
+    expect(req({}).crossDevice).toBe("none");
+    expect(
+      req({ transactions: [tx(0, "NORMALIZE_SIGNERS", "REMOVE_DATA_ENTRIES"), tx(1, "MERGE")] })
+        .crossDevice
+    ).toBe("none");
+    expect(req({ transactions: [tx(0, "HANDLE_ASSETS"), tx(1, "MERGE")] }).crossDevice).toBe(
+      "none"
+    );
+  });
+
+  test("without a breakdown it is not known", () => {
+    expect(req({ transactions: null }).crossDevice).toBe("unknown");
+    expect(req({ transactions: null, viaRelay: true }).crossDevice).toBe("unknown");
+  });
+});
+
 describe("cosignStatement", () => {
   const short = `${MASTER.slice(0, 8)}…${MASTER.slice(-8)}`;
+  const REMOVAL_FIRST = [tx(0, "NORMALIZE_SIGNERS"), tx(1, "REMOVE_TRUSTLINES", "MERGE")];
+  const ANOTHER_DEVICE =
+    'On that transaction the master key signs here first, and the other keys can sign here or on another device, under "Sign on another device".';
 
-  test("the statement with N, M and K", () => {
+  test("the statement with N, M and K, when no transaction only removes the other signers", () => {
     expect(statement({ signers: [key(MASTER, 1), key(A, 1), key(B, 1), key(C, 1)] })).toBe(
-      "This account needs signatures from at least 2 of its 4 keys, on 1 transaction of this close. These 2 must sign here, in this browser, during this close. Signing from another device is not supported yet."
+      "This account needs signatures from at least 2 of its 4 keys, on 1 transaction of this close. These 2 must sign here, in this browser, during this close. Another device can sign only a transaction that just removes the other signers, and this close has none."
     );
   });
 
@@ -321,13 +358,43 @@ describe("cosignStatement", () => {
         transactions: [tx(0, "HANDLE_ASSETS"), ...DIRECT_CLOSE.map((t) => ({ ...t, order: 1 }))],
       })
     ).toBe(
-      "This account needs signatures from all 3 of its keys, on 2 transactions of this close. These 3 must sign here, in this browser, during this close. Signing from another device is not supported yet."
+      "This account needs signatures from all 3 of its keys, on 2 transactions of this close. These 3 must sign here, in this browser, during this close. Another device can sign only a transaction that just removes the other signers, and this close has none."
     );
+  });
+
+  test("a removal of its own: the master key here, the others here or on another device", () => {
+    expect(statement({ transactions: REMOVAL_FIRST })).toBe(
+      `This account needs signatures from at least 2 of its 3 keys, on 1 transaction of this close. These 2 sign during this close. One transaction removes the other signers without closing the account, so the master key, ${short}, must be one of these 2. After it, the master key alone completes the close. ${ANOTHER_DEVICE}`
+    );
+  });
+
+  test("a removal of its own after another transaction that needs several keys", () => {
+    const text = statement({
+      thresholds: { low: 2, med: 2, high: 2 },
+      transactions: [tx(0, "HANDLE_ASSETS"), tx(1, "NORMALIZE_SIGNERS"), tx(2, "MERGE")],
+    });
+    expect(text).toContain(ANOTHER_DEVICE);
+    expect(text).toEndWith(
+      "Its other transactions that need several keys are signed here, in this browser."
+    );
+  });
+
+  test("a removal that also merges, or that carries other steps, is signed here", () => {
+    for (const transactions of [
+      DIRECT_CLOSE,
+      [tx(0, "NORMALIZE_SIGNERS", "REMOVE_DATA_ENTRIES"), tx(1, "MERGE")],
+    ]) {
+      const text = statement({ transactions });
+      expect(text).toContain("These 2 must sign here, in this browser, during this close.");
+      expect(text).toEndWith(
+        "Another device can sign only a transaction that just removes the other signers, and this close has none."
+      );
+    }
   });
 
   test("without K, and with the master key conditional", () => {
     expect(statement({ transactions: null })).toBe(
-      `This account needs signatures from at least 2 of its 3 keys for this close. These 2 must sign here, in this browser, during this close. If a transaction removes the other signers before the final transaction, the master key, ${short}, must sign it as well. Signing from another device is not supported yet.`
+      `This account needs signatures from at least 2 of its 3 keys for this close. These 2 sign during this close. If a transaction removes the other signers before the final transaction, the master key, ${short}, must sign it as well. If a transaction of this close only removes the other signers, the other keys can sign it on another device after the master key signs it here; every other transaction is signed here, in this browser.`
     );
   });
 
@@ -364,16 +431,17 @@ describe("cosignStatement", () => {
       key(A, 1),
       { key: HASH_X, weight: 1, type: "hash_x" },
     ];
-    expect(statement({ signers, thresholds: { low: 3, med: 3, high: 3 } })).toBe(
-      "This account's keys alone cannot reach the signing weight this close needs. It also needs its hash(x) or pre-authorized transaction signers, used in this browser. Its keys must also sign here, in this browser, during this close. It also has 1 hash(x) signer. A preimage is entered in this browser, and only on the step that removes its own signer. Signing from another device is not supported yet."
+    expect(
+      statement({ signers, thresholds: { low: 3, med: 3, high: 3 }, transactions: REMOVAL_FIRST })
+    ).toBe(
+      `This account's keys alone cannot reach the signing weight this close needs. It also needs its hash(x) or pre-authorized transaction signers, used in this browser. Its keys must also sign here, in this browser, during this close. One transaction removes the other signers without closing the account, so the master key, ${short}, must sign it. After it, the master key alone completes the close. Another device cannot add the missing weight: it signs only with keys, and this account's keys alone do not reach it. It also has 1 hash(x) signer. A preimage is entered in this browser, and only on the step that removes its own signer.`
     );
   });
 
-  test("every variant passes the glossary and reads as the registered claim", () => {
-    const variants: Partial<CosignInput>[] = [
+  test("every variant passes the glossary, and says signing stays in this browser only where it does", () => {
+    const sameBrowser: Partial<CosignInput>[] = [
       {},
-      { transactions: null },
-      { transactions: null, viaRelay: true },
+      { transactions: [tx(0, "NORMALIZE_SIGNERS", "REMOVE_DATA_ENTRIES"), tx(1, "MERGE")] },
       {
         signers: [key(MASTER, 1), key(A, 1), { key: HASH_X, weight: 1, type: "hash_x" }],
         thresholds: { low: 3, med: 3, high: 3 },
@@ -381,10 +449,85 @@ describe("cosignStatement", () => {
         transactions: null,
       },
     ];
-    for (const v of variants) {
-      const text = statement(v);
-      expect(findBannedWords(text)).toEqual([]);
-      expect(CLAIM_PATTERNS["same-browser-signing"].test(text)).toBe(true);
+    const elsewhere: Partial<CosignInput>[] = [
+      { transactions: REMOVAL_FIRST },
+      { transactions: null },
+      { transactions: null, viaRelay: true },
+    ];
+    for (const v of [...sameBrowser, ...elsewhere]) {
+      expect(findBannedWords(statement(v))).toEqual([]);
     }
+    for (const v of sameBrowser) {
+      expect(CLAIM_PATTERNS["same-browser-signing"].test(statement(v))).toBe(true);
+    }
+    for (const v of elsewhere) {
+      const text = statement(v);
+      expect(CLAIM_PATTERNS["same-browser-signing"].test(text)).toBe(false);
+      expect(text).toContain("on another device");
+    }
+  });
+});
+
+describe("cosignStatement agrees with what the signing step offers", () => {
+  const master = Keypair.random();
+  const a = Keypair.random();
+  const b = Keypair.random();
+  const SIGNERS = [key(master.publicKey(), 1), key(a.publicKey(), 1), key(b.publicKey(), 1)];
+  const removal = (k: Keypair): xdr.Operation =>
+    Operation.setOptions({ signer: { ed25519PublicKey: k.publicKey(), weight: 0 } });
+  const RESET = Operation.setOptions({ lowThreshold: 0, medThreshold: 1, highThreshold: 1 });
+
+  /** The paused round of a transaction with `ops`, signed here by the master key and pinned, as
+   *  the signing step hands it to "Sign on another device". */
+  function exportOf(ops: xdr.Operation[]) {
+    const builder = new TransactionBuilder(new Account(master.publicKey(), "100"), {
+      fee: "100",
+      networkPassphrase: Networks.TESTNET,
+    }).setTimebounds(0, Math.floor(Date.now() / 1000) + 300);
+    for (const op of ops) builder.addOperation(op);
+    const built = builder.build();
+    const signed = TransactionBuilder.fromXdr(built.toEnvelope().toXDR("base64"), Networks.TESTNET);
+    signed.sign(master);
+    return cosignExport({
+      round: {
+        tx: { xdr: built.toEnvelope().toXDR("base64") },
+        xdr: signed.toEnvelope().toXDR("base64"),
+        queue: [],
+        requiresAnotherCall: true,
+        accumulatedWeight: 1,
+        requiredWeight: 2,
+        round: 0,
+        txIndex: 0,
+        approvedHash: toHex(built.hash()),
+      } as unknown as PendingRound,
+      network: "testnet",
+      account: master.publicKey(),
+      signers: SIGNERS,
+      passphrase: Networks.TESTNET,
+      nowSeconds: Math.floor(Date.now() / 1000),
+    });
+  }
+
+  const statementFor = (transactions: ExecutionTxBreakdown[]): string =>
+    statement({ account: master.publicKey(), signers: SIGNERS, transactions });
+
+  test("a transaction that only removes the other signers: offered, and the review says so", () => {
+    expect(exportOf([removal(a), removal(b), RESET]).available).toBe(true);
+    const text = statementFor([tx(0, "NORMALIZE_SIGNERS"), tx(1, "MERGE")]);
+    expect(text).toContain('"Sign on another device"');
+    expect(text).not.toMatch(/not supported|cannot sign|must sign here, in this browser/i);
+  });
+
+  test("a removal that carries another step: not offered, and the review says it is signed here", () => {
+    const fused = exportOf([
+      removal(a),
+      removal(b),
+      RESET,
+      Operation.manageData({ name: "note", value: null }),
+    ]);
+    expect(fused).toEqual({ available: false, reason: COSIGN_UNAVAILABLE.notNormalization });
+    const text = statementFor([tx(0, "NORMALIZE_SIGNERS", "REMOVE_DATA_ENTRIES"), tx(1, "MERGE")]);
+    expect(text).toContain("must sign here, in this browser");
+    expect(text).not.toContain('"Sign on another device"');
   });
 });
