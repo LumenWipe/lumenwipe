@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
 import { renderContrastTables, rootVars } from "../apps/web/tests/design-tokens";
@@ -864,6 +865,52 @@ export function checkSetupSteps(root: string): Problem[] {
     }));
 }
 
+const FONT_COPIES = ["apps/web/app/fonts", "apps/playground/app/fonts"] as const;
+
+function fontHashes(root: string, dir: string): Map<string, string> {
+  const hashes = new Map<string, string>();
+  let names: string[] = [];
+  try {
+    names = readdirSync(join(root, dir));
+  } catch {
+    return hashes;
+  }
+  for (const name of names.filter((n) => n.endsWith(".woff2")).sort()) {
+    const bytes = readFileSync(join(root, dir, name));
+    hashes.set(name, createHash("sha256").update(bytes).digest("hex"));
+  }
+  return hashes;
+}
+
+// The playground keeps its own copy of the web's self-hosted fonts (it may not import web
+// source), and both READMEs say the two copies are the same files.
+export function checkFontCopies(root: string): Problem[] {
+  const [webDir, playgroundDir] = FONT_COPIES;
+  const web = fontHashes(root, webDir);
+  const playground = fontHashes(root, playgroundDir);
+  const problems: Problem[] = [];
+  for (const [dir, hashes] of [
+    [webDir, web],
+    [playgroundDir, playground],
+  ] as const) {
+    if (hashes.size === 0) problems.push({ source: dir, message: "holds no .woff2 font" });
+  }
+  for (const name of new Set([...web.keys(), ...playground.keys()])) {
+    const a = web.get(name);
+    const b = playground.get(name);
+    if (a === undefined || b === undefined) {
+      const [has, lacks] = a === undefined ? [playgroundDir, webDir] : [webDir, playgroundDir];
+      problems.push({ source: `${lacks}/${name}`, message: `is missing; ${has} has it` });
+    } else if (a !== b) {
+      problems.push({
+        source: `${playgroundDir}/${name}`,
+        message: `differs from ${webDir}/${name} (sha256 ${b.slice(0, 12)} vs ${a.slice(0, 12)})`,
+      });
+    }
+  }
+  return problems;
+}
+
 export function checkAll(root: string): Problem[] {
   return [
     ...checkRegister(root),
@@ -878,6 +925,7 @@ export function checkAll(root: string): Problem[] {
     ...checkAnalyticsTools(root),
     ...checkNodeVersion(root),
     ...checkSetupSteps(root),
+    ...checkFontCopies(root),
   ].map((problem) => ({ ...problem, source: toPosix(problem.source) }));
 }
 

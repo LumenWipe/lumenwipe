@@ -1,0 +1,31 @@
+/* Metric-matched Arial fallbacks shown until each font loads, with the exact
+   values next/font/google generated from Google's metrics for these families.
+   next/font/local would compute different ones from the subset files, so it
+   is told not to (adjustFontFallback: false) and these are used instead. */
+
+@font-face {
+  font-family: "Bricolage Grotesque Fallback";
+  src: local("Arial");
+  ascent-override: 88.21%;
+  descent-override: 25.61%;
+  line-gap-override: 0%;
+  size-adjust: 105.43%;
+}
+
+@font-face {
+  font-family: "Manrope Fallback";
+  src: local("Arial");
+  ascent-override: 103.31%;
+  descent-override: 29.07%;
+  line-gap-override: 0%;
+  size-adjust: 103.19%;
+}
+
+@font-face {
+  font-family: "JetBrains Mono Fallback";
+  src: local("Arial");
+  ascent-override: 75.79%;
+  descent-override: 22.29%;
+  line-gap-override: 0%;
+  size-adjust: 134.59%;
+}

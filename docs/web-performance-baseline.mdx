@@ -21,7 +21,7 @@ On every pull request that changes what the web app is built from, the `web acce
 | Network    | Every host except `localhost` is unresolvable (`--host-resolver-rules`), so no run depends on a third party |
 | Runner     | GitHub-hosted `ubuntu-latest` in the Playwright container; Lighthouse benchmark index 1840 to 2072          |
 
-Fonts are part of the build: `next/font/google` downloads them at build time and the app serves them from `/_next/static/media`, so a page load never contacts a font host.
+Fonts are part of the build: they are committed under `apps/web/app/fonts`, loaded with `next/font/local`, and served from `/_next/static/media`, so neither the build nor a page load contacts a font host. The measurement below predates that change (it used `next/font/google`), but the files served are byte for byte the same, so it still applies.
 
 ## What was measured
 
