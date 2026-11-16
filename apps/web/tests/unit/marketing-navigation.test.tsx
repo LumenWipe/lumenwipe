@@ -159,7 +159,14 @@ describe("navigation grouping", () => {
     expect(screen.getByRole("link", { name: "Guides and videos" }).getAttribute("href")).toBe(
       "/content"
     );
-    for (const name of ["API keys", "FAQ", "Stats", "How it works", "Security"]) {
+    for (const name of [
+      "API keys",
+      "FAQ",
+      "Stats",
+      "Exchange registry",
+      "How it works",
+      "Security",
+    ]) {
       expect(screen.getByRole("link", { name })).toBeTruthy();
     }
   });

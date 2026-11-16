@@ -20,6 +20,7 @@ const COLS: { title: string; links: readonly SiteLink[] }[] = [
       ...PRIMARY_LINKS.filter((l) => l.href !== "/content"),
       { label: "FAQ", href: "/faq" },
       { label: "Stats", href: "/stats" },
+      { label: "Exchange registry", href: "/registry" },
     ],
   },
   {

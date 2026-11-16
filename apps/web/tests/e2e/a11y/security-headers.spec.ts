@@ -132,7 +132,7 @@ async function expectHydrated(page: Page, path: string) {
   await expect(developers, `${path} hydrated`).toHaveAttribute("aria-expanded", "true");
 }
 
-for (const path of ["/", "/faq", "/blog", "/blog/account-merge-on-stellar"]) {
+for (const path of ["/", "/faq", "/registry", "/blog", "/blog/account-merge-on-stellar"]) {
   test(`${path} runs under its hash policy with no violation`, async ({ page }) => {
     const violations = await watchViolations(page);
     const res = await page.goto(path);
