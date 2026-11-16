@@ -43,16 +43,6 @@ export interface RevokeAllowanceDeps {
   rpc: Pick<stellarRpc.Server, "simulateTransaction" | "getAccount">;
 }
 
-async function simulate(
-  rpc: RevokeAllowanceDeps["rpc"],
-  tx: Transaction
-): Promise<stellarRpc.Api.SimulateTransactionResponse> {
-  const response = await rpc.simulateTransaction(tx);
-  return stellarRpc.Api.isSimulationRaw(response)
-    ? stellarRpc.parseRawSimulation(response)
-    : response;
-}
-
 /**
  * Refuses an assembled revocation whose shape is anything other than the one plain call it must
  * be. Everything here is re-checked by the web anchor before signing; a mismatch is a bug in this
@@ -166,7 +156,7 @@ export async function buildRevokeAllowanceTransaction(
     .setTimeout(TX_TIMEOUT_SECONDS)
     .build();
 
-  const simulation = await simulate(deps.rpc, raw);
+  const simulation = await deps.rpc.simulateTransaction(raw);
   if (stellarRpc.Api.isSimulationRestore(simulation)) {
     throw new RevokeAllowanceBlockedError(
       "revoke_needs_restore",

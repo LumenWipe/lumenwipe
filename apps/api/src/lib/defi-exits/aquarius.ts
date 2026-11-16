@@ -188,10 +188,7 @@ async function simulateUnsigned(
     .addOperation(new Contract(contract).call(fn, ...args))
     .setTimeout(TX_TIMEOUT_SECONDS)
     .build();
-  const response = await rpc.simulateTransaction(tx);
-  const simulation = stellarRpc.Api.isSimulationRaw(response)
-    ? stellarRpc.parseRawSimulation(response)
-    : response;
+  const simulation = await rpc.simulateTransaction(tx);
   if (!stellarRpc.Api.isSimulationSuccess(simulation)) return null;
   return simulation.result?.retval ?? null;
 }
