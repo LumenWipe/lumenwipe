@@ -1,0 +1,18 @@
+{
+  "apps/api": {
+    "src/lib/stellar/tx-builder/": 100,
+    "src/lib/stellar/tx-builder/close-operations.ts": 90,
+    "src/lib/stellar/submit.ts": 100,
+    "src/lib/stellar/signature.ts": 100,
+    "src/lib/close-api/read-account.ts": 100,
+    "src/lib/stellar/path-finding.ts": 95
+  },
+  "apps/web": {
+    "lib/stellar/verify.ts": 100,
+    "lib/stellar/mediator.ts": 100
+  },
+  "packages/sdk": {
+    "src/client.ts": 95,
+    "src/close-engine.ts": 95
+  }
+}

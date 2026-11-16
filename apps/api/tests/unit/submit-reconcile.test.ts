@@ -16,7 +16,7 @@ import {
   SETTLE_WINDOW_MS,
   SUBMIT_BUDGET_MS,
 } from "@/config/constants";
-import { submitAndWait, type SubmitClock } from "@/lib/stellar/submit";
+import { serializeResultXdr, submitAndWait, type SubmitClock } from "@/lib/stellar/submit";
 import { TxPendingError, TxSubmitError, TxUnsettledError } from "@/lib/utils/errors";
 import {
   failedTransaction,
@@ -308,6 +308,80 @@ describe("the budget", () => {
       )
     ).rejects.toBeInstanceOf(TxUnsettledError);
     expect(counts.sends).toBe(1);
+  });
+});
+
+describe("retry and status", () => {
+  const submitWith = (script: Script) => {
+    const { server, counts } = stub(script);
+    const statuses: string[] = [];
+    const clock = fakeClock();
+    const result = submitAndWait(
+      envelope().signed,
+      "testnet",
+      (status) => statuses.push(status),
+      () => server,
+      () => null,
+      clock
+    );
+    return { result, counts, statuses, clock };
+  };
+
+  test("a send accepted after TRY_AGAIN_LATER is polled to its confirmation", async () => {
+    const { result, counts, statuses, clock } = submitWith({
+      reads: [notFound, notFound, success],
+      sends: [sendResult("TRY_AGAIN_LATER"), sendResult("TRY_AGAIN_LATER"), pending],
+    });
+    expect((await result).ledger).toBe(77);
+    expect(counts.sends).toBe(3);
+    expect(clock.slept.slice(0, 2)).toEqual([4_000, 4_000]);
+    expect(statuses).toEqual([
+      "Submitting to Stellar network...",
+      "Network busy, retrying (1/3)…",
+      "Network busy, retrying (2/3)…",
+      "Waiting for ledger confirmation...",
+    ]);
+  });
+
+  test("the third TRY_AGAIN_LATER ends the retries without a fourth send", async () => {
+    const { result, counts, statuses } = submitWith({
+      reads: [notFound],
+      sends: [sendResult("TRY_AGAIN_LATER")],
+    });
+    await expect(result).rejects.toBeInstanceOf(TxUnsettledError);
+    expect(counts.sends).toBe(3);
+    expect(statuses.filter((s) => s.startsWith("Network busy"))).toHaveLength(2);
+  });
+
+  test("DUPLICATE is polled like an accepted send", async () => {
+    const { result, counts, statuses } = submitWith({
+      reads: [notFound, success],
+      sends: [sendResult("DUPLICATE")],
+    });
+    expect(await result).toEqual({ txHash: envelope().hash, ledger: 77 });
+    expect(counts.sends).toBe(1);
+    expect(statuses.at(-1)).toBe("Waiting for ledger confirmation...");
+  });
+
+  test("a transaction already confirmed reports it and sends nothing", async () => {
+    const { result, counts, statuses } = submitWith({ reads: [success], sends: [pending] });
+    expect((await result).ledger).toBe(77);
+    expect(counts.sends).toBe(0);
+    expect(statuses).toEqual(["Submitting to Stellar network...", "Already confirmed."]);
+  });
+
+  test("a result that cannot be serialized reads as no result", () => {
+    expect(serializeResultXdr(undefined)).toBe("");
+    expect(serializeResultXdr("AAAA")).toBe("AAAA");
+    expect(serializeResultXdr({ toXDR: () => "BBBB" })).toBe("BBBB");
+    expect(
+      serializeResultXdr({
+        toXDR: () => {
+          throw new Error("not xdr");
+        },
+      })
+    ).toBe("");
+    expect(serializeResultXdr({})).toBe("");
   });
 });
 

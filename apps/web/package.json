@@ -10,6 +10,7 @@
     "type-check": "tsc --noEmit && tsc -p tests/tsconfig.json --noEmit",
     "test": "bun test tests/unit",
     "test:coverage": "bun test tests/unit --coverage --coverage-reporter=text --coverage-reporter=lcov --coverage-dir=coverage",
+    "coverage:gate": "bun ../../scripts/coverage-gate.ts",
     "test:watch": "bun test --watch tests/unit",
     "test:e2e": "playwright test",
     "test:a11y": "NEXT_PUBLIC_STELLAR_WALLET_CONNECT_PROJECT_ID=00000000000000000000000000000000 bun run build && playwright test -c playwright.a11y.config.ts",

@@ -3,6 +3,7 @@ import { HttpException } from "@nestjs/common";
 import {
   Account,
   Keypair,
+  MuxedAccount,
   Networks,
   Operation,
   type Transaction,
@@ -130,6 +131,44 @@ test("a signature from a key that is not the source is left to the network as a 
   const tx = unsigned();
   tx.sign(OTHER);
   expect(() => checkTransactionSignatures(tx)).not.toThrow();
+});
+
+test("a muxed source account is not checked offline, even with a forged signature", () => {
+  const tx = new TransactionBuilder(new MuxedAccount(new Account(SOURCE.publicKey(), "1"), "7"), {
+    fee: "100",
+    networkPassphrase: Networks.TESTNET,
+  })
+    .addOperation(Operation.bumpSequence({ bumpTo: "200" }))
+    .setTimeout(30)
+    .build();
+  expect(tx.source.startsWith("M")).toBe(true);
+  tx.signatures.push(
+    new xdr.DecoratedSignature({ hint: SOURCE.signatureHint(), signature: OTHER.sign(tx.hash()) })
+  );
+  expect(() => checkTransactionSignatures(tx)).not.toThrow();
+});
+
+test("a co-signer's signature ahead of a forged source signature leaves the envelope to the network", () => {
+  const tx = withForgedHint();
+  tx.signatures.unshift(
+    new xdr.DecoratedSignature({ hint: OTHER.signatureHint(), signature: OTHER.sign(tx.hash()) })
+  );
+  expect(() => checkTransactionSignatures(tx)).not.toThrow();
+});
+
+test("a forged source signature after a valid one is not reached", () => {
+  const tx = unsigned();
+  tx.sign(SOURCE);
+  tx.signatures.push(
+    new xdr.DecoratedSignature({ hint: SOURCE.signatureHint(), signature: OTHER.sign(tx.hash()) })
+  );
+  expect(() => checkTransactionSignatures(tx)).not.toThrow();
+});
+
+test("a valid source signature after a forged one does not rescue it", () => {
+  const tx = withForgedHint();
+  tx.sign(SOURCE);
+  expect(() => checkTransactionSignatures(tx)).toThrow(InvalidSignatureError);
 });
 
 test("close/submit refuses a signature that names the source key but does not verify, and sends nothing", async () => {

@@ -56,6 +56,8 @@
     "type-check": "bun run --filter '@lumenwipe/verify' build && tsc --noEmit && tsc -p tests/tsconfig.json --noEmit && tsc -p examples/tsconfig.json --noEmit",
     "lint": "eslint src examples scripts",
     "test": "bun run --filter '@lumenwipe/verify' build:js && bun test tests",
+    "test:coverage": "bun run --filter '@lumenwipe/verify' build:js && bun test tests --coverage --coverage-reporter=text --coverage-reporter=lcov --coverage-dir=coverage",
+    "coverage:gate": "bun ../../scripts/coverage-gate.ts",
     "example:headless": "bun run --filter '@lumenwipe/verify' build:js && bun run examples/headless-close.ts",
     "example:plan-only": "bun run examples/plan-only.ts",
     "example:exchange": "bun run --filter '@lumenwipe/verify' build:js && bun run examples/exchange-close.ts"

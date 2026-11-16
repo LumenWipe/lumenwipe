@@ -48,6 +48,11 @@ export default [
               ],
               message: "apps/api must not import apps/playground or apps/web directly.",
             },
+            {
+              regex: "^(?:\\.\\./)+(?:apps/)?(?:web|playground)(?:/|$)",
+              message:
+                "apps/api must not import apps/web or apps/playground source by relative path.",
+            },
           ],
         },
       ],
