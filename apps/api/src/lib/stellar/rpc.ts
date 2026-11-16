@@ -10,7 +10,7 @@ import {
 import { currentDeadline, currentProviderPins } from "@/common/request-context";
 import { parseLedgerCloseTime } from "./claim-predicates";
 import { recordProviderFailover } from "./provider-failover";
-import { UpstreamError, type UpstreamErrorKind } from "./upstream-client";
+import { parseRetryAfter, UpstreamError, type UpstreamErrorKind } from "./upstream-client";
 import { recordUpstream } from "./upstream-metrics";
 
 // Memoized per-network singletons. A switch rather than a map keyed by the caller's string, so a
@@ -296,6 +296,51 @@ function typedRead(network: Network, provider: ProviderEndpoint, call: unknown):
   });
 }
 
+// Idempotent reads only: never a submit, and never a simulation, whose cost a retry would double.
+const RETRIED_ON_RATE_LIMIT = new Set<PropertyKey>(["getLedgerEntries", "getLatestLedger"]);
+const RPC_MAX_RETRY_AFTER_MS = 5_000;
+
+function retryAfterMsOf(error: unknown): number | null {
+  const headers = (error as { response?: { headers?: unknown } } | null)?.response?.headers;
+  if (!(headers instanceof Headers)) return null;
+  return parseRetryAfter(headers.get("Retry-After"), Date.now(), RPC_MAX_RETRY_AFTER_MS);
+}
+
+function pause(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const done = (): void => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    signal.addEventListener("abort", done, { once: true });
+  });
+}
+
+/**
+ * Sends a read once more when the provider refused it with a 429 and a `Retry-After` that ends
+ * before the request's deadline. Once only, and only inside a request: a second refusal, a wait
+ * past the deadline or no `Retry-After` at all is the outage it was.
+ */
+function retryOnceWhenAsked(prop: PropertyKey, send: () => unknown): unknown {
+  return RETRIED_ON_RATE_LIMIT.has(prop) ? sendWithOneRetry(send) : send();
+}
+
+async function sendWithOneRetry(send: () => unknown): Promise<unknown> {
+  try {
+    return await send();
+  } catch (error) {
+    if (httpStatusOf(error) !== 429) throw error;
+    const deadline = currentDeadline();
+    const waitMs = retryAfterMsOf(error);
+    if (!deadline || waitMs === null || waitMs >= deadline.remainingMs()) throw error;
+    await pause(waitMs, deadline.signal);
+    if (deadline.signal.aborted) throw error;
+    return send();
+  }
+}
+
 const isRead = (prop: PropertyKey): boolean =>
   SIMULATION_METHODS.has(prop) || READ_METHODS.has(prop);
 
@@ -304,8 +349,8 @@ function callPinned(network: Network, prop: PropertyKey, args: unknown[]): Promi
     const servers = serversFor(network, endpoint);
     const owner = SIMULATION_METHODS.has(prop) ? servers.simulation : servers.reads;
     const method = Reflect.get(owner, prop, owner) as (...args: unknown[]) => unknown;
-    const result = method.apply(owner, withLegacyAuth(prop, args));
-    return isRead(prop) ? typedRead(network, endpoint, result) : result;
+    const send = (): unknown => method.apply(owner, withLegacyAuth(prop, args));
+    return isRead(prop) ? typedRead(network, endpoint, retryOnceWhenAsked(prop, send)) : send();
   });
   return isRead(prop) ? raceDeadline(call) : call;
 }
@@ -333,7 +378,11 @@ function withRequestDeadline(network: Network): rpc.Server {
       if (!isRead(prop)) return bound;
       return (...args: unknown[]) =>
         raceDeadline(
-          typedRead(network, rpcProviders(network)[0]!, bound(...withLegacyAuth(prop, args)))
+          typedRead(
+            network,
+            rpcProviders(network)[0]!,
+            retryOnceWhenAsked(prop, () => bound(...withLegacyAuth(prop, args)))
+          )
         );
     },
   });

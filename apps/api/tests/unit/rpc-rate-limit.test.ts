@@ -28,7 +28,8 @@ const META_XDR = Buffer.alloc(4 + 32 + HEADER_XDR.length + 4 + 32 + 4 + 4 + 4 + 
 /** A JSON-RPC result, an HTTP error status, a thrown fetch failure, or a raw 200 body. */
 type Reply =
   | { result: unknown }
-  | { status: number }
+  | { status: number; retryAfter?: string }
+  | { hangs: true }
   | { rpcError: string }
   | { throws: Error }
   | { raw: () => ConstructorParameters<typeof Response>[0] };
@@ -47,7 +48,12 @@ function fakeRpc(hosts: Record<string, Handler>): Call[] {
     calls.push({ host: url.origin, method });
     const reply = hosts[url.origin]!(method);
     if ("throws" in reply) throw reply.throws;
-    if ("status" in reply) return new Response("busy", { status: reply.status });
+    if ("hangs" in reply) return new Promise<Response>(() => undefined);
+    if ("status" in reply) {
+      const headers: Record<string, string> =
+        reply.retryAfter === undefined ? {} : { "Retry-After": reply.retryAfter };
+      return new Response("busy", { status: reply.status, headers });
+    }
     if ("raw" in reply) return new Response(reply.raw(), { status: 200 });
     const body =
       "rpcError" in reply
@@ -364,5 +370,120 @@ test("a rate-limited by-hash check before a submit sends nothing", async () => {
     expect(send).not.toHaveBeenCalled();
   } finally {
     send.mockRestore();
+  }
+});
+
+/** Answers `method` with each reply in turn, the last one from then on; fresh on every probe. */
+function scripted(method: string, ...replies: Reply[]): Handler {
+  let served = 0;
+  return (asked) => {
+    if (asked !== method) return provider(EMPTY_ENTRIES)(asked);
+    const reply = replies[Math.min(served, replies.length - 1)]!;
+    served += 1;
+    return reply;
+  };
+}
+
+const ASKS_SHORT_WAIT: Reply = { status: 429, retryAfter: "0.05" };
+
+test("a ledger read refused with a short Retry-After is answered by its one retry", async () => {
+  const lone = useLoneProvider();
+  const calls = fakeRpc({ [lone]: scripted("getLedgerEntries", ASKS_SHORT_WAIT, EMPTY_ENTRIES) });
+  expect(await readEntries()).toMatchObject({ entries: [] });
+  expect(hostsOf(calls, "getLedgerEntries")).toEqual([lone, lone]);
+});
+
+test("a latest-ledger read refused with a short Retry-After is answered by its one retry", async () => {
+  const lone = useLoneProvider();
+  const calls = fakeRpc({
+    [lone]: scripted("getLatestLedger", ASKS_SHORT_WAIT, { result: latestLedger(100) }),
+  });
+  const latest = await inRequestContext(() => getRpcServer("testnet").getLatestLedger());
+  expect(latest.sequence).toBe(100);
+  expect(hostsOf(calls, "getLatestLedger")).toEqual([lone, lone]);
+});
+
+test("with several providers the retry stays on the pinned one and cools nothing", async () => {
+  useProviders(A, B);
+  let calls = fakeRpc({
+    [A]: scripted("getLedgerEntries", ASKS_SHORT_WAIT, EMPTY_ENTRIES),
+    [B]: provider(EMPTY_ENTRIES),
+  });
+  expect(await readEntries()).toMatchObject({ entries: [] });
+  expect(hostsOf(calls, "getLedgerEntries")).toEqual([A, A]);
+  calls = fakeRpc({ [A]: provider(EMPTY_ENTRIES), [B]: provider(EMPTY_ENTRIES) });
+  await readEntries();
+  expect(hostsOf(calls, "getLatestLedger")).toEqual([A]);
+});
+
+test("a second refusal is not retried again", async () => {
+  const lone = useLoneProvider();
+  const calls = fakeRpc({ [lone]: scripted("getLedgerEntries", ASKS_SHORT_WAIT) });
+  expect(await readEntries()).toMatchObject({ kind: "rate_limited" });
+  expect(hostsOf(calls, "getLedgerEntries")).toEqual([lone, lone]);
+});
+
+test("a refusal without Retry-After is not retried", async () => {
+  const lone = useLoneProvider();
+  const calls = fakeRpc({ [lone]: scripted("getLedgerEntries", RATE_LIMITED, EMPTY_ENTRIES) });
+  expect(await readEntries()).toMatchObject({ kind: "rate_limited" });
+  expect(hostsOf(calls, "getLedgerEntries")).toEqual([lone]);
+});
+
+test("a Retry-After that ends past the request's deadline is not waited for", async () => {
+  const lone = useLoneProvider();
+  const calls = fakeRpc({
+    [lone]: scripted("getLedgerEntries", { status: 429, retryAfter: "1" }, EMPTY_ENTRIES),
+  });
+  const started = Date.now();
+  const failure = await inRequestContext(
+    () => getRpcServer("testnet").getLedgerEntries(KEY),
+    300
+  ).catch((e: unknown) => e);
+  expect(failure).toMatchObject({ kind: "rate_limited" });
+  expect(Date.now() - started).toBeLessThan(1000);
+  expect(hostsOf(calls, "getLedgerEntries")).toEqual([lone]);
+});
+
+test("a retry that does not answer still ends at the request's deadline", async () => {
+  const lone = useLoneProvider();
+  fakeRpc({ [lone]: scripted("getLedgerEntries", ASKS_SHORT_WAIT, { hangs: true }) });
+  const started = Date.now();
+  const failure = await inRequestContext(
+    () => getRpcServer("testnet").getLedgerEntries(KEY),
+    300
+  ).catch((e: unknown) => e);
+  expect(failure).toMatchObject({ kind: "timeout" });
+  expect(Date.now() - started).toBeLessThan(1000);
+});
+
+test("outside a request a refusal is not retried", async () => {
+  const lone = useLoneProvider();
+  const calls = fakeRpc({ [lone]: scripted("getLedgerEntries", ASKS_SHORT_WAIT, EMPTY_ENTRIES) });
+  const failure = await getRpcServer("testnet")
+    .getLedgerEntries(KEY)
+    .catch((e: unknown) => e);
+  expect(failure).toMatchObject({ kind: "rate_limited" });
+  expect(hostsOf(calls, "getLedgerEntries")).toEqual([lone]);
+});
+
+test("a send and a simulation refused with a short Retry-After are sent once", async () => {
+  const setups = [useLoneProvider, () => (useProviders(A, B), A)];
+  for (const [method, setup] of setups.flatMap((s) =>
+    (["sendTransaction", "simulateTransaction"] as const).map((m) => [m, s] as const)
+  )) {
+    resetRpcCooldowns();
+    const lone = setup();
+    const calls = fakeRpc({
+      [lone]: scripted(method, ASKS_SHORT_WAIT, EMPTY_ENTRIES),
+      [B]: provider(EMPTY_ENTRIES),
+    });
+    const server = getRpcServer("testnet");
+    await inRequestContext((): Promise<unknown> =>
+      method === "sendTransaction"
+        ? server.sendTransaction(signedTransaction())
+        : server.simulateTransaction(signedTransaction())
+    ).catch((e: unknown) => e);
+    expect(hostsOf(calls, method)).toEqual([lone]);
   }
 });
