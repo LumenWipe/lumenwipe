@@ -24,6 +24,8 @@ const SPEC_OPERATIONS = Object.entries(SPEC.paths).flatMap(([path, item]) =>
 const EXCLUDED: Record<string, string> = {
   "GET /":
     "The service banner (name and docs link). Operational, unversioned, and carries nothing an integrator acts on.",
+  "GET /.well-known/api-catalog":
+    "The RFC 9727 discovery document for clients that have not found the API yet. An SDK user already holds the base URL, and the catalog only links the OpenAPI document, the docs and /health.",
   "GET /health/dependencies":
     "The operator's view of each upstream's last probe, for the status page. Its rows describe our providers, not the contract; integrators use health() or healthDeep().",
 };
