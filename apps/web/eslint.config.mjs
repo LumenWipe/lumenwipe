@@ -62,7 +62,9 @@ const goldAction = bannedActionClass(
 
 const MARKETING = [
   "app/(marketing)/**/*.{ts,tsx}",
-  "app/not-found.tsx",
+  "app/global-not-found.tsx",
+  "app/(app)/not-found.tsx",
+  "app/(app)/api-keys/**/*.{ts,tsx}",
   "components/marketing/**/*.{ts,tsx}",
   "components/blog/**/*.{ts,tsx}",
 ];

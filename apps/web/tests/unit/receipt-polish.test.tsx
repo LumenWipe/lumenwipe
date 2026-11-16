@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import * as navigation from "next/navigation";
-import ReceiptPage from "@/app/[network]/receipt/[id]/page";
+import ReceiptPage from "@/app/(app)/[network]/receipt/[id]/page";
 import ReceiptActions from "@/components/receipt/ReceiptActions";
 import ReceiptGroupRow from "@/components/receipt/ReceiptGroupRow";
 import { ExplorerLink } from "@/components/ui/explorer-link";

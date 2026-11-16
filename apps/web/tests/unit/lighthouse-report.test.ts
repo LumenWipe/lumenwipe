@@ -41,7 +41,7 @@ function lhr({
 }
 
 test("lighthouse-report › the gate runs on a change to what the web app is built from", () => {
-  expect(touchesWeb(["apps/web/app/layout.tsx"])).toBe(true);
+  expect(touchesWeb(["apps/web/app/(marketing)/layout.tsx"])).toBe(true);
   expect(touchesWeb(["apps/api/src/config/exchange-registry.json"])).toBe(true);
   expect(touchesWeb(["packages/sdk/src/index.ts"])).toBe(true);
   expect(touchesWeb(["bun.lock"])).toBe(true);

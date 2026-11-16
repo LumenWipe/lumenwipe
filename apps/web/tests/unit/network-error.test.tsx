@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import NetworkError from "@/app/[network]/error";
+import NetworkError from "@/app/(app)/[network]/error";
 import { useDemolishStore } from "@/store/demolish";
 import * as navigation from "next/navigation";
 import type { DemolishPhase, PlannedStep, StepStatus, StepType } from "@/types/plan";

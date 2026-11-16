@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { Suspense } from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import * as navigation from "next/navigation";
-import HomePage from "@/app/[network]/page";
+import HomePage from "@/app/(app)/[network]/page";
 import * as sessionRecovery from "@/hooks/useSessionRecovery";
 import * as sessionStore from "@/lib/session/store";
 import * as submitViaApi from "@/lib/stellar/submit-via-api";

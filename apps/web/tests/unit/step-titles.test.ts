@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import type { Metadata } from "next";
-import AnalyzeLayout, { metadata as analyze } from "@/app/[network]/analyze/layout";
-import CompleteLayout, { metadata as complete } from "@/app/[network]/complete/layout";
-import ExecuteLayout, { metadata as execute } from "@/app/[network]/execute/layout";
-import ReviewLayout, { metadata as review } from "@/app/[network]/review/layout";
+import AnalyzeLayout, { metadata as analyze } from "@/app/(app)/[network]/analyze/layout";
+import CompleteLayout, { metadata as complete } from "@/app/(app)/[network]/complete/layout";
+import ExecuteLayout, { metadata as execute } from "@/app/(app)/[network]/execute/layout";
+import ReviewLayout, { metadata as review } from "@/app/(app)/[network]/review/layout";
 
 type StepLayout = (props: { children: React.ReactNode }) => React.ReactNode;
 
