@@ -3,8 +3,8 @@ import { Suspense } from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { Keypair } from "@stellar/stellar-sdk";
 import * as navigation from "next/navigation";
-import NetworkLayout from "@/app/(app)/[network]/layout";
-import ExecutePage from "@/app/(app)/[network]/execute/page";
+import NetworkLayout from "@/app/[network]/layout";
+import ExecutePage from "@/app/[network]/execute/page";
 import {
   LEAVE_CLOSE,
   LEAVE_CLOSE_IN_FLIGHT,

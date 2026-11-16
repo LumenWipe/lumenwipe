@@ -1,18 +1,6 @@
-import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
-import RootDocument from "@/app/root-document";
 import MarketingShell from "@/components/marketing/MarketingShell";
-import { ROOT_METADATA, ROOT_VIEWPORT } from "@/lib/site/root-metadata";
 
-export const viewport: Viewport = ROOT_VIEWPORT;
-
-export const metadata: Metadata = ROOT_METADATA;
-
-/** A root layout of its own, reading no request data, so every marketing page is prerendered. */
 export default function MarketingLayout({ children }: { children: ReactNode }) {
-  return (
-    <RootDocument>
-      <MarketingShell>{children}</MarketingShell>
-    </RootDocument>
-  );
+  return <MarketingShell>{children}</MarketingShell>;
 }

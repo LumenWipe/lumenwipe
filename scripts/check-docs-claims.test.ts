@@ -145,7 +145,7 @@ function fixture(files: Record<string, string | null>): string {
     "apps/web/app/(marketing)/page.tsx": "export default function Page() {}\n",
     "docs/threat-model.md":
       "## 12. Coverage cross-reference\n\n| x | `apps/web/tests/unit/{verify}.test.ts` |\n\n## 13. Maintenance\n\n`apps/missing/elsewhere.ts`\n",
-    "apps/web/app/root-document.tsx": LAYOUT,
+    "apps/web/app/layout.tsx": LAYOUT,
     "apps/web/components/analytics/RedactedAnalytics.tsx": ANALYTICS_COMPONENT,
     "docs/architecture.md": ARCHITECTURE,
     "docs/reference/logging-and-privacy.mdx": PRIVACY_PAGE,
@@ -188,9 +188,7 @@ describe("the command", () => {
       { "docs/threat-model.md": "## 12. Coverage cross-reference\n\n`apps/gone.ts`\n" },
       { "apps/web/app/(marketing)/page.tsx": null },
       { "docs/architecture.md": ARCHITECTURE.replace("Umami Cloud", "Plausible") },
-      {
-        "apps/web/app/root-document.tsx": LAYOUT.replace("cloud.umami.is", "example.com"),
-      },
+      { "apps/web/app/layout.tsx": LAYOUT.replace("cloud.umami.is", "example.com") },
     ];
     for (const files of stale) {
       const { code, output } = run(fixture(files));
@@ -657,7 +655,7 @@ describe("the analytics tools", () => {
     expect(checkAnalyticsTools(root)).toEqual([
       {
         source: "docs/reference/logging-and-privacy.mdx",
-        message: "does not name Umami Cloud, which apps/web/app/root-document.tsx loads",
+        message: "does not name Umami Cloud, which apps/web/app/layout.tsx loads",
       },
     ]);
   });
@@ -665,15 +663,15 @@ describe("the analytics tools", () => {
   test("a privacy page naming a tool the layout does not load is reported", () => {
     const root = fixture({
       "docs/architecture.md": ARCHITECTURE.replace("when set.", "when set, not Plausible."),
-      "apps/web/app/root-document.tsx": LAYOUT.replace(
+      "apps/web/app/layout.tsx": LAYOUT.replace(
         '<script src="https://cloud.umami.is/script.js" />',
         ""
       ),
     });
     expect(checkAnalyticsTools(root).map((p) => `${p.source}: ${p.message}`)).toEqual([
-      "docs/architecture.md: names Umami Cloud, which apps/web/app/root-document.tsx does not load",
-      "docs/architecture.md: names Plausible, which apps/web/app/root-document.tsx does not load",
-      "docs/reference/logging-and-privacy.mdx: names Umami Cloud, which apps/web/app/root-document.tsx does not load",
+      "docs/architecture.md: names Umami Cloud, which apps/web/app/layout.tsx does not load",
+      "docs/architecture.md: names Plausible, which apps/web/app/layout.tsx does not load",
+      "docs/reference/logging-and-privacy.mdx: names Umami Cloud, which apps/web/app/layout.tsx does not load",
     ]);
   });
 
@@ -683,8 +681,8 @@ describe("the analytics tools", () => {
         '// import { Analytics } from "@vercel/analytics/next";\nexport default function RedactedAnalytics() {}\n',
     });
     expect(checkAnalyticsTools(root).map((p) => p.message)).toEqual([
-      "names Vercel Web Analytics, which apps/web/app/root-document.tsx does not load",
-      "names Vercel Web Analytics, which apps/web/app/root-document.tsx does not load",
+      "names Vercel Web Analytics, which apps/web/app/layout.tsx does not load",
+      "names Vercel Web Analytics, which apps/web/app/layout.tsx does not load",
     ]);
   });
 
@@ -706,9 +704,9 @@ describe("the analytics tools", () => {
         message: "the section stating the privacy position was not found",
       },
     ]);
-    const noLayout = fixture({ "apps/web/app/root-document.tsx": null });
+    const noLayout = fixture({ "apps/web/app/layout.tsx": null });
     expect(checkAnalyticsTools(noLayout)).toEqual([
-      { source: "apps/web/app/root-document.tsx", message: "is missing" },
+      { source: "apps/web/app/layout.tsx", message: "is missing" },
     ]);
   });
 });

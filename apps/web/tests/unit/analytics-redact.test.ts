@@ -64,11 +64,8 @@ test("the Umami hook redacts the page and the referrer the same way", () => {
   expect(hook("event", null)).toBeNull();
 });
 
-test("the root document defines the Umami hook before Umami loads, and has it drop queries and fragments", () => {
-  const layout = readFileSync(
-    join(import.meta.dir, "..", "..", "app", "root-document.tsx"),
-    "utf8"
-  );
+test("the layout defines the Umami hook before Umami loads, and has it drop queries and fragments", () => {
+  const layout = readFileSync(join(import.meta.dir, "..", "..", "app", "layout.tsx"), "utf8");
   const hook = layout.indexOf("__html: UMAMI_BEFORE_SEND_SCRIPT");
   const umami = layout.indexOf('src="https://cloud.umami.is/script.js"');
   expect(hook).toBeGreaterThan(-1);

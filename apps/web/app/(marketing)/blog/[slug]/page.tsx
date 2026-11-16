@@ -25,8 +25,6 @@ import PostNextStep from "@/components/blog/PostNextStep";
 import RelatedPosts from "@/components/blog/RelatedPosts";
 import { BaseReserve, BaseReserveCheckedOn } from "@/components/blog/BaseReserve";
 
-export const dynamicParams = false;
-
 export async function generateStaticParams() {
   return getAllSlugs().map((slug) => ({ slug }));
 }

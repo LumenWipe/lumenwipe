@@ -8,9 +8,7 @@ const vars = rootVars(fs.readFileSync(path.join(root, "app/globals.css"), "utf8"
 
 const MARKETING = [
   "app/(marketing)",
-  "app/global-not-found.tsx",
-  "app/(app)/not-found.tsx",
-  "app/(app)/api-keys",
+  "app/not-found.tsx",
   "components/marketing",
   "components/blog",
 ];
