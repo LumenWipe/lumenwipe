@@ -36,6 +36,7 @@ test("spec documents all v1 + read + mediator endpoints", () => {
   expect(paths).toEqual(
     expect.arrayContaining([
       "/",
+      "/.well-known/api-catalog",
       "/health",
       "/v1/{network}/close/plan",
       "/v1/{network}/close/batch-plan",
@@ -273,9 +274,11 @@ test("close/transactions response schema, including the 11-variant operation uni
 test("health and the service index are public but the product endpoints require the api-key", () => {
   const health = spec.paths["/health"].get;
   const index = spec.paths["/"].get;
+  const catalog = spec.paths["/.well-known/api-catalog"].get;
   const plan = spec.paths["/v1/{network}/close/plan"].post;
   // neither public route carries a security requirement; close/plan requires api-key
   expect(health?.security ?? []).toEqual([]);
   expect(index?.security ?? []).toEqual([]);
+  expect(catalog?.security ?? []).toEqual([]);
   expect(plan?.security).toEqual(expect.arrayContaining([{ "api-key": [] }]));
 });

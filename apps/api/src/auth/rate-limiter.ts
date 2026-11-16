@@ -61,10 +61,11 @@ export function throttleStorageKey(name: string, tracker: string): string {
 
 const THROTTLER_NAME = "default";
 
-/** Never counted: the service index, the health checks and the Swagger UI, as before. */
+/** Never counted: the service index, the API catalog, the health checks and the Swagger UI. */
 export function isUnthrottledPath(path: string): boolean {
   return (
     path === "/" ||
+    path === "/.well-known/api-catalog" ||
     path === "/health" ||
     path === "/health/deep" ||
     path === "/docs-json" ||

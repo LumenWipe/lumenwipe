@@ -94,7 +94,7 @@ test("a 503 carries Retry-After", async () => {
 });
 
 test("the service index and the health checks are not counted and send no budget headers", async () => {
-  for (const path of ["/", "/health"]) {
+  for (const path of ["/", "/.well-known/api-catalog", "/health"]) {
     const res = await request(http).get(path).set(ip("198.51.100.7"));
     expect(res.status).toBe(200);
     expect(res.headers["ratelimit-limit"]).toBeUndefined();
@@ -173,7 +173,7 @@ test("every response the limiter or the body handling sends is non-cacheable", a
 }, 20_000);
 
 test("unthrottled paths are non-cacheable and carry no RateLimit headers", async () => {
-  for (const path of ["/", "/health"]) {
+  for (const path of ["/", "/.well-known/api-catalog", "/health"]) {
     const res = await request(http).get(path).set(ip("198.51.100.22"));
     expect(res.status).toBe(200);
     expect(res.headers["cache-control"]).toBe("no-store");

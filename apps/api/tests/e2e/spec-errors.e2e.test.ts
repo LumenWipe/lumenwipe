@@ -14,6 +14,7 @@ const METHODS = ["get", "post"] as const;
 // Operations that have no failing input: they answer 200 whatever the caller sends.
 const NO_ERROR_CASE = new Set([
   "GET /",
+  "GET /.well-known/api-catalog",
   "GET /health",
   "GET /health/deep",
   "GET /health/dependencies",

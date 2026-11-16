@@ -1,3 +1,5 @@
+export const DOCS_SITE_URL = "https://docs.lumenwipe.com";
+
 // Stellar protocol constants
 export const BASE_RESERVE_XLM = 0.5; // XLM per subentry
 export const ACCOUNT_BASE_RESERVE_XLM = 1.0; // base account reserve

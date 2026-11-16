@@ -4,6 +4,7 @@ import { Test } from "@nestjs/testing";
 import request from "supertest";
 import { AppModule } from "@/app.module";
 import { JsonLogger } from "@/common/json-logger";
+import { DISCOVERY_LINK_HEADER } from "@/common/discovery-links";
 import { configureApp } from "@/configure-app";
 
 const KEY = "e2e_alias_key";
@@ -39,13 +40,15 @@ const freshIp = (): { "X-Forwarded-For": string } => ({
 function expectDeprecated(headers: Record<string, string>, successor: string): void {
   expect(headers["deprecation"]).toBe("@1794182400");
   expect(headers["sunset"]).toBe(SUNSET);
-  expect(headers["link"]).toBe(`<${successor}>; rel="successor-version", ${POLICY}`);
+  expect(headers["link"]).toBe(
+    `<${successor}>; rel="successor-version", ${POLICY}, ${DISCOVERY_LINK_HEADER}`
+  );
 }
 
 function expectNotDeprecated(headers: Record<string, string>): void {
   expect(headers["deprecation"]).toBeUndefined();
   expect(headers["sunset"]).toBeUndefined();
-  expect(headers["link"]).toBeUndefined();
+  expect(headers["link"]).toBe(DISCOVERY_LINK_HEADER);
 }
 
 function withoutRequestId(body: unknown): unknown {
@@ -192,7 +195,12 @@ test("operational and admin routes are not aliased", async () => {
   }
 });
 
-const UNVERSIONED = [/^\/$/, /^\/health(\/deep|\/dependencies)?$/, /^\/admin\/api-keys(\/.*)?$/];
+const UNVERSIONED = [
+  /^\/$/,
+  /^\/\.well-known\/api-catalog$/,
+  /^\/health(\/deep|\/dependencies)?$/,
+  /^\/admin\/api-keys(\/.*)?$/,
+];
 
 test("every registered route outside the operational and admin allowlist is under /v1", () => {
   const router = (

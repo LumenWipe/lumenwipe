@@ -16,6 +16,64 @@
         ]
       }
     },
+    "/.well-known/api-catalog": {
+      "get": {
+        "operationId": "WellKnownController_apiCatalog",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "A linkset naming the OpenAPI document, the documentation and the status check.",
+            "content": {
+              "application/linkset+json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "linkset"
+                  ],
+                  "properties": {
+                    "linkset": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "anchor"
+                        ],
+                        "properties": {
+                          "anchor": {
+                            "type": "string"
+                          }
+                        },
+                        "additionalProperties": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "href"
+                            ],
+                            "properties": {
+                              "href": {
+                                "type": "string"
+                              },
+                              "type": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "API catalog (RFC 9727, public, no API key).",
+        "tags": [
+          "service"
+        ]
+      }
+    },
     "/health": {
       "get": {
         "operationId": "HealthController_check",
