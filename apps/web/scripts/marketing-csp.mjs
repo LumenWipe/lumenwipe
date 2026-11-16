@@ -19,7 +19,7 @@
  *    not cover, or a file not shaped as expected exits 1 and names the page.
  */
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { marketingPolicy, UMAMI_SCRIPT_ORIGIN } from "../config/marketing-csp.mjs";
 
@@ -328,22 +328,36 @@ function pageFile(path) {
   return path === "/" ? "/index" : path;
 }
 
-/** @param {string} file @returns {any} */
-function readJson(file) {
-  if (!existsSync(file)) fail(`${file} is missing: run next build first`);
-  return JSON.parse(readFileSync(file, "utf8"));
-}
-
-/** @param {string} file @returns {any} the parsed file, or undefined when there is none. */
-function readJsonIfPresent(file) {
-  let text;
+/** @param {string} file @returns {string | null} the file's text, or null when there is none. */
+function readIfPresent(file) {
   try {
-    text = readFileSync(file, "utf8");
+    return readFileSync(file, "utf8");
   } catch (error) {
-    if (/** @type {NodeJS.ErrnoException} */ (error).code === "ENOENT") return undefined;
+    if (/** @type {NodeJS.ErrnoException} */ (error).code === "ENOENT") return null;
     throw error;
   }
-  return JSON.parse(text);
+}
+
+/** @param {string} file @param {string} text @returns {any} */
+function parseJson(file, text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return fail(`${file} is not valid JSON`);
+  }
+}
+
+/** @param {string} file @returns {any} the parsed file, or null when there is none. */
+function readJsonIfPresent(file) {
+  const text = readIfPresent(file);
+  return text === null ? null : parseJson(file, text);
+}
+
+/** @param {string} file @returns {any} */
+function readJson(file) {
+  const text = readIfPresent(file);
+  if (text === null) fail(`${file} is missing: run next build first`);
+  return parseJson(file, text);
 }
 
 /**
@@ -355,8 +369,9 @@ function readPages(pages, fileOf) {
   return new Map(
     pages.map((path) => {
       const file = fileOf(path);
-      if (!existsSync(file)) fail(`${path} is prerendered but ${file} is missing`);
-      return [path, readFileSync(file, "utf8")];
+      const html = readIfPresent(file);
+      if (html === null) fail(`${path} is prerendered but ${file} is missing`);
+      return [path, html];
     })
   );
 }
@@ -390,7 +405,7 @@ export function run(dir, write, env = process.env) {
   const outputDir = join(dir, "output");
   const configFile = join(outputDir, "config.json");
   const config = readJsonIfPresent(configFile);
-  if (config !== undefined) {
+  if (config !== null) {
     const htmlByPath = readPages(pages, outputPageFile(outputDir));
     if (write) {
       injectRoutes(

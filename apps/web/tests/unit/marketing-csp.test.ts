@@ -372,6 +372,15 @@ describe("under a build adapter, as on Vercel", () => {
     expect(() => checkOutput(dir, out)).toThrow("config.json is missing");
   });
 
+  test("an output config that cannot be parsed fails instead of falling back to the manifest", () => {
+    write("server/app/index.html", page("home"));
+    write("server/app/faq.html", page("faq"));
+    write("server/app/blog/a-post.html", page("post"));
+    write("output/config.json", '{"version":3,"routes":[');
+    expect(() => run(dir, true, {})).toThrow("config.json is not valid JSON");
+    expect(manifest().headers).toEqual([SECURITY_ENTRY]);
+  });
+
   test("an output config of another shape fails closed", () => {
     write("output/config.json", { version: 3 });
     expect(() => run(dir, true)).toThrow("the Build Output config has no routes array");
