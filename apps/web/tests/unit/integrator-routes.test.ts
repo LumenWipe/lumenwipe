@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { randomBytes } from "node:crypto";
 import { NextRequest, type NextResponse } from "next/server";
 import { Keypair } from "@stellar/stellar-sdk";
 import * as challengeRoute from "@/app/api/integrator/auth/challenge/route";
@@ -16,6 +17,7 @@ const ENV: Record<string, string> = {
   NEXT_PUBLIC_APP_URL: APP_URL,
   UPSTASH_REDIS_REST_URL: LIMITER,
   UPSTASH_REDIS_REST_TOKEN: "test-token",
+  RATE_LIMIT_HASH_KEY: randomBytes(32).toString("hex"),
 };
 
 const ADDRESS = Keypair.random().publicKey();

@@ -564,6 +564,13 @@ export const ENVIRONMENT: Record<EnvApp, Record<string, EnvironmentFacts>> = {
       "Name the Vercel Upstash integration injects; read when `UPSTASH_REDIS_REST_TOKEN` is unset",
       true
     ),
+    RATE_LIMIT_HASH_KEY: {
+      required: "Production",
+      secret: true,
+      default: NONE,
+      purpose:
+        "Key for the hash of the client IP in the proxy rate-limit counters, at least 32 characters; unset on a deployment makes the limiter unavailable",
+    },
     NEXT_PUBLIC_APP_URL: {
       required: "Production",
       secret: false,

@@ -1,20 +1,28 @@
 import { afterEach, beforeEach, describe, expect, setSystemTime, spyOn, test } from "bun:test";
-import { createHash } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import { NextRequest } from "next/server";
 import { rateLimitProxy } from "@/lib/api/rate-limit";
 import * as limiter from "@/lib/upstash-redis";
-import { checkNamespacedRateLimit } from "@/lib/upstash-redis";
+import { checkNamespacedRateLimit, MIN_HASH_KEY_LENGTH } from "@/lib/upstash-redis";
 
 const LIMITER = "https://limiter.invalid";
 const IP = "203.0.113.42";
-const IP_HASH = createHash("sha256").update(IP).digest("hex").slice(0, 16);
+const PLAIN_IP_HASH = createHash("sha256").update(IP).digest("hex").slice(0, 16);
 const VARS = [
   "UPSTASH_REDIS_REST_URL",
   "UPSTASH_REDIS_REST_TOKEN",
   "KV_REST_API_URL",
   "KV_REST_API_TOKEN",
+  "RATE_LIMIT_HASH_KEY",
   "VERCEL_ENV",
 ] as const;
+
+// Generated per run: no key-shaped value is ever written into the repository.
+const HASH_KEY = randomBytes(32).toString("hex");
+
+function ipHash(namespace: string, day: string, key = HASH_KEY): string {
+  return createHmac("sha256", key).update(`${namespace}:${day}:${IP}`).digest("hex").slice(0, 16);
+}
 
 type Reply = () => Promise<Response>;
 
@@ -34,7 +42,11 @@ function configure(env: Partial<Record<(typeof VARS)[number], string>>): void {
   Object.assign(process.env, env);
 }
 
-const UPSTASH = { UPSTASH_REDIS_REST_URL: LIMITER, UPSTASH_REDIS_REST_TOKEN: "test-token" };
+const UPSTASH = {
+  UPSTASH_REDIS_REST_URL: LIMITER,
+  UPSTASH_REDIS_REST_TOKEN: "test-token",
+  RATE_LIMIT_HASH_KEY: HASH_KEY,
+};
 
 /** The origin a fetch was sent to, or null for an input that is not a URL. */
 function originOf(input: unknown): string | null {
@@ -93,8 +105,37 @@ describe("checkNamespacedRateLimit", () => {
   test("counts against the UTC day of the instant it is given", async () => {
     setSystemTime(new Date("2026-11-09T00:00:00.100Z"));
     await checkNamespacedRateLimit("t", IP, 5, { now: new Date("2026-11-08T23:59:59.900Z") });
-    expect(limiterBodies()).toContain(`t:ratelimit:${IP_HASH}:2026-11-08`);
+    expect(limiterBodies()).toContain(`t:ratelimit:${ipHash("t", "2026-11-08")}:2026-11-08`);
     expect(limiterBodies()).not.toContain("2026-11-09");
+  });
+
+  test("keys the counter with an HMAC of the namespace, the UTC day and the IP", async () => {
+    setSystemTime(new Date("2026-11-08T12:00:00.000Z"));
+    await checkNamespacedRateLimit("t", IP, 5);
+    const body = limiterBodies();
+    expect(body).toContain(`"t:ratelimit:${ipHash("t", "2026-11-08")}:2026-11-08"`);
+    expect(body).not.toContain(PLAIN_IP_HASH);
+    expect(body).not.toContain(IP);
+    expect(body).not.toContain(HASH_KEY);
+  });
+
+  test("the hash changes with the key, the day and the namespace", async () => {
+    const other = randomBytes(32).toString("hex");
+    const hashes = new Set<string>();
+    for (const [key, namespace, instant] of [
+      [HASH_KEY, "t", "2026-11-08T12:00:00.000Z"],
+      [other, "t", "2026-11-08T12:00:00.000Z"],
+      [HASH_KEY, "t", "2026-11-09T12:00:00.000Z"],
+      [HASH_KEY, "u", "2026-11-08T12:00:00.000Z"],
+    ] as const) {
+      configure({ ...UPSTASH, RATE_LIMIT_HASH_KEY: key });
+      fetchSpy.mockClear();
+      await checkNamespacedRateLimit(namespace, IP, 5, { now: new Date(instant) });
+      const match = /ratelimit:([0-9a-f]{16}):/.exec(limiterBodies());
+      expect(match).not.toBeNull();
+      hashes.add(match![1]!);
+    }
+    expect(hashes.size).toBe(4);
   });
 
   test("a count within the limit is allowed, one past it is limited", async () => {
@@ -107,7 +148,7 @@ describe("checkNamespacedRateLimit", () => {
 
   test("an unreachable counter is unavailable, after one attempt", async () => {
     reply = async () => {
-      throw new TypeError(`fetch failed for ${IP} ${IP_HASH}`);
+      throw new TypeError(`fetch failed for ${IP} ${ipHash("t", "2026-11-08")}`);
     };
     expect(await checkNamespacedRateLimit("t", IP, 5)).toBe("unavailable");
     expect(limiterCalls()).toBe(1);
@@ -143,6 +184,39 @@ describe("checkNamespacedRateLimit", () => {
     }
   );
 
+  test.each([
+    ["production", "missing"],
+    ["preview", "missing"],
+    ["production", "short"],
+    ["", "missing"],
+    ["", "short"],
+  ])(
+    "Redis credentials with VERCEL_ENV=%s and a %s hash key are not configured",
+    async (vercelEnv, key) => {
+      const hashKey = key === "short" ? HASH_KEY.slice(0, MIN_HASH_KEY_LENGTH - 1) : "";
+      const { RATE_LIMIT_HASH_KEY: _, ...redisOnly } = UPSTASH;
+      configure({
+        ...redisOnly,
+        ...(hashKey ? { RATE_LIMIT_HASH_KEY: hashKey } : {}),
+        ...(vercelEnv ? { VERCEL_ENV: vercelEnv } : {}),
+      });
+      expect(await checkNamespacedRateLimit("t", IP, 5)).toBe(
+        vercelEnv ? "unavailable" : "disabled"
+      );
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(logged()).not.toContain(HASH_KEY.slice(0, 8));
+    }
+  );
+
+  test("a hash key of exactly the minimum length is configured", async () => {
+    configure({
+      ...UPSTASH,
+      RATE_LIMIT_HASH_KEY: HASH_KEY.slice(0, MIN_HASH_KEY_LENGTH),
+      VERCEL_ENV: "production",
+    });
+    expect(await checkNamespacedRateLimit("t", IP, 5)).toBe("allowed");
+  });
+
   test("production is told by VERCEL_ENV, not NODE_ENV", async () => {
     configure({});
     const nodeEnv = process.env.NODE_ENV;
@@ -158,15 +232,17 @@ describe("checkNamespacedRateLimit", () => {
     configure({
       KV_REST_API_URL: LIMITER,
       KV_REST_API_TOKEN: "test-token",
+      RATE_LIMIT_HASH_KEY: HASH_KEY,
       VERCEL_ENV: "production",
     });
     expect(await checkNamespacedRateLimit("t", IP, 5)).toBe("allowed");
     expect(limiterCalls()).toBe(1);
   });
 
-  test("no log line carries the IP, its hash or the error's message", async () => {
+  test("no log line carries the IP, its hash, the hash key or the error's message", async () => {
+    setSystemTime(new Date("2026-11-08T12:00:00.000Z"));
     reply = async () => {
-      throw new TypeError(`fetch failed for ${IP} ${IP_HASH}`);
+      throw new TypeError(`fetch failed for ${IP} ${ipHash("t", "2026-11-08")}`);
     };
     await checkNamespacedRateLimit("t", IP, 5);
     reply = () => new Promise<Response>(() => {});
@@ -183,7 +259,8 @@ describe("checkNamespacedRateLimit", () => {
     expect(text).toContain("Rate limiter unavailable for t: timeout");
     expect(text).toContain("Rate limiter unavailable for t: bad_reply");
     expect(text).not.toContain(IP);
-    expect(text).not.toContain(IP_HASH);
+    expect(text).not.toContain(PLAIN_IP_HASH);
+    expect(text).not.toContain(HASH_KEY);
     expect(text).not.toContain("fetch failed");
   });
 });
@@ -214,7 +291,7 @@ describe("rateLimitProxy", () => {
           message: "Too many requests. Please slow down and try again later.",
         },
       });
-      expect(limiterBodies()).toContain(`proxy:t:ratelimit:${IP_HASH}:${day}`);
+      expect(limiterBodies()).toContain(`proxy:t:ratelimit:${ipHash("proxy:t", day)}:${day}`);
     }
   );
 
@@ -229,7 +306,9 @@ describe("rateLimitProxy", () => {
     };
     const res = await rateLimitProxy(request(), "t");
     expect(res?.headers.get("Retry-After")).toBe("1");
-    expect(limiterBodies()).toContain(`proxy:t:ratelimit:${IP_HASH}:2026-11-08`);
+    expect(limiterBodies()).toContain(
+      `proxy:t:ratelimit:${ipHash("proxy:t", "2026-11-08")}:2026-11-08`
+    );
   });
 
   test("the counter is asked for the same instant the 429 is built from", async () => {
