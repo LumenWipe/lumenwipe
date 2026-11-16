@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readdirSync } from "fs";
 import path from "path";
 import { ESLint } from "eslint";
 
@@ -71,5 +72,65 @@ describe("the verifier never builds a transaction", () => {
     expect(await errors(parse, "lib/verify-zz-fixture.ts")).toEqual([]);
     expect(await errors(building[0]!, "lib/zz-fixture.ts")).toEqual([]);
     expect(await errors(building[2]!, "lib/zz-fixture.ts")).toEqual([]);
+  });
+});
+
+describe("the verifier and the mess executors never import each other", () => {
+  const ISOLATED = /^no-restricted-imports: .*The verifier never imports the mess executors/;
+  const NOT_THE_VERIFIER = /^no-restricted-imports: .*never import the verifier/;
+  const verifiers = [
+    ...readdirSync(path.join(root, "lib"))
+      .filter((name) => name.startsWith("verify") && name.endsWith(".ts"))
+      .map((name) => `lib/${name}`),
+    "lib/verify-zz-fixture.ts",
+  ];
+  const executors = [
+    "./mess-builders",
+    "./soroban-seed",
+    "./soroban-submit",
+    "@/lib/soroban-submit",
+    "./horizon-submit",
+  ];
+
+  test("the files checked are every verifier on disk, the revoke verifier included", () => {
+    expect(verifiers).toEqual(
+      expect.arrayContaining(
+        ["", "-error", "-feebump", "-mediator", "-revoke", "-soroban"].map(
+          (suffix) => `lib/verify${suffix}.ts`
+        )
+      )
+    );
+  });
+
+  test("an executor or submission import in any verifier file fails lint", async () => {
+    for (const file of verifiers) {
+      for (const specifier of executors) {
+        expect({ file, specifier, errors: await errors(importOf(specifier), file) }).toMatchObject({
+          errors: expect.arrayContaining([expect.stringMatching(ISOLATED)]),
+        });
+      }
+    }
+  });
+
+  test("the revoke verifier importing the Soroban submit path fails lint", async () => {
+    expect(await errors(importOf("./soroban-submit"), "lib/verify-revoke.ts")).toEqual([
+      expect.stringMatching(ISOLATED),
+    ]);
+  });
+
+  test("a verifier may import the fee policy, the scenarios and the shared verifier", async () => {
+    for (const specifier of ["./fee-policy", "./scenarios", "@lumenwipe/verify"]) {
+      expect(await errors(importOf(specifier), "lib/verify-revoke.ts")).toEqual([]);
+    }
+  });
+
+  test("a mess executor importing any verifier file fails lint", async () => {
+    for (const file of ["lib/mess-builders.ts", "lib/soroban-seed.ts", "lib/soroban-submit.ts"]) {
+      for (const specifier of ["./verify", "./verify-revoke", "@/lib/verify-zz-fixture"]) {
+        expect({ file, specifier, errors: await errors(importOf(specifier), file) }).toMatchObject({
+          errors: expect.arrayContaining([expect.stringMatching(NOT_THE_VERIFIER)]),
+        });
+      }
+    }
   });
 });

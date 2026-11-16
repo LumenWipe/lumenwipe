@@ -863,7 +863,7 @@ const multisig: ScenarioDefinition = {
   },
 };
 
-/** The most a Soroban call may pay, in XLM (lib/soroban-submit.ts `MAX_SOROBAN_FEE_STROOPS`). */
+/** The most a Soroban call may pay, in XLM (lib/fee-policy.ts `MAX_SOROBAN_FEE_STROOPS`). */
 const SOROBAN_FEE_CAP_XLM = 1;
 /** A Soroban step simulates, sends and waits for its ledger: slower than a classic one. */
 export const SOROBAN_STEP_SECONDS = 10;
