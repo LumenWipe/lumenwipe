@@ -919,7 +919,8 @@ const ALLOWLIST_HEADING = /^## What `verify\(\)` accepts\s*$/;
 const VERIFY_SOURCE = "apps/web/lib/stellar/verify.ts";
 const API_SOURCE = "apps/api/src";
 const KEY_LOADER = /\bKeypair\s*\.\s*(?:fromSecret|fromRawEd25519Seed)\s*\(/;
-const TEST_FILE = /(?:^|\/)(?:tests?|__tests__)\/|\.(?:test|spec)\.[cm]?[jt]sx?$/;
+const TEST_DIR = /(?:^|\/)(?:tests?|__tests__)\//;
+const TEST_SUFFIX = /\.(?:test|spec)\.[cm]?[jt]sx?$/;
 const OPERATION_TYPE = /^[a-z]+(?:_[a-z]+)*$/;
 const UNKNOWN_OPERATION = "unknown";
 
@@ -999,9 +1000,11 @@ export function checkSecurityPages(root: string): Problem[] {
         .filter((path): path is string => path !== null)
         .flatMap(expandBraces)
     );
-    const loaders = walk(root, API_SOURCE, (path) => TEST_FILE.test(path)).filter((path) =>
-      KEY_LOADER.test(stripComments(read(root, path) ?? ""))
-    );
+    const loaders = walk(
+      root,
+      API_SOURCE,
+      (path) => TEST_DIR.test(path) || TEST_SUFFIX.test(path)
+    ).filter((path) => KEY_LOADER.test(stripComments(read(root, path) ?? "")));
     if (loaders.length === 0) {
       problems.push({
         source: API_SOURCE,

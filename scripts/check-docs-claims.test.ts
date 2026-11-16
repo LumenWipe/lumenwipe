@@ -829,6 +829,17 @@ describe("the security pages", () => {
     expect(checkSecurityPages(root)).toEqual([]);
   });
 
+  test("a loader under a test directory or in a test file is ignored, one under latest/ is not", () => {
+    const root = fixture({
+      "apps/api/src/foo.test.ts": "Keypair.fromSecret(fixture);\n",
+      "apps/api/src/tests/x.ts": "Keypair.fromSecret(fixture);\n",
+      "apps/api/src/latest/x.ts": "Keypair.fromSecret(secret);\n",
+    });
+    expect(messages(root)).toEqual([
+      "docs/security/posture.mdx: the keys section does not cite apps/api/src/latest/x.ts, which loads a secret key",
+    ]);
+  });
+
   test("no key loader at all is reported", () => {
     const root = fixture({
       "apps/api/src/lib/stellar/mediator-server.ts": "export function getMediatorKeypair() {}\n",
