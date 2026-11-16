@@ -6,10 +6,10 @@ import { join, relative } from "node:path";
 import { Keypair } from "@stellar/stellar-sdk";
 import { WalletSigningError, WalletSigningTimeoutError } from "@/lib/stellar/signer";
 import * as navigation from "next/navigation";
-import NetworkError from "@/app/(app)/[network]/error";
-import ExecutePage from "@/app/(app)/[network]/execute/page";
-import AnalyzePage from "@/app/(app)/[network]/analyze/page";
-import HomePage from "@/app/(app)/[network]/page";
+import NetworkError from "@/app/[network]/error";
+import ExecutePage from "@/app/[network]/execute/page";
+import AnalyzePage from "@/app/[network]/analyze/page";
+import HomePage from "@/app/[network]/page";
 import CompletionReceipt from "@/components/complete/CompletionReceipt";
 import ExecutionWizard from "@/components/execution/ExecutionWizard";
 import { LeaveGuardProvider } from "@/components/layout/LeaveGuard";
@@ -807,7 +807,7 @@ const OUTSIDE = {
 } as const;
 
 const SANCTIONED: Record<string, Partial<Record<ClaimKey, Site>>> = {
-  "app/(app)/[network]/error.tsx": {
+  "app/[network]/error.tsx": {
     "may-be-sent": { count: 1, shownBy: "route error page" },
     "nothing-sent": { count: 1, shownBy: "route error page" },
   },
@@ -828,7 +828,7 @@ const SANCTIONED: Record<string, Partial<Record<ClaimKey, Site>>> = {
   "lib/receipt/build-record.ts": {
     "account-closed": { count: 2, shownBy: `receipt banner; ${OUTSIDE.savedReceipt}` },
   },
-  "app/(app)/[network]/execute/page.tsx": {
+  "app/[network]/execute/page.tsx": {
     "can-resume": { count: 1, shownBy: "leave and resume control" },
   },
   "components/layout/LeaveGuard.tsx": {

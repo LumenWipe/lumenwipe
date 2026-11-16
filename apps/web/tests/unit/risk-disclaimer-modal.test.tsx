@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { renderToString } from "react-dom/server";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import * as navigation from "next/navigation";
-import NetworkLayout from "@/app/(app)/[network]/layout";
+import NetworkLayout from "@/app/[network]/layout";
 import RiskDisclaimerModal from "@/components/RiskDisclaimerModal";
 import * as statsHook from "@/hooks/useStats";
 import { expectNotFocused } from "./fixtures/focus";

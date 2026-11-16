@@ -14,8 +14,8 @@ const SIGNING_ROOTS = [
   "lib/stellar/verify.ts",
   "hooks/useCloseExecution.ts",
   "lib/api/close-decisions.ts",
-  "app/(app)/[network]/review/page.tsx",
-  "app/(app)/[network]/execute/page.tsx",
+  "app/[network]/review/page.tsx",
+  "app/[network]/execute/page.tsx",
 ];
 
 /**

@@ -621,7 +621,7 @@ export function checkDesignTokens(root: string): Problem[] {
   return problems;
 }
 
-const WEB_LAYOUT = "apps/web/app/root-document.tsx";
+const WEB_LAYOUT = "apps/web/app/layout.tsx";
 const PRIVACY_SECTIONS = [
   { source: "docs/architecture.md", heading: /^## \d+\. User protection and privacy\s*$/ },
   { source: "docs/reference/logging-and-privacy.mdx", heading: /^## Page analytics\s*$/ },
@@ -660,8 +660,8 @@ function resolveLocal(root: string, from: string, spec: string): string | null {
 }
 
 /**
- * The document every web root layout renders and the local files it imports directly, comments
- * removed: the analytics a page loads are either in it or one component away from it.
+ * The web's root layout and the local files it imports directly, comments removed: the analytics
+ * a page loads are either in the layout or one component away from it.
  */
 function layoutCode(root: string): string | null {
   const layout = read(root, WEB_LAYOUT);

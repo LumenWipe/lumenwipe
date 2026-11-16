@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build && node scripts/marketing-csp.mjs",
+    "build": "next build",
     "start": "next start",
     "lint": "eslint .",
     "type-check": "tsc --noEmit && tsc -p tests/tsconfig.json --noEmit",
@@ -12,7 +12,7 @@
     "test:coverage": "bun test tests/unit --coverage --coverage-reporter=text --coverage-reporter=lcov --coverage-dir=coverage",
     "test:watch": "bun test --watch tests/unit",
     "test:e2e": "playwright test",
-    "test:a11y": "NEXT_PUBLIC_STELLAR_WALLET_CONNECT_PROJECT_ID=00000000000000000000000000000000 bun run build && playwright test -c playwright.a11y.config.ts",
+    "test:a11y": "NEXT_PUBLIC_STELLAR_WALLET_CONNECT_PROJECT_ID=00000000000000000000000000000000 next build && playwright test -c playwright.a11y.config.ts",
     "test:all": "bun test tests/unit && playwright test",
     "brand:assets": "bun scripts/brand-assets.tsx",
     "check:env": "bun scripts/check-env-template.ts",

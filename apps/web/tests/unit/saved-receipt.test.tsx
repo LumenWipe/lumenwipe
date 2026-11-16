@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import * as navigation from "next/navigation";
-import CompletePage from "@/app/(app)/[network]/complete/page";
-import ReceiptPage from "@/app/(app)/[network]/receipt/[id]/page";
+import CompletePage from "@/app/[network]/complete/page";
+import ReceiptPage from "@/app/[network]/receipt/[id]/page";
 import { saveHistory } from "@/lib/session/history";
 import * as history from "@/lib/session/history";
 import { useDemolishStore } from "@/store/demolish";
