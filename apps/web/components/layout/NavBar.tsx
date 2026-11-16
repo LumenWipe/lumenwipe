@@ -44,8 +44,8 @@ export default function NavBar({ network }: NavBarProps) {
             </LeaveLink>
             <button
               onClick={() => setHistoryOpen(true)}
-              title="Merge history"
-              aria-label="Merge history"
+              title="Close history"
+              aria-label="Close history"
               className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 text-white/65 transition-colors hover:border-white/20 hover:text-white"
             >
               <History className="h-4 w-4" />

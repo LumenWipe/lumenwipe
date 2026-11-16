@@ -14,7 +14,7 @@ function Host() {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button onClick={() => setOpen(true)}>Merge history</button>
+      <button onClick={() => setOpen(true)}>Close history</button>
       {open && <HistoryPanel onClose={() => setOpen(false)} />}
     </>
   );
@@ -23,7 +23,7 @@ function Host() {
 async function openPanel(entries: ReceiptRecord[] = []): Promise<HTMLElement> {
   spyOn(history, "listHistory").mockResolvedValue(entries);
   render(<Host />);
-  const trigger = screen.getByRole("button", { name: "Merge history" });
+  const trigger = screen.getByRole("button", { name: "Close history" });
   trigger.focus();
   await act(async () => {
     fireEvent.click(trigger);
@@ -33,7 +33,7 @@ async function openPanel(entries: ReceiptRecord[] = []): Promise<HTMLElement> {
 
 test("HistoryPanel › is a named, described dialog with focus on its close button", async () => {
   await openPanel();
-  const dialog = screen.getByRole("dialog", { name: "Merge history" });
+  const dialog = screen.getByRole("dialog", { name: "Close history" });
   expect(
     document.getElementById(dialog.getAttribute("aria-describedby") as string)?.textContent
   ).toBe("History is stored locally in your browser and never leaves your device.");
@@ -100,7 +100,7 @@ async function openWith(read: () => Promise<ReceiptRecord[]>): Promise<void> {
   spyOn(history, "listHistory").mockImplementation(read);
   render(<Host />);
   await act(async () => {
-    fireEvent.click(screen.getByRole("button", { name: "Merge history" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close history" }));
   });
 }
 
@@ -114,7 +114,7 @@ test("HistoryPanel › a rejected read shows an error with a retry, never the em
   });
 
   expect(screen.getByRole("alert").textContent).toContain("could not be read in this browser");
-  expect(screen.queryAllByText("No merges recorded yet.")).toHaveLength(0);
+  expect(screen.queryAllByText("No closes recorded yet.")).toHaveLength(0);
 
   await act(async () => {
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
@@ -127,7 +127,7 @@ test("HistoryPanel › a rejected read shows an error with a retry, never the em
 
 test("HistoryPanel › only a successful read with no entries shows the empty state", async () => {
   await openWith(async () => []);
-  expect(screen.getByText("No merges recorded yet.")).toBeTruthy();
+  expect(screen.getByText("No closes recorded yet.")).toBeTruthy();
   expect(screen.queryAllByRole("alert")).toHaveLength(0);
 });
 
@@ -137,7 +137,7 @@ test("HistoryPanel › entries show the amount received or that it was not recor
     entry({ id: "without", outcome: "incomplete" }),
   ]);
 
-  expect(screen.queryAllByText("No merges recorded yet.")).toHaveLength(0);
+  expect(screen.queryAllByText("No closes recorded yet.")).toHaveLength(0);
   expect(screen.getByText("99.50 XLM")).toBeTruthy();
   expect(screen.getByText("not recorded")).toBeTruthy();
   expect(screen.getByText(/not finished/)).toBeTruthy();
@@ -186,5 +186,5 @@ test("HistoryPanel › a delete that succeeds removes the entry", async () => {
 
   expect(remove).toHaveBeenCalledWith("r-1");
   expect(screen.queryAllByRole("link", { name: /Open receipt/ })).toHaveLength(0);
-  expect(screen.getByText("No merges recorded yet.")).toBeTruthy();
+  expect(screen.getByText("No closes recorded yet.")).toBeTruthy();
 });

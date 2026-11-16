@@ -8,7 +8,14 @@ export const GLOSSARY: readonly GlossaryTerm[] = [
   {
     concept: "the act of ending an account",
     preferred: "close",
-    banned: ["wind-down", "demolish"],
+    banned: [
+      "wind-down",
+      "demolish",
+      "merge another account",
+      "merge history",
+      "merges recorded",
+      "account merges",
+    ],
   },
   { concept: "the tool that closes accounts", preferred: "closer", banned: ["demolisher"] },
   { concept: "clearing key material from memory", preferred: "clear", banned: ["wipe"] },
@@ -27,6 +34,10 @@ const FORMS: Record<string, string> = {
   wipe: "wip(?:e|es|ed|ing)",
   mediator: "mediators?|mediated|mediating",
   intermediary: "intermediar(?:y|ies)",
+  "merge another account": "merge\\s+another\\s+account",
+  "merge history": "merge\\s+history",
+  "merges recorded": "merges\\s+recorded",
+  "account merges": "account\\s+merges",
 };
 
 const BRAND = /lumenwipe/gi;

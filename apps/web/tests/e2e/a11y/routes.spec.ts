@@ -71,7 +71,7 @@ test("complete with no close open", async ({ page }) => {
 
 test("history", async ({ page }) => {
   await openTestnetHome(page);
-  await page.getByRole("button", { name: "Merge history" }).click();
+  await page.getByRole("button", { name: "Close history" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await expectNoAxeViolations(page, "history");
 });
