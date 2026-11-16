@@ -6,6 +6,7 @@ import { useState } from "react";
 import { stroopsToXlm } from "@/lib/utils/amounts";
 import { SE_EXPLORER_BASE } from "@/config/networks";
 import type { FeedData, MergeRecord } from "@/hooks/useFeed";
+import { useNow } from "@/hooks/useNow";
 
 const W = 900;
 const H = 200;
@@ -90,14 +91,16 @@ interface Tooltip {
 export default function ConstellationChart({ feed }: { feed: FeedData | null }) {
   const [tooltip, setTooltip] = useState<Tooltip | null>(null);
 
-  const now = Date.now();
-  const windowStart = now - DAYS_SHOWN * 86_400_000;
+  const now = useNow(feed);
+  const windowEnd = now ?? 0;
+  const windowStart = windowEnd - DAYS_SHOWN * 86_400_000;
 
-  const records = (feed?.recent ?? []).filter(
-    (r) => new Date(r.timestamp).getTime() >= windowStart
-  );
+  const records =
+    now === null
+      ? []
+      : (feed?.recent ?? []).filter((r) => new Date(r.timestamp).getTime() >= windowStart);
 
-  const axisLabels = buildAxisLabels(windowStart, now);
+  const axisLabels = now === null ? [] : buildAxisLabels(windowStart, windowEnd);
 
   // Grid lines: every ~10 days
   const gridLines: number[] = [];
@@ -168,7 +171,7 @@ export default function ConstellationChart({ feed }: { feed: FeedData | null }) 
           />
 
           {/* empty state */}
-          {feed && records.length === 0 && (
+          {feed && now !== null && records.length === 0 && (
             <text
               x={W / 2}
               y={H / 2}
@@ -201,7 +204,7 @@ export default function ConstellationChart({ feed }: { feed: FeedData | null }) 
           {/* data points */}
           {records.map((r) => {
             const xlm = xlmFromStroops(r.xlmStroops);
-            const cx = tsToX(r.timestamp, windowStart, now);
+            const cx = tsToX(r.timestamp, windowStart, windowEnd);
             const jitter = hashJitter(r.txHash);
             const cy = PAD_TOP + jitter * CHART_H;
             const rad = xlmToRadius(xlm);
@@ -246,6 +249,7 @@ export default function ConstellationChart({ feed }: { feed: FeedData | null }) 
           {axisLabels.map((l) => (
             <text
               key={l.label + l.x}
+              data-axis-label
               x={l.x}
               y={PAD_TOP + CHART_H + 22}
               textAnchor="middle"
