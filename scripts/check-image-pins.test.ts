@@ -6,6 +6,7 @@ const D = (n: string) => n.repeat(64);
 const SYNTAX = `# syntax=docker/dockerfile:1.27.1@sha256:${D("a")}`;
 const BUN = `FROM oven/bun:1.4.4@sha256:${D("b")} AS builder`;
 const NODE = `FROM node:26.13.1-slim@sha256:${D("c")} AS runtime`;
+const DISTROLESS = `FROM gcr.io/distroless/nodejs26-debian13:nonroot@sha256:${D("d")} AS runtime`;
 
 const inputs = (over: Partial<PinInputs> = {}): PinInputs => ({
   dockerfile: [SYNTAX, BUN, "RUN bun install", NODE, "COPY --from=builder /app /app"].join("\n"),
@@ -69,6 +70,53 @@ describe("check-image-pins", () => {
     expect(errors).toEqual([
       "apps/api/Dockerfile:3: node:26.13.0-slim is not the Node in .tool-versions (26.13.1)",
     ]);
+  });
+
+  test("a distroless nodejs runtime of the Node major in .tool-versions passes", () => {
+    expect(checkPins(withDockerfile([SYNTAX, BUN, DISTROLESS]))).toEqual([]);
+  });
+
+  test("a distroless nodejs runtime of another Node major fails", () => {
+    const errors = checkPins(
+      withDockerfile([
+        SYNTAX,
+        BUN,
+        `FROM gcr.io/distroless/nodejs24-debian13:nonroot@sha256:${D("d")} AS runtime`,
+      ])
+    );
+    expect(errors).toEqual([
+      "apps/api/Dockerfile:3: gcr.io/distroless/nodejs24-debian13 is not the Node major in .tool-versions (26.13.1)",
+    ]);
+  });
+
+  test("a distroless nodejs runtime without a digest fails", () => {
+    const errors = checkPins(
+      withDockerfile([SYNTAX, BUN, "FROM gcr.io/distroless/nodejs26-debian13:nonroot AS runtime"])
+    );
+    expect(errors).toEqual([
+      "apps/api/Dockerfile:3: gcr.io/distroless/nodejs26-debian13:nonroot is not pinned as name:tag@sha256:<64 hex digits>",
+    ]);
+  });
+
+  test("a Dockerfile with no Node runtime base fails", () => {
+    expect(checkPins(withDockerfile([SYNTAX, BUN]))).toEqual([
+      "apps/api/Dockerfile has no node or gcr.io/distroless/nodejs<major> base",
+    ]);
+  });
+
+  test("an image that only resembles distroless nodejs is not a Node runtime base", () => {
+    for (const name of [
+      "example.com/gcr.io/distroless/nodejs26-debian13",
+      "gcr.io/distroless/nodejs26-debian13-extra",
+      "gcr.io/distroless/cc-debian13",
+    ]) {
+      const errors = checkPins(
+        withDockerfile([SYNTAX, BUN, `FROM ${name}:nonroot@sha256:${D("d")} AS runtime`])
+      );
+      expect(errors).toEqual([
+        "apps/api/Dockerfile has no node or gcr.io/distroless/nodejs<major> base",
+      ]);
+    }
   });
 
   test("a workflow Bun pin that disagrees with .tool-versions fails", () => {

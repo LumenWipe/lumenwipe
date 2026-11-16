@@ -461,6 +461,19 @@ jobs:
       - name: Build the API image
         run: docker build --platform linux/amd64 --provenance=false --build-arg GIT_SHA="$GITHUB_SHA" -f apps/api/Dockerfile -t lumenwipe-api:ci .
 
+      # The distroless runtime's tag names no Node version and Renovate moves only its digest, so the
+      # Node it ships is checked here: it must be exactly the Node in .tool-versions.
+      - name: Require the image's Node to be the Node in .tool-versions
+        shell: bash
+        run: |
+          expected="v$(awk '$1 == "nodejs" { print $2 }' .tool-versions)"
+          actual="$(docker run --rm lumenwipe-api:ci --version)"
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::the image runs Node ${actual}, but .tool-versions pins ${expected}"
+            exit 1
+          fi
+          echo "the image runs Node ${actual}"
+
       # API_KEYS is the only variable the startup check treats as fatal (src/config/validate-env.ts)
       # and boot makes no network calls, so a throwaway value is enough to reach /health. No route
       # is exercised with it. Container logs are printed on failure - the interesting output is
