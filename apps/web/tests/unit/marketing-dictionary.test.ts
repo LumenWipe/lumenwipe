@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { LOCALES } from "@/lib/i18n/locale";
 import { FAQ, type FaqFacts } from "@/lib/i18n/messages/faq";
+import { HOW_IT_WORKS } from "@/lib/i18n/messages/how-it-works";
 import { SITE } from "@/lib/i18n/messages/site";
 import { nodeText } from "@/lib/site/node-text";
 
@@ -47,6 +48,16 @@ describe("sentences built from the registry", () => {
         SITE[locale].numbers.heroOutcome({ minimum: 1, perItem: 0.5, defiLive });
       expect(outcome(true)).toMatch(/DeFi/);
       expect(outcome(false)).not.toMatch(/DeFi/);
+    });
+  }
+});
+
+describe("how it works steps built from the registry", () => {
+  for (const locale of LOCALES) {
+    test(`${locale}: the DeFi exit step lists every protocol it is given`, () => {
+      const op = HOW_IT_WORKS[locale].plan.steps.defi.op;
+      expect(op(["Alpha", "Beta"])).toMatch(/Alpha.*Beta/);
+      expect(op(["Gamma"])).not.toMatch(/Alpha/);
     });
   }
 });

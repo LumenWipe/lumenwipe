@@ -87,6 +87,8 @@ export const DICTIONARY_COPY = [
   "app/(marketing)/not-found.tsx",
   "app/(marketing)/page.tsx",
   "app/(marketing)/faq/page.tsx",
+  "app/(marketing)/how-it-works/page.tsx",
+  "app/(marketing)/security/page.tsx",
   "app/global-not-found.tsx",
   "components/marketing/Faq.tsx",
   "components/marketing/FaqAccordion.tsx",
