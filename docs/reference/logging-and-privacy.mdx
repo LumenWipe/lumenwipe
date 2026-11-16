@@ -75,7 +75,7 @@ Logs go to standard output, Cloud Run forwards them to Cloud Logging, and retent
 
 ## Page analytics
 
-The logs above are the API's. The web app separately reports page views to two analytics tools, loaded from its root layout (`apps/web/app/layout.tsx`):
+The logs above are the API's. The web app separately reports page views to two analytics tools, loaded from the document every root layout renders (`apps/web/app/root-document.tsx`):
 
 | Tool                 | When it loads                                                | What it receives                                                              |
 | -------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------------------- |

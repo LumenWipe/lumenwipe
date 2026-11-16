@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { Suspense } from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import * as navigation from "next/navigation";
-import AllowancesPage from "@/app/[network]/allowances/page";
+import AllowancesPage from "@/app/(app)/[network]/allowances/page";
 import { useDemolishStore } from "@/store/demolish";
 
 // Synthetic: the shape of a secret seed with a checksum that does not match, never a real key.

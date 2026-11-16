@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import * as navigation from "next/navigation";
-import ReceiptPage from "@/app/[network]/receipt/[id]/page";
+import ReceiptPage from "@/app/(app)/[network]/receipt/[id]/page";
 import { saveHistory } from "@/lib/session/history";
 import type { ReceiptRecord } from "@/types/history";
 import { RECORD_VERSION } from "@/types/session";
@@ -113,7 +113,7 @@ test("the page chrome and the print rules are in place", () => {
   expect(readFileSync(join(WEB, "components/layout/NavBar.tsx"), "utf8")).toMatch(
     /<header className="[^"]*print:hidden/
   );
-  const layout = readFileSync(join(WEB, "app/[network]/layout.tsx"), "utf8");
+  const layout = readFileSync(join(WEB, "app/(app)/[network]/layout.tsx"), "utf8");
   expect(layout).toMatch(/<div className="print:hidden">\s*<NetworkStats \/>/);
   expect(layout).toMatch(/absolute inset-0 z-0 print:hidden/);
   const css = readFileSync(join(WEB, "app/globals.css"), "utf8");

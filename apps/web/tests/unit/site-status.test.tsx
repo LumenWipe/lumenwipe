@@ -42,7 +42,7 @@ describe("status registry", () => {
     const inspector = feature("allowance-inspector");
     expect(inspector.status).toBe("live");
     expect(inspector.link?.href).toBe("/mainnet/allowances");
-    expect(readdirSync(join(WEB, "app", "[network]", "allowances"))).toContain("page.tsx");
+    expect(readdirSync(join(WEB, "app", "(app)", "[network]", "allowances"))).toContain("page.tsx");
   });
 });
 
