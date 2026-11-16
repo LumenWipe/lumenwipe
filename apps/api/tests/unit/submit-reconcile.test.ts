@@ -18,6 +18,7 @@ import {
 } from "@/config/constants";
 import { submitAndWait, type SubmitClock } from "@/lib/stellar/submit";
 import { TxPendingError, TxSubmitError, TxUnsettledError } from "@/lib/utils/errors";
+import { sendResult } from "../support/rpc-fixtures";
 
 const SOURCE = Keypair.random();
 
@@ -73,7 +74,7 @@ function rejected(type: string): rpc.Api.SendTransactionResponse {
   return { status: "ERROR", errorResult } as unknown as rpc.Api.SendTransactionResponse;
 }
 
-const pending = { status: "PENDING" } as rpc.Api.SendTransactionResponse;
+const pending = sendResult("PENDING");
 const notFound = { status: "NOT_FOUND" };
 const success = { status: "SUCCESS", ledger: 77 };
 

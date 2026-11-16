@@ -8,7 +8,7 @@ import {
   TransactionBuilder,
   xdr,
 } from "@stellar/stellar-sdk";
-import { requestContextMiddleware } from "@/common/request-context";
+import { inRequestContext } from "../support/request-context";
 import { REQUEST_DEADLINE_MS, SERVICE_UNAVAILABLE_RETRY_AFTER_SECONDS } from "@/config/constants";
 import { RPC_FALLBACKS, RPC_HEADERS, RPC_URLS } from "@/config/networks";
 import { mapDomainError, PLAN_ERRORS, UPSTREAM_ERRORS } from "@/lib/close-api/domain-errors";
@@ -94,17 +94,8 @@ const KEY = xdr.LedgerKey.account(
   new xdr.LedgerKeyAccount({ accountId: Keypair.random().xdrAccountId() })
 );
 
-function inRequest<T>(run: () => Promise<T>): Promise<T> {
-  const res = { setHeader() {}, json() {}, on() {} };
-  return new Promise<T>((resolve, reject) =>
-    requestContextMiddleware()({ path: "/x" } as never, res as never, () => {
-      run().then(resolve, reject);
-    })
-  );
-}
-
 const readEntries = (): Promise<unknown> =>
-  inRequest(() => getRpcServer("testnet").getLedgerEntries(KEY)).catch((e: unknown) => e);
+  inRequestContext(() => getRpcServer("testnet").getLedgerEntries(KEY)).catch((e: unknown) => e);
 
 /** The testnet RPC failure counts recorded since the last drain, requests left out. */
 const rpcFailureCounts = (): Record<string, number> =>
@@ -197,7 +188,7 @@ test("a missing account whose address spells TIMEOUT is still the SDK's not-foun
   const lone = useLoneProvider();
   fakeRpc({ [lone]: provider(EMPTY_ENTRIES) });
   const address = "GAJA7Z7F5HTIMEOUTCBAH5EG6GJNI7U2BJL4Z7GTYMTN4DGXUL4VNHIK";
-  const failure = await inRequest(() => getRpcServer("testnet").getAccount(address)).catch(
+  const failure = await inRequestContext(() => getRpcServer("testnet").getAccount(address)).catch(
     (e: unknown) => e
   );
   expect(failure).toBeInstanceOf(Error);
@@ -333,7 +324,7 @@ function signedTransaction() {
 test("a rate-limited send keeps its untyped error and starts no cooldown", async () => {
   useProviders(A, B);
   fakeRpc({ [A]: provider(RATE_LIMITED), [B]: provider(EMPTY_ENTRIES) });
-  const failure = await inRequest(() =>
+  const failure = await inRequestContext(() =>
     getRpcServer("testnet").sendTransaction(signedTransaction())
   ).catch((e: unknown) => e);
   expect(failure).toBeInstanceOf(Error);
@@ -349,7 +340,7 @@ test("a send answered with no envelope stays untyped, says nothing raw and start
     [A]: (method) => (method === "sendTransaction" ? CUT_OFF : provider(EMPTY_ENTRIES)(method)),
     [B]: provider(EMPTY_ENTRIES),
   });
-  const failure = await inRequest(() =>
+  const failure = await inRequestContext(() =>
     getRpcServer("testnet").sendTransaction(signedTransaction())
   ).catch((e: unknown) => e);
   expect(failure).toBeInstanceOf(Error);
@@ -365,7 +356,7 @@ test("a rate-limited by-hash check before a submit sends nothing", async () => {
   fakeRpc({ [lone]: provider(RATE_LIMITED) });
   const send = spyOn(rpc.Server.prototype, "sendTransaction");
   try {
-    const failure = await inRequest(() =>
+    const failure = await inRequestContext(() =>
       submitAndWait(signedTransaction().toXDR(), "testnet")
     ).catch((e: unknown) => e);
     expect(failure).toMatchObject({ kind: "rate_limited" });

@@ -8,7 +8,17 @@ import {
   defaultRpcServerFactory,
   submitterFor,
 } from "@/common/ports";
-import type { StatsService } from "@/stats/stats.service";
+import { InMemoryMergeStatsStore } from "@/stats/merge-stats-store";
+import { StatsService } from "@/stats/stats.service";
+
+/** A real StatsService over an empty store whose verifier confirms nothing, so it never counts. */
+export function inertStats(): StatsService {
+  return new StatsService(
+    new InMemoryMergeStatsStore(),
+    async () => null,
+    () => new Date()
+  );
+}
 
 export function closeControllerWith(stats: StatsService): CloseController {
   return new CloseController(

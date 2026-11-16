@@ -8,7 +8,7 @@
  * 1.1 liability factor - the shape of Blend's math, not its real parameters. Emissions and the
  * backstop deposit are given directly as what the SDK would have computed.
  */
-import { Positions, Version, type PoolOracle } from "@blend-capital/blend-sdk";
+import { PoolOracle, Positions, Version } from "@blend-capital/blend-sdk";
 import type {
   BlendBackstopView,
   BlendDeps,
@@ -120,11 +120,11 @@ export function fakeBlendDeps(
       loadCalls.push(`${poolId}@${version}`);
       return fakePool(state);
     },
-    async loadOracle(_network, _oracleId, assetIds) {
+    async loadOracle(_network, oracleId, assetIds) {
       oracleCalls.push(assetIds);
       const missing = assetIds.find((id) => state.unpriced?.includes(id));
       if (missing) throw new Error(`Unable to decode oracle price result for ${missing}`);
-      return {} as PoolOracle;
+      return new PoolOracle(oracleId, new Map(), 7, 1);
     },
     estimate: fakeEstimate,
     emissions(): BlendEmissionsView {

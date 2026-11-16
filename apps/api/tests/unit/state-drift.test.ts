@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { Asset, Keypair, LiquidityPoolId, rpc, type xdr } from "@stellar/stellar-sdk";
 import type { AccountState } from "@lumenwipe/types";
-import { requestContextMiddleware } from "@/common/request-context";
+import { inRequestContext } from "../support/request-context";
+import { latestLedger } from "../support/rpc-fixtures";
 import * as rpcModule from "@/lib/stellar/rpc";
 import { pinnedRpcProvider } from "@/lib/stellar/rpc";
 import { pinHorizonSource } from "@/lib/stellar/provider-failover";
@@ -385,18 +386,13 @@ describe("an RPC behind the snapshot, with more than one provider configured", (
       this: rpc.Server
     ) {
       if (this.serverURL.toString().includes("rpc-a")) return Promise.reject(new Error("down"));
-      const closeTime = String(Math.floor(Date.now() / 1000));
-      return Promise.resolve({ sequence: 1000, closeTime } as never);
+      return Promise.resolve(latestLedger(1000, Math.floor(Date.now() / 1000)));
     });
     useLedger(agreeing);
-    const res = { setHeader() {}, json() {}, on() {} };
-    const pinned = await new Promise<string>((resolve, reject) =>
-      requestContextMiddleware()({ path: "/x" } as never, res as never, () => {
-        buildFrom(snapshot)
-          .then(() => resolve(pinnedRpcProvider("testnet").url))
-          .catch(reject);
-      })
-    );
+    const pinned = await inRequestContext(async () => {
+      await buildFrom(snapshot);
+      return pinnedRpcProvider("testnet").url;
+    });
     latest.mockRestore();
     expect(pinned).toBe("https://rpc-b.test");
   });
@@ -408,19 +404,14 @@ describe("an RPC behind the snapshot, with more than one provider configured", (
       hosts.push(new URL(String(input)).hostname);
       return new Response(JSON.stringify({ _embedded: { records: [] } }), { status: 200 });
     }) as unknown as typeof globalThis.fetch;
-    const closeTime = String(Math.floor(Date.now() / 1000));
-    spyOn(rpc.Server.prototype, "getLatestLedger").mockResolvedValue({
-      sequence: 1000,
-      closeTime,
-    } as never);
-    useLedger(agreeing);
-    const res = { setHeader() {}, json() {}, on() {} };
-    await new Promise<void>((resolve, reject) =>
-      requestContextMiddleware()({ path: "/x" } as never, res as never, () => {
-        pinHorizonSource("testnet", { baseUrl: "https://snapshot-host.test", fetch });
-        buildFrom(snapshot).then(() => resolve(), reject);
-      })
+    spyOn(rpc.Server.prototype, "getLatestLedger").mockResolvedValue(
+      latestLedger(1000, Math.floor(Date.now() / 1000))
     );
+    useLedger(agreeing);
+    await inRequestContext(async () => {
+      pinHorizonSource("testnet", { baseUrl: "https://snapshot-host.test", fetch });
+      await buildFrom(snapshot);
+    });
     expect(hosts).toEqual(["snapshot-host.test"]);
   });
 

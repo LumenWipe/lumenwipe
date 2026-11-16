@@ -34,6 +34,7 @@ import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 import { ALL_ON } from "@/config/kill-switches";
+import { inertStats } from "../support/close-controller";
 
 const SOURCE = Keypair.random().publicKey();
 const OTHER_ACCOUNT = Keypair.random().publicKey();
@@ -124,7 +125,8 @@ describe("the plan for a position whose exit cannot be built", () => {
     spyOn(accountStateModule, "readTrustlinesOnly").mockResolvedValue({
       address: DEST,
       trustlines: [],
-    } as never);
+      memoRequired: false,
+    });
   }
 
   const preflight =
@@ -301,7 +303,7 @@ describe("building a close past a position the user left behind", () => {
     })) as unknown as typeof rpcModule.getRpcServer);
     let seen: ReadonlySet<string> | undefined;
     const service = new CloseService(
-      { record: async () => undefined } as never,
+      inertStats(),
       defaultCloseReader,
       {
         ...defaultCloseBuilder,

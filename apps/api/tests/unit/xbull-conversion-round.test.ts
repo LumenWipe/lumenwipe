@@ -214,7 +214,7 @@ function fakeXBullDeps(
   return {
     rpc: {
       simulateTransaction: async () => rawSimulation("ok", [], minResourceFee),
-    } as never,
+    },
     xbull: {
       fetch: (async () =>
         new Response(JSON.stringify({ contractArgsXDR }), {

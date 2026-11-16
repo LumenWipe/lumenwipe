@@ -21,6 +21,19 @@ export default [
   ...tsPlugin.configs["flat/recommended"],
   {
     files: ["**/*.ts"],
+    languageOptions: {
+      parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
+    },
+    rules: {
+      "@typescript-eslint/no-floating-promises": "error",
+      "@typescript-eslint/consistent-type-assertions": [
+        "error",
+        { assertionStyle: "as", objectLiteralTypeAssertions: "never" },
+      ],
+    },
+  },
+  {
+    files: ["**/*.ts"],
     rules: {
       "no-restricted-imports": [
         "error",

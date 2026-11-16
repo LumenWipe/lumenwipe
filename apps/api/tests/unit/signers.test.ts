@@ -1,9 +1,10 @@
 import { test, expect } from "bun:test";
-import { Account, Keypair, Operation, StrKey, TransactionBuilder, xdr } from "@stellar/stellar-sdk";
+import { Account, Keypair, StrKey, TransactionBuilder, xdr } from "@stellar/stellar-sdk";
 import { buildNormalizeSignersTx, signerNormalizationOps } from "@/lib/stellar/tx-builder/signers";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { BASE_FEE_STROOPS } from "@/config/constants";
 import type { AccountSigner } from "@lumenwipe/types";
+import { decodeOperation } from "../support/decoded-operation";
 
 const MASTER = Keypair.random().publicKey();
 const SIGNER_KP = Keypair.random();
@@ -14,12 +15,10 @@ test("signerNormalizationOps > removes an ed25519_public_key signer at weight 0"
     { key: SIGNER_KP.publicKey(), weight: 1, type: "ed25519_public_key" },
   ];
   const ops = signerNormalizationOps(signers, MASTER);
-  const removal = Operation.fromXDRObject(ops[0]!);
+  const removal = decodeOperation(ops[0]!, "setOptions");
   expect(removal.type).toBe("setOptions");
-  // @ts-expect-error - narrow for the assertion only
-  expect(removal.signer.ed25519PublicKey).toBe(SIGNER_KP.publicKey());
-  // @ts-expect-error - narrow for the assertion only
-  expect(removal.signer.weight).toBe(0);
+  expect(removal.signer?.ed25519PublicKey).toBe(SIGNER_KP.publicKey());
+  expect(removal.signer?.weight).toBe(0);
 });
 
 test("signerNormalizationOps > removes a hash_x signer at weight 0", () => {
@@ -29,11 +28,9 @@ test("signerNormalizationOps > removes a hash_x signer at weight 0", () => {
     { key: hashXKey, weight: 1, type: "hash_x" },
   ];
   const ops = signerNormalizationOps(signers, MASTER);
-  const removal = Operation.fromXDRObject(ops[0]!);
-  // @ts-expect-error - narrow for the assertion only
-  expect(removal.signer.sha256Hash).toEqual(SIGNER_KP.rawPublicKey());
-  // @ts-expect-error - narrow for the assertion only
-  expect(removal.signer.weight).toBe(0);
+  const removal = decodeOperation(ops[0]!, "setOptions");
+  expect(removal.signer?.sha256Hash).toEqual(SIGNER_KP.rawPublicKey());
+  expect(removal.signer?.weight).toBe(0);
 });
 
 test("signerNormalizationOps > removes a preauth_tx signer at weight 0", () => {
@@ -43,11 +40,9 @@ test("signerNormalizationOps > removes a preauth_tx signer at weight 0", () => {
     { key: preAuthKey, weight: 1, type: "preauth_tx" },
   ];
   const ops = signerNormalizationOps(signers, MASTER);
-  const removal = Operation.fromXDRObject(ops[0]!);
-  // @ts-expect-error - narrow for the assertion only
-  expect(removal.signer.preAuthTx).toEqual(SIGNER_KP.rawPublicKey());
-  // @ts-expect-error - narrow for the assertion only
-  expect(removal.signer.weight).toBe(0);
+  const removal = decodeOperation(ops[0]!, "setOptions");
+  expect(removal.signer?.preAuthTx).toEqual(SIGNER_KP.rawPublicKey());
+  expect(removal.signer?.weight).toBe(0);
 });
 
 test("signerNormalizationOps > removes an ed25519_signed_payload signer at weight 0", () => {
@@ -62,11 +57,9 @@ test("signerNormalizationOps > removes an ed25519_signed_payload signer at weigh
     { key: payloadKey, weight: 1, type: "ed25519_signed_payload" },
   ];
   const ops = signerNormalizationOps(signers, MASTER);
-  const removal = Operation.fromXDRObject(ops[0]!);
-  // @ts-expect-error - narrow for the assertion only
-  expect(removal.signer.ed25519SignedPayload).toBe(payloadKey);
-  // @ts-expect-error - narrow for the assertion only
-  expect(removal.signer.weight).toBe(0);
+  const removal = decodeOperation(ops[0]!, "setOptions");
+  expect(removal.signer?.ed25519SignedPayload).toBe(payloadKey);
+  expect(removal.signer?.weight).toBe(0);
 });
 
 test("signerNormalizationOps > a signer of a type the builder cannot construct a removal for is skipped, not pushed as null", () => {
@@ -96,13 +89,10 @@ test("signerNormalizationOps > skips the master key itself", () => {
 test("signerNormalizationOps > resets thresholds to 0/1/1 as the last op", () => {
   const signers: AccountSigner[] = [{ key: MASTER, weight: 1, type: "ed25519_public_key" }];
   const ops = signerNormalizationOps(signers, MASTER);
-  const reset = Operation.fromXDRObject(ops[ops.length - 1]!);
+  const reset = decodeOperation(ops[ops.length - 1]!, "setOptions");
   expect(reset.type).toBe("setOptions");
-  // @ts-expect-error - narrow for the assertion only
   expect(reset.lowThreshold).toBe(0);
-  // @ts-expect-error - narrow for the assertion only
   expect(reset.medThreshold).toBe(1);
-  // @ts-expect-error - narrow for the assertion only
   expect(reset.highThreshold).toBe(1);
 });
 

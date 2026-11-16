@@ -19,20 +19,20 @@ const OK = {
 };
 
 test("a complete environment has no problems and no warnings", () => {
-  const { problems, warnings } = checkEnv(OK as NodeJS.ProcessEnv);
+  const { problems, warnings } = checkEnv(OK);
   expect(problems).toEqual([]);
   expect(warnings).toEqual([]);
 });
 
 test("a missing API_KEYS is fatal", () => {
-  const { problems } = checkEnv({} as NodeJS.ProcessEnv);
+  const { problems } = checkEnv({});
   expect(problems.map((p) => p.variable)).toContain("API_KEYS");
 });
 
 test("an empty API_KEYS is fatal, not an intentional lockout", () => {
   // `API_KEYS=""` in a deploy config is a mistake. Treating it as "reject everything on
   // purpose" would leave the service running and useless.
-  const { problems } = checkEnv({ API_KEYS: "   " } as NodeJS.ProcessEnv);
+  const { problems } = checkEnv({ API_KEYS: "   " });
   expect(problems).toHaveLength(1);
 });
 
@@ -40,7 +40,7 @@ test("an API_KEYS with no `=` is fatal", () => {
   // The format is `label=key`. A bare value yields no usable key and the client sees a plain
   // 401, with nothing pointing at the server side being malformed - a failure this repo has
   // already paid for once.
-  const { problems } = checkEnv({ API_KEYS: "justakey" } as NodeJS.ProcessEnv);
+  const { problems } = checkEnv({ API_KEYS: "justakey" });
   expect(problems[0]!.message).toMatch(/label=key/);
 });
 
@@ -56,7 +56,7 @@ test("a missing mediator secret warns rather than blocking the boot", () => {
     ADMIN_API_TOKEN: "admin_test_token",
     FIRESTORE_PROJECT_ID: "test-project",
     INTEGRATOR_AUTH_SECRET: "test-integrator-auth-secret-0123456789",
-  } as NodeJS.ProcessEnv);
+  });
   expect(problems).toEqual([]);
   expect(warnings.map((w) => w.variable).sort()).toEqual([
     "MEDIATOR_SECRET_MAINNET",
@@ -76,7 +76,7 @@ test("a missing fee-account secret warns rather than blocking the boot", () => {
     ADMIN_API_TOKEN: "admin_test_token",
     FIRESTORE_PROJECT_ID: "test-project",
     INTEGRATOR_AUTH_SECRET: "test-integrator-auth-secret-0123456789",
-  } as NodeJS.ProcessEnv);
+  });
   expect(problems).toEqual([]);
   expect(warnings.map((w) => w.variable).sort()).toEqual([
     "FEE_ACCOUNT_SECRET_MAINNET",
@@ -97,7 +97,7 @@ test("a missing OCTOPOS_API_KEY warns rather than blocking the boot", () => {
     ADMIN_API_TOKEN: "admin_test_token",
     FIRESTORE_PROJECT_ID: "test-project",
     INTEGRATOR_AUTH_SECRET: "test-integrator-auth-secret-0123456789",
-  } as NodeJS.ProcessEnv);
+  });
   expect(problems).toEqual([]);
   expect(warnings.map((w) => w.variable)).toEqual(["OCTOPOS_API_KEY"]);
 });
@@ -113,7 +113,7 @@ test("a missing ADMIN_API_TOKEN, FIRESTORE_PROJECT_ID or INTEGRATOR_AUTH_SECRET 
     OCTOPOS_API_KEY: "oct_abc123",
     SOROSWAP_API_KEY: "sk_test",
   };
-  const { problems, warnings } = checkEnv(base as NodeJS.ProcessEnv);
+  const { problems, warnings } = checkEnv(base);
   expect(problems).toEqual([]);
   expect(warnings.map((w) => w.variable).sort()).toEqual([
     "ADMIN_API_TOKEN",
@@ -128,7 +128,7 @@ test.each(["", "   ", "(default)", "restore-drill", "abcd"])(
     const { problems, warnings } = checkEnv({
       ...OK,
       FIRESTORE_DATABASE_ID: id,
-    } as NodeJS.ProcessEnv);
+    });
     expect(problems).toEqual([]);
     expect(warnings).toEqual([]);
   }
@@ -137,14 +137,14 @@ test.each(["", "   ", "(default)", "restore-drill", "abcd"])(
 test.each(["Restore-Drill", "abc", "restore-", "1restore", "re_store", "a".repeat(64)])(
   "an invalid FIRESTORE_DATABASE_ID %p is fatal",
   (id) => {
-    const { problems } = checkEnv({ ...OK, FIRESTORE_DATABASE_ID: id } as NodeJS.ProcessEnv);
+    const { problems } = checkEnv({ ...OK, FIRESTORE_DATABASE_ID: id });
     expect(problems.map((p) => p.variable)).toEqual(["FIRESTORE_DATABASE_ID"]);
     expect(problems[0]!.message).not.toContain(id);
   }
 );
 
 test("the failure message names the variable and where to look", () => {
-  const { problems } = checkEnv({} as NodeJS.ProcessEnv);
+  const { problems } = checkEnv({});
   const msg = formatEnvFailure(problems);
   expect(msg).toContain("API_KEYS");
   expect(msg).toContain(".env.example");
@@ -155,19 +155,19 @@ test("an API_KEYS with an empty label or key is fatal", () => {
   // process booted green and every authenticated route 401'd, which is the exact state the
   // check exists to prevent. Counted with the same rule ApiKeyService parses by.
   for (const value of ["=abc123", "label=", " = ", "label=,other="]) {
-    const { problems } = checkEnv({ API_KEYS: value } as NodeJS.ProcessEnv);
+    const { problems } = checkEnv({ API_KEYS: value });
     expect(problems.map((p) => p.variable)).toContain("API_KEYS");
   }
 });
 
 test("a key containing '=' is accepted - base64 padding is not malformed", () => {
   // indexOf, not split: the key is everything after the FIRST "=".
-  const { problems } = checkEnv({ API_KEYS: "label=abc==" } as NodeJS.ProcessEnv);
+  const { problems } = checkEnv({ API_KEYS: "label=abc==" });
   expect(problems).toEqual([]);
 });
 
 test("several comma-separated pairs are accepted", () => {
-  const { problems } = checkEnv({ API_KEYS: "a=1,b=2" } as NodeJS.ProcessEnv);
+  const { problems } = checkEnv({ API_KEYS: "a=1,b=2" });
   expect(problems).toEqual([]);
 });
 
@@ -177,7 +177,7 @@ const MAINNET_SET = {
 };
 
 function endpointCheck(env: Record<string, string>) {
-  return checkEnv({ ...OK, ...env } as NodeJS.ProcessEnv);
+  return checkEnv({ ...OK, ...env });
 }
 
 test("in production an unset mainnet endpoint warns and boots", () => {
@@ -288,7 +288,7 @@ test("a list's first position may pair a legacy header name with a legacy value"
 
 test("a kill switch that is unset or true boots silently", () => {
   for (const value of [undefined, "", "true", " TRUE "]) {
-    const env = { ...OK, FEE_SPONSORSHIP_ENABLED: value } as NodeJS.ProcessEnv;
+    const env: NodeJS.ProcessEnv = { ...OK, FEE_SPONSORSHIP_ENABLED: value };
     const { problems, warnings } = checkEnv(env);
     expect(problems).toEqual([]);
     expect(warnings).toEqual([]);
@@ -300,7 +300,7 @@ test("a kill switch set to false boots and says what is paused", () => {
     ...OK,
     MEDIATOR_FORWARD_ENABLED: "false",
     BLEND_EXIT_ENABLED: " False ",
-  } as NodeJS.ProcessEnv);
+  });
   expect(problems).toEqual([]);
   expect(warnings).toEqual([
     {
@@ -317,7 +317,7 @@ test("a kill switch set to false boots and says what is paused", () => {
 
 test("a kill switch that is neither true nor false refuses the boot instead of reading as on", () => {
   for (const value of ["fasle", "0", "no", "off"]) {
-    const { problems } = checkEnv({ ...OK, PHOENIX_EXIT_ENABLED: value } as NodeJS.ProcessEnv);
+    const { problems } = checkEnv({ ...OK, PHOENIX_EXIT_ENABLED: value });
     expect(problems).toEqual([
       { variable: "PHOENIX_EXIT_ENABLED", message: "PHOENIX_EXIT_ENABLED must be true or false." },
     ]);

@@ -28,6 +28,8 @@ import {
   type TokenQuoteSummary,
 } from "@/lib/close-api/decisions";
 import type { FanoutClock, FanoutProviders } from "@/lib/close-api/token-quote-fanout";
+import { xlmContractId } from "@/lib/soroswap/conversion-quotes";
+import { soroswapQuote } from "../support/quotes";
 import { parseDecisions } from "@/lib/close-api/parse-decisions";
 import { buildAccountPlan } from "@/lib/close-api/account-plan";
 import * as readAccount from "@/lib/close-api/read-account";
@@ -597,7 +599,9 @@ test("the plan gates a flagged conversion on its confirmation, and marks a token
                 minAmountOut: "4975",
                 platform: "aggregator",
                 route: ["soroswap"],
-                raw: { priceImpactPct: "31.5" } as never,
+                raw: soroswapQuote(token, xlmContractId("testnet"), {
+                  priceImpactPct: "31.5",
+                }),
               },
             }
           : { kind: "unavailable" },

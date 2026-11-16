@@ -7,6 +7,7 @@
 import { expect, test } from "bun:test";
 import type { ProviderQuoteOutcome } from "@/lib/soroswap/conversion-quotes";
 import { resolveTokenQuote } from "@/lib/close-api/multi-source-conversion";
+import { xbullRawQuote } from "../support/quotes";
 import {
   TRANSFER_CHOICE,
   deriveConversionImpactDecisionPoints,
@@ -27,7 +28,12 @@ function xbull(amountIn: bigint, amountOut: bigint): ProviderQuoteOutcome {
       minAmountOut: ((amountOut * 9_950n) / 10_000n).toString(),
       platform: "router",
       route: ["xbull"],
-      raw: { route: "r" } as never,
+      raw: xbullRawQuote({
+        fromAsset: TOKEN,
+        toAsset: XLM,
+        fromAmount: amountIn.toString(),
+        toAmount: amountOut.toString(),
+      }),
     },
   };
 }

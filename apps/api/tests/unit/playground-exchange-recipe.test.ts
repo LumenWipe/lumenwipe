@@ -108,7 +108,7 @@ function mediator(): MediatorSigningService {
     defaultExchangeRegistry,
     () => new Date(BUILT_AT_SECONDS * 1000),
     {
-      readNativeBalance: async () => ({ nativeBalanceLumens: AFTER_CLEANUP }) as never,
+      readNativeBalance: async () => ({ nativeBalanceLumens: AFTER_CLEANUP }),
       readMemoRequired: async () => false,
     }
   );

@@ -50,6 +50,7 @@ const config = [
   },
   ...coreWebVitals,
   prettier,
+  { files: ["**/*.{ts,tsx}"], rules: { "@typescript-eslint/no-explicit-any": "error" } },
   { rules: restrict() },
   { files: ["lib/scenarios/**"], rules: restrict(...registryPatterns) },
   {

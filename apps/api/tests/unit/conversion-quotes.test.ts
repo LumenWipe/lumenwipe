@@ -4,7 +4,8 @@
  */
 import { expect, test } from "bun:test";
 import { Address } from "@stellar/stellar-sdk";
-import { SupportedPlatforms, TradeType, type QuoteResponse } from "@soroswap/sdk";
+import { TradeType, type ExactInQuoteResponse, type QuoteResponse } from "@soroswap/sdk";
+import { soroswapQuote } from "../support/quotes";
 import { SLIPPAGE_BPS } from "@/config/constants";
 import {
   CONVERSION_PROTOCOLS,
@@ -23,23 +24,14 @@ import {
 const TOKEN = Address.contract(Buffer.alloc(32, 1)).toString();
 const XLM = xlmContractId("mainnet");
 
-function rawQuote(over: Partial<QuoteResponse> = {}): QuoteResponse {
-  return {
-    assetIn: TOKEN,
-    amountIn: 100_000_000n,
-    assetOut: XLM,
+function rawQuote(over: Partial<ExactInQuoteResponse> = {}): ExactInQuoteResponse {
+  return soroswapQuote(TOKEN, XLM, {
     amountOut: 524_963_090n,
     // Observed live: the API's own threshold equals the quote - no floor at all.
     otherAmountThreshold: 524_963_090n,
-    priceImpactPct: "0.02",
-    platform: SupportedPlatforms.AGGREGATOR,
-    routePlan: [
-      { swapInfo: { protocol: "soroswap" as never, path: [TOKEN, XLM] }, percent: "100" },
-    ],
-    tradeType: TradeType.EXACT_IN,
     rawTrade: { amountIn: 100_000_000n, amountOutMin: 522_338_275n, distribution: [] },
     ...over,
-  } as QuoteResponse;
+  });
 }
 
 function fakeSdk(
@@ -94,7 +86,7 @@ test("no route, an error, a mismatched or empty answer, or conversion switched o
   expect(await quoteTokenToXlm(TOKEN, 1n, "mainnet", deps(null))).toBeNull();
   expect(await quoteTokenToXlm(TOKEN, 0n, "mainnet", deps(fakeSdk(rawQuote())))).toBeNull();
   expect(await quoteTokenToXlm(XLM, 5n, "mainnet", deps(fakeSdk(rawQuote())))).toBeNull();
-  const cases: Array<Partial<QuoteResponse>> = [
+  const cases: Array<Partial<ExactInQuoteResponse>> = [
     { amountOut: 0n },
     { amountIn: 99n },
     { assetOut: TOKEN },

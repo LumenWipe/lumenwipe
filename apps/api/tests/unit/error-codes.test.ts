@@ -65,9 +65,12 @@ describe("error code registry", () => {
   });
 
   test("fail() refuses an unregistered code at compile time and still throws the envelope", () => {
+    const acceptsUnregistered: "not_a_registered_code" extends Parameters<typeof fail>[0]
+      ? true
+      : false = false;
+    expect(acceptsUnregistered).toBe(false);
     try {
-      // @ts-expect-error not a registered code
-      fail("not_a_registered_code", "x", 400);
+      Reflect.apply(fail, undefined, ["not_a_registered_code", "x", 400]);
     } catch (e) {
       expect((e as HttpException).getResponse()).toEqual({
         error: { code: "not_a_registered_code", message: "x" },
@@ -82,10 +85,10 @@ describe("ErrorEnvelopeFilter statuses without their own code", () => {
     body: unknown;
     headers: Record<string, string>;
   } {
-    const captured = {
+    const captured: { status: number; body: unknown; headers: Record<string, string> } = {
       status: 0,
-      body: undefined as unknown,
-      headers: {} as Record<string, string>,
+      body: undefined,
+      headers: {},
     };
     const res = {
       getHeader: (name: string) => captured.headers[name],

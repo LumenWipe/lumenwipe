@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { Firestore } from "@google-cloud/firestore";
 import { Keypair } from "@stellar/stellar-sdk";
 import { Logger, type CallHandler, type ExecutionContext } from "@nestjs/common";
 import { firstValueFrom, of, throwError } from "rxjs";
 import { currentUpstreamCalls, requestContextMiddleware } from "@/common/request-context";
+import { inRequestContext, requestPair } from "../support/request-context";
+import { sampleTransaction } from "../support/rpc-fixtures";
 import { HORIZON_FALLBACKS, PATH_ROUTING_API_URLS, type Network } from "@/config/networks";
 import { fetchOctoPosPortfolio } from "@/lib/defi-positions/octopos-http";
 import { horizonDepsFor, readAccountStateFrom } from "@/lib/stellar/account-state";
@@ -40,15 +43,6 @@ function respondWith(status: number): typeof globalThis.fetch {
 function counts(): Record<string, number> {
   return Object.fromEntries(
     drainUpstreamCounts().map((d) => [`${d.network}/${d.upstream}/${d.metric}`, d.count])
-  );
-}
-
-function inRequest<T>(run: () => Promise<T>): Promise<T> {
-  const res = { setHeader() {}, json() {}, on() {} };
-  return new Promise<T>((resolve, reject) =>
-    requestContextMiddleware()({ path: "/x" } as never, res as never, () => {
-      run().then(resolve, reject);
-    })
   );
 }
 
@@ -299,8 +293,9 @@ describe("rpc", () => {
 
   test("a send is one request, and a failure is the original error", async () => {
     const { calls } = serve(() => Promise.reject(new TypeError("boom")));
-    const envelope = { toXdr: () => "AAAA" } as never;
-    await expect(getRpcServer("testnet").sendTransaction(envelope)).rejects.toThrow("boom");
+    await expect(getRpcServer("testnet").sendTransaction(sampleTransaction())).rejects.toThrow(
+      "boom"
+    );
     await Promise.resolve();
     expect(calls()).toBe(1);
     expect(counts()).toEqual({ "testnet/rpc/requests": 1, "testnet/rpc/unavailable": 1 });
@@ -329,7 +324,7 @@ describe("calls per request", () => {
       });
     }) as unknown as typeof globalThis.fetch;
 
-    const tally = await inRequest(async () => {
+    const tally = await inRequestContext(async () => {
       await readAccountStateFrom(
         address,
         "testnet",
@@ -343,29 +338,24 @@ describe("calls per request", () => {
   });
 
   test("the access line carries the tally and leaves it out for a request with none", () => {
-    const finish: Array<() => void> = [];
-    const res = {
-      statusCode: 200,
-      setHeader() {},
-      json() {},
-      on: (_: string, f: () => void) => finish.push(f),
-    };
     const logged: unknown[] = [];
     const spy = spyOn(Logger.prototype, "log").mockImplementation((line: unknown) => {
       logged.push(line);
     });
     try {
-      requestContextMiddleware()({ path: "/x" } as never, res as never, () => {
+      const tallied = requestPair();
+      requestContextMiddleware()(tallied.req, tallied.res, () => {
         recordUpstream("testnet", "rpc", "requests");
         recordUpstream("testnet", "rpc", "requests");
         recordUpstream("testnet", "horizon", "requests");
         recordUpstream("testnet", "horizon", "rate_limited");
       });
-      finish.forEach((f) => f());
+      tallied.res.emit("finish");
       expect(logged[0]).toMatchObject({ upstreamCalls: { rpc: 2, horizon: 1 } });
 
-      requestContextMiddleware()({ path: "/x" } as never, res as never, () => undefined);
-      finish.slice(1).forEach((f) => f());
+      const quiet = requestPair();
+      requestContextMiddleware()(quiet.req, quiet.res, () => undefined);
+      quiet.res.emit("finish");
       expect(logged[1]).not.toHaveProperty("upstreamCalls");
     } finally {
       spy.mockRestore();
@@ -524,7 +514,9 @@ describe("durable flush", () => {
         },
       }),
     });
-    const store = new FirestoreUsageStore({ collection } as never);
+    const firestore = new Firestore({ projectId: "usage-test-project" });
+    Reflect.set(firestore, "collection", collection);
+    const store = new FirestoreUsageStore(firestore);
     await store.addUpstreamCounts(DAY, [
       { network: "mainnet", upstream: "horizon", metric: "requests", count: 3 },
       { network: "mainnet", upstream: "horizon", metric: "rate_limited", count: 1 },

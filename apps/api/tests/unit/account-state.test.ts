@@ -485,7 +485,7 @@ describe("signer types as Horizon names them", () => {
       trustlines: new Map(),
       offers: new Map(),
       data: new Map(),
-    } as LiveLedger;
+    };
   }
 
   async function read(key: string, horizonType: string, high = 1) {
@@ -502,10 +502,15 @@ describe("signer types as Horizon names them", () => {
     return readAccountStateFrom(ADDRESS, "testnet", deps, NO_DEFI, OFFLINE_SOROBAN_TOKENS);
   }
 
-  async function expectKept(key: string, horizonType: string, type: string): Promise<void> {
+  async function expectKept(
+    key: string,
+    horizonType: string,
+    type: AccountSigner["type"]
+  ): Promise<void> {
     const state = await read(key, horizonType);
 
-    expect(state.signers).toContainEqual({ key, weight: 1, type } as AccountSigner);
+    const kept: AccountSigner = { key, weight: 1, type };
+    expect(state.signers).toContainEqual(kept);
     expect(state.subEntryMismatch).toBe(false);
     expect(findStateDrift(state, ledgerWith([{ key, weight: 1 }]))).toBeNull();
   }

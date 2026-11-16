@@ -166,14 +166,14 @@ const horizonRecord = (
   result_xdr: result.toXdr("base64"),
 });
 
-function rpcOf(answers: Record<string, RpcAnswer | Error>) {
+function rpcOf(answers: Record<string, RpcAnswer | Error>): Pick<rpc.Server, "getTransaction"> {
   return {
     getTransaction: async (hash: string) => {
       const answer = answers[hash] ?? NOT_FOUND;
       if (answer instanceof Error) throw answer;
       return answer;
     },
-  } as Pick<rpc.Server, "getTransaction">;
+  };
 }
 
 const noHorizon: HorizonTransactionReader = async () => {
@@ -561,14 +561,14 @@ describe("readDelivered: several hashes", () => {
     const hashes = Array.from({ length: 20 }, (_, i) => i.toString(16).padStart(64, "0"));
     let inFlight = 0;
     let peak = 0;
-    const slow = {
+    const slow: Pick<rpc.Server, "getTransaction"> = {
       getTransaction: async () => {
         peak = Math.max(peak, ++inFlight);
         await new Promise((resolve) => setTimeout(resolve, 1));
         inFlight--;
         return NOT_FOUND;
       },
-    } as Pick<rpc.Server, "getTransaction">;
+    };
     const out = await readDelivered(slow, horizonOf({}), "testnet", DESTINATION, hashes);
     expect(out.entries).toHaveLength(20);
     expect(peak).toBe(5);

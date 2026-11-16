@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import { Logger } from "@nestjs/common";
 import { Keypair } from "@stellar/stellar-sdk";
-import { requestContextMiddleware } from "@/common/request-context";
+import { inRequestContext } from "../support/request-context";
 import {
   HORIZON_FALLBACKS,
   PATH_ROUTING_API_HEADERS,
@@ -92,15 +92,6 @@ function read(deps: HorizonDeps[], over: AccountReadOptions = {}) {
   });
 }
 
-function inRequest<T>(run: () => Promise<T>): Promise<T> {
-  const res = { setHeader() {}, json() {}, on() {} };
-  return new Promise<T>((resolve, reject) =>
-    requestContextMiddleware()({ path: "/x" } as never, res as never, () => {
-      run().then(resolve, reject);
-    })
-  );
-}
-
 const realFetch = globalThis.fetch;
 const realPrimary = PATH_ROUTING_API_URLS.testnet;
 const realFallbacks = HORIZON_FALLBACKS.testnet;
@@ -149,7 +140,7 @@ test("a later read of the same request stays on the provider of the snapshot", a
   const saved = globalThis.fetch;
   globalThis.fetch = fake.fetch;
   try {
-    await inRequest(async () => {
+    await inRequestContext(async () => {
       await read(chain(fake.fetch, "a", "b"));
       await fetchOwnerLiveStatesBounded([owner], "testnet");
     });
@@ -356,7 +347,7 @@ test("a failover is a counter and a structured line naming hostnames, nothing mo
 test("the snapshot's provider is remembered per network and per request", async () => {
   const source = { baseUrl: "https://b" };
   expect(
-    await inRequest(async () => {
+    await inRequestContext(async () => {
       pinHorizonSource("testnet", source);
       return [pinnedHorizonSource("testnet"), pinnedHorizonSource("mainnet")];
     })
@@ -591,7 +582,7 @@ test("issuance never fails over: a primary outage with no pin refuses, and no fa
 test("issuance reads the snapshot's provider, on the issuance read's own policy", async () => {
   const fake = fakeProviders({ a: down, b: () => ({ body: EMPTY_PAGE }) });
   PATH_ROUTING_API_URLS.testnet = "https://a";
-  const summary = await inRequest(async () => {
+  const summary = await inRequestContext(async () => {
     pinHorizonSource("testnet", { baseUrl: "https://b", fetch: fake.fetch });
     return (await Promise.all([assessIssuance(ADDRESS, "testnet")]))[0];
   });
@@ -604,7 +595,7 @@ test("an outage on the snapshot's provider refuses too, and the primary is not a
   const fake = fakeProviders({ a: () => ({ body: EMPTY_PAGE }), b: down });
   PATH_ROUTING_API_URLS.testnet = "https://a";
   HORIZON_FALLBACKS.testnet = [{ url: "https://c", headers: {} }];
-  await inRequest(async () => {
+  await inRequestContext(async () => {
     pinHorizonSource("testnet", { baseUrl: "https://b", fetch: fake.fetch });
     await expect(assessIssuance(ADDRESS, "testnet")).rejects.toBeInstanceOf(IssuerReadError);
   });
@@ -618,7 +609,7 @@ test("a full read pins its winner, so the issuance read that follows lands on it
     b: (path) => (path.startsWith("/assets") ? { body: EMPTY_PAGE } : healthy(110)(path)),
   });
   PATH_ROUTING_API_URLS.testnet = "https://a";
-  await inRequest(async () => {
+  await inRequestContext(async () => {
     await read(chain(fake.fetch, "a", "b"));
     expect(await assessIssuance(ADDRESS, "testnet")).toBeNull();
   });

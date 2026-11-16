@@ -105,12 +105,14 @@ test("node:http(s) to a non-loopback host never connects, naming the url", async
 test("a socket opened without an agent never connects to a non-loopback host", async () => {
   const target = await listenOnThisMachine();
   const errors: string[] = [];
+  // Node's http agent passes path: null for a TCP socket; that is not an IPC path to let through.
+  const agentStyle: NetConnectOpts = { host: "0.0.0.0", port: target.port };
+  Reflect.set(agentStyle, "path", null);
 
   await Promise.all([
     settle(connect({ host: "0.0.0.0", port: target.port }), errors),
     settle(connect(target.port, "0.0.0.0"), errors),
-    // Node's http agent passes path: null for a TCP socket; that is not an IPC path to let through.
-    settle(connect({ host: "0.0.0.0", port: target.port, path: null } as NetConnectOpts), errors),
+    settle(connect(agentStyle), errors),
     // A request given its own createConnection skips the agent, so only the socket backstop sees it.
     settle(
       request(`http://0.0.0.0:${target.port}/trades`, {
