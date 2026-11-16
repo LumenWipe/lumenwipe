@@ -1,11 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { marketingPolicy } from "@/config/marketing-csp.mjs";
 import {
+  checkOutput,
   exactPathRegex,
+  injectPolicies,
   MarketingCspError,
+  NONCE_PATHS,
   pageScripts,
   prerenderedMarketingPages,
   run,
@@ -214,6 +217,172 @@ describe("run", () => {
     rmSync(join(dir, "prerender-manifest.json"));
     expect(() => run(dir, true)).toThrow("run next build first");
   });
+});
+
+describe("under a build adapter, as on Vercel", () => {
+  const CSP = "Content-Security-Policy";
+  const PROXY_ROUTE = {
+    src: "^/(?!_next/static|api/|(?:faq|blog/a-post|index)?(?:\\.rsc)?$).*$",
+    middlewarePath: "/_middleware",
+    continue: true,
+  };
+  const BASE_ROUTES = [
+    { src: "^(?:/(.*))?$", headers: { "X-Content-Type-Options": "nosniff" }, continue: true },
+    PROXY_ROUTE,
+    { handle: "filesystem" },
+    { src: "^/faq-elsewhere$", dest: "/faq" },
+  ];
+  type Route = {
+    src?: string;
+    handle?: string;
+    headers?: Record<string, string>;
+    continue?: boolean;
+  };
+  const config = (out = "output"): { routes: Route[] } =>
+    JSON.parse(readFileSync(join(dir, out, "config.json"), "utf8"));
+  const cspRoutes = (routes: Route[]) => routes.filter((r) => r.headers?.[CSP] !== undefined);
+
+  beforeEach(() => {
+    rmSync(join(dir, "server"), { recursive: true });
+    write("output/config.json", { version: 3, routes: BASE_ROUTES });
+    write("output/functions/index.prerender-fallback.html", page("home"));
+    write("output/functions/faq.prerender-fallback.html", page("faq"));
+    write("output/functions/blog/a-post.prerender-fallback.html", page("post"));
+  });
+
+  test("writes each page's policy as a header route ahead of the adapter's routes", () => {
+    expect(run(dir, true, { NEXT_ADAPTER_PATH: "/adapter.js" })).toEqual([
+      "/",
+      "/blog/a-post",
+      "/faq",
+    ]);
+    const routes = config().routes;
+    expect(routes.slice(0, 3).map((r) => r.src)).toEqual([
+      "^/$",
+      "^/blog/a-post(?:/)?$",
+      "^/faq(?:/)?$",
+    ]);
+    expect(routes.slice(3)).toEqual(BASE_ROUTES);
+    const hashes = pageScripts(page("faq")).inline.map(scriptHash);
+    expect(routes[2]).toEqual({
+      src: "^/faq(?:/)?$",
+      headers: { [CSP]: marketingPolicy({ hashes, umami: false }) },
+      continue: true,
+    });
+    expect(manifest().headers).toEqual([SECURITY_ENTRY]);
+  });
+
+  test("a policy only in the routes manifest does not count once the adapter wrote its output", () => {
+    const m = manifest();
+    injectPolicies(m, new Map([["/", "script-src 'self'; frame-ancestors 'none'"]]));
+    write("routes-manifest.json", m);
+    expect(() => run(dir, false)).toThrow("/ has 0 CSP header entries, expected 1");
+  });
+
+  test("running twice replaces its routes instead of doubling them", () => {
+    run(dir, true);
+    run(dir, true);
+    expect(cspRoutes(config().routes)).toHaveLength(3);
+  });
+
+  test("an adapter that left no output config fails instead of falling back to the manifest", () => {
+    rmSync(join(dir, "output"), { recursive: true });
+    write("server/app/index.html", page("home"));
+    write("server/app/faq.html", page("faq"));
+    write("server/app/blog/a-post.html", page("post"));
+    expect(() => run(dir, true, { NEXT_ADAPTER_PATH: "/adapter.js" })).toThrow(
+      "a build adapter ran but"
+    );
+    expect(run(dir, true, {})).toHaveLength(3);
+  });
+
+  test("a prerendered page with no fallback HTML in the output fails", () => {
+    rmSync(join(dir, "output/functions/faq.prerender-fallback.html"));
+    expect(() => run(dir, true)).toThrow("/faq is prerendered but");
+  });
+
+  test("a policy route placed after the first handle does not count", () => {
+    run(dir, true);
+    const c = config();
+    const faq = c.routes.findIndex((r) => r.src === "^/faq(?:/)?$");
+    const [route] = c.routes.splice(faq, 1);
+    c.routes.push(route);
+    write("output/config.json", c);
+    expect(() => run(dir, false)).toThrow("/faq has 0 CSP header entries, expected 1");
+  });
+
+  test("a policy that allows framing or unsafe-eval fails", () => {
+    run(dir, true);
+    const framed = config();
+    framed.routes[0].headers![CSP] = framed.routes[0].headers![CSP].replace(
+      "frame-ancestors 'none'; ",
+      ""
+    );
+    write("output/config.json", framed);
+    expect(() => run(dir, false)).toThrow("/ has no frame-ancestors 'none'");
+    run(dir, true);
+    const evaled = config();
+    evaled.routes[0].headers![CSP] = evaled.routes[0].headers![CSP].replace(
+      "script-src 'self'",
+      "script-src 'self' 'unsafe-eval'"
+    );
+    write("output/config.json", evaled);
+    expect(() => run(dir, false)).toThrow("/ allows unsafe script sources");
+  });
+
+  test("a page whose served HTML runs a script its route does not hash fails", () => {
+    run(dir, true);
+    write("output/functions/faq.prerender-fallback.html", page("faq", "<script>alert(1)</script>"));
+    expect(() => run(dir, false)).toThrow("/faq runs 1 inline script(s) its CSP does not hash");
+  });
+
+  test("a CSP route that reaches a nonce path fails, in any letter case", () => {
+    run(dir, true);
+    for (const src of ["^/cosign$", "^/MAINNET$"]) {
+      const c = config();
+      c.routes.unshift({ src, headers: { [CSP]: "script-src 'self'" } });
+      write("output/config.json", c);
+      expect(() => run(dir, false)).toThrow("is matched by a marketing CSP route");
+      c.routes.shift();
+      write("output/config.json", c);
+    }
+  });
+
+  test("a nonce path the proxy's route no longer covers fails", () => {
+    run(dir, true);
+    const c = config();
+    const proxy = c.routes.find((r) => r.src === PROXY_ROUTE.src)!;
+    proxy.src = PROXY_ROUTE.src.replace("api/|", "api/|api-keys|");
+    write("output/config.json", c);
+    expect(() => run(dir, false)).toThrow(
+      "/api-keys is not matched by the proxy's route, so it would have no nonce policy"
+    );
+  });
+
+  test("check-output verifies the finished deployment output, not the build's copy", () => {
+    run(dir, true);
+    const out = join(dir, "vercel-output");
+    cpSync(join(dir, "output"), out, { recursive: true });
+    expect(checkOutput(dir, out)).toEqual(["/", "/blog/a-post", "/faq"]);
+    const c = config("vercel-output");
+    c.routes = c.routes.filter((r) => r.src !== "^/blog/a-post(?:/)?$");
+    write("vercel-output/config.json", c);
+    expect(() => checkOutput(dir, out)).toThrow("/blog/a-post has 0 CSP header entries");
+    rmSync(join(out, "config.json"));
+    expect(() => checkOutput(dir, out)).toThrow("config.json is missing");
+  });
+
+  test("an output config of another shape fails closed", () => {
+    write("output/config.json", { version: 3 });
+    expect(() => run(dir, true)).toThrow("the Build Output config has no routes array");
+  });
+});
+
+test("the build output check covers exactly the golden nonce paths", () => {
+  const golden = JSON.parse(
+    readFileSync(join(import.meta.dir, "fixtures/nonce-csp-golden.json"), "utf8")
+  );
+  expect([...NONCE_PATHS].sort()).toEqual(Object.keys(golden).sort());
 });
 
 test("the exact-path regex matches the path and its trailing slash only", () => {

@@ -1,18 +1,22 @@
 /**
  * Runs after `next build` (the `build` script), on Vercel and in CI. Plain JavaScript for Node.
  *
- *   node scripts/marketing-csp.mjs          check, inject, then check what was written
- *   node scripts/marketing-csp.mjs check    check an already injected build, write nothing
+ *   node scripts/marketing-csp.mjs                    check, inject, then check what was written
+ *   node scripts/marketing-csp.mjs check              check an already injected build, write nothing
+ *   node scripts/marketing-csp.mjs check-output <dir> check a finished Vercel build output
  *
  * 1. Every route under app/(marketing) must be prerendered, as Next's own prerender manifest
  *    records it: a dynamic marketing route fails the build, by name.
- * 2. Each prerendered marketing page gets a Content-Security-Policy header entry in
- *    .next/routes-manifest.json, which both `next start` and Vercel's builder read after the
- *    build: script-src lists the SHA-256 of every inline script in that page's HTML
- *    (config/marketing-csp.mjs). The proxy skips these paths, so this entry is their only policy.
- * 3. It fails closed: a page with no entry, an entry whose hashes miss one of the page's inline
- *    scripts, a script loaded from an origin the policy does not allow, or a manifest not shaped
- *    as expected exits 1 and names the page.
+ * 2. Each prerendered marketing page gets a Content-Security-Policy whose script-src lists the
+ *    SHA-256 of every inline script in that page's HTML (config/marketing-csp.mjs). The proxy
+ *    skips these paths, so this is their only policy. It is written where the deployment reads
+ *    it: on Vercel, Next's build adapter has already written the Build Output API config
+ *    (.next/output/config.json) inside `next build`, so the policy becomes a header route there;
+ *    for `next start` it is an entry in .next/routes-manifest.json.
+ * 3. It fails closed: a page with no policy, a policy whose hashes miss one of the page's inline
+ *    scripts or that allows framing or an unsafe source, a script loaded from an origin the
+ *    policy does not allow, a build adapter with no output config, a nonce path the proxy does
+ *    not cover, or a file not shaped as expected exits 1 and names the page.
  */
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -146,7 +150,7 @@ export function policyForPage(html, path) {
 }
 
 /**
- * Appends one CSP entry per page, replacing any this step wrote before.
+ * Appends one CSP entry per page to the routes manifest, replacing any this step wrote before.
  *
  * @param {{ headers: Array<{ source: string, regex: string, headers: Array<{ key: string, value: string }> }> }} manifest
  * @param {Map<string, string>} policies page path to policy
@@ -157,7 +161,7 @@ export function injectPolicies(manifest, policies) {
     (entry) => !(policies.has(entry.source) && entry.headers.some((h) => h.key === CSP))
   );
   for (const [path, policy] of policies) {
-    if (!PLAIN_PATH.test(path)) fail(`${path} is not a plain path`);
+    assertPlainPath(path);
     manifest.headers.push({
       source: path,
       regex: exactPathRegex(path),
@@ -166,28 +170,76 @@ export function injectPolicies(manifest, policies) {
   }
 }
 
+/** @param {unknown} config */
+function assertOutputConfig(config) {
+  const routes = /** @type {{ routes?: unknown }} */ (config)?.routes;
+  if (!Array.isArray(routes) || !routes.every((route) => route && typeof route === "object")) {
+    fail("the Build Output config has no routes array");
+  }
+}
+
 /**
- * Fails unless each page is matched by exactly one CSP entry whose script-src hashes cover every
- * inline script in its HTML.
+ * Prepends one header route per page to a Build Output API config, replacing any this step wrote
+ * before. Routes before the first `handle` apply their headers to every matching response.
  *
- * @param {unknown} manifest routes-manifest.json
- * @param {Map<string, string>} htmlByPath page path to its prerendered HTML
+ * @param {{ routes: Array<Record<string, any>> }} config
+ * @param {Map<string, string>} policies page path to policy
  */
-export function verifyPolicies(manifest, htmlByPath) {
-  assertRoutesManifest(manifest);
-  const entries =
-    /** @type {{ headers: Array<{ regex: string, headers: Array<{ key: string, value: string }> }> }} */ (
-      manifest
-    ).headers;
+export function injectRoutes(config, policies) {
+  assertOutputConfig(config);
+  const ours = new Set([...policies.keys()].map(exactPathRegex));
+  const kept = config.routes.filter((route) => !(ours.has(route.src) && cspValues(route).length));
+  const added = [...policies].map(([path, policy]) => {
+    assertPlainPath(path);
+    return { src: exactPathRegex(path), headers: { [CSP]: policy }, continue: true };
+  });
+  config.routes = [...added, ...kept];
+}
+
+/** @param {string} path */
+function assertPlainPath(path) {
+  if (!PLAIN_PATH.test(path)) fail(`${path} is not a plain path`);
+}
+
+/** @param {Record<string, any>} route @returns {string[]} the CSP values a config route sets. */
+function cspValues(route) {
+  return Object.entries(route.headers ?? {})
+    .filter(([key]) => key.toLowerCase() === CSP.toLowerCase())
+    .map(([, value]) => String(value));
+}
+
+/**
+ * @param {string} source
+ * @param {string} where
+ * @param {string} [flags] "i" for Build Output routes, which Vercel matches case-insensitively
+ * @returns {RegExp}
+ */
+function routeRegex(source, where, flags = "") {
+  try {
+    return new RegExp(source, flags);
+  } catch {
+    return fail(`${where} has a route pattern this check cannot read: ${source}`);
+  }
+}
+
+/**
+ * Fails unless each page is matched by exactly one policy whose script-src hashes cover every
+ * inline script in its HTML, allows no unsafe source, and forbids framing.
+ *
+ * @param {Array<{ regex: RegExp, policies: string[] }>} entries every header rule, with the CSP
+ *   values it sets
+ * @param {Map<string, string>} htmlByPath page path to the HTML it serves
+ */
+function verifyCoverage(entries, htmlByPath) {
   for (const [path, html] of htmlByPath) {
-    const policies = entries
-      .filter((entry) => new RegExp(entry.regex).test(path))
-      .flatMap((entry) => entry.headers.filter((h) => h.key.toLowerCase() === CSP.toLowerCase()))
-      .map((h) => h.value);
+    const policies = entries.filter((e) => e.regex.test(path)).flatMap((e) => e.policies);
     if (policies.length !== 1)
       fail(`${path} has ${policies.length} CSP header entries, expected 1`);
-    const scriptSrc = policies[0].split("; ").find((d) => d.startsWith("script-src ")) ?? "";
+    const directives = policies[0].split(";").map((d) => d.trim());
+    const scriptSrc = directives.find((d) => d.startsWith("script-src ")) ?? "";
     if (/'unsafe-(inline|eval)'/.test(scriptSrc)) fail(`${path} allows unsafe script sources`);
+    if (!directives.includes("frame-ancestors 'none'"))
+      fail(`${path} has no frame-ancestors 'none'`);
     const allowed = new Set(scriptSrc.split(" ").slice(1));
     const missing = pageScripts(html)
       .inline.map(scriptHash)
@@ -200,9 +252,80 @@ export function verifyPolicies(manifest, htmlByPath) {
   }
 }
 
-/** @param {string} dir .next @param {string} path @returns {string} */
-function htmlFile(dir, path) {
-  return join(dir, "server", "app", `${path === "/" ? "/index" : path}.html`);
+/**
+ * @param {unknown} manifest routes-manifest.json
+ * @param {Map<string, string>} htmlByPath page path to its prerendered HTML
+ */
+export function verifyPolicies(manifest, htmlByPath) {
+  assertRoutesManifest(manifest);
+  const entries =
+    /** @type {{ headers: Array<{ regex: string, headers: Array<{ key: string, value: string }> }> }} */ (
+      manifest
+    ).headers.map((entry) => ({
+      regex: routeRegex(entry.regex, "routes-manifest.json"),
+      policies: entry.headers
+        .filter((h) => h.key.toLowerCase() === CSP.toLowerCase())
+        .map((h) => h.value),
+    }));
+  verifyCoverage(entries, htmlByPath);
+}
+
+/**
+ * Paths that must keep the proxy's nonce policy: the network and sign-in routes and the 404
+ * shapes, the same paths as the golden nonce fixture. The deployment must run the proxy on each
+ * and give none a marketing policy.
+ */
+export const NONCE_PATHS = [
+  "/mainnet",
+  "/testnet/analyze",
+  "/mainnet/receipt/abc",
+  "/cosign",
+  "/api-keys",
+  "/x/y/z",
+  "/blog/nope",
+];
+
+/**
+ * Verifies a Build Output API config as Vercel serves it: each page's policy comes from a header
+ * route before the first `handle` (later phases do not add headers to a prerendered page), and
+ * every nonce path is matched by the proxy's route and by no CSP route at all.
+ *
+ * @param {unknown} config .vercel/output/config.json or .next/output/config.json
+ * @param {Map<string, string>} htmlByPath page path to its prerendered HTML
+ */
+export function verifyRoutes(config, htmlByPath) {
+  assertOutputConfig(config);
+  const routes = /** @type {{ routes: Array<Record<string, any>> }} */ (config).routes;
+  const firstHandle = routes.findIndex((route) => "handle" in route);
+  const headerRoutes = (firstHandle === -1 ? routes : routes.slice(0, firstHandle)).filter(
+    (route) => typeof route.src === "string" && route.headers
+  );
+  verifyCoverage(
+    headerRoutes.map((route) => ({
+      regex: routeRegex(route.src, "the Build Output config", "i"),
+      policies: cspValues(route),
+    })),
+    htmlByPath
+  );
+  const cspRoutes = routes.filter(
+    (route) => typeof route.src === "string" && cspValues(route).length
+  );
+  const proxyRoutes = routes.filter(
+    (route) => typeof route.src === "string" && typeof route.middlewarePath === "string"
+  );
+  for (const path of NONCE_PATHS) {
+    if (cspRoutes.some((route) => routeRegex(route.src, "the Build Output config", "i").test(path)))
+      fail(`${path} is matched by a marketing CSP route`);
+    if (
+      !proxyRoutes.some((route) => routeRegex(route.src, "the Build Output config", "i").test(path))
+    )
+      fail(`${path} is not matched by the proxy's route, so it would have no nonce policy`);
+  }
+}
+
+/** @param {string} path @returns {string} the file name a page is written under, without extension. */
+function pageFile(path) {
+  return path === "/" ? "/index" : path;
 }
 
 /** @param {string} file @returns {any} */
@@ -211,22 +334,71 @@ function readJson(file) {
   return JSON.parse(readFileSync(file, "utf8"));
 }
 
-/** @param {string} dir the .next directory @param {boolean} write */
-export function run(dir, write) {
-  const pages = prerenderedMarketingPages(
-    readJson(join(dir, "app-path-routes-manifest.json")),
-    readJson(join(dir, "prerender-manifest.json"))
-  );
-  const htmlByPath = new Map(
+/**
+ * @param {string[]} pages
+ * @param {(path: string) => string} fileOf
+ * @returns {Map<string, string>}
+ */
+function readPages(pages, fileOf) {
+  return new Map(
     pages.map((path) => {
-      const file = htmlFile(dir, path);
+      const file = fileOf(path);
       if (!existsSync(file)) fail(`${path} is prerendered but ${file} is missing`);
       return [path, readFileSync(file, "utf8")];
     })
   );
+}
+
+/** @param {string} dir the .next directory @returns {string[]} */
+function marketingPages(dir) {
+  return prerenderedMarketingPages(
+    readJson(join(dir, "app-path-routes-manifest.json")),
+    readJson(join(dir, "prerender-manifest.json"))
+  );
+}
+
+/** @param {string} outputDir a Build Output API directory */
+function outputPageFile(outputDir) {
+  return (/** @type {string} */ path) =>
+    join(outputDir, "functions", `${pageFile(path)}.prerender-fallback.html`);
+}
+
+/**
+ * Writes (when `write`) and verifies each page's policy where the deployment reads it. Under a
+ * build adapter, as on Vercel, `next build` has already turned the routes manifest into
+ * `.next/output/config.json`, so the policy goes there and the HTML is read from that output.
+ * Otherwise (`next start`) it goes into the routes manifest.
+ *
+ * @param {string} dir the .next directory
+ * @param {boolean} write
+ * @param {Record<string, string | undefined>} env
+ */
+export function run(dir, write, env = process.env) {
+  const pages = marketingPages(dir);
+  const outputDir = join(dir, "output");
+  const configFile = join(outputDir, "config.json");
+  if (existsSync(configFile)) {
+    const htmlByPath = readPages(pages, outputPageFile(outputDir));
+    if (write) {
+      const config = readJson(configFile);
+      injectRoutes(
+        config,
+        new Map([...htmlByPath].map(([path, html]) => [path, policyForPage(html, path)]))
+      );
+      writeFileSync(configFile, JSON.stringify(config));
+    }
+    verifyRoutes(readJson(configFile), htmlByPath);
+    return pages;
+  }
+  if (env.NEXT_ADAPTER_PATH) {
+    fail(`a build adapter ran but ${configFile} is missing, so the policy has nowhere to go`);
+  }
+  const htmlByPath = readPages(pages, (path) =>
+    join(dir, "server", "app", `${pageFile(path)}.html`)
+  );
   const manifestFile = join(dir, "routes-manifest.json");
-  const manifest = readJson(manifestFile);
   if (write) {
+    const manifest = readJson(manifestFile);
     injectPolicies(
       manifest,
       new Map([...htmlByPath].map(([path, html]) => [path, policyForPage(html, path)]))
@@ -237,12 +409,36 @@ export function run(dir, write) {
   return pages;
 }
 
+/**
+ * Verifies a finished Vercel build output against the pages Next prerendered.
+ *
+ * @param {string} dir the .next directory
+ * @param {string} outputDir .vercel/output
+ */
+export function checkOutput(dir, outputDir) {
+  const pages = marketingPages(dir);
+  verifyRoutes(
+    readJson(join(outputDir, "config.json")),
+    readPages(pages, outputPageFile(outputDir))
+  );
+  return pages;
+}
+
 // Run from apps/web, as the build script does. No import.meta: Playwright loads this file too.
 if (basename(process.argv[1] ?? "") === "marketing-csp.mjs") {
-  const mode = process.argv[2];
+  const [mode, outputDir] = process.argv.slice(2);
+  const dir = join(process.cwd(), ".next");
   try {
-    const pages = run(join(process.cwd(), ".next"), mode !== "check");
-    console.log(`marketing CSP: ${pages.length} prerendered pages, each with its hash policy`);
+    if (mode === "check-output") {
+      if (!outputDir) fail("check-output needs the build output directory");
+      const pages = checkOutput(dir, outputDir);
+      console.log(
+        `marketing CSP: ${pages.length} pages in ${outputDir}, each with its hash policy`
+      );
+    } else {
+      const pages = run(dir, mode !== "check");
+      console.log(`marketing CSP: ${pages.length} prerendered pages, each with its hash policy`);
+    }
   } catch (error) {
     if (!(error instanceof MarketingCspError)) throw error;
     console.error(`marketing CSP: ${error.message}`);
