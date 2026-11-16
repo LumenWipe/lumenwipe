@@ -26,7 +26,9 @@ for (const path of [
   "/faq",
   "/security",
   "/registry",
+  "/content",
   "/blog/how-do-i-remove-a-trustline-on-stellar",
+  "/blog/phase-1-launch",
 ]) {
   test(`${path} has no serious accessibility violations`, async ({ page }) => {
     await page.goto(path);
@@ -95,6 +97,37 @@ test("the content hub lists published and planned articles in a table", async ({
   await expect(table.getByRole("cell", { name: "Planned" }).first()).toBeVisible();
   await expect(table.getByRole("cell", { name: "Published" }).first()).toBeVisible();
 });
+
+const YOUTUBE_HOSTS =
+  /^https:\/\/(?:[^/]*\.)?(?:youtube(?:-nocookie)?\.com|ytimg\.com|googlevideo\.com)\//;
+
+for (const [path, title] of [
+  ["/content", "What is LumenWipe?"],
+  ["/blog/phase-1-launch", "LumenWipe walkthrough: closing a Stellar account"],
+]) {
+  test(`${path} asks YouTube for nothing until play is pressed, then focuses the player`, async ({
+    page,
+  }) => {
+    const requested: string[] = [];
+    page.on("request", (request) => {
+      if (YOUTUBE_HOSTS.test(request.url())) requested.push(request.url());
+    });
+    await page.route(YOUTUBE_HOSTS, (route) => route.abort());
+    await page.goto(path);
+    const play = page.getByRole("button", { name: `Play video: ${title}` });
+    await play.scrollIntoViewIfNeeded();
+    await page.waitForLoadState("networkidle");
+    await expect(page.locator("iframe")).toHaveCount(0);
+    expect(requested, "requests to YouTube before play").toEqual([]);
+
+    await play.click();
+    const player = page.locator(`iframe[title="${title}"]`);
+    await expect(player).toBeFocused();
+    expect(new URL((await player.getAttribute("src")) ?? "").origin).toBe(
+      "https://www.youtube-nocookie.com"
+    );
+  });
+}
 
 test("the skip link is the first stop and moves focus to the content", async ({ page }) => {
   await page.goto("/security");
