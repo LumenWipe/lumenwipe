@@ -8,6 +8,7 @@ import { closeControllerWith, inertStats } from "../support/close-controller";
 import {
   assessMergePreflight,
   DestinationReadError,
+  LedgerReadError,
   remainingTransactionBound,
   sequenceLimit,
   type MergePreflightDeps,
@@ -24,6 +25,7 @@ import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 import { ALL_ON } from "@/config/kill-switches";
 import { fakeRpcServer } from "../support/rpc-server";
 import { latestLedger } from "../support/rpc-fixtures";
+import { UpstreamError } from "@/lib/stellar/upstream-client";
 
 const SOURCE = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -146,6 +148,57 @@ describe("sequence headroom", () => {
     expect(p!.message).toContain("too far ahead");
     expect(p!.message).toContain("Retrying does not help");
     expect(p!.message.length).toBeLessThanOrEqual(240);
+  });
+});
+
+describe("the ledger the headroom is judged against", () => {
+  const refused = async (): Promise<number> => {
+    throw new UpstreamError("rate_limited", "rpc");
+  };
+
+  test("an unreadable RPC falls back to the snapshot's ledger, bound at its limit", async () => {
+    const snapshot = { snapshotLedger: LEDGER };
+    const at = await assessMergePreflight(
+      state({ ...snapshot, sequence: seq(-1n) }),
+      DEST,
+      "testnet",
+      deps({ latestLedger: refused })
+    );
+    expect(at.map((p) => p.code)).toEqual(["source_sequence_too_far"]);
+    const below = await assessMergePreflight(
+      state({ ...snapshot, sequence: seq(-2n) }),
+      DEST,
+      "testnet",
+      deps({ latestLedger: refused })
+    );
+    expect(below).toEqual([]);
+  });
+
+  test("an unreadable RPC with no snapshot ledger is still a ledger read failure", async () => {
+    const e = await assessMergePreflight(state(), DEST, "testnet", deps({ latestLedger: refused }))
+      .then(() => null)
+      .catch((err: unknown) => err);
+    expect(e).toBeInstanceOf(LedgerReadError);
+  });
+
+  test("a snapshot ledger ahead of the RPC cannot loosen the bound", async () => {
+    const p = await assessMergePreflight(
+      state({ snapshotLedger: LEDGER + 5, sequence: seq(-1n) }),
+      DEST,
+      "testnet",
+      deps()
+    );
+    expect(p.map((x) => x.code)).toEqual(["source_sequence_too_far"]);
+  });
+
+  test("an RPC ahead of the snapshot ledger cannot loosen the bound", async () => {
+    const p = await assessMergePreflight(
+      state({ snapshotLedger: LEDGER, sequence: seq(-1n) }),
+      DEST,
+      "testnet",
+      deps({ latestLedger: async () => LEDGER + 5 })
+    );
+    expect(p.map((x) => x.code)).toEqual(["source_sequence_too_far"]);
   });
 });
 
@@ -349,6 +402,30 @@ describe("POST close/plan", () => {
     const plan = await buildAccountPlan(SOURCE, DEST, [], "testnet", ALL_ON);
     expect(plan.status).toBe("blocked");
     expect(plan.blockers.some((b) => b.message.includes("too far ahead"))).toBe(true);
+  });
+
+  test("a refused RPC ledger read still plans when the snapshot carries its ledger", async () => {
+    arrange(state({ snapshotLedger: LEDGER }), true);
+    spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+      fakeRpcServer({
+        getLatestLedger: () => Promise.reject(new UpstreamError("rate_limited", "rpc")),
+      })
+    );
+    const plan = await buildAccountPlan(SOURCE, null, [], "testnet", ALL_ON);
+    expect(plan.blockers).toEqual([]);
+  });
+
+  test("a refused RPC ledger read with no snapshot ledger is a retryable 503", async () => {
+    arrange(state(), true);
+    spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+      fakeRpcServer({
+        getLatestLedger: () => Promise.reject(new UpstreamError("rate_limited", "rpc")),
+      })
+    );
+    const e = await buildAccountPlan(SOURCE, null, [], "testnet", ALL_ON).catch(
+      (err: unknown) => err
+    );
+    expect(mapDomainError(PLAN_ERRORS, e)).toMatchObject({ status: 503 });
   });
 
   test("a healthy account and funded destination add no blocker", async () => {

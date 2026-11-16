@@ -98,6 +98,27 @@ function sequenceProblem(
 }
 
 /**
+ * The ledger the sequence headroom is judged against: the lower of the RPC's latest ledger and the
+ * account snapshot's, so neither source can loosen the bound. The snapshot's ledger had already
+ * closed when the account was read, so with the RPC unreadable it still bounds from below.
+ */
+async function boundingLedger(
+  state: AccountState,
+  network: Network,
+  deps: MergePreflightDeps
+): Promise<number> {
+  const { snapshotLedger } = state;
+  let latest: number;
+  try {
+    latest = await deps.latestLedger(network);
+  } catch {
+    if (snapshotLedger === undefined) throw new LedgerReadError();
+    return snapshotLedger;
+  }
+  return snapshotLedger === undefined ? latest : Math.min(latest, snapshotLedger);
+}
+
+/**
  * What would make the final merge fail, checked before any transaction is built. Without it a
  * multi-round close strips the account and only the last transaction is refused, leaving an
  * emptied account still open.
@@ -116,12 +137,7 @@ export async function assessMergePreflight(
   const viaMediator =
     destination !== null && lookupExchange(destination, network)?.requiresMediator === true;
 
-  let latest: number;
-  try {
-    latest = await deps.latestLedger(network);
-  } catch {
-    throw new LedgerReadError();
-  }
+  const latest = await boundingLedger(state, network, deps);
   const sequence = sequenceProblem(
     state.sequence,
     latest,
