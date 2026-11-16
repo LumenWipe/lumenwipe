@@ -51,6 +51,13 @@ function shortAddress(address: string): string {
 type SignMode = "wallet" | "secret-key";
 type Step = "confirm" | "signing" | "done" | "failed";
 
+const HEADER_ICON_TONE: Record<Step, string> = {
+  confirm: "bg-surface-raised text-fg-muted",
+  signing: "bg-surface-raised text-fg-muted",
+  failed: "bg-danger/15 text-danger-fg",
+  done: "bg-success/15 text-success",
+};
+
 /**
  * Builds, verifies, signs, and submits one revocation - a standalone signed action, not a step
  * in the close wizard, so it owns its own minimal sign-mode state rather than reusing
@@ -165,7 +172,7 @@ export default function RevokeAllowanceModal({
         <div
           className={cn(
             "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
-            step === "done" ? "bg-success/15 text-success" : "bg-warning/15 text-warning"
+            HEADER_ICON_TONE[step]
           )}
         >
           {step === "done" ? (

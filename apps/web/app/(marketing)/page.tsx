@@ -99,7 +99,7 @@ function xlm(amount: number): string {
 function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
     <span className="mkt-eyebrow inline-flex items-center gap-2 text-fg-muted">
-      <span className="h-px w-5 bg-accent/60" />
+      <span className="h-px w-5 bg-line-strong" />
       {children}
     </span>
   );

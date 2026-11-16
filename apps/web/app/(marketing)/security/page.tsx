@@ -71,7 +71,7 @@ export default function SecurityPage() {
     <section className="mx-auto max-w-6xl px-5 py-20 lg:px-8 lg:py-24">
       <div className="max-w-2xl">
         <span className="mkt-eyebrow inline-flex items-center gap-2 text-fg-muted">
-          <span className="h-px w-5 bg-accent/60" />
+          <span className="h-px w-5 bg-line-strong" />
           {T.eyebrow}
         </span>
         <h1 className="mkt-display mt-4 text-4xl font-bold text-white sm:text-5xl">{T.heading}</h1>

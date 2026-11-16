@@ -31,7 +31,7 @@ export default function AccountSummaryCard({
         <div className="px-4 pb-4" data-testid="expected-receive">
           <p className="text-sm text-fg-muted">
             You will receive about{" "}
-            <span className="mkt-display block text-3xl font-bold text-value">
+            <span className="mkt-display block text-3xl font-bold tabular-nums text-value">
               {formatStroops(expected.totalStroops)} XLM
             </span>{" "}
             {destinationAddress ? (

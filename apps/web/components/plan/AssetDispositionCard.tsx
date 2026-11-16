@@ -175,7 +175,7 @@ export default function AssetDispositionCard({
             {isTransfer || isIssuer ? (
               <Send className="h-4 w-4 shrink-0 text-fg-muted" />
             ) : (
-              <ArrowRightLeft className="h-4 w-4 shrink-0 text-success" />
+              <ArrowRightLeft className="h-4 w-4 shrink-0 text-fg-muted" />
             )}
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-white">

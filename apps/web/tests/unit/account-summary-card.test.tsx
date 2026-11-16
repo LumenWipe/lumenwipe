@@ -180,3 +180,11 @@ test("a totally unconfirmed degraded result shows no verification badge", () => 
   );
   expect(screen.queryByText(/Verified (with|by)/)).toBeNull();
 });
+
+test("the expected amount is set in tabular numerals", () => {
+  const account = baseAccount();
+  renderCard(account, expectedFor(account), DESTINATION);
+  const amount = screen.getByText("9.99999 XLM");
+  expect(amount.classList.contains("tabular-nums")).toBe(true);
+  expect(amount.classList.contains("text-value")).toBe(true);
+});
