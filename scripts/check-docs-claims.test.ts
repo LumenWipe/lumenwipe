@@ -7,6 +7,7 @@ import {
   checkAnalyticsTools,
   checkControllerList,
   checkDesignTokens,
+  checkFontCopies,
   checkFormatCommand,
   checkNodeVersion,
   checkPlaygroundImports,
@@ -134,6 +135,8 @@ function register(...rows: string[]): string {
   ].join("\n");
 }
 
+const FONT = "wOF2 display";
+
 function fixture(files: Record<string, string | null>): string {
   const root = mkdtempSync(join(tmpdir(), "docs-claims-"));
   roots.push(root);
@@ -173,6 +176,8 @@ function fixture(files: Record<string, string | null>): string {
     "apps/web/app/root-document.tsx": LAYOUT,
     "apps/web/components/analytics/RedactedAnalytics.tsx": ANALYTICS_COMPONENT,
     "docs/architecture.md": ARCHITECTURE,
+    "apps/web/app/fonts/display.woff2": FONT,
+    "apps/playground/app/fonts/display.woff2": FONT,
     "docs/reference/logging-and-privacy.mdx": PRIVACY_PAGE,
   };
   for (const [path, content] of Object.entries({ ...base, ...files })) {
@@ -837,5 +842,38 @@ describe("the contributor setup", () => {
     expect(checkSetupSteps(noBlock)[0]?.message).toBe(
       "the setup section's commands after `bun install` were not found"
     );
+  });
+});
+
+describe("the self-hosted font copies", () => {
+  const WEB = "apps/web/app/fonts";
+  const PLAYGROUND = "apps/playground/app/fonts";
+
+  test("a font whose bytes differ between the two copies is reported", () => {
+    const root = fixture({ [`${PLAYGROUND}/display.woff2`]: "wOF2 display, re-fetched" });
+    const problems = checkFontCopies(root);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]?.source).toBe(`${PLAYGROUND}/display.woff2`);
+    expect(problems[0]?.message).toStartWith(`differs from ${WEB}/display.woff2`);
+  });
+
+  test("a font only one copy has is reported against the other", () => {
+    expect(checkFontCopies(fixture({ [`${WEB}/mono.woff2`]: "wOF2 mono" }))).toEqual([
+      { source: `${PLAYGROUND}/mono.woff2`, message: `is missing; ${WEB} has it` },
+    ]);
+    expect(checkFontCopies(fixture({ [`${PLAYGROUND}/mono.woff2`]: "wOF2 mono" }))).toEqual([
+      { source: `${WEB}/mono.woff2`, message: `is missing; ${PLAYGROUND} has it` },
+    ]);
+  });
+
+  test("a copy with no fonts at all is reported", () => {
+    expect(checkFontCopies(fixture({ [`${PLAYGROUND}/display.woff2`]: null }))).toEqual([
+      { source: PLAYGROUND, message: "holds no .woff2 font" },
+      { source: `${PLAYGROUND}/display.woff2`, message: `is missing; ${WEB} has it` },
+    ]);
+  });
+
+  test("files other than .woff2 are not compared", () => {
+    expect(checkFontCopies(fixture({ [`${PLAYGROUND}/README.md`]: "A copy.\n" }))).toEqual([]);
   });
 });

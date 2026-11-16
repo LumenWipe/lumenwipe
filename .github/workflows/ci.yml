@@ -101,6 +101,14 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # The fonts are self-hosted files (apps/*/app/fonts), so the build must not need a font host:
+      # with both Google Fonts hosts unresolvable, a build that fetches a font fails here.
+      - name: Block the Google Fonts hosts
+        if: matrix.name == 'web' || matrix.name == 'playground'
+        shell: bash
+        run: |
+          printf "%s fonts.googleapis.com fonts.gstatic.com\n" 0.0.0.0 :: | sudo tee -a /etc/hosts
+
       - name: Run checks
         run: |
           for c in ${{ matrix.checks }}; do
@@ -276,6 +284,12 @@ jobs:
         run: bunx playwright install chromium
         working-directory: apps/web
 
+      # The specs run against a production build made with the Google Fonts hosts unresolvable.
+      # The container runs as root, so /etc/hosts is written directly.
+      - name: Block the Google Fonts hosts
+        run: |
+          printf "%s fonts.googleapis.com fonts.gstatic.com\n" 0.0.0.0 :: >> /etc/hosts
+
       - name: Run the accessibility specs
         run: bun run --filter '@lumenwipe/web' test:a11y
 
@@ -382,6 +396,13 @@ jobs:
           echo "run=$run" >> "$GITHUB_OUTPUT"
           echo "Web app changed: $run"
 
+      # The Vercel builder runs next build too, so it proves the same offline build.
+      - name: Block the Google Fonts hosts
+        if: github.event_name != 'pull_request' || steps.web.outputs.run == 'true'
+        shell: bash
+        run: |
+          printf "%s fonts.googleapis.com fonts.gstatic.com\n" 0.0.0.0 :: | sudo tee -a /etc/hosts
+
       - name: Build with the Vercel builder
         if: github.event_name != 'pull_request' || steps.web.outputs.run == 'true'
         env:
@@ -425,6 +446,12 @@ jobs:
       - name: Install Playwright browser
         run: bunx playwright install chromium
         working-directory: apps/playground
+
+      # The specs run against a production build made with the Google Fonts hosts unresolvable.
+      # The container runs as root, so /etc/hosts is written directly.
+      - name: Block the Google Fonts hosts
+        run: |
+          printf "%s fonts.googleapis.com fonts.gstatic.com\n" 0.0.0.0 :: >> /etc/hosts
 
       - name: Run the accessibility specs
         run: bun run --filter '@lumenwipe/playground' test:a11y
