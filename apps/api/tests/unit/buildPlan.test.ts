@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { Keypair } from "@stellar/stellar-sdk";
+import { Address, Keypair } from "@stellar/stellar-sdk";
 import { buildPlan } from "@/lib/stellar/tx-builder";
 import type {
   AccountState,
@@ -622,15 +622,64 @@ test("buildPlan › unresolved unclaimable balance (no selection) → unchanged 
   expect(blockers[0].message).toContain("Establish");
 });
 
-test("buildPlan › CLAIM_BALANCES comes after CANCEL_OFFERS and before HANDLE_ASSETS", () => {
+test("buildPlan › CLAIM_BALANCES comes before the close's steps, in the round that runs first", () => {
   const account = makeAccount({
+    signers: [
+      { key: MASTER, weight: 2, type: "ed25519_public_key" },
+      { key: Keypair.random().publicKey(), weight: 1, type: "ed25519_public_key" },
+    ],
+    thresholds: { low: 0, med: 1, high: 2 },
+    dataEntries: [{ key: "note", value: "aGk=" }],
     openOffers: [{ id: "1", selling: "native", buying: `USDC:${ISSUER}`, amount: "1", price: "1" }],
     claimableBalances: [makeClaimableBalance("native")],
   });
   const { steps } = buildPlan(ALL_ON, account, false);
-  const cancelIdx = steps.findIndex((s) => s.type === "CANCEL_OFFERS");
-  const claimIdx = steps.findIndex((s) => s.type === "CLAIM_BALANCES");
-  expect(claimIdx).toBeGreaterThan(cancelIdx);
+  expect(steps.map((s) => s.type)).toEqual([
+    "CLAIM_BALANCES",
+    "NORMALIZE_SIGNERS",
+    "REMOVE_DATA_ENTRIES",
+    "CANCEL_OFFERS",
+    "MERGE",
+  ]);
+  steps.forEach((s, i) => expect(s.index).toBe(i));
+});
+
+test("buildPlan › token steps list every transfer by contract, then each conversion, then what stays", () => {
+  const contract = (fill: number): string => Address.contract(Buffer.alloc(32, fill)).toString();
+  const [low, mid, high, kept] = [contract(1), contract(2), contract(3), contract(4)];
+  const SINK = Keypair.random().publicKey();
+  const token = (c: string, symbol: string) => ({
+    contract: c,
+    balance: "10",
+    symbol,
+    decimals: 7,
+    sources: ["explorer" as const],
+  });
+  const account = makeAccount({
+    sorobanTokens: {
+      tokens: [token(kept, "KEEP"), token(mid, "CONV"), token(high, "SENDB"), token(low, "SENDA")],
+      unreadable: [],
+      coverage: [],
+      eventsScanned: null,
+      warnings: [],
+    },
+  });
+  const { steps } = buildPlan(
+    ALL_ON,
+    account,
+    false,
+    false,
+    {},
+    undefined,
+    { [kept]: "leave", [mid]: "convert", [high]: "transfer", [low]: "transfer" },
+    { [high]: SINK, [low]: SINK }
+  );
+  expect(steps.filter((s) => s.type === "HANDLE_ASSETS").map((s) => s.affectedAsset)).toEqual([
+    low,
+    high,
+    mid,
+    kept,
+  ]);
 });
 
 test("buildPlan › 101 XLM claimable balances → 2 CLAIM_BALANCES batches", () => {

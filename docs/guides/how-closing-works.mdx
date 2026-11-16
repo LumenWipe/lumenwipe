@@ -32,17 +32,19 @@ A close has four stages. Nothing is signed until you have seen the whole plan.
 
 ## The plan
 
-For a given account state the plan is always the same. It runs in this order, which satisfies the ledger's constraints:
+For a given account state the plan is always the same. It runs in this order, which satisfies the ledger's constraints, and the review page's "In order" list shows the steps in exactly this order:
 
-1. Exit DeFi positions, each as its own transaction
-2. Normalize signers, when extra signers exist. When no single key of the account can sign the close, this comes first instead, as a transaction of its own, so the master key alone signs every step after it
-3. Revoke the sponsorships this account provides, when the owners can absorb the reserve
-4. Remove data entries
-5. Cancel offers
-6. Claim claimable balances
-7. Handle each asset
-8. Remove trustlines
-9. Merge the account
+1. Normalize signers first, as a transaction of its own, when no single key of the account can sign the close, so the master key alone signs every step after it
+2. Exit DeFi positions, each as its own transaction
+3. Move Soroban tokens, each as its own transaction: every transfer first, then every conversion to XLM
+4. Claim claimable balances, adding a trustline first where a claim needs one, in a transaction before the close
+5. Normalize signers, when extra signers exist and this did not run first
+6. Revoke the sponsorships this account provides, when the owners can absorb the reserve
+7. Remove data entries
+8. Cancel offers
+9. Handle each asset
+10. Remove trustlines
+11. Merge the account, through the mediator transaction last for an exchange destination
 
 Liquidity pool shares are not unwound by LumenWipe. An account that holds them is reported as a blocker, and the shares have to be withdrawn with another tool first.
 

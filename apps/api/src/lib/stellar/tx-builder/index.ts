@@ -578,8 +578,17 @@ export function buildPlan(
   // Soroban token balances held directly, one step each. A transfer or conversion is its own
   // Soroban transaction ahead of the classic close; a balance left on record is a step with
   // nothing to sign - shown so the review and the receipt carry what the user chose to leave.
+  // Listed as the rounds run them: every transfer, by contract id, then every conversion, in the
+  // order the account read lists them, then what stays.
+  const tokenRank = (contract: string): number =>
+    dispositions[contract] === "leave" ? 2 : dispositions[contract] === "convert" ? 1 : 0;
+  const tokensInRunOrder = [...heldTokens].sort((a, b) => {
+    const rank = tokenRank(a.contract) - tokenRank(b.contract);
+    if (rank !== 0 || tokenRank(a.contract) !== 0) return rank;
+    return a.contract < b.contract ? -1 : 1;
+  });
   const pushTokenSteps = (): void => {
-    for (const token of heldTokens) {
+    for (const token of tokensInRunOrder) {
       const labels = tokenStepLabels(
         token,
         dispositions[token.contract],
@@ -666,6 +675,66 @@ export function buildPlan(
   // token out, and the token round then moves it before anything classic.
   pushTokenSteps();
 
+  // Claims follow the token rounds, exactly where the round builder runs them: in a round of
+  // their own, before the close that holds every step below.
+  // Balances that need a trustline added before they can be claimed (the remediation path).
+  // Always emitted immediately before the CLAIM_BALANCES step so the claim never runs against
+  // a still-untrusted asset.
+  // Stryker disable next-line EqualityOperator,ConditionalExpression: batchItems([], N) always
+  // returns [], so the loop below runs zero times regardless of this gate.
+  // Batched by unique asset: the transaction adds one trustline per asset (see
+  // trustlineAddForClaimOps), so the step count and fee estimate must match.
+  const assetsNeedingTrustline = [...new Set(balancesNeedingTrustline.map((b) => b.asset))];
+  if (assetsNeedingTrustline.length > 0) {
+    const batches = batchItems(assetsNeedingTrustline, OP_BATCH_LIMIT);
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i];
+      steps.push(
+        step(
+          idx++,
+          "ADD_TRUSTLINE_FOR_CLAIM",
+          batches.length > 1
+            ? `Add trustlines to claim (batch ${i + 1}/${batches.length})`
+            : "Add trustlines to claim",
+          `Establish ${batch.length} trustline${batch.length === 1 ? "" : "s"} so the following claimable balance${batch.length === 1 ? "" : "s"} can be claimed.`,
+          batch.length
+        )
+      );
+    }
+  }
+
+  // Claimable balances the caller resolved to actually claim: currently-claimable ones not
+  // opted out, plus ones just remediated with a new trustline above. Batched like other
+  // operations. Excludes forfeited/unresolved balances entirely.
+  const claimable = balancesNeedingClaimStep;
+  // Stryker disable next-line EqualityOperator,ConditionalExpression: batchItems([], N) always
+  // returns [], so the loop below runs zero times regardless of this gate.
+  if (claimable.length > 0) {
+    const batches = batchItems(claimable, OP_BATCH_LIMIT);
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i];
+      const xlmCount = batch.filter((b) => b.asset === "native").length;
+      const tokenCount = batch.length - xlmCount;
+      let detail = "";
+      if (xlmCount > 0 && tokenCount > 0) {
+        detail = ` (${xlmCount} XLM, ${tokenCount} token${tokenCount === 1 ? "" : "s"})`;
+      } else if (tokenCount > 0) {
+        detail = ` (${tokenCount} token${tokenCount === 1 ? "" : "s"})`;
+      }
+      steps.push(
+        step(
+          idx++,
+          "CLAIM_BALANCES",
+          batches.length > 1
+            ? `Claim balances (batch ${i + 1}/${batches.length})`
+            : "Claim claimable balances",
+          `Claim ${batch.length} claimable balance${batch.length === 1 ? "" : "s"}${detail} and add the proceeds to this account.`,
+          batch.length
+        )
+      );
+    }
+  }
+
   if (needsSignerNormalization && !normalizeFirst) pushNormalizeStep();
 
   // Stryker disable next-line EqualityOperator,ConditionalExpression: batchItems([], N) always
@@ -723,64 +792,6 @@ export function buildPlan(
             ? `Cancel DEX offers (batch ${i + 1}/${batches.length})`
             : "Cancel open DEX offers",
           `Cancel ${batch.length} open offer${batch.length === 1 ? "" : "s"} on the Stellar DEX.`,
-          batch.length
-        )
-      );
-    }
-  }
-
-  // Balances that need a trustline added before they can be claimed (the remediation path).
-  // Always emitted immediately before the CLAIM_BALANCES step so the claim never runs against
-  // a still-untrusted asset.
-  // Stryker disable next-line EqualityOperator,ConditionalExpression: batchItems([], N) always
-  // returns [], so the loop below runs zero times regardless of this gate.
-  // Batched by unique asset: the transaction adds one trustline per asset (see
-  // trustlineAddForClaimOps), so the step count and fee estimate must match.
-  const assetsNeedingTrustline = [...new Set(balancesNeedingTrustline.map((b) => b.asset))];
-  if (assetsNeedingTrustline.length > 0) {
-    const batches = batchItems(assetsNeedingTrustline, OP_BATCH_LIMIT);
-    for (let i = 0; i < batches.length; i++) {
-      const batch = batches[i];
-      steps.push(
-        step(
-          idx++,
-          "ADD_TRUSTLINE_FOR_CLAIM",
-          batches.length > 1
-            ? `Add trustlines to claim (batch ${i + 1}/${batches.length})`
-            : "Add trustlines to claim",
-          `Establish ${batch.length} trustline${batch.length === 1 ? "" : "s"} so the following claimable balance${batch.length === 1 ? "" : "s"} can be claimed.`,
-          batch.length
-        )
-      );
-    }
-  }
-
-  // Claimable balances the caller resolved to actually claim: currently-claimable ones not
-  // opted out, plus ones just remediated with a new trustline above. Batched like other
-  // operations. Excludes forfeited/unresolved balances entirely.
-  const claimable = balancesNeedingClaimStep;
-  // Stryker disable next-line EqualityOperator,ConditionalExpression: batchItems([], N) always
-  // returns [], so the loop below runs zero times regardless of this gate.
-  if (claimable.length > 0) {
-    const batches = batchItems(claimable, OP_BATCH_LIMIT);
-    for (let i = 0; i < batches.length; i++) {
-      const batch = batches[i];
-      const xlmCount = batch.filter((b) => b.asset === "native").length;
-      const tokenCount = batch.length - xlmCount;
-      let detail = "";
-      if (xlmCount > 0 && tokenCount > 0) {
-        detail = ` (${xlmCount} XLM, ${tokenCount} token${tokenCount === 1 ? "" : "s"})`;
-      } else if (tokenCount > 0) {
-        detail = ` (${tokenCount} token${tokenCount === 1 ? "" : "s"})`;
-      }
-      steps.push(
-        step(
-          idx++,
-          "CLAIM_BALANCES",
-          batches.length > 1
-            ? `Claim balances (batch ${i + 1}/${batches.length})`
-            : "Claim claimable balances",
-          `Claim ${batch.length} claimable balance${batch.length === 1 ? "" : "s"}${detail} and add the proceeds to this account.`,
           batch.length
         )
       );
