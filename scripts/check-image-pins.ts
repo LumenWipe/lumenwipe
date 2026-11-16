@@ -1,7 +1,9 @@
 // Fails when the API image stops being built from pinned inputs: the `# syntax=` frontend and every
-// base image in apps/api/Dockerfile must be `name:version@sha256:<64 hex>`, the Bun image's version
-// must be the Bun in .tool-versions (and every workflow's Bun pin must agree), and the Node image's
-// version must be the Node in .tool-versions. Renovate moves these together; this catches the case
+// base image in apps/api/Dockerfile must be `name:tag@sha256:<64 hex>`, the Bun image's version
+// must be the Bun in .tool-versions (and every workflow's Bun pin must agree), and the Node runtime
+// must match the Node in .tool-versions: an official node image by its version, a distroless nodejs
+// image by the major in its name (its tags carry no version, so the CI api image job compares the
+// built image's `node --version` exactly). Renovate moves these together; this catches the case
 // where it, or a hand edit, moves only some of them.
 // Usage: bun scripts/check-image-pins.ts (from the repo root)
 import { readdirSync, readFileSync } from "node:fs";
@@ -9,6 +11,7 @@ import { join } from "node:path";
 
 const PINNED =
   /^(?<name>[a-z0-9][a-z0-9._/-]*):(?<tag>[A-Za-z0-9][A-Za-z0-9._-]*)@sha256:[0-9a-f]{64}$/;
+const DISTROLESS_NODE = /^gcr\.io\/distroless\/nodejs(?<major>\d+)-debian\d+$/;
 
 export interface PinInputs {
   dockerfile: string;
@@ -41,6 +44,7 @@ export function checkPins({ dockerfile, toolVersions, workflows }: PinInputs): s
   const refs: { ref: string; where: string }[] = [];
   let sawSyntax = false;
   let sawFrom = false;
+  let sawNode = false;
   for (const [index, line] of dockerfile.split("\n").entries()) {
     const where = `apps/api/Dockerfile:${index + 1}`;
     const syntax = /^#\s*syntax\s*=\s*(\S+)/.exec(line);
@@ -62,8 +66,10 @@ export function checkPins({ dockerfile, toolVersions, workflows }: PinInputs): s
 
   for (const { ref, where } of refs) {
     const pinned = PINNED.exec(ref);
+    const imageName = ref.split(/[:@]/)[0];
+    if (imageName === "node" || DISTROLESS_NODE.test(imageName)) sawNode = true;
     if (!pinned?.groups) {
-      errors.push(`${where}: ${ref} is not pinned as name:version@sha256:<64 hex digits>`);
+      errors.push(`${where}: ${ref} is not pinned as name:tag@sha256:<64 hex digits>`);
       continue;
     }
     const { name, tag } = pinned.groups;
@@ -73,6 +79,13 @@ export function checkPins({ dockerfile, toolVersions, workflows }: PinInputs): s
     if (name === "node" && node && tagVersion(tag) !== node) {
       errors.push(`${where}: node:${tag} is not the Node in .tool-versions (${node})`);
     }
+    const distroless = DISTROLESS_NODE.exec(name)?.groups;
+    if (distroless && node && distroless.major !== node.split(".")[0]) {
+      errors.push(`${where}: ${name} is not the Node major in .tool-versions (${node})`);
+    }
+  }
+  if (sawFrom && !sawNode) {
+    errors.push("apps/api/Dockerfile has no node or gcr.io/distroless/nodejs<major> base");
   }
 
   if (bun) {
