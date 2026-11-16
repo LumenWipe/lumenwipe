@@ -96,6 +96,7 @@
           "reference/glossary",
           "reference/supported",
           "reference/logging-and-privacy",
+          "reference/environment",
           "reference/receipt-format",
           "changelog"
         ]

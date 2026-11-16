@@ -200,26 +200,7 @@ Open [http://localhost:3000](http://localhost:3000). The tool defaults to Stella
 
 ### Environment variables
 
-The web and the API each read their own `.env.local` (copy from each app's `.env.example`).
-
-**`apps/api/.env.local`** - the API:
-
-| Variable                                   | Description                                                                 |
-| ------------------------------------------ | --------------------------------------------------------------------------- |
-| `API_KEYS`                                 | Accepted API keys as `label=key` (the web's key must be listed here)        |
-| `STELLAR_RPC_TESTNET` / `_MAINNET`         | Stellar RPC endpoints; one URL or a comma-separated failover list           |
-| `PATH_ROUTING_API_TESTNET` / `_MAINNET`    | Horizon-compatible endpoints for account state and paths; one URL or a list |
-| `REQUIRE_EXPLICIT_MAINNET_ENDPOINTS`       | Set to `true` to refuse to start while a mainnet endpoint is unset          |
-| `MEDIATOR_PUBLIC_*` / `MEDIATOR_SECRET_*`  | Shared mediator keys (operator-only; enables exchange closes)               |
-| `ADMIN_API_TOKEN` / `FIRESTORE_PROJECT_ID` | Optional; enables self-serve API key management (`/admin/api-keys`, #289)   |
-| `FIRESTORE_DATABASE_ID`                    | Optional; the Firestore database the stores use, `(default)` when unset     |
-
-**`apps/web/.env.local`** - the web:
-
-| Variable                                              | Description                                                                         |
-| ----------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `LUMENWIPE_API_URL` / `LUMENWIPE_API_KEY`             | API base URL and key, injected server-side by the proxy (never sent to the browser) |
-| `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` | Upstash Redis - for the proxy rate limit                                            |
+Every variable each app reads, with whether it is required, whether it is a secret and its default, is in the [environment variable reference](docs/reference/environment.mdx), generated from the `.env.example` files.
 
 ### Running tests
 
@@ -254,7 +235,7 @@ Full technical documentation is at [**docs.lumenwipe.com**](https://docs.lumenwi
 | [Security policy](SECURITY.md)                                     | Supported versions and how to report a vulnerability privately                                                                  |
 | [Guides](docs/guides/closing-an-account.mdx)                       | Closing an account, how a close works, signing options, protocol exits, exchange closes, troubleshooting, and recovery          |
 | [Use cases](docs/use-cases/overview.mdx)                           | Who closes accounts and why, from individuals to wallet and embedded-account platforms                                          |
-| [Reference](docs/reference/glossary.mdx)                           | Glossary, the supported matrix, and logging and privacy                                                                         |
+| [Reference](docs/reference/glossary.mdx)                           | Glossary, the supported matrix, environment variables, and logging and privacy                                                  |
 | [Integrators](docs/integrators/quickstart.mdx)                     | Quickstart, network differences and the mainnet checklist, limits, and the compatibility and deprecation policy                 |
 | [SDK](docs/sdk/overview.mdx)                                       | The `@lumenwipe/sdk` client, `runClose`, verification, errors and versioning                                                    |
 | [API reference](docs/api-reference/introduction.mdx)               | Authentication, errors, rate limits and every endpoint, plus the [error reference](docs/api-reference/errors.mdx)               |

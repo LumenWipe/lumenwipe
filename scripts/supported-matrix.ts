@@ -315,7 +315,401 @@ function limitsBlock(): string {
   );
 }
 
-const PAGES: Record<string, Record<string, () => string>> = {
+interface OpenApi {
+  paths: Record<string, Record<string, { summary?: string }>>;
+}
+
+const HTTP_METHODS = ["get", "put", "post", "delete", "patch", "head", "options"];
+
+/** One row per operation in the published OpenAPI document, in its order. */
+export function endpointsTable(openapi: OpenApi): string {
+  const rows: string[][] = [];
+  for (const [path, operations] of Object.entries(openapi.paths)) {
+    for (const [method, operation] of Object.entries(operations)) {
+      if (!HTTP_METHODS.includes(method)) continue;
+      if (!operation.summary) throw new Error(`${method.toUpperCase()} ${path} has no summary`);
+      rows.push([`\`${method.toUpperCase()} ${path}\``, operation.summary.replace(/\|/g, "\\|")]);
+    }
+  }
+  if (rows.length === 0) throw new Error("The OpenAPI document lists no operations");
+  return table(["Endpoint", "Purpose"], rows);
+}
+
+function endpointsBlock(): string {
+  return endpointsTable(readJson<OpenApi>("docs/api-reference/openapi.json"));
+}
+
+export type EnvApp = "api" | "web" | "playground";
+
+export interface EnvironmentFacts {
+  required: "Yes" | "No" | "Production" | "Tests only";
+  secret: boolean;
+  default: string;
+  purpose: string;
+}
+
+const NONE = "None";
+const ON = "`true`";
+
+function optional(purpose: string, secret = false, value = NONE): EnvironmentFacts {
+  return { required: "No", secret, default: value, purpose };
+}
+
+function header(target: string, url: string, part: "NAME" | "VALUE"): EnvironmentFacts {
+  return part === "NAME"
+    ? optional(`Name of the auth header sent to the ${url} ${target}`)
+    : optional(`Value of the auth header sent to the ${url} ${target}`, true);
+}
+
+function killSwitch(path: string): EnvironmentFacts {
+  return optional(
+    `Kill switch for ${path}; any value other than \`true\` or \`false\` refuses the boot`,
+    false,
+    ON
+  );
+}
+
+/**
+ * Every variable the `.env.example` files list, classified by a person: whether it must be set,
+ * whether its value is a secret, and what it falls back to. A variable added to an example
+ * without an entry here fails the generator, so nothing reaches the reference unclassified.
+ */
+export const ENVIRONMENT: Record<EnvApp, Record<string, EnvironmentFacts>> = {
+  api: {
+    API_KEYS: {
+      required: "Yes",
+      secret: true,
+      default: NONE,
+      purpose:
+        "Accepted API keys as comma-separated `label=key` pairs; the API refuses to boot without it",
+    },
+    LOG_HASH_KEY: optional(
+      "Key for the short hash that matches log lines about one address",
+      true,
+      "A random key per process"
+    ),
+    THROTTLE_LIMIT: optional("Requests per window, per API key", false, "`120`"),
+    THROTTLE_TTL: optional("Rate limit window in milliseconds", false, "`60000`"),
+    ADMIN_API_TOKEN: optional(
+      "Operator token for `/admin/api-keys/*`; needs `FIRESTORE_PROJECT_ID`",
+      true
+    ),
+    FIRESTORE_PROJECT_ID: optional(
+      "GCP project holding the self-serve key store",
+      false,
+      "An in-memory store"
+    ),
+    FIRESTORE_DATABASE_ID: optional("Firestore database the stores use", false, "`(default)`"),
+    INTEGRATOR_AUTH_SECRET: optional(
+      "Signs the wallet sign-in challenge and session tokens, at least 32 characters",
+      true
+    ),
+    PORT: optional("Port the API listens on", false, "`3001`"),
+    STELLAR_RPC_TESTNET: optional(
+      "Testnet Stellar RPC, one URL or a comma-separated failover list; secret because a provider URL can carry its key",
+      true,
+      "`https://soroban-testnet.stellar.org`"
+    ),
+    STELLAR_RPC_MAINNET: optional(
+      "Mainnet Stellar RPC, one URL or a comma-separated failover list; secret because a provider URL can carry its key",
+      true,
+      "`https://mainnet.sorobanrpc.com`"
+    ),
+    STELLAR_RPC_HEADER_NAME_TESTNET: header("Stellar RPC", "first testnet", "NAME"),
+    STELLAR_RPC_HEADER_VALUE_TESTNET: header("Stellar RPC", "first testnet", "VALUE"),
+    STELLAR_RPC_HEADER_NAME_MAINNET: header("Stellar RPC", "first mainnet", "NAME"),
+    STELLAR_RPC_HEADER_VALUE_MAINNET: header("Stellar RPC", "first mainnet", "VALUE"),
+    STELLAR_RPC_HEADER_NAME_MAINNET_2: header("Stellar RPC", "second mainnet", "NAME"),
+    STELLAR_RPC_HEADER_VALUE_MAINNET_2: header("Stellar RPC", "second mainnet", "VALUE"),
+    STELLAR_RPC_HEADER_NAME_MAINNET_3: header("Stellar RPC", "third mainnet", "NAME"),
+    STELLAR_RPC_HEADER_VALUE_MAINNET_3: header("Stellar RPC", "third mainnet", "VALUE"),
+    PATH_ROUTING_API_TESTNET: optional(
+      "Testnet Horizon-compatible endpoint for account state and conversion paths; account reads fail without it. Secret because a provider URL can carry its key",
+      true
+    ),
+    PATH_ROUTING_API_MAINNET: optional(
+      "Mainnet Horizon-compatible endpoint for account state and conversion paths; account reads fail without it. Secret because a provider URL can carry its key",
+      true
+    ),
+    PATH_ROUTING_API_HEADER_NAME_MAINNET: header(
+      "Horizon-compatible endpoint",
+      "first mainnet",
+      "NAME"
+    ),
+    PATH_ROUTING_API_HEADER_VALUE_MAINNET: header(
+      "Horizon-compatible endpoint",
+      "first mainnet",
+      "VALUE"
+    ),
+    PATH_ROUTING_API_HEADER_NAME_MAINNET_2: header(
+      "Horizon-compatible endpoint",
+      "second mainnet",
+      "NAME"
+    ),
+    PATH_ROUTING_API_HEADER_VALUE_MAINNET_2: header(
+      "Horizon-compatible endpoint",
+      "second mainnet",
+      "VALUE"
+    ),
+    REQUIRE_EXPLICIT_MAINNET_ENDPOINTS: optional(
+      "`true` refuses to start while a mainnet endpoint is unset",
+      false,
+      "`false`"
+    ),
+    OCTOPOS_API_URL_MAINNET: optional(
+      "OctoPos DeFi position detection; unset means a classic-only close",
+      false
+    ),
+    OCTOPOS_API_KEY: optional("Raises OctoPos to its authenticated rate tier", true),
+    MEDIATOR_PUBLIC_TESTNET: optional(
+      "Public key of the testnet mediator; checked against its secret",
+      false
+    ),
+    MEDIATOR_PUBLIC_MAINNET: optional(
+      "Public key of the mainnet mediator; checked against its secret",
+      false
+    ),
+    MEDIATOR_SECRET_TESTNET: optional(
+      "Testnet mediator signing key; without it testnet exchange closes are unavailable",
+      true
+    ),
+    MEDIATOR_SECRET_MAINNET: optional(
+      "Mainnet mediator signing key; without it mainnet exchange closes are unavailable",
+      true
+    ),
+    FEE_ACCOUNT_SECRET_TESTNET: optional(
+      "Testnet fee-bump sponsor key; without it testnet sponsored closes are unavailable",
+      true
+    ),
+    FEE_ACCOUNT_SECRET_MAINNET: optional(
+      "Mainnet fee-bump sponsor key; without it mainnet sponsored closes are unavailable",
+      true
+    ),
+    SOROSWAP_API_URL: optional("Soroswap API base URL", false, "The Soroswap SDK's default"),
+    SOROSWAP_API_KEY: optional(
+      "Soroswap API key (`sk_...`); without it Soroban tokens are never swapped",
+      true
+    ),
+    SOROBAN_CONVERSION_ENABLED: optional(
+      "`true` enables Soroban token conversion to XLM",
+      false,
+      "`false`"
+    ),
+    XBULL_SWAP_API_URL: optional("xBull swap API base URL", false, "`https://swap-api.xbull.io`"),
+    XBULL_CONVERSION_ENABLED: optional(
+      "`true` adds xBull's router as a mainnet quote source",
+      false,
+      "`false`"
+    ),
+    FEE_SPONSORSHIP_ENABLED: killSwitch("sponsored-fee closes"),
+    MEDIATOR_FORWARD_ENABLED: killSwitch("the mediator forward of exchange closes"),
+    AQUARIUS_EXIT_ENABLED: killSwitch("Aquarius exits"),
+    BLEND_EXIT_ENABLED: killSwitch("Blend exits"),
+    FXDAO_EXIT_ENABLED: killSwitch("FxDAO exits"),
+    PHOENIX_EXIT_ENABLED: killSwitch("Phoenix exits"),
+    SOROSWAP_EXIT_ENABLED: killSwitch("Soroswap exits"),
+    STELLAR_EXPERT_API_URL: optional(
+      "stellar.expert API for Soroban token discovery; empty disables that source",
+      false,
+      "`https://api.stellar.expert`"
+    ),
+    PHOENIX_TESTNET_TOKEN_ADMIN_SECRET: {
+      required: "Tests only",
+      secret: true,
+      default: NONE,
+      purpose:
+        "Admin of the project's testnet Phoenix test token, for the funded integration tests",
+    },
+    FXDAO_TESTNET_ORACLE_ADMIN_SECRET: {
+      required: "Tests only",
+      secret: true,
+      default: NONE,
+      purpose: "Admin of the project's testnet FxDAO oracle, for the funded integration tests",
+    },
+  },
+  web: {
+    LUMENWIPE_API_URL: {
+      required: "Yes",
+      secret: false,
+      default: NONE,
+      purpose: "Base URL of the API the `/api/**` proxy forwards to",
+    },
+    LUMENWIPE_API_KEY: {
+      required: "Yes",
+      secret: true,
+      default: NONE,
+      purpose: "One of the API's `API_KEYS`, injected server-side by the proxy",
+    },
+    UPSTASH_REDIS_REST_URL: {
+      required: "Production",
+      secret: false,
+      default: NONE,
+      purpose: "Upstash Redis for the proxy rate limit; unset disables it",
+    },
+    UPSTASH_REDIS_REST_TOKEN: {
+      required: "Production",
+      secret: true,
+      default: NONE,
+      purpose: "Token for that Upstash Redis",
+    },
+    KV_REST_API_URL: optional(
+      "Name the Vercel Upstash integration injects; read when `UPSTASH_REDIS_REST_URL` is unset"
+    ),
+    KV_REST_API_TOKEN: optional(
+      "Name the Vercel Upstash integration injects; read when `UPSTASH_REDIS_REST_TOKEN` is unset",
+      true
+    ),
+    NEXT_PUBLIC_APP_URL: {
+      required: "Production",
+      secret: false,
+      default: NONE,
+      purpose: "Public site origin; a production build fails without it",
+    },
+    NEXT_PUBLIC_POLLAR_PUBLISHABLE_KEY: optional(
+      "Pollar publishable key for the `/api-keys` social login"
+    ),
+    NEXT_PUBLIC_STELLAR_WALLET_CONNECT_PROJECT_ID: {
+      required: "Production",
+      secret: false,
+      default: NONE,
+      purpose: "WalletConnect project ID; without it the WalletConnect option is unavailable",
+    },
+    NEXT_PUBLIC_UMAMI_WEBSITE_ID: optional("Umami website ID for analytics"),
+  },
+  playground: {
+    PLAYGROUND_ENCRYPTION_KEY: {
+      required: "Yes",
+      secret: true,
+      default: NONE,
+      purpose: "64 hex characters that encrypt session records at rest",
+    },
+    PLAYGROUND_ISSUER_SECRET_TESTNET: {
+      required: "Yes",
+      secret: true,
+      default: NONE,
+      purpose: "Testnet issuer of the demo asset",
+    },
+    PLAYGROUND_MM_SECRET_TESTNET: {
+      required: "Yes",
+      secret: true,
+      default: NONE,
+      purpose: "Testnet market maker that funds each demo",
+    },
+    PLAYGROUND_DISABLED_SCENARIOS: optional("Comma-separated scenario ids to switch off"),
+    CRON_SECRET: {
+      required: "Yes",
+      secret: true,
+      default: NONE,
+      purpose: "Bearer secret of the daily reaper; without it no session is created",
+    },
+    UPSTASH_REDIS_REST_URL: {
+      required: "Production",
+      secret: false,
+      default: NONE,
+      purpose: "The playground's own Upstash Redis, never the web's",
+    },
+    UPSTASH_REDIS_REST_TOKEN: {
+      required: "Production",
+      secret: true,
+      default: NONE,
+      purpose: "Token for that Upstash Redis",
+    },
+    PLAYGROUND_DEV_FILE_STORE: optional(
+      "`1` keeps sessions in a private local file; ignored by production builds and on Vercel"
+    ),
+    LUMENWIPE_API_URL: {
+      required: "Yes",
+      secret: false,
+      default: NONE,
+      purpose: "Base URL of the API for the close step",
+    },
+    LUMENWIPE_API_KEY: {
+      required: "Yes",
+      secret: true,
+      default: NONE,
+      purpose: "The API key under the API's `playground` label",
+    },
+    PLAYGROUND_EXPECTED_FEE_ACCOUNT_TESTNET: optional(
+      "Public key of the API's testnet fee sponsor; without it the sponsored-fee scenario is unavailable"
+    ),
+    PLAYGROUND_EXPECTED_MEDIATOR_TESTNET: optional(
+      "Public key of the API's testnet mediator; without it the exchange-close scenario is unavailable"
+    ),
+  },
+};
+
+const ENV_APPS: EnvApp[] = ["api", "web", "playground"];
+const ENV_ENTRY = /^([A-Z][A-Z0-9_]*)=/;
+const COMMENTED_ENV_ENTRY = /^#\s?([A-Z][A-Z0-9_]*)=\S*\s*$/;
+
+/** The variables a template lists, set or commented out, in file order. */
+export function templateVariables(template: string): string[] {
+  const names: string[] = [];
+  for (const line of template.split("\n")) {
+    const name = (ENV_ENTRY.exec(line) ?? COMMENTED_ENV_ENTRY.exec(line))?.[1];
+    if (name && !names.includes(name)) names.push(name);
+  }
+  return names;
+}
+
+/** The environment reference, or an error naming every variable the record and templates disagree on. */
+export function environmentTable(
+  templates: Record<EnvApp, string>,
+  facts: Record<EnvApp, Record<string, EnvironmentFacts>> = ENVIRONMENT
+): string {
+  const problems: string[] = [];
+  const rows: string[][] = [];
+  for (const app of ENV_APPS) {
+    const listed = templateVariables(templates[app]);
+    for (const name of listed) {
+      const fact = facts[app][name];
+      if (!fact) {
+        problems.push(`${name} is in apps/${app}/.env.example but has no entry in ENVIRONMENT`);
+        continue;
+      }
+      if (fact.secret && name.startsWith("NEXT_PUBLIC_")) {
+        problems.push(
+          `${name} is marked secret, but NEXT_PUBLIC_ values ship in the browser bundle`
+        );
+      }
+      rows.push([
+        `\`${name}\``,
+        app,
+        fact.required,
+        fact.secret ? "Secret" : "Public",
+        fact.default,
+        fact.purpose,
+      ]);
+    }
+    for (const name of Object.keys(facts[app])) {
+      if (!listed.includes(name)) {
+        problems.push(`${name} has an entry in ENVIRONMENT but is not in apps/${app}/.env.example`);
+      }
+    }
+  }
+  if (problems.length > 0) throw new Error(problems.join("\n"));
+  return table(["Variable", "App", "Required", "Secret or public", "Default", "Purpose"], rows);
+}
+
+function environmentBlock(): string {
+  const templates = Object.fromEntries(
+    ENV_APPS.map((app) => [app, read(`apps/${app}/.env.example`)])
+  ) as Record<EnvApp, string>;
+  return environmentTable(templates);
+}
+
+interface AnchoredBlock {
+  /** The sentence the generated table follows, which a reader sees in place of a marker. */
+  after: string;
+  build: () => string;
+}
+
+type Block = (() => string) | AnchoredBlock;
+
+export const ENDPOINTS_ANCHOR =
+  "The REST surface, generated from `docs/api-reference/openapi.json` by `bun scripts/supported-matrix.ts --write`:";
+
+const PAGES: Record<string, Record<string, Block>> = {
   "docs/reference/supported.mdx": {
     protocols: protocolsBlock,
     wallets: walletsBlock,
@@ -323,6 +717,8 @@ const PAGES: Record<string, Record<string, () => string>> = {
     tokens: tokensBlock,
   },
   "docs/integrators/limits.mdx": { limits: limitsBlock },
+  "docs/reference/environment.mdx": { environment: environmentBlock },
+  "docs/architecture.md": { endpoints: { after: ENDPOINTS_ANCHOR, build: endpointsBlock } },
 };
 
 export function normalize(text: string): string {
@@ -332,11 +728,32 @@ export function normalize(text: string): string {
     .join("\n");
 }
 
+/**
+ * Replaces the table that follows `block.after` (a Markdown page GitHub also renders, where a
+ * comment marker would show as text). A page without the sentence throws.
+ */
+function renderAfter(page: string, path: string, block: AnchoredBlock): string {
+  const at = page.indexOf(block.after);
+  if (at === -1) throw new Error(`Missing the sentence the generated table follows in ${path}`);
+  const start = at + block.after.length;
+  const lines = page.slice(start).split("\n");
+  let end = 1;
+  while (end < lines.length && lines[end]!.trim() === "") end++;
+  while (end < lines.length && lines[end]!.startsWith("|")) end++;
+  const rest = lines.slice(end).join("\n");
+  return `${page.slice(0, start)}\n\n${block.build()}\n${rest.startsWith("\n") ? "" : "\n"}${rest}`;
+}
+
 export function render(page: string, path: string): string {
   const blocks = PAGES[path];
   if (!blocks) throw new Error(`${path} has no generated blocks`);
   let out = page;
-  for (const [name, build] of Object.entries(blocks)) {
+  for (const [name, block] of Object.entries(blocks)) {
+    if (typeof block !== "function") {
+      out = renderAfter(out, path, block);
+      continue;
+    }
+    const build = block;
     const pattern = new RegExp(
       `(\\{/\\* generated:${name}:start \\*/\\})[\\s\\S]*?(\\{/\\* generated:${name}:end \\*/\\})`
     );
@@ -353,7 +770,13 @@ if (import.meta.main) {
   const stale: string[] = [];
   for (const path of Object.keys(PAGES)) {
     const current = read(path);
-    const next = render(current, path);
+    let next: string;
+    try {
+      next = render(current, path);
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : error);
+      process.exit(1);
+    }
     if (process.argv.includes("--write")) {
       writeFileSync(join(ROOT, path), next);
     } else if (normalize(next) !== normalize(current)) {
