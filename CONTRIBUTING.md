@@ -47,7 +47,11 @@ If you are planning a large change - a new protocol integration, a significant r
 
 ## 3. Development setup
 
-**Requirements:** [Bun](https://bun.sh) 1.4.4 (the version in `packageManager`), Node.js 22.12 or later
+**Requirements:** [Bun](https://bun.sh) 1.4.4 (the version in `packageManager`) and Node.js 26.13.1, both pinned in `.tool-versions` (root `engines.node` is `>=26.13.1`). Three places run another Node on purpose, and nowhere else does:
+
+- CI's `sdk` row runs on Node 22, the oldest Node `@lumenwipe/sdk` supports (its own `engines.node`), because that is the floor its users get.
+- CI's `docs` job runs on Node 24, because the Mintlify CLI refuses Node 25 and later.
+- The web app's Vercel project builds on Node 24.x, and CI's `web vercel build (adapter)` job matches it.
 
 ```bash
 # Fork and clone the repository
@@ -57,25 +61,40 @@ cd lumenwipe
 # Install dependencies
 bun install
 
-# Copy each app's environment file and configure it
+# Copy each app's environment file. apps/api/.env.example already sets
+# API_KEYS='dev-local=abc123', so the web app's key is abc123
 cp apps/api/.env.example apps/api/.env.local
 cp apps/web/.env.example apps/web/.env.local
-# In apps/api/.env.local set at least STELLAR_RPC_TESTNET and API_KEYS;
-# in apps/web/.env.local set LUMENWIPE_API_KEY to one of those keys
+printf 'LUMENWIPE_API_KEY=abc123\n' >> apps/web/.env.local
 
-# Start the API (port 3001) and the web app (port 3000), in two terminals
+# Start the API (port 3001) and the web app (port 3000), in two terminals:
+# the full flow needs both
 bun run dev:api
 bun dev
 ```
 
+`API_KEYS` is the only variable the API needs to start. Reading an account also needs `PATH_ROUTING_API_TESTNET` in `apps/api/.env.local`, a Horizon-compatible endpoint such as `https://horizon-testnet.stellar.org`; the Stellar RPC already defaults to the public testnet one. Every variable, with its default and whether it is a secret, is in the [environment variable reference](docs/reference/environment.mdx). For a real deployment, generate keys with `openssl rand -hex 32` instead of the sample one.
+
 Open [http://localhost:3000](http://localhost:3000). The app defaults to Stellar testnet - no real funds are at risk during development.
+
+**Check that both services answer:**
+
+```bash
+curl -fsS http://localhost:3001/health       # the API
+curl -fsS http://localhost:3000/api/health   # the web, through its proxy to the API: "api":"ok"
+```
+
+CI runs these same steps on a fresh checkout (the `api` row of the `check` job), so they stay true.
+
+The playground is a third, optional service: `cp apps/playground/.env.example apps/playground/.env.local`, add a `playground=<key>` pair to `API_KEYS` and set the same key as the playground's `LUMENWIPE_API_KEY`, then `bun run dev:playground`. Its other variables are in the reference above.
 
 **Verify the setup:**
 
 ```bash
-bun type-check   # TypeScript - must pass with zero errors
-bun lint         # ESLint - must pass with zero errors
-bun test         # Unit tests - must all pass
+bun type-check          # TypeScript - must pass with zero errors
+bun lint                # ESLint - must pass with zero errors
+bun test                # Unit tests - must all pass
+bun run format:check    # Prettier - the same check CI's prettier job runs
 ```
 
 ---
@@ -90,7 +109,7 @@ bun test         # Unit tests - must all pass
 
 ### Formatting
 
-[Prettier](https://prettier.io) is authoritative. Run `bun format` before committing. The project config (`.prettierrc`):
+[Prettier](https://prettier.io) is authoritative. Run `bun run format` before committing; CI fails on any drift `bun run format:check` reports. The project config (`.prettierrc`):
 
 ```json
 {

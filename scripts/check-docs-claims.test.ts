@@ -8,10 +8,12 @@ import {
   checkControllerList,
   checkDesignTokens,
   checkFormatCommand,
+  checkNodeVersion,
   checkPlaygroundImports,
   checkRegister,
   checkSdkDoesNotBundleStellarSdk,
   checkSecurityScope,
+  checkSetupSteps,
   isScopePath,
   checkThreatModelCoverage,
   checkWebBuildsNoTransactions,
@@ -32,6 +34,20 @@ const WORKFLOW = [
   "on:",
   "  push:",
   "jobs:",
+  "  check:",
+  "    steps:",
+  "      - name: Set up the minimum supported Node for the SDK",
+  "        with:",
+  "          node-version: 22",
+  "      - name: Set up Node from .tool-versions",
+  "        with:",
+  "          node-version-file: .tool-versions",
+  "      - name: Follow the development setup in CONTRIBUTING.md",
+  "        run: |",
+  "          cp apps/api/.env.example apps/api/.env.local",
+  "          bun dev > web-dev.log 2>&1 &",
+  "      - name: Clean up",
+  "        run: echo done",
   "  prettier:",
   "    steps:",
   "      - run: bun run format:check",
@@ -39,6 +55,10 @@ const WORKFLOW = [
   "    steps: []",
   "",
 ].join("\n");
+const CONTRIBUTING =
+  "## 3. Development setup\n\nNode.js 26.13.1; CI's sdk row runs Node 22.\n\n" +
+  "```bash\ngit clone x\nbun install\n\n# Copy\ncp apps/api/.env.example apps/api/.env.local\nbun dev\n```\n\n" +
+  "```bash\nbun test\n```\n\n## 4. Code conventions\n";
 const LAYOUT =
   'import RedactedAnalytics from "@/components/analytics/RedactedAnalytics";\n' +
   "export default function RootLayout() {\n" +
@@ -135,9 +155,14 @@ function fixture(files: Record<string, string | null>): string {
     "apps/web/tests/unit/verify.test.ts": 'test("rejects an unknown operation", () => {});\n',
     "apps/playground/lib/close.ts": 'import { runClose } from "@lumenwipe/sdk";\n',
     "packages/sdk/package.json": JSON.stringify({
+      engines: { node: ">=22.12.0" },
       dependencies: {},
       devDependencies: { "@stellar/stellar-sdk": "17.2.1" },
     }),
+    ".tool-versions": "nodejs 26.13.1\nbun 1.4.4\n",
+    "package.json": JSON.stringify({ engines: { node: ">=26.13.1" } }),
+    "README.md": "**Requirements:** Bun 1.4.4 and Node.js 26.13.1.\n",
+    "CONTRIBUTING.md": CONTRIBUTING,
     "packages/sdk/src/client.ts": "export class LumenWipeClient {}\n",
     "docs/invariants.mdx": register(ROW),
     "docs/security-scope.md":
@@ -710,5 +735,107 @@ describe("the analytics tools", () => {
     expect(checkAnalyticsTools(noLayout)).toEqual([
       { source: "apps/web/app/root-document.tsx", message: "is missing" },
     ]);
+  });
+});
+
+describe("the Node version", () => {
+  test("engines, README and CONTRIBUTING.md must name the Node in .tool-versions", () => {
+    const root = fixture({
+      "package.json": JSON.stringify({ engines: { node: ">=22.12.0" } }),
+      "README.md": "Node.js 24 or later.\n",
+    });
+    expect(checkNodeVersion(root).map((p) => `${p.source}: ${p.message}`)).toEqual([
+      "package.json: engines.node is >=22.12.0, expected >=26.13.1 from .tool-versions",
+      "README.md: does not name Node.js 26.13.1 from .tool-versions",
+      "README.md: names Node.js 24, but .tool-versions pins 26.13.1",
+    ]);
+  });
+
+  test("a missing pin or unreadable package is reported, not thrown", () => {
+    expect(checkNodeVersion(fixture({ ".tool-versions": "bun 1.4.4\n" }))).toEqual([
+      { source: ".tool-versions", message: "pins no nodejs version" },
+    ]);
+    expect(checkNodeVersion(fixture({ "package.json": "{" }))[0]?.message).toBe(
+      "engines.node is unset, expected >=26.13.1 from .tool-versions"
+    );
+  });
+
+  test("only the named exceptions may set another Node, each at the version its reason fixes", () => {
+    const other = WORKFLOW.replace(
+      "  docs-claims:\n    steps: []",
+      "  docs-claims:\n    steps:\n      - with:\n          node-version: 24"
+    );
+    expect(checkNodeVersion(fixture({ ".github/workflows/ci.yml": other }))).toEqual([
+      {
+        source: ".github/workflows/ci.yml",
+        message:
+          "docs-claims sets Node 24 but is not a named exception; use node-version-file: .tool-versions",
+      },
+    ]);
+    const floor = fixture({
+      "packages/sdk/package.json": JSON.stringify({ engines: { node: ">=20" } }),
+    });
+    expect(checkNodeVersion(floor)[0]?.message).toBe(
+      "check sets Node 22, but its exception fixes Node 20"
+    );
+    const docs = WORKFLOW.replace(
+      "  docs-claims:\n    steps: []",
+      "  docs:\n    steps:\n      - with:\n          node-version: 24\n  docs-claims:\n    steps: []"
+    );
+    expect(checkNodeVersion(fixture({ ".github/workflows/ci.yml": docs }))).toEqual([
+      {
+        source: "CONTRIBUTING.md",
+        message: "does not name the Node 24 exception of CI's docs job",
+      },
+    ]);
+  });
+
+  test("the check job must read .tool-versions, and no job may read another file", () => {
+    const literal = WORKFLOW.replace(
+      "node-version-file: .tool-versions",
+      "node-version-file: .nvmrc"
+    );
+    expect(checkNodeVersion(fixture({ ".github/workflows/ci.yml": literal }))).toEqual([
+      {
+        source: ".github/workflows/ci.yml",
+        message: "check reads Node from .nvmrc, not .tool-versions",
+      },
+      {
+        source: ".github/workflows/ci.yml",
+        message: "the check job does not set up Node from .tool-versions",
+      },
+    ]);
+  });
+});
+
+describe("the contributor setup", () => {
+  test("every command after bun install must run in CI's setup step", () => {
+    const missing = WORKFLOW.replace("          bun dev > web-dev.log 2>&1 &\n", "");
+    expect(checkSetupSteps(fixture({ ".github/workflows/ci.yml": missing }))).toEqual([
+      {
+        source: ".github/workflows/ci.yml",
+        message:
+          '"Follow the development setup in CONTRIBUTING.md" does not run `bun dev` from CONTRIBUTING.md',
+      },
+    ]);
+  });
+
+  test("a command run by a later step does not count", () => {
+    const later = WORKFLOW.replace("          bun dev > web-dev.log 2>&1 &\n", "").replace(
+      "        run: echo done",
+      "        run: bun dev"
+    );
+    expect(checkSetupSteps(fixture({ ".github/workflows/ci.yml": later }))).toHaveLength(1);
+  });
+
+  test("a missing setup step or setup block is reported", () => {
+    const noStep = WORKFLOW.replace("Follow the development setup", "Set up");
+    expect(checkSetupSteps(fixture({ ".github/workflows/ci.yml": noStep }))[0]?.message).toBe(
+      'the check job has no "Follow the development setup in CONTRIBUTING.md" step'
+    );
+    const noBlock = fixture({ "CONTRIBUTING.md": "## 3. Development setup\n\nRun it.\n" });
+    expect(checkSetupSteps(noBlock)[0]?.message).toBe(
+      "the setup section's commands after `bun install` were not found"
+    );
   });
 });
