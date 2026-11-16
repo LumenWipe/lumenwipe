@@ -29,9 +29,25 @@ export function takeBlockedRequests(): string[] {
   return blocked.splice(0);
 }
 
+const TESTS_DIR = `${import.meta.dir}/`;
+
+/**
+ * The first frame in `stack` under the api package's own `tests/` directory, as
+ * `tests/<path>.test.ts:<line>`. Matched on the absolute directory, so a checkout whose parent
+ * directory name ends in `tests` cannot match outside the package.
+ */
+export function testFrameIn(stack: string, testsDir: string = TESTS_DIR): string | null {
+  for (const line of stack.split("\n")) {
+    const at = line.indexOf(testsDir);
+    if (at === -1) continue;
+    const frame = /^[^\s():]+\.test\.ts:\d+/.exec(line.slice(at + testsDir.length));
+    if (frame) return `tests/${frame[0]}`;
+  }
+  return null;
+}
+
 function testFrame(): string {
-  const frame = new Error().stack?.match(/(tests\/[^\s():]+\.test\.ts:\d+)/);
-  return frame?.[1] ?? "test location not in the stack";
+  return testFrameIn(new Error().stack ?? "") ?? "test location not in the stack";
 }
 
 function refuse(target: string): Error {
