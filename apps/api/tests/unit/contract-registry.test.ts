@@ -7,6 +7,8 @@ import {
   isExitCapable,
   resolveCode,
   servedContractRegistry,
+  staleEntries,
+  staleEntryWarnings,
   validateContractRegistry,
 } from "@/lib/contract-registry";
 import { FXDAO_REPAY_VERSION } from "@/lib/defi-exits/fxdao";
@@ -23,6 +25,13 @@ const ADDRESS_2 = "CAIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRDB3V";
 type Raw = Record<string, unknown>;
 
 const wasm = (wasmHash: string): CodeIdentity => ({ kind: "wasm", wasmHash });
+
+// What every mainnet entry must carry: how, where and when its hash was checked.
+const PROVENANCE: Raw = {
+  verifiedBy: "stellar contract info hash --id C... --network mainnet",
+  source: "the protocol's published mainnet contracts file",
+  verifiedAt: "2026-09-01",
+};
 
 function entry(overrides: Raw = {}): Raw {
   return {
@@ -192,6 +201,33 @@ test("the mainnet FxDAO vault is pinned to its live code as a no-exit version, r
   ]);
 });
 
+test("every shipped mainnet entry records how, where and when it was verified, never before the file's last full re-verification", () => {
+  const { lastVerified, entries } = servedContractRegistry();
+  const mainnet = entries.filter((e) => e.network === "mainnet");
+  expect(mainnet.length).toBeGreaterThan(0);
+  for (const e of mainnet) {
+    expect(e.verifiedBy, e.address).toBeString();
+    expect(e.source, e.address).toBeString();
+    expect(e.verifiedAt! >= lastVerified, e.address).toBe(true);
+    expect(e.ownDeployment, e.address).toBeUndefined();
+  }
+});
+
+test("the testnet contracts LumenWipe deployed itself are marked, and only those", () => {
+  const own = servedContractRegistry()
+    .entries.filter((e) => e.ownDeployment)
+    .map((e) => `${e.network}:${e.protocol}:${e.kind}:${e.address}`);
+  expect(own.sort()).toEqual(
+    [
+      "testnet:fxdao:vault:CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+      "testnet:phoenix:factory:CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+      "testnet:phoenix:router:CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+      "testnet:phoenix:pool:CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV",
+      "testnet:phoenix:stake:CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP",
+    ].sort()
+  );
+});
+
 test("resolves the xBull mainnet router by its live wasm hash", () => {
   const lookup = createContractRegistryLookup(
     validateContractRegistry({
@@ -209,6 +245,7 @@ test("resolves the xBull mainnet router by its live wasm hash", () => {
           version: "v1",
           label: "xBull PathPayment swap router",
           verifiedLive: true,
+          ...PROVENANCE,
         },
       ],
     })
@@ -251,6 +288,69 @@ describe("validateContractRegistry", () => {
       wellFormed([entry({ verifiedBy: "stellar contract fetch --id C... | sha256sum" })])
     );
     expect(registry.entries[0].verifiedBy).toContain("sha256sum");
+  });
+
+  test.each([["verifiedBy"], ["source"], ["verifiedAt"]])(
+    "rejects a mainnet entry without %s",
+    (field) => {
+      const raw = entry({ network: "mainnet", ...PROVENANCE });
+      delete raw[field];
+      expectRejected(wellFormed([raw]), `entries[0].${field} must be a non-empty string`);
+    }
+  );
+
+  test("accepts a testnet entry without verifiedBy, source or verifiedAt, and keeps them when given", () => {
+    expect(() => validateContractRegistry(wellFormed([entry()]))).not.toThrow();
+    const registry = validateContractRegistry(wellFormed([entry(PROVENANCE)]));
+    expect(registry.entries[0]).toMatchObject(PROVENANCE);
+  });
+
+  test.each([
+    ["not a date", "last week"],
+    ["a timestamp", "2026-09-01T00:00:00Z"],
+    ["not zero-padded", "2026-9-01"],
+  ])("rejects a verifiedAt that is %s", (_label, verifiedAt) => {
+    expectRejected(
+      wellFormed([entry({ network: "mainnet", ...PROVENANCE, verifiedAt })]),
+      "entries[0].verifiedAt must be a YYYY-MM-DD date"
+    );
+  });
+
+  test("rejects a verifiedAt earlier than lastVerified, on either network: a full re-verification checks every entry", () => {
+    for (const network of ["mainnet", "testnet"]) {
+      expectRejected(
+        wellFormed([entry({ network, ...PROVENANCE, verifiedAt: "2026-08-31" })]),
+        "entries[0].verifiedAt must not precede lastVerified"
+      );
+    }
+    expect(() =>
+      validateContractRegistry(
+        wellFormed([entry({ network: "mainnet", ...PROVENANCE, verifiedAt: "2026-09-01" })])
+      )
+    ).not.toThrow();
+  });
+
+  test("ownDeployment marks a testnet entry with its verifiedBy, and nothing else", () => {
+    const own = validateContractRegistry(
+      wellFormed([entry({ ownDeployment: true, verifiedBy: "stellar contract deploy ..." })])
+    );
+    expect(own.entries[0].ownDeployment).toBe(true);
+    expectRejected(
+      wellFormed([entry({ network: "mainnet", ...PROVENANCE, ownDeployment: true })]),
+      "entries[0].ownDeployment is allowed only on testnet"
+    );
+    expectRejected(
+      wellFormed([entry({ ownDeployment: "yes", verifiedBy: "x" })]),
+      "entries[0].ownDeployment must be true when present"
+    );
+    expectRejected(
+      wellFormed([entry({ ownDeployment: false, verifiedBy: "x" })]),
+      "entries[0].ownDeployment must be true when present"
+    );
+    expectRejected(
+      wellFormed([entry({ ownDeployment: true })]),
+      "entries[0].verifiedBy is required on an entry LumenWipe deployed itself"
+    );
   });
 
   test("rejects a non-object root", () => {
@@ -425,7 +525,7 @@ describe("validateContractRegistry", () => {
     const registry = validateContractRegistry(
       wellFormed([
         entry(),
-        entry({ network: "mainnet" }),
+        entry({ network: "mainnet", ...PROVENANCE }),
         entry({ address: ADDRESS_2, label: "a second pool from the same factory" }),
       ])
     );
@@ -459,6 +559,44 @@ describe("validateContractRegistry", () => {
   });
 });
 
+// ─── Staleness ───────────────────────────────────────────────────────────────────────────────
+
+describe("staleEntries", () => {
+  const registry = validateContractRegistry(
+    wellFormed([
+      entry({ network: "mainnet", ...PROVENANCE, verifiedAt: "2026-09-01" }),
+      entry({ network: "mainnet", ...PROVENANCE, address: ADDRESS_2, verifiedAt: "2026-09-02" }),
+      entry(),
+    ])
+  );
+  const at = (day: string) => new Date(`${day}T15:00:00Z`);
+
+  test("lists an entry only once it is more than 60 days old", () => {
+    expect(staleEntries(registry, at("2026-10-31"))).toHaveLength(0);
+    expect(staleEntries(registry, at("2026-11-01")).map((e) => e.address)).toEqual([ADDRESS]);
+    expect(staleEntries(registry, at("2026-11-02"))).toHaveLength(2);
+  });
+
+  test("counts whole UTC days, whatever the time of day", () => {
+    expect(staleEntries(registry, new Date("2026-10-31T23:59:59Z"))).toHaveLength(0);
+    expect(staleEntries(registry, new Date("2026-11-01T00:00:00Z"))).toHaveLength(1);
+  });
+
+  test("never lists an entry without a date", () => {
+    const listed = staleEntries(registry, at("2030-01-01"));
+    expect(listed.every((e) => e.verifiedAt !== undefined)).toBe(true);
+    expect(listed).toHaveLength(2);
+  });
+
+  test("emits one GitHub warning line per stale entry", () => {
+    expect(staleEntryWarnings(registry, at("2026-11-01"))).toEqual([
+      "::warning title=Contract registry entry not re-verified in 60 days::" +
+        `mainnet blend pool ${ADDRESS} was last verified 2026-09-01`,
+    ]);
+    expect(staleEntryWarnings(registry, at("2026-10-31"))).toEqual([]);
+  });
+});
+
 // ─── The lookup, over a populated fixture ────────────────────────────────────────────────────
 
 describe("createContractRegistryLookup", () => {
@@ -475,6 +613,7 @@ describe("createContractRegistryLookup", () => {
           wasmHash: HASH_B,
           version: "v1",
           label: "Soroswap pair",
+          ...PROVENANCE,
         }),
       ])
     )
@@ -632,7 +771,12 @@ describe("an entry pinned to an external reference", () => {
       validateContractRegistry(
         wellFormed([
           pinned(),
-          entry({ network: "mainnet", protocol: "aquarius", version: "constant_product" }),
+          entry({
+            network: "mainnet",
+            protocol: "aquarius",
+            version: "constant_product",
+            ...PROVENANCE,
+          }),
         ])
       )
     ).not.toThrow();

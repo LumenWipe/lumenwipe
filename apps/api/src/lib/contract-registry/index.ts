@@ -88,10 +88,20 @@ export interface ContractRegistryEntry {
   /** The protocol's own version name for this code, e.g. "v2". */
   version: string;
   label: string;
-  /** Whether the address resolved on-chain when `lastVerified` was set. */
+  /** Whether the address resolved on-chain when the entry was last verified. */
   verifiedLive: boolean;
-  /** The exact command or explorer link the hash was verified with, so a reviewer can re-run it. */
+  /** The exact command or explorer link the hash was verified with, so a reviewer can re-run it.
+   *  Required on mainnet. */
   verifiedBy?: string;
+  /** Where the address and its code are published, or what names them: the protocol's docs or
+   *  contracts file, an explorer directory, the contract that points at this one. Required on
+   *  mainnet. */
+  source?: string;
+  /** The last day this entry's live code was checked against `wasmHash`. Never earlier than the
+   *  file's `lastVerified`, since a full re-verification checks every entry. Required on mainnet. */
+  verifiedAt?: string;
+  /** Set on a testnet contract LumenWipe deployed itself, never a protocol's own deployment. */
+  ownDeployment?: true;
 }
 
 export interface ContractRegistry {
@@ -180,6 +190,9 @@ function validateEntry(raw: unknown, path: string): ContractRegistryEntry {
     "label",
     "verifiedLive",
     "verifiedBy",
+    "source",
+    "verifiedAt",
+    "ownDeployment",
     "executableOwner",
     "executableTag",
   ]);
@@ -223,8 +236,25 @@ function validateEntry(raw: unknown, path: string): ContractRegistryEntry {
     label: requireString(raw.label, `${path}.label`),
     verifiedLive: raw.verifiedLive,
   };
-  if (raw.verifiedBy !== undefined) {
+  // A mainnet entry names a contract a user may be asked to authorize, so how, where and when
+  // its hash was checked is part of the entry, not an optional note.
+  const mainnet = raw.network === "mainnet";
+  if (raw.verifiedBy !== undefined || mainnet) {
     entry.verifiedBy = requireString(raw.verifiedBy, `${path}.verifiedBy`);
+  }
+  if (raw.source !== undefined || mainnet) {
+    entry.source = requireString(raw.source, `${path}.source`);
+  }
+  if (raw.verifiedAt !== undefined || mainnet) {
+    entry.verifiedAt = requireDate(raw.verifiedAt, `${path}.verifiedAt`);
+  }
+  if (raw.ownDeployment !== undefined) {
+    if (raw.ownDeployment !== true) fail(`${path}.ownDeployment`, "must be true when present");
+    if (mainnet) fail(`${path}.ownDeployment`, "is allowed only on testnet");
+    if (entry.verifiedBy === undefined) {
+      fail(`${path}.verifiedBy`, "is required on an entry LumenWipe deployed itself");
+    }
+    entry.ownDeployment = true;
   }
   if (raw.executableOwner !== undefined || raw.executableTag !== undefined) {
     if (raw.executableOwner === undefined || raw.executableTag === undefined) {
@@ -297,6 +327,11 @@ export function validateContractRegistry(raw: unknown): ContractRegistry {
   if (validUntil < lastVerified) fail("validUntil", "must not precede lastVerified");
 
   const entries = raw.entries.map((e, i) => validateEntry(e, `entries[${i}]`));
+  entries.forEach((entry, i) => {
+    if (entry.verifiedAt !== undefined && entry.verifiedAt < lastVerified) {
+      fail(`entries[${i}].verifiedAt`, "must not precede lastVerified");
+    }
+  });
 
   const seenAddresses = new Set<string>();
   const versionByHash = new Map<string, ContractRegistryEntry>();
@@ -341,6 +376,40 @@ export function validateContractRegistry(raw: unknown): ContractRegistry {
     noExitVersions: validateNoExitVersions(raw.noExitVersions, entries),
     entries,
   });
+}
+
+/** An entry last verified more than this many days ago is flagged for re-verification. */
+export const ENTRY_STALE_DAYS = 60;
+
+/**
+ * The entries whose `verifiedAt` is more than `maxAgeDays` days before `now`'s UTC day. Advisory:
+ * the usability gate is `validUntil`, and this only says which entries a re-verification should
+ * reach first. An entry without a date (testnet only) is not listed.
+ */
+export function staleEntries(
+  registry: ContractRegistry,
+  now: Date = new Date(),
+  maxAgeDays: number = ENTRY_STALE_DAYS
+): ContractRegistryEntry[] {
+  const today = Date.parse(`${now.toISOString().slice(0, 10)}T00:00:00Z`);
+  return registry.entries.filter(
+    (e) =>
+      e.verifiedAt !== undefined &&
+      (today - Date.parse(`${e.verifiedAt}T00:00:00Z`)) / 86_400_000 > maxAgeDays
+  );
+}
+
+/** One GitHub Actions `::warning::` line per stale entry. */
+export function staleEntryWarnings(
+  registry: ContractRegistry,
+  now: Date = new Date(),
+  maxAgeDays: number = ENTRY_STALE_DAYS
+): string[] {
+  return staleEntries(registry, now, maxAgeDays).map(
+    (e) =>
+      `::warning title=Contract registry entry not re-verified in ${maxAgeDays} days::` +
+      `${e.network} ${e.protocol} ${e.kind} ${e.address} was last verified ${e.verifiedAt}`
+  );
 }
 
 /**
