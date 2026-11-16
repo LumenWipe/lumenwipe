@@ -104,8 +104,13 @@ function constant(path: string, pattern: RegExp, what: string): string {
   return match[1];
 }
 
+/** Free text made safe for a Markdown table cell: backslashes first, so none can swallow a pipe's escape. */
+export function escapeCell(text: string): string {
+  return text.replace(/\\/g, "\\\\").replace(/\|/g, "\\|");
+}
+
 function table(header: string[], rows: string[][]): string {
-  const line = (cells: string[]): string => `| ${cells.join(" | ")} |`;
+  const line = (cells: string[]): string => `| ${cells.map(escapeCell).join(" | ")} |`;
   return [line(header), line(header.map(() => "---")), ...rows.map(line)].join("\n");
 }
 
@@ -328,7 +333,7 @@ export function endpointsTable(openapi: OpenApi): string {
     for (const [method, operation] of Object.entries(operations)) {
       if (!HTTP_METHODS.includes(method)) continue;
       if (!operation.summary) throw new Error(`${method.toUpperCase()} ${path} has no summary`);
-      rows.push([`\`${method.toUpperCase()} ${path}\``, operation.summary.replace(/\|/g, "\\|")]);
+      rows.push([`\`${method.toUpperCase()} ${path}\``, operation.summary]);
     }
   }
   if (rows.length === 0) throw new Error("The OpenAPI document lists no operations");

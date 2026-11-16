@@ -5,6 +5,7 @@ import {
   ENDPOINTS_ANCHOR,
   destinationsText,
   endpointsTable,
+  escapeCell,
   environmentTable,
   render,
   templateVariables,
@@ -138,4 +139,22 @@ test("the environment reference renders one row per variable with its app and cl
     "| `API_KEYS` | api | Yes | Secret | None | p |",
     "| `API_KEYS` | playground | No | Public | None | p |",
   ]);
+});
+
+test("a cell escapes backslashes before pipes, so a trailing backslash cannot undo a pipe's escape", () => {
+  expect(escapeCell("a\\|b\\")).toBe("a\\\\\\|b\\\\");
+  const table = endpointsTable({ paths: { "/x": { get: { summary: "Read a | b \\" } } } });
+  expect(table.split("\n")[2]).toBe("| `GET /x` | Read a \\| b \\\\ |");
+});
+
+test("an environment purpose and default with a backslash and a pipe render escaped", () => {
+  const templates = { api: "A=\n", web: "", playground: "" };
+  const classified = {
+    api: { A: { required: "No", secret: false, default: "`x|y`", purpose: "one | two \\" } },
+    web: {},
+    playground: {},
+  } as const;
+  expect(environmentTable(templates, classified).split("\n")[2]).toBe(
+    "| `A` | api | No | Public | `x\\|y` | one \\| two \\\\ |"
+  );
 });
