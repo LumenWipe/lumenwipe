@@ -24,7 +24,7 @@
         "@nestjs/swagger": "^12.0.2",
         "@nestjs/terminus": "^12.1.0",
         "@nestjs/throttler": "^6.7.1",
-        "@soroswap/sdk": "0.5.0",
+        "@soroswap/sdk": "0.5.1",
         "@stellar/stellar-sdk": "17.4.0",
         "dotenv": "^18.0.7",
         "express": "^5.3.0",
@@ -973,7 +973,7 @@
 
     "@solana/web3.js": ["@solana/web3.js@1.99.0", "", { "dependencies": { "@babel/runtime": "^7.29.7", "@noble/curves": "^1.9.7", "@noble/hashes": "^1.8.0", "@solana/buffer-layout": "^4.0.1", "@solana/codecs-numbers": "^5.5.1", "agentkeepalive": "^4.6.0", "bn.js": "^5.2.5", "borsh": "^0.7.0", "bs58": "^4.0.1", "buffer": "6.0.3", "fast-stable-stringify": "^1.0.0", "jayson": "^4.3.0", "node-fetch": "^2.7.0", "rpc-websockets": "^9.0.2", "superstruct": "^2.0.2" } }, "sha512-QZYQ2T1z6xWisoyALPq25i/QZTsRlM02BABtAsfaQ1p8wX4SdTfxrKTRue/ZZqrhNVh5oL7T/DUFiTS9DRgxow=="],
 
-    "@soroswap/sdk": ["@soroswap/sdk@0.5.0", "", { "dependencies": { "axios": "^1.10.0" } }, "sha512-BgWqs3TgVFq/25Go533A2IUR7g5NnWPHHJUM8f/iT1j0d0VwA464wH9JReUGxXNZmsAOP4Zggdeof2AUOHsuOw=="],
+    "@soroswap/sdk": ["@soroswap/sdk@0.5.1", "", { "dependencies": { "axios": "^1.10.0" } }, "sha512-XElegfKXTIoW/H2mgnBwo82BblAdZyw4v6FNo+RL8nwgTyUYysbaiFGUdbdbeSZsqsS05XgMj6usl8Bqaey3IA=="],
 
     "@standard-schema/spec": ["@standard-schema/spec@1.1.0", "", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
 
