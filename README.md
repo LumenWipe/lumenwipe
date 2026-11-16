@@ -183,7 +183,7 @@ The codebase undergoes internal security reviews as part of the development proc
 
 ## Quick Start
 
-**Requirements:** [Bun](https://bun.sh) 1.3+
+**Requirements:** [Bun](https://bun.sh) 1.4.4 and Node.js 26.13.1, the versions in `.tool-versions`
 
 ```bash
 # Clone and install
@@ -191,12 +191,16 @@ git clone https://github.com/LumenWipe/lumenwipe.git
 cd lumenwipe
 bun install
 
+# Each app reads its own .env.local, copied from the .env.example next to it
+cp apps/api/.env.example apps/api/.env.local   # ships API_KEYS='dev-local=abc123'
+cp apps/web/.env.example apps/web/.env.local   # then set LUMENWIPE_API_KEY=abc123
+
 # Run in development (testnet by default) - the full flow needs BOTH services
 bun run dev:api      # NestJS API (localhost:3001)
 bun dev              # web (localhost:3000), reaches the API through its proxy
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The tool defaults to Stellar testnet - no real funds are at risk while developing.
+Open [http://localhost:3000](http://localhost:3000). The tool defaults to Stellar testnet - no real funds are at risk while developing. [CONTRIBUTING.md](CONTRIBUTING.md#3-development-setup) has the full setup, including how to check that both services answer and the optional playground.
 
 ### Environment variables
 
@@ -269,6 +273,8 @@ LumenWipe is open source from day one. The full API, web client, SDK, contract r
 | [Telegram - t.me/lumenwipe](https://t.me/lumenwipe)                         | Real-time community chat, support, and announcements |
 
 **Contributing:** open an issue or pull request. The contract and exchange registries (versioned JSON) are especially easy to contribute to - new exchange addresses and protocol contract versions are reviewed pull requests, not code changes.
+
+**Tooling directories:** `.agents/`, `.claude/` and `.codex/` at the repository root hold the agent skills the maintainers' coding assistants load (`skills-lock.json` pins them). They are not part of the product: no app, package, build or test reads them, and CodeQL and Prettier skip their skills.
 
 ---
 

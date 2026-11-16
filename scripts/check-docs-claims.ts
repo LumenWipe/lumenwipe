@@ -705,6 +705,165 @@ export function checkAnalyticsTools(root: string): Problem[] {
   return problems;
 }
 
+const TOOL_VERSIONS = ".tool-versions";
+const ROOT_PACKAGE = "package.json";
+const README = "README.md";
+const CONTRIBUTING = "CONTRIBUTING.md";
+const SETUP_HEADING = /^## \d+\. Development setup\s*$/;
+export const SETUP_STEP = "Follow the development setup in CONTRIBUTING.md";
+
+/** The jobs of a workflow by name, each with its body. */
+function jobs(workflow: string): Map<string, string> {
+  const names = [...jobsBlock(workflow).matchAll(/^ {2}([\w-]+):\s*$/gm)].map((m) => m[1]!);
+  return new Map(names.map((name) => [name, jobBody(workflow, name) ?? ""]));
+}
+
+function majorOf(range: string | undefined): string | null {
+  return /(\d+)/.exec(range ?? "")?.[1] ?? null;
+}
+
+/**
+ * The CI jobs allowed to run a Node other than the one in .tool-versions, each pinned to the
+ * version its reason fixes. Every other job that sets up Node reads .tool-versions.
+ */
+function nodeExceptions(root: string, workflow: string): Map<string, string | null> {
+  let sdkFloor: string | null = null;
+  try {
+    const sdk = JSON.parse(read(root, SDK_PACKAGE) ?? "{}") as { engines?: { node?: string } };
+    sdkFloor = majorOf(sdk.engines?.node);
+  } catch {
+    sdkFloor = null;
+  }
+  const vercel = /"nodeVersion":"(\d+)\.x"/.exec(jobBody(workflow, "web-vercel-build") ?? "");
+  return new Map([
+    ["check", sdkFloor],
+    ["docs", "24"],
+    ["web-vercel-build", vercel?.[1] ?? null],
+  ]);
+}
+
+/**
+ * README, CONTRIBUTING.md, the root `engines.node` and CI name the Node in .tool-versions, and
+ * the only CI jobs on another Node are the named exceptions, at the version their reason fixes.
+ */
+export function checkNodeVersion(root: string): Problem[] {
+  const pinned = /^nodejs\s+(\S+)\s*$/m.exec(read(root, TOOL_VERSIONS) ?? "")?.[1];
+  if (!pinned) return [{ source: TOOL_VERSIONS, message: "pins no nodejs version" }];
+  const problems: Problem[] = [];
+  let engines: string | undefined;
+  try {
+    engines = (JSON.parse(read(root, ROOT_PACKAGE) ?? "{}") as { engines?: { node?: string } })
+      .engines?.node;
+  } catch {
+    engines = undefined;
+  }
+  if (engines !== `>=${pinned}`) {
+    problems.push({
+      source: ROOT_PACKAGE,
+      message: `engines.node is ${engines ?? "unset"}, expected >=${pinned} from ${TOOL_VERSIONS}`,
+    });
+  }
+  for (const doc of [README, CONTRIBUTING]) {
+    const text = read(root, doc) ?? "";
+    if (!text.includes(`Node.js ${pinned}`)) {
+      problems.push({
+        source: doc,
+        message: `does not name Node.js ${pinned} from ${TOOL_VERSIONS}`,
+      });
+    }
+    for (const match of text.matchAll(/Node\.js (\d+(?:\.\d+)*)/g)) {
+      if (match[1] !== pinned) {
+        problems.push({
+          source: doc,
+          message: `names Node.js ${match[1]}, but ${TOOL_VERSIONS} pins ${pinned}`,
+        });
+      }
+    }
+  }
+  const workflow = read(root, CI_WORKFLOW) ?? "";
+  const exceptions = nodeExceptions(root, workflow);
+  const contributing = read(root, CONTRIBUTING) ?? "";
+  for (const [job, body] of jobs(workflow)) {
+    for (const match of body.matchAll(/node-version(-file)?:\s*["']?([^\s"'#]+)/g)) {
+      const value = match[2]!;
+      if (match[1]) {
+        if (value !== TOOL_VERSIONS) {
+          problems.push({
+            source: CI_WORKFLOW,
+            message: `${job} reads Node from ${value}, not ${TOOL_VERSIONS}`,
+          });
+        }
+        continue;
+      }
+      if (!exceptions.has(job)) {
+        problems.push({
+          source: CI_WORKFLOW,
+          message: `${job} sets Node ${value} but is not a named exception; use node-version-file: ${TOOL_VERSIONS}`,
+        });
+      } else if (exceptions.get(job) !== value) {
+        problems.push({
+          source: CI_WORKFLOW,
+          message: `${job} sets Node ${value}, but its exception fixes Node ${exceptions.get(job) ?? "nothing"}`,
+        });
+      } else if (!contributing.includes(`Node ${value}`)) {
+        problems.push({
+          source: CONTRIBUTING,
+          message: `does not name the Node ${value} exception of CI's ${job} job`,
+        });
+      }
+    }
+  }
+  const check = jobBody(workflow, "check") ?? "";
+  if (!check.includes(`node-version-file: ${TOOL_VERSIONS}`)) {
+    problems.push({
+      source: CI_WORKFLOW,
+      message: `the check job does not set up Node from ${TOOL_VERSIONS}`,
+    });
+  }
+  return problems;
+}
+
+/** The commands of the first bash block in CONTRIBUTING.md's setup section, past `bun install`. */
+export function setupCommands(contributing: string): string[] | null {
+  const body = section(contributing, SETUP_HEADING);
+  const block = body && /```bash\n([\s\S]*?)```/.exec(body)?.[1];
+  if (!block) return null;
+  const lines = block.split("\n").map((line) => line.trim());
+  const install = lines.indexOf("bun install");
+  if (install === -1) return null;
+  return lines.slice(install + 1).filter((line) => line !== "" && !line.startsWith("#"));
+}
+
+/**
+ * CI's setup step runs every command CONTRIBUTING.md's setup gives after `bun install`, so the
+ * documented path to a running API and web is the one CI proves on each change.
+ */
+export function checkSetupSteps(root: string): Problem[] {
+  const commands = setupCommands(read(root, CONTRIBUTING) ?? "");
+  if (commands === null || commands.length === 0) {
+    return [
+      {
+        source: CONTRIBUTING,
+        message: "the setup section's commands after `bun install` were not found",
+      },
+    ];
+  }
+  const check = jobBody(read(root, CI_WORKFLOW) ?? "", "check") ?? "";
+  const start = check.indexOf(`name: ${SETUP_STEP}`);
+  if (start === -1) {
+    return [{ source: CI_WORKFLOW, message: `the check job has no "${SETUP_STEP}" step` }];
+  }
+  const rest = check.slice(start + 1);
+  const next = rest.search(/^ {6}- /m);
+  const step = (next === -1 ? rest : rest.slice(0, next)).split("\n").map((line) => line.trim());
+  return commands
+    .filter((command) => !step.some((line) => line === command || line.startsWith(`${command} `)))
+    .map((command) => ({
+      source: CI_WORKFLOW,
+      message: `"${SETUP_STEP}" does not run \`${command}\` from ${CONTRIBUTING}`,
+    }));
+}
+
 export function checkAll(root: string): Problem[] {
   return [
     ...checkRegister(root),
@@ -717,6 +876,8 @@ export function checkAll(root: string): Problem[] {
     ...checkSecurityScope(root),
     ...checkDesignTokens(root),
     ...checkAnalyticsTools(root),
+    ...checkNodeVersion(root),
+    ...checkSetupSteps(root),
   ].map((problem) => ({ ...problem, source: toPosix(problem.source) }));
 }
 

@@ -91,6 +91,13 @@ jobs:
         with:
           node-version: 22
 
+      # Every other row builds and runs on the contributor Node pinned in .tool-versions.
+      - name: Set up Node from .tool-versions
+        if: matrix.name != 'sdk'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .tool-versions
+
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
@@ -101,6 +108,47 @@ jobs:
             bun run --filter '${{ matrix.pkg }}' "$c"
             echo "::endgroup::"
           done
+
+      # CONTRIBUTING.md section 3, as written, on this fresh checkout: copy the examples, set the
+      # sample key, start the API and the web in development, and require /health from the API and
+      # /api/health from the web, which reaches the API through its proxy with that key. No secret
+      # is used, and booting and both health routes make no upstream call, so nothing reaches
+      # testnet or mainnet. scripts/check-docs-claims.ts fails when the documented commands and
+      # this step disagree.
+      - name: Follow the development setup in CONTRIBUTING.md
+        if: matrix.name == 'api'
+        shell: bash
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: |
+          cp apps/api/.env.example apps/api/.env.local
+          cp apps/web/.env.example apps/web/.env.local
+          printf 'LUMENWIPE_API_KEY=abc123\n' >> apps/web/.env.local
+          bun run dev:api > api-dev.log 2>&1 &
+          api_pid=$!
+          bun dev > web-dev.log 2>&1 &
+          web_pid=$!
+          stop() {
+            kill "$api_pid" "$web_pid" 2> /dev/null || true
+            pkill -f 'nest start' 2> /dev/null || true
+            pkill -f 'next dev' 2> /dev/null || true
+          }
+          trap stop EXIT
+          wait_for() {
+            for i in $(seq 1 90); do
+              if body="$(curl -fsS "$1" 2> /dev/null)" && [[ "$body" == *"$2"* ]]; then
+                echo "$1 answered after ${i}s: $body"
+                return 0
+              fi
+              sleep 1
+            done
+            echo "::error::$1 did not answer with $2 within 90s"
+            echo "--- API log"; cat api-dev.log
+            echo "--- web log"; cat web-dev.log
+            return 1
+          }
+          wait_for http://localhost:3001/health '"status":"ok"'
+          wait_for http://localhost:3000/api/health '"api":"ok"'
 
   # The per-protocol exit adapters (Blend, Aquarius, Soroswap), the registry canaries and the
   # token scan, run against live testnet and mainnet RPC. Read-only: nothing is signed or
