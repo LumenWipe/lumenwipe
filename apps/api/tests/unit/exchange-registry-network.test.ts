@@ -210,7 +210,7 @@ describe("mediator", () => {
       port,
       defaultClock,
       {
-        readNativeBalance: async () => ({ nativeBalanceLumens: "100.0000000" }) as never,
+        readNativeBalance: async () => ({ nativeBalanceLumens: "100.0000000" }),
         readMemoRequired: async () => false,
       }
     );

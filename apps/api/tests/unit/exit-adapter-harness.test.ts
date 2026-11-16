@@ -393,18 +393,24 @@ describe("runExitAdapter marks which blockers a close may leave a position behin
 
   test("a network failure, an expired registry or an unsafe position never is", async () => {
     const rpc = liveRpc();
-    const readFails = await runWith({}, {
-      ...rpc,
-      getLedgerEntries: async () => {
-        throw new Error("ECONNRESET");
-      },
-    } as typeof rpc);
-    const simulateFails = await runWith({}, {
-      ...rpc,
-      simulateTransaction: async () => {
-        throw new Error("timeout");
-      },
-    } as typeof rpc);
+    const readFails = await runWith(
+      {},
+      {
+        ...rpc,
+        getLedgerEntries: async () => {
+          throw new Error("ECONNRESET");
+        },
+      }
+    );
+    const simulateFails = await runWith(
+      {},
+      {
+        ...rpc,
+        simulateTransaction: async () => {
+          throw new Error("timeout");
+        },
+      }
+    );
     const expired = await runExitAdapter(fakeExitAdapter(), position, ctx, {
       rpc: liveRpc(),
       resolveCode: registry.resolveCode,

@@ -39,9 +39,15 @@ async function start(): Promise<INestApplication> {
 let checkSpy: ReturnType<typeof spyOn>;
 
 beforeAll(() => {
-  checkSpy = spyOn(MediatorSigningService.prototype, "checkDestination").mockResolvedValue(
-    {} as Awaited<ReturnType<MediatorSigningService["checkDestination"]>>
-  );
+  checkSpy = spyOn(MediatorSigningService.prototype, "checkDestination").mockResolvedValue({
+    requiresMediator: false,
+    reason: "Destination account exists and supports account merges.",
+    requiresMemo: false,
+    memoType: null,
+    exchangeName: null,
+    available: true,
+    registryFresh: true,
+  });
   process.env.INTEGRATOR_AUTH_SECRET = INTEGRATOR_SECRET;
   process.env.FIRESTORE_PROJECT_ID = "usage-test-project";
 });

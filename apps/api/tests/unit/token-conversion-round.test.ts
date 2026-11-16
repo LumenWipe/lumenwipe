@@ -27,7 +27,8 @@ import {
   type Transaction,
 } from "@stellar/stellar-sdk";
 import type { AccountState } from "@lumenwipe/types";
-import { SupportedPlatforms, TradeType, type QuoteResponse } from "@soroswap/sdk";
+import type { QuoteResponse } from "@soroswap/sdk";
+import { soroswapQuote } from "../support/quotes";
 import {
   AGGREGATOR_SWAP_FUNCTION,
   SWAP_FUNCTION,
@@ -505,20 +506,7 @@ function instanceEntry(contract: string, hashHex: string): rpc.Api.LedgerEntryRe
 }
 
 function quoteFor(amountIn: bigint, amountOut: bigint): QuoteResponse {
-  return {
-    assetIn: TOKEN,
-    amountIn,
-    assetOut: XLM,
-    amountOut,
-    otherAmountThreshold: amountOut,
-    priceImpactPct: "0.02",
-    platform: SupportedPlatforms.AGGREGATOR,
-    routePlan: [
-      { swapInfo: { protocol: "soroswap" as never, path: [TOKEN, XLM] }, percent: "100" },
-    ],
-    tradeType: TradeType.EXACT_IN,
-    rawTrade: { amountIn, amountOutMin: amountOut, distribution: [] },
-  } as QuoteResponse;
+  return soroswapQuote(TOKEN, XLM, { amountIn, amountOut });
 }
 
 interface RoundWorld {
@@ -601,7 +589,7 @@ function roundDeps(world: RoundWorld) {
           entries: [instanceEntry(contract, hash)],
         } as unknown as rpc.Api.GetLedgerEntriesResponse;
       },
-    } as never,
+    },
     conversion: { sdk: world.forbidSoroswap ? forbiddenSdk : sdk, now: () => NOW * 1000 },
     allowed: () => ALLOWED,
     xbull: {
@@ -609,7 +597,7 @@ function roundDeps(world: RoundWorld) {
         async simulateTransaction() {
           return rawSimulation("ok", world.xbullAuth ?? [], world.xbullResourceFee ?? "0");
         },
-      } as never,
+      },
       xbull: {
         fetch: world.xbullFetch ?? null,
         baseUrl: "https://swap-api.xbull.io",
@@ -919,7 +907,9 @@ describe("resolveXBullPath (via defaultTokenConversionRoundDeps)", () => {
    *  the key resolveXBullPath itself builds (`scvVec([scvSymbol("Map"), scvU32(index)])`) and
    *  answers from `map`, or an empty result for an index the map does not have - proving a
    *  missing entry is a real "no ledger entry" case, not a stubbing shortcut. */
-  function xbullStorageRpc(map: Record<string, string>) {
+  function xbullStorageRpc(
+    map: Record<string, string>
+  ): Pick<rpc.Server, "getLedgerEntries" | "simulateTransaction"> {
     return {
       async getLedgerEntries(...keys: xdr.LedgerKey[]) {
         const key0 = keys[0]!;
@@ -951,7 +941,7 @@ describe("resolveXBullPath (via defaultTokenConversionRoundDeps)", () => {
       async simulateTransaction() {
         throw new Error("resolveXBullPath must never simulate a transaction");
       },
-    } as never;
+    };
   }
 
   /** The fixture's own captured `contractArgsXDR`, with its `path` argument (index 4) swapped for

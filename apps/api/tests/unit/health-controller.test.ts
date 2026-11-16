@@ -10,6 +10,7 @@ import {
   resolveDefiPositions,
 } from "@/lib/defi-positions/resolve-defi-positions";
 import { defiPositionsDepsFor } from "@/lib/stellar/account-state";
+import { fakeRpcServer } from "../support/rpc-server";
 
 // Wiring coverage for #59's "real health check" item: `/health/deep` (HealthController.deep())
 // actually reflects whether Stellar RPC is reachable, on both networks independently, rather
@@ -36,7 +37,9 @@ test("check() reports the DeFi degraded-fallback count alongside the Horizon rat
     {
       octopos: { baseUrl: "" },
       directRead: {
-        rpc: { getLedgerEntries: () => Promise.resolve({ entries: [] }) } as never,
+        rpc: fakeRpcServer({
+          getLedgerEntries: () => Promise.resolve({ entries: [], latestLedger: 1 }),
+        }),
         registryEntries: [],
       },
     }

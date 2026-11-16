@@ -162,6 +162,7 @@ const config = [
   { ignores: [".next/**", "node_modules/**", "next-env.d.ts"] },
   ...coreWebVitals,
   prettier,
+  { files: ["**/*.{ts,tsx}"], rules: { "@typescript-eslint/no-explicit-any": "error" } },
   {
     rules: {
       // React Compiler rules new in eslint-config-next 16; the close flow's effects predate them and are not rewritten blind.

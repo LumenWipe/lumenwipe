@@ -3,7 +3,11 @@
  * time, and nothing in the fan-out may reach for a real timer.
  */
 import { afterEach, expect, mock, spyOn, test } from "bun:test";
-import type { ProviderQuoteOutcome, TokenConversionQuote } from "@/lib/soroswap/conversion-quotes";
+import {
+  xlmContractId,
+  type ProviderQuoteOutcome,
+  type TokenConversionQuote,
+} from "@/lib/soroswap/conversion-quotes";
 import {
   RATE_LIMIT_RETRY_BASE_MS,
   TOKEN_QUOTE_BUDGET_MS,
@@ -15,6 +19,7 @@ import {
 } from "@/lib/close-api/token-quote-fanout";
 import { PROVIDER_QUOTE_TIMEOUT_MS } from "@/lib/close-api/multi-source-conversion";
 import { FakeClock } from "./fixtures/fake-clock";
+import { soroswapQuote } from "../support/quotes";
 
 afterEach(() => {
   mock.restore();
@@ -28,7 +33,7 @@ function quote(token: string, amountOut = "5000000"): ProviderQuoteOutcome {
     minAmountOut: (BigInt(amountOut) - 1n).toString(),
     platform: "aggregator",
     route: ["soroswap"],
-    raw: { priceImpactPct: "0.1" } as never,
+    raw: soroswapQuote(token, xlmContractId("testnet"), { priceImpactPct: "0.1" }),
   };
   return { kind: "quote", quote: q };
 }

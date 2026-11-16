@@ -4,7 +4,7 @@ import { HttpException } from "@nestjs/common";
 import type { AccountState } from "@lumenwipe/types";
 import registryJson from "@/config/exchange-registry.json";
 import type { CloseController } from "@/close/close.controller";
-import { closeControllerWith } from "../support/close-controller";
+import { closeControllerWith, inertStats } from "../support/close-controller";
 import {
   assessMergePreflight,
   DestinationReadError,
@@ -243,7 +243,7 @@ describe("destination", () => {
 
 describe("POST close/transactions", () => {
   function controller(): CloseController {
-    return closeControllerWith({ record: async () => undefined } as never);
+    return closeControllerWith(inertStats());
   }
 
   function arrange(destination: string, opts: { exists: boolean | Error }): void {

@@ -1,23 +1,21 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
 import { rpc } from "@stellar/stellar-sdk";
-import { currentDeadline, requestContextMiddleware } from "@/common/request-context";
+import { currentDeadline } from "@/common/request-context";
 import { REQUEST_DEADLINE_MS } from "@/config/constants";
 import { getRpcServer } from "@/lib/stellar/rpc";
 import { UpstreamError } from "@/lib/stellar/upstream-client";
+import { inRequestContext } from "../support/request-context";
+import {
+  latestLedger,
+  missingTransaction,
+  sampleTransaction,
+  sendResult,
+  simulationError,
+} from "../support/rpc-fixtures";
 
 afterEach(() => {
   spyOn(rpc.Server.prototype, "getLatestLedger").mockRestore();
 });
-
-function inRequest<T>(deadlineMs: number | undefined, run: () => Promise<T>): Promise<T> {
-  const req = { path: "/x" };
-  const res = { setHeader() {}, json() {}, on() {} };
-  return new Promise<T>((resolve, reject) =>
-    requestContextMiddleware(deadlineMs)(req as never, res as never, () => {
-      run().then(resolve, reject);
-    })
-  );
-}
 
 const never = (): Promise<never> => new Promise(() => {});
 const later = <T>(value: T, ms: number): Promise<T> =>
@@ -25,14 +23,14 @@ const later = <T>(value: T, ms: number): Promise<T> =>
 
 test("every request gets a 40 second deadline", async () => {
   expect(REQUEST_DEADLINE_MS).toBe(40_000);
-  const remaining = await inRequest(undefined, async () => currentDeadline()!.remainingMs());
+  const remaining = await inRequestContext(async () => currentDeadline()!.remainingMs());
   expect(remaining).toBeGreaterThan(39_000);
   expect(remaining).toBeLessThanOrEqual(40_000);
 });
 
 test("a read that outlives the request deadline rejects with a typed timeout", async () => {
   spyOn(rpc.Server.prototype, "getLatestLedger").mockImplementation(never);
-  const failure = await inRequest(40, () => getRpcServer("testnet").getLatestLedger()).catch(
+  const failure = await inRequestContext(() => getRpcServer("testnet").getLatestLedger(), 40).catch(
     (e: unknown) => e
   );
   expect(failure).toBeInstanceOf(UpstreamError);
@@ -43,18 +41,18 @@ test("reads and simulation run on separately configured instances, with this pre
   const owners: unknown[] = [];
   spyOn(rpc.Server.prototype, "getLatestLedger").mockImplementation(function (this: unknown) {
     owners.push(this);
-    return Promise.resolve({ sequence: 1 } as never);
+    return Promise.resolve(latestLedger(1));
   });
   const simulate = spyOn(rpc.Server.prototype, "simulateTransaction").mockImplementation(function (
     this: unknown
   ) {
     owners.push(this);
-    return Promise.resolve({} as never);
+    return Promise.resolve(simulationError());
   });
   try {
     const server = getRpcServer("testnet");
     await server.getLatestLedger();
-    await server.simulateTransaction({} as never);
+    await server.simulateTransaction(sampleTransaction());
     expect(owners).toHaveLength(2);
     expect(owners.every((o) => o instanceof rpc.Server)).toBe(true);
     expect(owners[0]).not.toBe(owners[1]);
@@ -67,7 +65,7 @@ test("sendTransaction is called once, never retried, and a failure is passed thr
   const boom = new Error("rpc down");
   const send = spyOn(rpc.Server.prototype, "sendTransaction").mockRejectedValue(boom);
   try {
-    await expect(getRpcServer("testnet").sendTransaction({} as never)).rejects.toBe(boom);
+    await expect(getRpcServer("testnet").sendTransaction(sampleTransaction())).rejects.toBe(boom);
     expect(send).toHaveBeenCalledTimes(1);
   } finally {
     send.mockRestore();
@@ -75,13 +73,16 @@ test("sendTransaction is called once, never retried, and a failure is passed thr
 });
 
 test("a deadline that expires during a submit neither rejects the wrapper nor abandons it", async () => {
-  const landed = { status: "PENDING", hash: "abc" };
+  const landed = sendResult("PENDING", "abc");
   const send = spyOn(rpc.Server.prototype, "sendTransaction").mockImplementation(() =>
-    later(landed as never, 120)
+    later(landed, 120)
   );
   try {
-    const result = await inRequest(30, () => getRpcServer("testnet").sendTransaction({} as never));
-    expect(result).toBe(landed as never);
+    const result = await inRequestContext(
+      () => getRpcServer("testnet").sendTransaction(sampleTransaction()),
+      30
+    );
+    expect(result).toBe(landed);
     expect(send).toHaveBeenCalledTimes(1);
   } finally {
     send.mockRestore();
@@ -89,12 +90,13 @@ test("a deadline that expires during a submit neither rejects the wrapper nor ab
 });
 
 test("a method outside the allowlist passes through untouched, even past the deadline", async () => {
+  const answer = missingTransaction("h");
   const hash = spyOn(rpc.Server.prototype, "pollTransaction").mockImplementation(() =>
-    later({ status: "SUCCESS" } as never, 120)
+    later(answer, 120)
   );
   try {
-    const result = await inRequest(30, () => getRpcServer("testnet").pollTransaction("h"));
-    expect(result).toEqual({ status: "SUCCESS" } as never);
+    const result = await inRequestContext(() => getRpcServer("testnet").pollTransaction("h"), 30);
+    expect(result).toBe(answer);
   } finally {
     hash.mockRestore();
   }
@@ -102,11 +104,11 @@ test("a method outside the allowlist passes through untouched, even past the dea
 
 test("a by-hash read stops waiting at the deadline", async () => {
   const hash = spyOn(rpc.Server.prototype, "getTransaction").mockImplementation(() =>
-    later({ status: "SUCCESS" } as never, 120)
+    later(missingTransaction("h"), 120)
   );
   try {
     await expect(
-      inRequest(30, () => getRpcServer("testnet").getTransaction("h"))
+      inRequestContext(() => getRpcServer("testnet").getTransaction("h"), 30)
     ).rejects.toBeInstanceOf(UpstreamError);
   } finally {
     hash.mockRestore();
@@ -115,19 +117,21 @@ test("a by-hash read stops waiting at the deadline", async () => {
 
 test("outside a request nothing is raced", async () => {
   spyOn(rpc.Server.prototype, "getLatestLedger").mockImplementation(() =>
-    later({ sequence: 7 } as never, 20)
+    later(latestLedger(7), 20)
   );
-  expect(await getRpcServer("testnet").getLatestLedger()).toEqual({ sequence: 7 } as never);
+  expect(await getRpcServer("testnet").getLatestLedger()).toEqual(latestLedger(7));
 });
 
 test("simulation and preparation ask for legacy auth unless the caller says otherwise", async () => {
   const simulate = spyOn(rpc.Server.prototype, "simulateTransaction").mockResolvedValue(
-    {} as never
+    simulationError()
   );
-  const prepare = spyOn(rpc.Server.prototype, "prepareTransaction").mockResolvedValue({} as never);
+  const prepare = spyOn(rpc.Server.prototype, "prepareTransaction").mockResolvedValue(
+    sampleTransaction()
+  );
   try {
     const server = getRpcServer("testnet");
-    const tx = {} as never;
+    const tx = sampleTransaction();
     await server.simulateTransaction(tx, { cpuInstructions: 5 });
     await server.simulateTransaction(tx, undefined, undefined, true);
     await server.prepareTransaction(tx);

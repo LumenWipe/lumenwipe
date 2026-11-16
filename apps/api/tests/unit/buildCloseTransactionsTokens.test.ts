@@ -1,5 +1,7 @@
 import { afterEach, expect, mock, spyOn, test, beforeEach } from "bun:test";
 import { callOf, onlyOperation } from "../support/xdr-edit";
+import { SupportedPlatforms } from "@soroswap/sdk";
+import { soroswapQuote } from "../support/quotes";
 import * as rpcModule from "@/lib/stellar/rpc";
 import {
   Account,
@@ -356,18 +358,14 @@ test("with conversion switched off a token's convert answer is refused; switched
         conversion: {
           sdk: {
             quote: async (req) =>
-              ({
-                assetIn: req.assetIn,
-                assetOut: req.assetOut,
+              soroswapQuote(req.assetIn, req.assetOut, {
                 amountIn: req.amount,
                 amountOut: 1_000n,
-                otherAmountThreshold: 1_000n,
                 priceImpactPct: "0",
-                platform: "router",
+                platform: SupportedPlatforms.ROUTER,
                 routePlan: [],
-                tradeType: req.tradeType,
                 rawTrade: { amountIn: req.amount, amountOutMin: 1_000n, path: [] },
-              }) as never,
+              }),
             build: async () => ({ xdr: "", action: "", description: "" }),
           },
           now: () => Date.now(),

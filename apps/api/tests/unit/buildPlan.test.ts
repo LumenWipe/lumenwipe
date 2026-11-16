@@ -1000,15 +1000,13 @@ test("buildPlan › a sponsored owner that could not be read blocks as unverifie
   expect(blockers[0]!.message).toContain("Retry");
 });
 
-test.each([
-  ["account" as const, {}, "an account creation"],
-  ["trustline" as const, { asset: `USDC:${ISSUER}` }, "a trustline for USDC"],
-  ["offer" as const, { offerId: "42" }, "offer 42"],
-  ["data_entry" as const, { name: "memo" }, 'data entry "memo"'],
-  ["signer" as const, { signerKey: "GABC" }, "a signer"],
-])("buildPlan › describes a %s sponsored entry as %j -> %s", (kind, fields, expected) => {
-  const owner = Keypair.random().publicKey();
-  const entry = { kind, owner, ...fields } as SponsoredEntry;
+test.each<[SponsoredEntry, string]>([
+  [{ kind: "account", owner: SPONSORED_OWNER }, "an account creation"],
+  [{ kind: "trustline", owner: SPONSORED_OWNER, asset: `USDC:${ISSUER}` }, "a trustline for USDC"],
+  [{ kind: "offer", owner: SPONSORED_OWNER, offerId: "42" }, "offer 42"],
+  [{ kind: "data_entry", owner: SPONSORED_OWNER, name: "memo" }, 'data entry "memo"'],
+  [{ kind: "signer", owner: SPONSORED_OWNER, signerKey: "GABC" }, "a signer"],
+])("buildPlan › describes a sponsored entry as %s", (entry, expected) => {
   const account = makeAccount({ numSponsoring: 1, sponsoredEntries: [entry] });
   const { blockers } = buildPlan(
     ALL_ON,
@@ -1019,7 +1017,9 @@ test.each([
     {
       revocable: [],
       unverifiedOwners: [],
-      unaffordableOwners: new Map([[owner, { entries: [entry], shortfallXlm: "1.0000000" }]]),
+      unaffordableOwners: new Map([
+        [SPONSORED_OWNER, { entries: [entry], shortfallXlm: "1.0000000" }],
+      ]),
     }
   );
   const b = blockers.find((x) => x.code === "sponsorship_unaffordable")!;
@@ -1652,7 +1652,9 @@ test("buildPlan › describes a claimable_balance sponsored entry (even though b
     {
       revocable: [],
       unverifiedOwners: [],
-      unaffordableOwners: new Map([[owner, { entries: [entry], shortfallXlm: "1.0000000" }]]),
+      unaffordableOwners: new Map([
+        [SPONSORED_OWNER, { entries: [entry], shortfallXlm: "1.0000000" }],
+      ]),
     }
   );
   const b = blockers.find((x) => x.code === "sponsorship_unaffordable")!;

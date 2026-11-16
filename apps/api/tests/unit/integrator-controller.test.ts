@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "crypto";
 import { HttpException } from "@nestjs/common";
+import { ExecutionContextHost } from "@nestjs/core/helpers/execution-context-host";
 import type { ConfigService } from "@nestjs/config";
 import { Keypair } from "@stellar/stellar-sdk";
 import { ApiKeyDirectory } from "@/auth/api-key-directory";
@@ -12,6 +13,7 @@ import { InMemoryUsageStore } from "@/metering/usage-store";
 import { IntegratorController } from "@/integrator/integrator.controller";
 import { IntegratorGuard, type IntegratorRequest } from "@/integrator/integrator.guard";
 import { issueSession } from "@/integrator/wallet-auth";
+import { requestPair } from "../support/request-context";
 
 const SECRET = "test-integrator-auth-secret-0123456789";
 
@@ -101,7 +103,7 @@ function setup() {
 }
 
 function asUser(address: string): IntegratorRequest {
-  return { integratorAddress: address } as IntegratorRequest;
+  return Object.assign(requestPair().req, { integratorAddress: address });
 }
 
 describe("key ownership", () => {
@@ -298,11 +300,7 @@ function catchSync(fn: () => unknown): unknown {
 describe("IntegratorGuard", () => {
   const guard = new IntegratorGuard();
   const ctx = (authorization?: string, req: Record<string, unknown> = {}) =>
-    ({
-      switchToHttp: () => ({
-        getRequest: () => Object.assign(req, { headers: { authorization } }),
-      }),
-    }) as never;
+    new ExecutionContextHost([Object.assign(req, { headers: { authorization } })]);
 
   test("accepts a valid session and exposes its address", () => {
     const address = Keypair.random().publicKey();

@@ -34,7 +34,11 @@ function balance(n: number, asset: string): ClaimableBalance {
   };
 }
 
-function state(native: string, balances: ClaimableBalance[], over: Partial<AccountState> = {}) {
+function state(
+  native: string,
+  balances: ClaimableBalance[],
+  over: Partial<AccountState> = {}
+): AccountState {
   return {
     address: SOURCE,
     network: "testnet",
@@ -58,7 +62,7 @@ function state(native: string, balances: ClaimableBalance[], over: Partial<Accou
     defiPositionsWarnings: [],
     ledgerCloseTime: 1_800_000_000,
     ...over,
-  } as AccountState;
+  };
 }
 
 // Confirmed on testnet: an account holding 1.4 XLM (minimum 1.0) that submits

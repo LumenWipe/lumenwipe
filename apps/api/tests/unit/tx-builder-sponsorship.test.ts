@@ -2,6 +2,7 @@ import { test, expect } from "bun:test";
 import { Keypair, Operation, StrKey, xdr } from "@stellar/stellar-sdk";
 import { revokeSponsorshipOps } from "@/lib/stellar/tx-builder/sponsorship";
 import type { SponsoredEntry } from "@lumenwipe/types";
+import { decodeOperation } from "../support/decoded-operation";
 
 const OWNER = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
@@ -38,9 +39,8 @@ test("revokeSponsorshipOps › signer kind dispatches by StrKey prefix (ed25519)
   const entries: SponsoredEntry[] = [
     { kind: "signer", owner: OWNER, signerKey: SIGNER_KP.publicKey() },
   ];
-  const decoded = Operation.fromXDRObject(revokeSponsorshipOps(entries)[0]);
+  const decoded = decodeOperation(revokeSponsorshipOps(entries)[0], "revokeSignerSponsorship");
   expect(decoded.type).toBe("revokeSignerSponsorship");
-  // @ts-expect-error - narrow for the assertion only
   expect(decoded.signer.ed25519PublicKey).toBe(SIGNER_KP.publicKey());
 });
 
@@ -57,24 +57,22 @@ test("revokeSponsorshipOps › signer kind dispatches by StrKey prefix (ed25519 
     }).toXDR()
   );
   const entries: SponsoredEntry[] = [{ kind: "signer", owner: OWNER, signerKey: payloadKey }];
-  const decoded = Operation.fromXDRObject(revokeSponsorshipOps(entries)[0]!);
+  const decoded = decodeOperation(revokeSponsorshipOps(entries)[0]!, "revokeSignerSponsorship");
   expect(decoded.type).toBe("revokeSignerSponsorship");
 });
 
 test("revokeSponsorshipOps › signer kind dispatches by StrKey prefix (preauth_tx)", () => {
   const preAuthKey = StrKey.encodePreAuthTx(SIGNER_KP.rawPublicKey());
   const entries: SponsoredEntry[] = [{ kind: "signer", owner: OWNER, signerKey: preAuthKey }];
-  const decoded = Operation.fromXDRObject(revokeSponsorshipOps(entries)[0]!);
+  const decoded = decodeOperation(revokeSponsorshipOps(entries)[0]!, "revokeSignerSponsorship");
   expect(decoded.type).toBe("revokeSignerSponsorship");
-  // @ts-expect-error - narrow for the assertion only
   expect(decoded.signer.preAuthTx).toBeDefined();
 });
 
 test("revokeSponsorshipOps › signer kind dispatches by StrKey prefix (hash_x)", () => {
   const hashXKey = StrKey.encodeSha256Hash(SIGNER_KP.rawPublicKey());
   const entries: SponsoredEntry[] = [{ kind: "signer", owner: OWNER, signerKey: hashXKey }];
-  const decoded = Operation.fromXDRObject(revokeSponsorshipOps(entries)[0]!);
+  const decoded = decodeOperation(revokeSponsorshipOps(entries)[0]!, "revokeSignerSponsorship");
   expect(decoded.type).toBe("revokeSignerSponsorship");
-  // @ts-expect-error - narrow for the assertion only
   expect(decoded.signer.sha256Hash).toBeDefined();
 });
