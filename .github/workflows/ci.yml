@@ -560,8 +560,9 @@ jobs:
 
       # The startup check (src/config/validate-env.ts) refuses a production boot without API_KEYS
       # and both mainnet endpoints. Boot makes no network calls, so throwaway values and reserved
-      # .invalid hosts are enough to reach /health. No route is exercised with them. Container logs are printed on failure - the interesting output is
-      # the crash, and it is not visible anywhere else.
+      # .invalid hosts are enough to reach /health. No route is exercised with them. Container logs
+      # are printed on failure - the interesting output is the crash, and it is not visible anywhere
+      # else.
       - name: Boot the image and check /health and the commit at /
         run: |
           docker run -d --name api-smoke -e API_KEYS=ci=ci-smoke -e PORT=8080 \
