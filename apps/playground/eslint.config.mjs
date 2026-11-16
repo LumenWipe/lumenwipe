@@ -89,16 +89,11 @@ const config = [
   { rules: { ...restrict(), ...appZones } },
   { files: ["lib/scenarios/**"], rules: restrict(...registryPatterns) },
   {
-    files: [
-      "lib/verify.ts",
-      "lib/verify-error.ts",
-      "lib/verify-soroban.ts",
-      "lib/verify-feebump.ts",
-      "lib/verify-mediator.ts",
-    ],
+    files: ["lib/verify*.ts"],
     rules: restrict({
-      group: ["**/mess-builders", "**/soroban-seed", "**/soroban-submit"],
-      message: "The verifier never imports the mess executors or the seeding they use.",
+      group: ["**/mess-builders", "**/soroban-seed", "**/soroban-submit", "**/horizon-submit"],
+      message:
+        "The verifier never imports the mess executors, the seeding they use, or the code that submits a transaction.",
     }),
   },
   {
@@ -129,14 +124,7 @@ const config = [
   {
     files: ["lib/mess-builders.ts", "lib/soroban-seed.ts", "lib/soroban-submit.ts"],
     rules: restrict({
-      group: [
-        "**/verify",
-        "**/verify-error",
-        "**/verify-soroban",
-        "**/verify-feebump",
-        "**/verify-mediator",
-        "@lumenwipe/verify",
-      ],
+      group: ["**/verify", "**/verify-*", "@lumenwipe/verify"],
       message: "The mess executors and their seeding never import the verifier.",
     }),
   },

@@ -1,4 +1,5 @@
 {
   "baseFeeStroops": 100,
-  "maxFeeBumpStroops": 10100
+  "maxFeeBumpStroops": 10100,
+  "maxSorobanExitFeeStroops": 10000000
 }

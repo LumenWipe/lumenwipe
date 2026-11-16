@@ -12,12 +12,8 @@ import {
   xdr,
   type Transaction,
 } from "@stellar/stellar-sdk";
-import {
-  MAX_SOROBAN_FEE_STROOPS,
-  SorobanSubmitError,
-  submitSoroban,
-  type SorobanSubmitDeps,
-} from "@/lib/soroban-submit";
+import { MAX_SOROBAN_FEE_STROOPS } from "@/lib/fee-policy";
+import { SorobanSubmitError, submitSoroban, type SorobanSubmitDeps } from "@/lib/soroban-submit";
 import { contractCallOp, seedContractCall, type ContractCall } from "@/lib/soroban-seed";
 
 // lib/soroban-submit.ts against a fake RPC: the simulation is untrusted, so what it returns is

@@ -1,7 +1,7 @@
 import "server-only";
 import { Address, scValToNative, type Transaction, type xdr } from "@stellar/stellar-sdk";
+import { MAX_SOROBAN_FEE_STROOPS } from "./fee-policy";
 import { XLM_SAC } from "./scenarios";
-import { MAX_SOROBAN_FEE_STROOPS } from "./soroban-submit";
 
 // The playground's own check of an allowance revoke the API built, run before the shared revoke
 // anchor (`verifyRevokeAllowanceTransaction` from `@lumenwipe/verify`, lib/allowances.ts). Both

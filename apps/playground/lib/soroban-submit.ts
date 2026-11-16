@@ -10,6 +10,7 @@ import {
   xdr,
   type Transaction,
 } from "@stellar/stellar-sdk";
+import { MAX_SOROBAN_FEE_STROOPS } from "./fee-policy";
 import { loadHorizonAccount, SOROBAN_RPC_TESTNET_URL } from "./horizon-submit";
 
 // Playground Soroban submission (testnet only), for the seeding a protocol exit scenario needs.
@@ -27,12 +28,6 @@ export class SorobanSubmitError extends Error {
     this.name = "SorobanSubmitError";
   }
 }
-
-/**
- * The most a seeding transaction may pay, in stroops: the cap the shared verifier puts on a DeFi
- * exit (`MAX_EXIT_FEE_STROOPS` in apps/web/lib/stellar/verify.ts), restated rather than imported.
- */
-export const MAX_SOROBAN_FEE_STROOPS = BigInt(10_000_000);
 
 const TX_TIMEOUT_SECONDS = 60;
 const SEND_ATTEMPTS = 3;
