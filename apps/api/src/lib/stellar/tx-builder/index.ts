@@ -29,10 +29,12 @@ import {
   claimReserveShortMessage,
   claimTrustlineCostStroops,
   closeFeeShortMessage,
+  exitRoundsFeeStroops,
   laterOwnFeesStroops,
   ownFeeShortfallStroops,
   tokenRoundFeeBoundStroops,
   tokenRoundsAhead,
+  tokenRoundsFeeStroops,
   trustlineReserveShortfallStroops,
   trustlineShortfallNote,
 } from "@/lib/stellar/claim-reserve";
@@ -542,8 +544,12 @@ export function buildPlan(
       ? 0n
       : ownFeeShortfallStroops(
           accountState,
-          laterOwnFeesStroops(accountState, sorobanRounds, mediatorRequired) +
-            claimTrustlineCostStroops(accountState, claimableBalanceSelections)
+          laterOwnFeesStroops(
+            accountState,
+            exitRoundsFeeStroops(2 * detectedPositions.length) +
+              tokenRoundsFeeStroops(accountState, dispositions),
+            mediatorRequired
+          ) + claimTrustlineCostStroops(accountState, claimableBalanceSelections)
         );
   if (ownFeeShort > 0n) {
     blockers.push({ code: "close_fee_balance_short", message: closeFeeShortMessage(ownFeeShort) });

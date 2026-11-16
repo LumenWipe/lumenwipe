@@ -20,12 +20,15 @@ import {
   claimTrustlineCostStroops,
   claimReserveShortMessage,
   closeFeeShortMessage,
+  exitRoundsFeeStroops,
   feeFloorStroops,
   laterOwnFeesStroops,
   MEDIATOR_MIN_FORWARD_STROOPS,
   MEDIATOR_TX_FEE_STROOPS,
   ownFeeShortfallStroops,
+  tokenRoundFeeBoundStroops,
   tokenRoundsAhead,
+  tokenRoundsFeeStroops,
   trustlineReserveShortfallStroops,
   type FeeAffordability,
 } from "@/lib/stellar/claim-reserve";
@@ -209,13 +212,13 @@ function feeOf(tx: CloseTransaction): bigint {
 function assertOwnFeesFit(
   state: AccountState,
   roundFeeStroops: bigint,
-  laterSorobanRounds: number,
+  laterSorobanFeeStroops: bigint,
   viaMediator: boolean,
   claimSelections: Readonly<Record<string, string>>
 ): void {
   const owed =
     roundFeeStroops +
-    laterOwnFeesStroops(state, laterSorobanRounds, viaMediator) +
+    laterOwnFeesStroops(state, laterSorobanFeeStroops, viaMediator) +
     claimTrustlineCostStroops(state, claimSelections);
   const short = ownFeeShortfallStroops(state, owed);
   if (short > 0n) throw feeBalanceShortError(short);
@@ -451,7 +454,14 @@ export async function buildCloseTransactions(
     )[0]!;
     if (sorobanRounds > 0) {
       // The classic bound already counts this round's operations, as the plan's own-fee bound does.
-      assertOwnFeesFit(accountState, 0n, sorobanRounds, needsMediator, claimableBalanceSelections);
+      assertOwnFeesFit(
+        accountState,
+        0n,
+        exitRoundsFeeStroops(2 * accountState.defiPositions.positions.length) +
+          tokenRoundsFeeStroops(accountState, dispositions),
+        needsMediator,
+        claimableBalanceSelections
+      );
     }
     const removed = normalization.intent.operations.length - 1;
     return {
@@ -491,9 +501,8 @@ export async function buildCloseTransactions(
       assertOwnFeesFit(
         accountState,
         feeOf(exit.transaction),
-        exit.remainingSteps +
-          accountState.defiPositions.positions.length +
-          tokenRoundsAhead(accountState, dispositions),
+        exitRoundsFeeStroops(exit.remainingSteps + accountState.defiPositions.positions.length) +
+          tokenRoundsFeeStroops(accountState, dispositions),
         needsMediator,
         claimableBalanceSelections
       );
@@ -539,7 +548,8 @@ export async function buildCloseTransactions(
       assertOwnFeesFit(
         accountState,
         feeOf(tokenRound.transaction),
-        tokenRound.remainingSteps + tokenRoundsAhead(accountState, dispositions, "convert"),
+        BigInt(tokenRound.remainingSteps) * tokenRoundFeeBoundStroops("transfer") +
+          tokenRoundsFeeStroops(accountState, dispositions, "convert"),
         needsMediator,
         claimableBalanceSelections
       );
@@ -565,7 +575,7 @@ export async function buildCloseTransactions(
         assertOwnFeesFit(
           accountState,
           feeOf(conversionRound.transaction),
-          conversionRound.remainingSteps,
+          BigInt(conversionRound.remainingSteps) * tokenRoundFeeBoundStroops("convert"),
           needsMediator,
           claimableBalanceSelections
         );

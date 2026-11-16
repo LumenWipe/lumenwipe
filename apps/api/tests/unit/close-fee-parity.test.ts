@@ -17,7 +17,7 @@ import {
   normalizesSignersFirst,
   signerNormalizationOpCount,
 } from "@/lib/stellar/tx-builder/signers";
-import { BASE_FEE_STROOPS } from "@/config/constants";
+import { BASE_FEE_STROOPS, SOROBAN_SWAP_FEE_ESTIMATE_STROOPS } from "@/config/constants";
 import { stroopsToFixedXlm, xlmToStroops } from "@/lib/utils/amounts";
 import * as rpcModule from "@/lib/stellar/rpc";
 import * as registry from "@/lib/exchange-registry";
@@ -37,6 +37,7 @@ const DEST = Keypair.random().publicKey();
 const USDC = `USDC:${ISSUER}`;
 const ONE_XLM = 10_000_000n;
 const RESERVE = 5_000_000n;
+const SWAP_BOUND = BigInt(SOROBAN_SWAP_FEE_ESTIMATE_STROOPS);
 const NO_SPONSOR: KillSwitches = { ...ALL_ON, feeSponsorConfigured: false };
 
 let snapshot: Trustline[] = [];
@@ -332,9 +333,9 @@ describe("signer normalization first, with later rounds of other kinds", () => {
     ).blockers.find((b) => b.code === "close_fee_balance_short");
   const build = (s: AccountState) =>
     buildCloseTransactions(NO_SPONSOR, s, DEST, dispositions, "testnet");
-  // The Soroban round at the estimate and the classic bound of 400: the normalization round's two
-  // operations, then the master key the next call still lists, and the merge.
-  const owed = 100_000n + 400n;
+  // The conversion round at the swap bound and the classic bound of 400: the normalization round's
+  // two operations, then the master key the next call still lists, and the merge.
+  const owed = SWAP_BOUND + 400n;
   // What the next call reads once normalization has landed: the master key alone, thresholds
   // reset, the cosigner's sponsored entry gone, and the normalization fee paid.
   const normalized = (s: AccountState, feeStroops: bigint) =>
@@ -387,8 +388,8 @@ describe("signer normalization first, with later rounds of other kinds", () => {
       });
       expect(normalizesSignersFirst(before)).toBe(true);
       const fee = BigInt(BASE_FEE_STROOPS * signerNormalizationOpCount(before.signers, SOURCE));
-      expect(laterOwnFeesStroops(before, 1, false)).toBeGreaterThanOrEqual(
-        fee + laterOwnFeesStroops(normalized(before, fee), 1, false)
+      expect(laterOwnFeesStroops(before, SWAP_BOUND, false)).toBeGreaterThanOrEqual(
+        fee + laterOwnFeesStroops(normalized(before, fee), SWAP_BOUND, false)
       );
     }
   );
@@ -489,7 +490,7 @@ describe("a token conversion round, with no fee sponsor", () => {
   }
 
   test("short by exactly the round's own fee, the build refuses with that amount", async () => {
-    const s = holdingToken(ONE_XLM + laterOwnFeesStroops(holdingToken(0n), 0, false));
+    const s = holdingToken(ONE_XLM + laterOwnFeesStroops(holdingToken(0n), 0n, false));
     const { result, spy } = convert(s);
     const failure = await refusal(result);
     expect(spy).toHaveBeenCalledTimes(1);
@@ -499,7 +500,7 @@ describe("a token conversion round, with no fee sponsor", () => {
 
   test("topped up by that amount, the conversion round builds", async () => {
     const s = holdingToken(
-      ONE_XLM + laterOwnFeesStroops(holdingToken(0n), 0, false) + CONVERSION_FEE
+      ONE_XLM + laterOwnFeesStroops(holdingToken(0n), 0n, false) + CONVERSION_FEE
     );
     const { result, round, spy } = convert(s);
     const built = await result;

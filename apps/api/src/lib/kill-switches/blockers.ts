@@ -3,9 +3,11 @@ import type { KillSwitches } from "@/config/kill-switches";
 import {
   claimTrustlineCostStroops,
   closeFeeShortMessage,
+  exitRoundsFeeStroops,
   laterOwnFeesStroops,
   ownFeeShortfallStroops,
   tokenRoundsAhead,
+  tokenRoundsFeeStroops,
 } from "@/lib/stellar/claim-reserve";
 import { stroopsToFixedXlm } from "@/lib/utils/amounts";
 import { groupExitTargets, PROTOCOL_LABEL, shortContract } from "@/lib/defi-exits/plan-exits";
@@ -125,8 +127,12 @@ function sponsorshipBlocker(
   }
   const short = ownFeeShortfallStroops(
     state,
-    laterOwnFeesStroops(state, sorobanRounds, ctx.viaMediator) +
-      claimTrustlineCostStroops(state, ctx.claimableBalanceSelections)
+    laterOwnFeesStroops(
+      state,
+      exitRoundsFeeStroops(2 * state.defiPositions.positions.length) +
+        tokenRoundsFeeStroops(state, ctx.dispositions),
+      ctx.viaMediator
+    ) + claimTrustlineCostStroops(state, ctx.claimableBalanceSelections)
   );
   if (short <= 0n) return null;
   if (!switches.feeSponsorConfigured) {

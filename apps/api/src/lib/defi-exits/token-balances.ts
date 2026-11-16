@@ -1,7 +1,12 @@
 import { Asset } from "@stellar/stellar-sdk";
 import type { AccountState, OpenOffer } from "@lumenwipe/types";
 import { SOROBAN_EXIT_FEE_ESTIMATE_STROOPS } from "@/config/constants";
-import { feeFloorStroops, laterOwnFeesStroops } from "@/lib/stellar/claim-reserve";
+import {
+  exitRoundsFeeStroops,
+  feeFloorStroops,
+  laterOwnFeesStroops,
+  tokenRoundsFeeStroops,
+} from "@/lib/stellar/claim-reserve";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { xlmToStroops } from "@/lib/utils/amounts";
 import { isBaseUnits } from "./invariants";
@@ -42,8 +47,8 @@ export function tokenBalancesFor(accountState: AccountState): Record<string, str
     BigInt(SOROBAN_EXIT_FEE_ESTIMATE_STROOPS) +
     laterOwnFeesStroops(
       accountState,
-      2 * accountState.defiPositions.positions.length +
-        (accountState.sorobanTokens?.tokens.length ?? 0),
+      exitRoundsFeeStroops(2 * accountState.defiPositions.positions.length) +
+        tokenRoundsFeeStroops(accountState, {}),
       true
     );
   const balances: Record<string, string> = {

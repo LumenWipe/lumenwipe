@@ -21,7 +21,11 @@ import { buildCloseTransactions, CloseBuildError } from "@/lib/close-api/build-t
 import type { ExitRunResult } from "@/lib/defi-exits";
 import { DEGRADED_SOURCE_CONFIRMED } from "@/lib/defi-positions/resolve-defi-positions";
 import { buildPlan } from "@/lib/stellar/tx-builder";
-import { SOROBAN_EXIT_FEE_ESTIMATE_STROOPS } from "@/config/constants";
+import { closeFeeShortMessage } from "@/lib/stellar/claim-reserve";
+import {
+  SOROBAN_EXIT_FEE_ESTIMATE_STROOPS,
+  SOROBAN_SWAP_FEE_ESTIMATE_STROOPS,
+} from "@/config/constants";
 import { stroopsToFixedXlm } from "@/lib/utils/amounts";
 import { ledgerRpcServer, mirrorSnapshot } from "./fixtures/ledger-trustlines";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
@@ -42,6 +46,7 @@ const ONE_XLM = 10_000_000n;
 const HALF_XLM = 5_000_000n;
 const MERGE_FEE = 200n;
 const ESTIMATE = BigInt(SOROBAN_EXIT_FEE_ESTIMATE_STROOPS);
+const SWAP = BigInt(SOROBAN_SWAP_FEE_ESTIMATE_STROOPS);
 const POOL = "CAJJZSGMMM3PD7N33TAPHGBUGTB43OC73HVIK2L2G6BNGGGYOSSYBXBD";
 const POOL_ASSET = "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA";
 
@@ -342,6 +347,56 @@ test("soroban round › rounds still to come are reserved at the plan's estimate
 
   const fits = await twoTokens(ONE_XLM + fee + ESTIMATE + CLASSIC_FEES);
   expect(fits.transactions).toHaveLength(1);
+});
+
+test("soroban round › a conversion still to come is reserved at the swap bound, in the plan and the first round", async () => {
+  const fee = await tokenTransferFee();
+  const second = Address.contract(Buffer.alloc(32, 8)).toString();
+  const dispositions = { [TOKEN]: "transfer" as const, [second]: "convert" as const };
+  const holding = (balance: bigint) =>
+    withToken(balance, {
+      sorobanTokens: {
+        tokens: [
+          { contract: TOKEN, balance: "250", symbol: "XTAR", decimals: 7, sources: [] },
+          { contract: second, balance: "250", symbol: "YTAR", decimals: 7, sources: [] },
+        ],
+        unreadable: [],
+        coverage: [],
+        eventsScanned: null,
+        warnings: [],
+      },
+    });
+  const planBlocker = (balance: bigint) =>
+    buildPlan(ALL_ON, holding(balance), false, false, {}, undefined, dispositions).blockers.find(
+      (b) => b.code === "close_fee_balance_short"
+    );
+  const transferFirst = (balance: bigint) =>
+    buildCloseTransactions(
+      ALL_ON,
+      holding(balance),
+      DEST,
+      dispositions,
+      "testnet",
+      null,
+      {},
+      { [TOKEN]: TRANSFER_TO },
+      {},
+      { rpc: tokenRpc() }
+    );
+
+  // Enough for the conversion at the transfer bound, short of its swap bound.
+  expect(planBlocker(ONE_XLM + 2n * ESTIMATE + CLASSIC_FEES)?.message).toBe(
+    closeFeeShortMessage(SWAP - ESTIMATE)
+  );
+  expect(planBlocker(ONE_XLM + ESTIMATE + SWAP + CLASSIC_FEES)).toBeUndefined();
+
+  const short = await refusal(transferFirst(ONE_XLM + fee + ESTIMATE + CLASSIC_FEES));
+  expect(short).toMatchObject({
+    code: "close_fee_balance_short",
+    message: closeFeeShortMessage(SWAP - ESTIMATE),
+  });
+  const fits = await transferFirst(ONE_XLM + fee + SWAP + CLASSIC_FEES);
+  expect(fits.transactions[0]!.coversTargets).toEqual([TOKEN]);
 });
 
 test("soroban round › a trustline a claim round opens later is reserved with its fees", async () => {

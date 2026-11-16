@@ -111,17 +111,40 @@ export function tokenRoundsAhead(
 }
 
 /**
- * What the account must still pay itself after the round being built: later Soroban rounds at
- * the plan's per-transaction estimate, every classic operation at the base fee (whether a sponsor
- * takes it is not known yet) and, for an exchange, the merge.
+ * The fee bounds of the Soroban token rounds still ahead: every held token with a balance, at
+ * its answer's bound (`tokenRoundFeeBoundStroops`), or only the tokens answered `only`.
+ */
+export function tokenRoundsFeeStroops(
+  state: AccountState,
+  dispositions: Record<string, string>,
+  only?: "convert"
+): bigint {
+  let total = 0n;
+  for (const t of state.sorobanTokens?.tokens ?? []) {
+    const d = dispositions[t.contract];
+    if (BigInt(t.balance) <= 0n || (only !== undefined && d !== only)) continue;
+    total += tokenRoundFeeBoundStroops(d);
+  }
+  return total;
+}
+
+/** The fee bound of `exitRounds` DeFi exit transactions. */
+export function exitRoundsFeeStroops(exitRounds: number): bigint {
+  return BigInt(SOROBAN_EXIT_FEE_ESTIMATE_STROOPS) * BigInt(exitRounds);
+}
+
+/**
+ * What the account must still pay itself after the round being built: the later Soroban rounds'
+ * fee bounds, every classic operation at the base fee (whether a sponsor takes it is not known
+ * yet) and, for an exchange, the merge.
  */
 export function laterOwnFeesStroops(
   state: AccountState,
-  laterSorobanRounds: number,
+  laterSorobanFeeStroops: bigint,
   viaMediator: boolean
 ): bigint {
   return (
-    BigInt(SOROBAN_EXIT_FEE_ESTIMATE_STROOPS) * BigInt(laterSorobanRounds) +
+    laterSorobanFeeStroops +
     BigInt(BASE_FEE_STROOPS) * BigInt(classicOpsBound(state)) +
     (viaMediator ? MEDIATOR_TX_FEE_STROOPS : 0n)
   );
