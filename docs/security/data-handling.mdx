@@ -1,0 +1,136 @@
+---
+title: "Data handling"
+description: "What LumenWipe sends to its API, what the API and the web server log and store, what stays in the browser, what each third-party service receives, and how long each is kept."
+icon: "database"
+---
+
+LumenWipe is non-custodial: the key that signs a close stays in the browser or in the user's wallet. This page
+lists every other piece of data the service handles, where it goes and how long it stays there, written from the
+code. The fields the API writes to its logs are listed in full in [Logging and privacy](/reference/logging-and-privacy).
+How the service is protected is on the [security posture](/security/posture) page.
+
+**Status as of 2026-11-16, checked against commit `7a77881`.** Each statement names the file that proves it.
+`bun run check:docs` fails the build when a file or symbol cited here no longer exists, and when the analytics
+tools named under [What third parties receive](#what-third-parties-receive) differ from the ones the web app
+loads. It checks names, not meaning: whether the cited code still does what the sentence says stays a review
+question.
+
+## What reaches the API
+
+The browser never calls the API directly. It calls same-origin `/api/...` routes on the web server, and those
+call the API server-side with the web's own API key (`apps/web/lib/api/server-client.ts#getApiClient`). That
+call carries only the key, the SDK version and the content type as headers (`packages/sdk/src/http.ts`), so the
+visitor's IP address is not passed on to the API.
+
+| Request                                                                        | What it carries                                                                                                                                                           |
+| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Account read, destination check                                                | The account address, and the destination address for the destination check.                                                                                               |
+| Close plan (`packages/types/src/requests.ts#ClosePlanRequest`)                 | The account being closed, the destination when known, and the user's answers to the plan's questions, such as what to do with each asset.                                 |
+| Close transactions (`packages/types/src/requests.ts#CloseTransactionsRequest`) | The same, plus the deposit memo and its type when the destination needs one, and the hash of the plan the user reviewed.                                                  |
+| Submit (`packages/types/src/requests.ts#SubmitRequest`)                        | The signed transaction envelope.                                                                                                                                          |
+| Exchange forward co-sign, fee sponsorship                                      | The transaction the user signed, for the API's relay or fee sponsor to add its own signature to (see [Keys the service holds](/security/posture#keys-the-service-holds)). |
+
+An answer to a plan question names the question and the choice, plus a slippage limit, a minimum output and the
+quote provider for a conversion (`packages/types/src/close-api.ts#DecisionAnswer`). No request carries a secret
+key: signing happens in the browser or in the wallet, and the API receives only signed envelopes (INV-22 in the
+[invariant register](/invariants)).
+
+## What is logged
+
+The API writes one JSON line per request with its request id, the route pattern, the status, the latency, the
+API key's label and the network (`apps/api/src/common/json-logger.ts#JsonLogger`). Every response carries the
+request id in `X-Request-Id` (`apps/api/src/common/request-context.ts#REQUEST_ID_HEADER`). Request and response
+bodies, memos, exchange destinations, secret keys, bearer tokens, signed envelopes and client IP addresses are
+never written; any other account address is cut to its first and last four characters plus a keyed hash. The
+logger applies these rules to every line before it leaves the process
+(`apps/api/src/common/log-privacy.ts#scrubValue`). The full field list is in
+[Logging and privacy](/reference/logging-and-privacy).
+
+The web server logs a rate-limiter failure as its route namespace and the kind of failure, never the IP, its hash
+or the error text (`apps/web/lib/upstash-redis.ts#checkNamespacedRateLimit`), and a Content Security Policy
+report as the violated directive and the blocked origin only (`apps/web/lib/api/csp-report.ts#blockedSource`).
+
+## What the API stores
+
+The API keeps no record of a close in progress. What it does keep is in Firestore
+(`apps/api/src/config/firestore.ts`):
+
+| Data             | What is kept                                                                                                                                                                                                                                                                                                                           | Source                                                             |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Close statistics | For each counted close: its transaction hash, network, number of accounts closed, XLM amount and time. Also running totals, a count per day, and the hashes of transactions the API built so that only those are counted. No account address is stored with them, though a transaction hash identifies its close on the public ledger. | `apps/api/src/stats/merge-stats-store.ts#FirestoreMergeStatsStore` |
+| API keys         | A hash of each key, never the key itself; its owner (a wallet address, or a label the operator typed); its label, networks and rate limit; when it was created, rotated, revoked and last used.                                                                                                                                        | `apps/api/src/auth/api-key-store.ts#ApiKeyRecord`                  |
+| Usage            | Per key owner and UTC day: the number of requests, per route and per key, and the number refused with `429` per key. Separately, per day, request counts to each upstream provider, with no account data.                                                                                                                              | `apps/api/src/metering/usage-store.ts#FirestoreUsageStore`         |
+
+The API's own rate limiter counts requests per API key, or per client address for a request without a valid key,
+in the memory of the instance that served it for the length of the throttle window, and writes neither to
+Firestore (`apps/api/src/auth/rate-limiter.ts#clientIdentity`, `apps/api/src/app.module.ts`). Signing in to
+manage self-serve keys stores nothing: the challenge and the session token are each derived from the address and
+a time with a server-held key, and checked by recomputing them
+(`apps/api/src/integrator/wallet-auth.ts#buildChallenge`, `apps/api/src/integrator/wallet-auth.ts#issueSession`).
+
+## What the web server stores
+
+The web server's Redis store (Upstash) holds rate-limit counters only. Each key is the route namespace, the first
+16 hex characters of a SHA-256 hash of the visitor's IP address and the UTC date, so the raw address is never
+stored (`apps/web/lib/upstash-redis.ts#checkNamespacedRateLimit`, used by
+`apps/web/lib/api/rate-limit.ts#rateLimitProxy`).
+
+## What stays in the browser
+
+| Store                             | What it holds                                                                                                                                                                                                                                       | Source                                                                                                                  |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| IndexedDB `lumenwipe`, `sessions` | The close in progress, so it can resume: network, account, destination, memo and its type, whether it goes through the exchange relay, the hashes of confirmed transactions, and the hash of one whose outcome is unknown. Never a signed envelope. | `apps/web/types/session.ts#SessionRecord`, `apps/web/lib/session/store.ts`                                              |
+| IndexedDB `lumenwipe`, `history`  | Receipts of completed closes: account, destination, memo, transaction hashes, fees and the XLM received.                                                                                                                                            | `apps/web/types/history.ts#ReceiptRecord`                                                                               |
+| `sessionStorage`                  | The user's answers for the close in this tab, never a key, signature or transaction, and whether the risk notice was accepted.                                                                                                                      | `apps/web/lib/session/decision-snapshot.ts#DecisionSnapshot`, `apps/web/components/RiskDisclaimerModal.tsx#STORAGE_KEY` |
+| `localStorage`                    | The address of a connected wallet, kept by the wallet connection library so the connection can be restored.                                                                                                                                         | `apps/web/lib/wallet-kit/loader.ts#hasStoredWalletSession`                                                              |
+
+A secret key typed into the secret-key mode is held in memory only and is wiped on completion, on abort, on leaving
+the flow or on "Forget key" (INV-22).
+
+## What third parties receive
+
+| Service                          | What it receives from LumenWipe                                                                                                | When                                                                                                                           | Source                                                                                                       |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| Stellar RPC providers            | Requests for the ledger entries of the account and its contracts, transactions to simulate, and signed transactions to submit. | Every close, on the close's network. The providers are set per network in the API's configuration.                             | `apps/api/src/config/networks.ts#rpcProviders`                                                               |
+| Horizon-compatible providers     | Requests for the account, its offers, claimable balances and operations, and payment paths for its assets.                     | Every close, on the close's network, as configured.                                                                            | `apps/api/src/config/networks.ts#horizonProviders`                                                           |
+| OctoPos (DeFi positions)         | The account address.                                                                                                           | Mainnet only, and only when `OCTOPOS_API_URL_MAINNET` is set.                                                                  | `apps/api/src/config/networks.ts#OCTOPOS_API_URL_MAINNET`, `apps/api/src/lib/defi-positions/octopos-http.ts` |
+| stellar.expert API               | The account address and network, to list the Soroban tokens it may hold. Every balance is then read from the ledger.           | When the API reads an account's tokens, on either network.                                                                     | `apps/api/src/config/networks.ts#STELLAR_EXPERT_API_URL`, `apps/api/src/lib/stellar/soroban-tokens.ts`       |
+| Soroswap API                     | For a quote, the token and the amount. To build a swap the user chose, also the account address.                               | Only when `SOROSWAP_API_KEY` is set.                                                                                           | `apps/api/src/lib/soroswap/conversion-quotes.ts#buildTokenConversion`                                        |
+| xBull swap API                   | For a quote, the token and the amount. To build a swap the user chose, also the account address and the minimum output.        | Mainnet only, and off unless `XBULL_CONVERSION_ENABLED` is `true`.                                                             | `apps/api/src/lib/xbull/conversion-quotes.ts#readXBullEnv`                                                   |
+| Vercel (web hosting)             | Every request a visitor makes to the web app, as its host.                                                                     | Always.                                                                                                                        | `apps/web/vercel.json`                                                                                       |
+| Vercel Web Analytics             | The address of each page viewed, with the query string and fragment removed and receipt ids replaced.                          | Every page.                                                                                                                    | `apps/web/app/root-document.tsx`, `apps/web/lib/analytics/redact.ts`                                         |
+| Umami Cloud                      | The same redacted page address, the page title and the referring page.                                                         | Only when the deployment sets `NEXT_PUBLIC_UMAMI_WEBSITE_ID`.                                                                  | `apps/web/app/root-document.tsx`, `apps/web/lib/analytics/redact.ts`                                         |
+| WalletConnect                    | The connection between the page and the visitor's mobile wallet, including the transactions sent to that wallet to sign.       | Only when the visitor connects a wallet through WalletConnect.                                                                 | `apps/web/proxy.ts#proxy`                                                                                    |
+| Pollar                           | The Google or GitHub sign-in, and the sign-in challenge it signs for the account it provides.                                  | Only on the API keys page, when the deployment sets `NEXT_PUBLIC_POLLAR_PUBLISHABLE_KEY` and the visitor chooses that sign-in. | `apps/web/components/api-keys/ApiKeysClient.tsx`, `apps/web/components/api-keys/PollarSignIn.tsx`            |
+| YouTube (`youtube-nocookie.com`) | The request for the embedded video, from the visitor's browser.                                                                | Only on a page that embeds a video.                                                                                            | `apps/web/components/blog/YouTubeEmbed.tsx`                                                                  |
+
+The API runs on Google Cloud Run and keeps the data above in Firestore in the same Google Cloud project; its logs go
+to Cloud Logging there. The web app sends no custom analytics events, so no account address, transaction, memo or
+key reaches either analytics tool ([Logging and privacy](/reference/logging-and-privacy#page-analytics)).
+
+## Retention
+
+| Data                                              | How long                                                                                                                                                                                                          | Source                                                                                             |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| API logs                                          | The retention of the Cloud Logging bucket, a setting of the Google Cloud project. The repository's migration check fails when the default bucket keeps entries for fewer than 30 days.                            | `scripts/migration-check.sh`                                                                       |
+| Daily close counts                                | Each document carries an `expireAt` timestamp 400 days after its day. Deletion on that date relies on a Firestore TTL policy on that field, which is managed in the Google Cloud project, not in this repository. | `apps/api/src/stats/merge-stats-store.ts#DAILY_RETENTION_DAYS`                                     |
+| Hashes of transactions the API built              | Each document carries an `expireAt` timestamp 30 days after it was built, deleted under the same TTL policy.                                                                                                      | `apps/api/src/stats/merge-stats-store.ts#BUILT_RETENTION_DAYS`                                     |
+| Counted closes and totals, upstream counters      | The code sets no expiry.                                                                                                                                                                                          | `apps/api/src/stats/merge-stats-store.ts`, `apps/api/src/metering/usage-store.ts`                  |
+| Usage per key owner                               | Kept indefinitely.                                                                                                                                                                                                | `apps/api/src/metering/usage-store.ts#FirestoreUsageStore`                                         |
+| API key records                                   | Kept after revocation, marked revoked.                                                                                                                                                                            | `apps/api/src/auth/api-key-store.ts#FirestoreApiKeyStore`                                          |
+| Web rate-limit counters                           | 24 hours from the last increment; the date in the key starts a new count each UTC day.                                                                                                                            | `apps/web/lib/upstash-redis.ts#checkNamespacedRateLimit`                                           |
+| A close in progress, in the browser               | Deleted 7 days after its last update, the next time the app looks for one to resume, unless it holds a transaction whose outcome is unknown.                                                                      | `apps/web/lib/session/store.ts#SESSION_MAX_AGE_MS`, `apps/web/lib/session/store.ts#expireSessions` |
+| Receipts, in the browser                          | Until the user deletes them.                                                                                                                                                                                      | `apps/web/lib/session/history.ts#deleteHistoryEntry`                                               |
+| `sessionStorage` entries                          | Until the tab is closed.                                                                                                                                                                                          | `apps/web/lib/session/decision-snapshot.ts`                                                        |
+| Connected wallet address                          | Until the wallet is disconnected.                                                                                                                                                                                 | `apps/web/lib/wallet-kit/loader.ts#forgetStoredWalletSession`                                      |
+| Data held by Vercel, Umami and the services above | Governed by that provider.                                                                                                                                                                                        |                                                                                                    |
+
+## Using the hosted API from the SDK
+
+An integrator who calls the hosted API, directly or through `@lumenwipe/sdk`, sends it everything listed under
+[What reaches the API](#what-reaches-the-api) for each close it runs, and the API passes the parts each service
+needs to the third parties listed above. The integrator's API key travels as a bearer token and is stored only as
+a hash. The API keeps the key record and usage counts described under [What the API stores](#what-the-api-stores);
+for a self-serve key the owner is the wallet address that signed in. A request sent from an end user's browser
+rather than from the integrator's server is rate limited by that browser's IP address, in memory, and the address
+is not logged.

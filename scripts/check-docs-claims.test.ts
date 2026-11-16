@@ -13,6 +13,7 @@ import {
   checkPlaygroundImports,
   checkRegister,
   checkSdkDoesNotBundleStellarSdk,
+  checkSecurityPages,
   checkSecurityScope,
   checkSetupSteps,
   isScopePath,
@@ -22,6 +23,7 @@ import {
   expandBraces,
   hasTest,
   stripComments,
+  verifiedOperationTypes,
 } from "./check-docs-claims";
 import { renderContrastTables, rootVars } from "../apps/web/tests/design-tokens";
 
@@ -75,6 +77,36 @@ const ARCHITECTURE =
 const PRIVACY_PAGE =
   "## Retention and access\n\nLogs.\n\n## Page analytics\n\n" +
   "| Vercel Web Analytics | always |\n| Umami Cloud | when set |\n";
+const POSTURE =
+  "## Keys the service holds\n\n| Mediator | `apps/api/src/lib/stellar/mediator-server.ts#getMediatorKeypair` |\n\n" +
+  "## What `verify()` accepts\n\n| Delivering | `account_merge`, `payment` | INV-01 |\n\nAn `unknown` operation is refused.\n\n" +
+  "## Reporting\n\nEmail.\n";
+const DATA_HANDLING =
+  "## What third parties receive\n\n| Vercel Web Analytics | always |\n| Umami Cloud | when set |\n\n" +
+  "## Retention\n\nSee `apps/web/lib/verify.ts#assertCloseIntent`.\n";
+const VERIFY_SOURCE = [
+  "export function assertCloseIntent(intent) {",
+  "  for (const op of intent.operations) {",
+  "    switch (op.type) {",
+  '      case "payment": {',
+  "        switch (op.asset) {",
+  '          case "native":',
+  "            break;",
+  "        }",
+  "        break;",
+  "      }",
+  '      case "unknown":',
+  "        throw new Error();",
+  '      case "account_merge":',
+  "        break;",
+  "    }",
+  "  }",
+  "}",
+  "",
+].join("\n");
+const MEDIATOR_LOADER =
+  'import { Keypair } from "@stellar/stellar-sdk";\n' +
+  "export function getMediatorKeypair() {\n  return Keypair.fromSecret(process.env.SECRET!);\n}\n";
 const ROW =
   '| INV-01 | x | `apps/web/lib/verify.ts#assertCloseIntent` | `apps/web/tests/unit/verify.test.ts#"rejects an unknown operation"`, `.github/workflows/ci.yml#docs-claims` | Enforced |';
 
@@ -179,6 +211,10 @@ function fixture(files: Record<string, string | null>): string {
     "apps/web/app/fonts/display.woff2": FONT,
     "apps/playground/app/fonts/display.woff2": FONT,
     "docs/reference/logging-and-privacy.mdx": PRIVACY_PAGE,
+    "docs/security/posture.mdx": POSTURE,
+    "docs/security/data-handling.mdx": DATA_HANDLING,
+    "apps/web/lib/stellar/verify.ts": VERIFY_SOURCE,
+    "apps/api/src/lib/stellar/mediator-server.ts": MEDIATOR_LOADER,
   };
   for (const [path, content] of Object.entries({ ...base, ...files })) {
     if (content === null) continue;
@@ -704,6 +740,7 @@ describe("the analytics tools", () => {
       "docs/architecture.md: names Umami Cloud, which apps/web/app/root-document.tsx does not load",
       "docs/architecture.md: names Plausible, which apps/web/app/root-document.tsx does not load",
       "docs/reference/logging-and-privacy.mdx: names Umami Cloud, which apps/web/app/root-document.tsx does not load",
+      "docs/security/data-handling.mdx: names Umami Cloud, which apps/web/app/root-document.tsx does not load",
     ]);
   });
 
@@ -713,6 +750,7 @@ describe("the analytics tools", () => {
         '// import { Analytics } from "@vercel/analytics/next";\nexport default function RedactedAnalytics() {}\n',
     });
     expect(checkAnalyticsTools(root).map((p) => p.message)).toEqual([
+      "names Vercel Web Analytics, which apps/web/app/root-document.tsx does not load",
       "names Vercel Web Analytics, which apps/web/app/root-document.tsx does not load",
       "names Vercel Web Analytics, which apps/web/app/root-document.tsx does not load",
     ]);
@@ -739,6 +777,110 @@ describe("the analytics tools", () => {
     const noLayout = fixture({ "apps/web/app/root-document.tsx": null });
     expect(checkAnalyticsTools(noLayout)).toEqual([
       { source: "apps/web/app/root-document.tsx", message: "is missing" },
+    ]);
+  });
+});
+
+describe("the security pages", () => {
+  const POSTURE_PAGE = "docs/security/posture.mdx";
+  const messages = (root: string) =>
+    checkSecurityPages(root).map((p) => `${p.source}: ${p.message}`);
+
+  test("a consistent pair of pages reports nothing", () => {
+    expect(checkSecurityPages(fixture({}))).toEqual([]);
+  });
+
+  test("a cited file or symbol that does not exist is reported", () => {
+    const root = fixture({
+      "docs/security/data-handling.mdx": DATA_HANDLING.replace(
+        "#assertCloseIntent",
+        "#gone"
+      ).concat("And `apps/web/lib/missing.ts`.\n"),
+    });
+    expect(messages(root)).toEqual([
+      "docs/security/data-handling.mdx: apps/web/lib/verify.ts does not declare gone",
+      "docs/security/data-handling.mdx: apps/web/lib/missing.ts does not exist",
+    ]);
+  });
+
+  test("an invariant id the register has no row for is reported once", () => {
+    const root = fixture({ [POSTURE_PAGE]: POSTURE.concat("INV-99 and INV-99 again.\n") });
+    expect(messages(root)).toEqual([
+      `${POSTURE_PAGE}: names INV-99, which the invariant register has no row for`,
+    ]);
+  });
+
+  test("an API file that loads a secret key the keys section does not cite is reported", () => {
+    const root = fixture({
+      "apps/api/src/lib/stellar/fee-account.ts":
+        "export const sponsor = () => Keypair.fromRawEd25519Seed(seed);\n",
+      [POSTURE_PAGE]: POSTURE.concat("See `apps/api/src/lib/stellar/fee-account.ts`.\n"),
+    });
+    expect(messages(root)).toEqual([
+      `${POSTURE_PAGE}: the keys section does not cite apps/api/src/lib/stellar/fee-account.ts, which loads a secret key`,
+    ]);
+  });
+
+  test("a test file or a comment that loads a key does not count", () => {
+    const root = fixture({
+      "apps/api/src/lib/stellar/keys.test.ts": "Keypair.fromSecret(fixture);\n",
+      "apps/api/src/lib/stellar/note.ts": "// Keypair.fromSecret(never);\nexport const x = 1;\n",
+    });
+    expect(checkSecurityPages(root)).toEqual([]);
+  });
+
+  test("no key loader at all is reported", () => {
+    const root = fixture({
+      "apps/api/src/lib/stellar/mediator-server.ts": "export function getMediatorKeypair() {}\n",
+    });
+    expect(messages(root)).toEqual([
+      "apps/api/src: no source file loads a secret key, so the posture page's key section is out of date",
+    ]);
+  });
+
+  test("an operation type verify() handles that the page does not name is reported", () => {
+    const root = fixture({
+      "apps/web/lib/stellar/verify.ts": VERIFY_SOURCE.replace(
+        '      case "account_merge":',
+        '      case "account_merge":\n      case "set_options":'
+      ),
+    });
+    expect(messages(root)).toEqual([
+      `${POSTURE_PAGE}: does not name set_options, which verify() accepts`,
+    ]);
+  });
+
+  test("an operation type the page names that verify() does not handle is reported", () => {
+    const root = fixture({
+      [POSTURE_PAGE]: POSTURE.replace("`payment` |", "`payment`, `manage_buy_offer`, `native` |"),
+    });
+    expect(messages(root)).toEqual([
+      `${POSTURE_PAGE}: names manage_buy_offer, which assertCloseIntent in apps/web/lib/stellar/verify.ts does not handle`,
+      `${POSTURE_PAGE}: names native, which assertCloseIntent in apps/web/lib/stellar/verify.ts does not handle`,
+    ]);
+  });
+
+  test("only the cases of the operation switch are read, nested ones excluded", () => {
+    expect(verifiedOperationTypes(VERIFY_SOURCE)).toEqual(
+      new Set(["payment", "unknown", "account_merge"])
+    );
+    expect(verifiedOperationTypes("export function other() {}\n")).toBeNull();
+    expect(verifiedOperationTypes("function assertCloseIntent() {}\n")).toBeNull();
+  });
+
+  test("a missing page, section or switch is reported", () => {
+    const noPage = fixture({ "docs/security/data-handling.mdx": null });
+    expect(messages(noPage)).toEqual(["docs/security/data-handling.mdx: is missing"]);
+    const noSections = fixture({ [POSTURE_PAGE]: "## Something else\n" });
+    expect(messages(noSections)).toEqual([
+      `${POSTURE_PAGE}: the section listing the service's keys was not found`,
+      `${POSTURE_PAGE}: the section listing what verify() accepts was not found`,
+    ]);
+    const noSwitch = fixture({
+      "apps/web/lib/stellar/verify.ts": "export function assertCloseIntent() {}\n",
+    });
+    expect(messages(noSwitch)).toEqual([
+      "apps/web/lib/stellar/verify.ts: assertCloseIntent's switch over the operation type was not found",
     ]);
   });
 });
