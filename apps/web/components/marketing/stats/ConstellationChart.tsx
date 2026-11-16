@@ -6,13 +6,16 @@ import { useState } from "react";
 import { stroopsToXlm } from "@/lib/utils/amounts";
 import { SE_EXPLORER_BASE } from "@/config/networks";
 import type { FeedData, MergeRecord } from "@/hooks/useFeed";
+import { useNow } from "@/hooks/useNow";
+import AxisLabels, { type AxisLabel } from "./AxisLabels";
 
 const W = 900;
-const H = 200;
+const H = 176;
 const PAD_X = 16;
 const PAD_TOP = 18;
-const PAD_BOTTOM = 36;
-const CHART_H = H - PAD_TOP - PAD_BOTTOM; // 146px
+const PAD_BOTTOM = 12;
+const CHART_H = H - PAD_TOP - PAD_BOTTOM;
+const AXIS_Y = PAD_TOP + CHART_H + 8;
 const CHART_W = W - PAD_X * 2;
 const DAYS_SHOWN = 60;
 
@@ -49,8 +52,8 @@ function tsToX(ts: string, start: number, end: number): number {
   return PAD_X + ((clamped - start) / (end - start)) * CHART_W;
 }
 
-function buildAxisLabels(start: number, end: number): { label: string; x: number }[] {
-  const labels: { label: string; x: number }[] = [];
+function buildAxisLabels(start: number, end: number): AxisLabel[] {
+  const labels: AxisLabel[] = [];
   const cursor = new Date(start);
   cursor.setUTCHours(0, 0, 0, 0);
   cursor.setUTCDate(cursor.getUTCDate() + 1);
@@ -90,14 +93,16 @@ interface Tooltip {
 export default function ConstellationChart({ feed }: { feed: FeedData | null }) {
   const [tooltip, setTooltip] = useState<Tooltip | null>(null);
 
-  const now = Date.now();
-  const windowStart = now - DAYS_SHOWN * 86_400_000;
+  const now = useNow(feed);
+  const windowEnd = now ?? 0;
+  const windowStart = windowEnd - DAYS_SHOWN * 86_400_000;
 
-  const records = (feed?.recent ?? []).filter(
-    (r) => new Date(r.timestamp).getTime() >= windowStart
-  );
+  const records =
+    now === null
+      ? []
+      : (feed?.recent ?? []).filter((r) => new Date(r.timestamp).getTime() >= windowStart);
 
-  const axisLabels = buildAxisLabels(windowStart, now);
+  const axisLabels = now === null ? [] : buildAxisLabels(windowStart, windowEnd);
 
   // Grid lines: every ~10 days
   const gridLines: number[] = [];
@@ -167,21 +172,6 @@ export default function ConstellationChart({ feed }: { feed: FeedData | null }) 
             strokeDasharray="4 6"
           />
 
-          {/* empty state */}
-          {feed && records.length === 0 && (
-            <text
-              x={W / 2}
-              y={H / 2}
-              textAnchor="middle"
-              dominantBaseline="middle"
-              fill="rgba(255,255,255,0.2)"
-              fontSize="12"
-              fontFamily="monospace"
-            >
-              No mainnet closes in this window yet
-            </text>
-          )}
-
           {/* skeleton shimmer dots when loading */}
           {!feed &&
             Array.from({ length: 18 }).map((_, i) => {
@@ -201,7 +191,7 @@ export default function ConstellationChart({ feed }: { feed: FeedData | null }) 
           {/* data points */}
           {records.map((r) => {
             const xlm = xlmFromStroops(r.xlmStroops);
-            const cx = tsToX(r.timestamp, windowStart, now);
+            const cx = tsToX(r.timestamp, windowStart, windowEnd);
             const jitter = hashJitter(r.txHash);
             const cy = PAD_TOP + jitter * CHART_H;
             const rad = xlmToRadius(xlm);
@@ -237,26 +227,30 @@ export default function ConstellationChart({ feed }: { feed: FeedData | null }) 
           {/* x-axis */}
           <line
             x1={PAD_X}
-            y1={PAD_TOP + CHART_H + 8}
+            y1={AXIS_Y}
             x2={PAD_X + CHART_W}
-            y2={PAD_TOP + CHART_H + 8}
+            y2={AXIS_Y}
             stroke="rgba(255,255,255,0.08)"
             strokeWidth="1"
           />
           {axisLabels.map((l) => (
-            <text
+            <line
               key={l.label + l.x}
-              x={l.x}
-              y={PAD_TOP + CHART_H + 22}
-              textAnchor="middle"
-              fill="rgba(255,255,255,0.3)"
-              fontSize="9"
-              fontFamily="monospace"
-            >
-              {l.label}
-            </text>
+              data-axis-tick
+              x1={l.x}
+              y1={AXIS_Y - 3}
+              x2={l.x}
+              y2={AXIS_Y + 3}
+              stroke="rgba(255,255,255,0.15)"
+              strokeWidth="1"
+            />
           ))}
         </svg>
+        {feed && now !== null && records.length === 0 && (
+          <p className="mkt-mono absolute inset-0 flex items-center justify-center text-caption text-fg-subtle">
+            No mainnet closes in this window yet
+          </p>
+        )}
 
         {/* tooltip - positioned relative to chart container */}
         {tooltip && (
@@ -284,6 +278,7 @@ export default function ConstellationChart({ feed }: { feed: FeedData | null }) 
           </div>
         )}
       </div>
+      <AxisLabels labels={axisLabels} width={W} />
     </div>
   );
 }

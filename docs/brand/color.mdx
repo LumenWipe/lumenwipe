@@ -15,17 +15,17 @@ Values, classes and measured contrast are in the [design token reference](/desig
 | Amber | `--warning`               | Caution: read this before going on, it can still be changed                                 | Irreversible actions, errors or progress      |
 | Green | `--success`               | Confirmed: on the ledger or finished                                                        | Something planned, pending or merely possible |
 
-The examples below are taken from the current product. Each "do not" is a place where the product breaks the rule today, kept here so the deviation is on record until it is fixed.
+The examples below are taken from the current product. A "do not" names a place where the product still breaks the rule, kept here so the deviation is on record until it is fixed; where none is left, it states the mistake the rule prevents.
 
 ## Cyan is interactive
 
 **Do.** The primary variant of `Button` is a solid cyan fill with `--accent-fg` text (`apps/web/components/ui/button.tsx`). Links and the focus ring are cyan for the same reason: they can be acted on.
 
-**Do not.** The marketing pages draw a short cyan rule before each section label, a decorative line next to static text that cannot be pressed (`apps/web/app/(marketing)/page.tsx`, the `Eyebrow` component). A decorative line uses `--line-strong` or `--fg-subtle`.
+**Do not.** Set static text in cyan. The section label on the how it works page is cyan text that cannot be pressed (`apps/web/app/(marketing)/how-it-works/page.tsx`, the `Eyebrow` component), as are the labels on the content, blog, stats and API keys pages. A label is neutral, and the decorative rule before it uses `--line-strong`.
 
 ## Gold is recovered value only
 
-**Do.** On the plan screen, the amount under "Estimated received at destination" is gold, because it is the XLM the user gets back (`apps/web/components/plan/AccountSummaryCard.tsx`). On the landing page headline, "Close the account. Keep the lumens.", only the word "lumens." is gold, because it names the value (`apps/web/app/(marketing)/page.tsx`).
+**Do.** On the plan screen, the amount after "You will receive about" is gold, because it is the XLM the user gets back (`apps/web/components/plan/AccountSummaryCard.tsx`). On the landing page headline, "Close the account. Keep the lumens.", only the word "lumens." is gold, because it names the value (`apps/web/app/(marketing)/page.tsx`).
 
 **Do not.** Fill a button or color a link gold, even one that leads to the money, such as "Open the app". A button or link is interactive, so it is cyan, and only one per screen is solid. Every marketing action uses `Button` (`apps/web/components/ui/button.tsx`), and a `no-restricted-syntax` rule in `apps/web/eslint.config.mjs` rejects a gold class on the class name of any button or link in the web app.
 
@@ -33,19 +33,19 @@ The examples below are taken from the current product. Each "do not" is a place 
 
 **Do.** On the execution screen, the button that signs and submits the close, "Sign & execute close", uses the danger variant, a red fill, because the merge cannot be undone (`apps/web/components/execution/ExecutionWizard.tsx`). Error callouts use `--danger-fg` text on the red tint.
 
-**Do not.** On the account entry screen ("Close your Stellar account"), the notice that begins "Irreversible action." explains that a merge removes the account from the ledger, yet it is an amber warning callout with amber text (`apps/web/app/(app)/[network]/page.tsx`). A statement that something cannot be undone is red.
+**Do not.** Put a statement that something cannot be undone in an amber warning callout. The account entry screen's "Irreversible action." notice is a danger callout for that reason (`apps/web/app/(app)/[network]/page.tsx`).
 
 ## Amber is caution
 
 **Do.** On the plan screen, when LumenWipe cannot exit a DeFi position, the notice that says so and asks the user to acknowledge leaving it behind is an amber warning callout (`apps/web/components/plan/LeavePositionAcknowledgement.tsx`). The user can still change course, so it is caution.
 
-**Do not.** In the allowance revoke dialog, the icon in the header is amber in every state except the final one: while the user confirms, while signing, and also after the revoke has failed (`apps/web/components/allowances/RevokeAllowanceModal.tsx`). Progress uses neutral or cyan, and a failure is red.
+**Do not.** Use amber for progress or for a failure. The allowance revoke dialog's header icon is neutral while the user confirms and signs, and red after a failure (`apps/web/components/allowances/RevokeAllowanceModal.tsx`).
 
 ## Green is confirmed
 
 **Do.** In the execution sidebar, a step turns green with a check mark only once its transaction is confirmed (`apps/web/components/execution/PlanSidebar.tsx`).
 
-**Do not.** On the plan screen, an asset set to be swapped to XLM shows its swap arrow in green, before anything has been signed or submitted (`apps/web/components/plan/AssetDispositionCard.tsx`). A planned conversion is neutral until it is confirmed.
+**Do not.** Mark something planned in green. On the plan screen, an asset set to be swapped to XLM still carries a green "Swap" badge, and the swap option a green "Recommended" tag, before anything has been signed or submitted (`apps/web/components/plan/AssetDispositionCard.tsx`, `apps/web/components/ui/decision-card.tsx`). Its swap arrow is already neutral; a planned conversion stays neutral until it is confirmed.
 
 ## Text on the marketing pages
 

@@ -5,6 +5,8 @@ import PostCard from "@/components/blog/PostCard";
 import ContentStatusTable from "@/components/blog/ContentStatusTable";
 import { contentStatusRows } from "@/lib/site/content-status";
 import { Play } from "lucide-react";
+import YouTubeEmbed from "@/components/blog/YouTubeEmbed";
+import { VIDEOS } from "@/lib/site/videos";
 
 export const metadata: Metadata = pageMetadata({
   path: "/content",
@@ -13,45 +15,10 @@ export const metadata: Metadata = pageMetadata({
     "Videos, guides, and technical deep dives on LumenWipe - closing Stellar accounts, recovering XLM reserves, and DeFi position unwinding.",
 });
 
-type Video = {
-  id: string;
-  title: string;
-  description: string;
-  lang: "EN" | "ES";
-  duration: string;
-};
-
-const VIDEOS: Video[] = [
-  {
-    id: "vD3xhPpqah8",
-    title: "What is LumenWipe?",
-    description:
-      "A 3-minute overview of what LumenWipe does, why Stellar reserves get locked, and how the non-custodial close flow works.",
-    lang: "EN",
-    duration: "3 min",
-  },
-  {
-    id: "nVS2zI9mRzw",
-    title: "Full walkthrough: testnet, playground & mainnet",
-    description:
-      "An 11-minute demo covering the full close flow - from testnet dry run to a live mainnet account close.",
-    lang: "EN",
-    duration: "11 min",
-  },
-  {
-    id: "eRkcNd9996c",
-    title: "Demo completo: testnet, playground y mainnet",
-    description:
-      "Demo de 14 minutos que cubre el flujo completo: testnet, playground y cierre real en mainnet.",
-    lang: "ES",
-    duration: "14 min",
-  },
-];
-
 function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
     <span className="mkt-eyebrow inline-flex items-center gap-2 text-accent/90">
-      <span className="h-px w-6 bg-accent/50" />
+      <span className="h-px w-6 bg-line-strong" />
       {children}
     </span>
   );
@@ -97,17 +64,7 @@ export default function ContentPage() {
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {VIDEOS.map((v) => (
             <div key={v.id} className="mkt-card flex flex-col overflow-hidden">
-              {/* 16:9 embed */}
-              <div className="relative w-full" style={{ paddingBottom: "56.25%" }}>
-                <iframe
-                  src={`https://www.youtube-nocookie.com/embed/${v.id}`}
-                  title={v.title}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                  loading="lazy"
-                  className="absolute inset-0 h-full w-full border-0"
-                />
-              </div>
+              <YouTubeEmbed id={v.id} title={v.title} className="" />
               {/* Metadata */}
               <div className="flex flex-1 flex-col gap-2 p-4">
                 <div className="flex items-center gap-2">

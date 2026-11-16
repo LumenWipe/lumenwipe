@@ -73,7 +73,7 @@ test("analyze, review, execute, complete and history", async ({ page }) => {
   await expect(page).toHaveTitle("Account closed | LumenWipe");
   await expectNoAxeViolations(page, "saved receipt");
 
-  await page.getByRole("button", { name: "Merge history" }).click();
+  await page.getByRole("button", { name: "Close history" }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await expectNoAxeViolations(page, "history, after a close");
 

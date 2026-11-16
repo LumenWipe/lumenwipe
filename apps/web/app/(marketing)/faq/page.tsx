@@ -23,7 +23,7 @@ export default function FaqPage() {
       <JsonLd data={faqJsonLd(ITEMS)} />
       <div className="text-center">
         <span className="mkt-eyebrow inline-flex items-center gap-2 text-fg-muted">
-          <span className="h-px w-5 bg-accent/60" />
+          <span className="h-px w-5 bg-line-strong" />
           {T.eyebrow}
         </span>
         <h1 className="mkt-display mt-4 text-4xl font-bold text-white sm:text-5xl">{T.heading}</h1>

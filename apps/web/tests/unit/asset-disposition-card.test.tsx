@@ -94,3 +94,10 @@ test("with no quote an answered send reads as a send, not as the missing quote",
   expect(screen.queryByText(NO_QUOTE)).toBeNull();
   expect(screen.getByText(/sent as USDC, not swapped/)).toBeTruthy();
 });
+
+test("a swap that is only planned shows a neutral arrow, not the confirmed green", () => {
+  const { container } = renderAnswered({ quote: QUOTE }, "convert");
+  const arrow = container.querySelector(".lucide-arrow-right-left");
+  expect(arrow?.classList.contains("text-fg-muted")).toBe(true);
+  expect(arrow?.classList.contains("text-success")).toBe(false);
+});

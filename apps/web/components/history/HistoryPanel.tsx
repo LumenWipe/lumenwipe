@@ -63,7 +63,7 @@ export default function HistoryPanel({ onClose }: HistoryPanelProps) {
         <div className="flex items-center gap-2">
           <History className="h-4 w-4 text-accent" />
           <DialogTitle className="mkt-display font-bold text-base text-white">
-            Merge history
+            Close history
           </DialogTitle>
         </div>
         <button
@@ -98,9 +98,9 @@ export default function HistoryPanel({ onClose }: HistoryPanelProps) {
         {load.state === "ready" && load.entries.length === 0 && (
           <div className="text-center py-12 px-4">
             <History className="h-8 w-8 text-fg-muted/40 mx-auto mb-3" />
-            <p className="text-sm text-fg-muted">No merges recorded yet.</p>
+            <p className="text-sm text-fg-muted">No closes recorded yet.</p>
             <p className="text-xs text-fg-subtle mt-1">
-              Completed account merges will appear here.
+              Completed account closes will appear here.
             </p>
           </div>
         )}

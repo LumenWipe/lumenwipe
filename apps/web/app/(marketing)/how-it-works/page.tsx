@@ -38,7 +38,7 @@ export const metadata: Metadata = pageMetadata({
 function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
     <span className="mkt-eyebrow inline-flex items-center gap-2 text-accent/90">
-      <span className="h-px w-6 bg-accent/50" />
+      <span className="h-px w-6 bg-line-strong" />
       {children}
     </span>
   );

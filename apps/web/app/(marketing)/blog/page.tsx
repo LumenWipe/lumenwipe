@@ -22,7 +22,7 @@ export default function BlogPage() {
       <JsonLd data={blogJsonLd(posts)} />
       <div className="mb-12">
         <span className="mkt-eyebrow inline-flex items-center gap-2 text-accent/90">
-          <span className="h-px w-6 bg-accent/50" />
+          <span className="h-px w-6 bg-line-strong" />
           Blog
         </span>
         <h1 className="mkt-display text-4xl font-extrabold text-white mt-4 mb-3 tracking-tight">

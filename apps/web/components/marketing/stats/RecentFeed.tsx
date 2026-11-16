@@ -6,9 +6,10 @@ import { ExternalLink } from "lucide-react";
 import { stroopsToXlm } from "@/lib/utils/amounts";
 import { SE_EXPLORER_BASE } from "@/config/networks";
 import type { FeedData } from "@/hooks/useFeed";
+import { useNow } from "@/hooks/useNow";
 
-function timeAgo(timestamp: string): string {
-  const diff = Date.now() - new Date(timestamp).getTime();
+function timeAgo(timestamp: string, now: number): string {
+  const diff = now - new Date(timestamp).getTime();
   const s = Math.floor(diff / 1000);
   if (s < 60) return `${s}s ago`;
   const m = Math.floor(s / 60);
@@ -36,6 +37,7 @@ function SkeletonRow() {
 }
 
 export default function RecentFeed({ feed }: { feed: FeedData | null }) {
+  const now = useNow(feed);
   const items = feed?.recent.slice(0, 20) ?? [];
 
   return (
@@ -80,7 +82,9 @@ export default function RecentFeed({ feed }: { feed: FeedData | null }) {
                 key={r.txHash}
                 className="grid grid-cols-[90px_80px_1fr_28px] items-center gap-x-2 border-b border-white/[0.04] px-4 py-2.5 transition-colors hover:bg-white/[0.03]"
               >
-                <span className="mkt-mono text-caption text-fg-subtle">{timeAgo(r.timestamp)}</span>
+                <span className="mkt-mono text-caption text-fg-subtle">
+                  {now === null ? "" : timeAgo(r.timestamp, now)}
+                </span>
                 <span
                   className={`mkt-mono text-label leading-normal font-medium tabular-nums ${
                     isLarge ? "text-value" : "text-white/85"

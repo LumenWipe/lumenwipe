@@ -152,13 +152,13 @@ export default function HomePage({ params }: { params: Promise<{ network: Networ
 
       {/* Warning */}
       <Callout
-        tone="warning"
+        tone="danger"
         announce={false}
         icon={<AlertOctagon className="h-4 w-4" />}
         className="mb-8"
       >
         <p className="text-fg-muted">
-          <span className="text-warning font-medium">Irreversible action.</span> An Account Merge
+          <span className="text-danger-fg font-medium">Irreversible action.</span> An Account Merge
           transfers the XLM balance to the destination and removes the source account from the
           Stellar ledger. Make sure you have a working destination address before proceeding.
         </p>

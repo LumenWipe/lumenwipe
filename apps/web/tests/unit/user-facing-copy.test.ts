@@ -108,6 +108,12 @@ describe("scanSource", () => {
     expect(scanSource(`const a = <i aria-label="intermediary" />;`)).toHaveLength(1);
   });
 
+  test("flags merge used for the whole act in labels and text", () => {
+    expect(scanSource(`const a = <button aria-label="Merge history" />;`)).toHaveLength(1);
+    expect(scanSource(`const a = <a href="/">Merge another account</a>;`)).toHaveLength(1);
+    expect(scanSource(`const a = <p>An Account Merge removes the account.</p>;`)).toEqual([]);
+  });
+
   test("flags a banned word in a template literal", () => {
     expect(scanSource("const a = `via ${x} intermediary`;")).toHaveLength(1);
   });

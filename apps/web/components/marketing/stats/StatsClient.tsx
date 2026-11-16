@@ -19,7 +19,7 @@ export default function StatsClient() {
         <div className="flex items-center justify-between">
           <div>
             <span className="mkt-eyebrow inline-flex items-center gap-2 text-accent/90">
-              <span className="h-px w-6 bg-accent/50" />
+              <span className="h-px w-6 bg-line-strong" />
               On-chain activity
             </span>
             <h1 className="mkt-display mt-3 text-3xl font-bold text-white sm:text-4xl">

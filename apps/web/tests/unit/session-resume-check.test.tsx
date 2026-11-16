@@ -109,3 +109,13 @@ test("a hash that appeared after the banner loaded stops the dismiss and is read
   expect(clearSession).not.toHaveBeenCalled();
   expect(reload).toHaveBeenCalledTimes(1);
 });
+
+test("the entry screen states irreversibility in the danger tone", async () => {
+  await renderHome();
+  const lead = screen.getByText("Irreversible action.");
+  expect(lead.classList.contains("text-danger-fg")).toBe(true);
+  const callout = lead.closest("div.rounded-card") as HTMLElement;
+  expect(callout.classList.contains("border-danger/30")).toBe(true);
+  expect(callout.classList.contains("bg-danger/10")).toBe(true);
+  expect(callout.className).not.toMatch(/warning/);
+});

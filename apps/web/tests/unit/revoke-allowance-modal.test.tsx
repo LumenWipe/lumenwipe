@@ -803,3 +803,45 @@ test("RevokeAllowanceModal › a wallet session that changes while the revoke is
   expect(submitCalled).toBe(false);
   expect(onRevoked).not.toHaveBeenCalled();
 });
+
+function headerIcon(): HTMLElement {
+  return screen.getByRole("dialog").querySelector("div.h-9.w-9") as HTMLElement;
+}
+
+function toneOf(el: HTMLElement): string {
+  return [...el.classList].filter((c) => /^(bg|text)-/.test(c)).join(" ");
+}
+
+test("RevokeAllowanceModal › the header icon is neutral while confirming and signing", async () => {
+  stubWalletKit();
+  spyOn(recovery, "findUnresolved").mockResolvedValue(undefined as never);
+  holdFetch();
+  renderSecretKeyModal(() => {});
+  expect(toneOf(headerIcon())).toBe("bg-surface-raised text-fg-muted");
+
+  await act(async () => {
+    fireEvent.click(confirmButton());
+  });
+  expect(screen.getByRole("button", { name: /revoking/i })).toBeTruthy();
+  expect(toneOf(headerIcon())).toBe("bg-surface-raised text-fg-muted");
+});
+
+test("RevokeAllowanceModal › the header icon is red after a failure and green once revoked", async () => {
+  stubWalletKit();
+  mockFetchSequence([{ status: 500, body: { error: { code: "X", message: "no" } } }]);
+  renderSecretKeyModal(() => {});
+  await act(async () => {
+    fireEvent.click(confirmButton());
+  });
+  await waitFor(() => expect(toneOf(headerIcon())).toBe("bg-danger/15 text-danger-fg"));
+
+  mockFetchSequence([
+    { status: 200, body: { transaction: realRevokeXdr() } },
+    { status: 200, body: { hash: "abc123", ledger: 42 } },
+  ]);
+  await act(async () => {
+    fireEvent.click(confirmButton());
+  });
+  await waitFor(() => expect(screen.getByText("Allowance revoked")).toBeTruthy());
+  expect(toneOf(headerIcon())).toBe("bg-success/15 text-success");
+});

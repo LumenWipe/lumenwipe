@@ -14,6 +14,18 @@ describe("findBannedWords", () => {
     expect(findBannedWords("an intermediary account")).toEqual(["intermediary"]);
   });
 
+  test("finds merge used for the whole act, not for the operation", () => {
+    expect(findBannedWords("Merge another account")).toEqual(["merge another account"]);
+    expect(findBannedWords("Merge  history")).toEqual(["merge  history"]);
+    expect(findBannedWords("No merges recorded yet.")).toEqual(["merges recorded"]);
+    expect(findBannedWords("Completed account merges will appear here.")).toEqual([
+      "account merges",
+    ]);
+    expect(findBannedWords("An Account Merge transfers the XLM balance")).toEqual([]);
+    expect(findBannedWords("a successful ACCOUNT_MERGE operation")).toEqual([]);
+    expect(findBannedWords("merge only to the stated destination")).toEqual([]);
+  });
+
   test("does not flag the brand name", () => {
     expect(findBannedWords("LumenWipe closes accounts")).toEqual([]);
     expect(findBannedWords("https://docs.lumenwipe.com")).toEqual([]);

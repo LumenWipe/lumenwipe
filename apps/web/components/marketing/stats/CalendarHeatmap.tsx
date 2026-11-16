@@ -4,6 +4,7 @@ import { formatDate } from "@/lib/i18n/format";
 import { SITE_LOCALE } from "@/lib/i18n/locale";
 import { useState } from "react";
 import type { FeedData, DailyActivity, MergeRecord } from "@/hooks/useFeed";
+import { useNow } from "@/hooks/useNow";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const DAYS = ["Mon", "Wed", "Fri"];
@@ -30,12 +31,12 @@ interface Cell {
   level: 0 | 1 | 2 | 3 | 4;
 }
 
-function buildGrid(daily: DailyActivity[]): Cell[][] {
-  if (!daily.length) return [];
+function buildGrid(daily: DailyActivity[], now: number | null): Cell[][] {
+  if (!daily.length || now === null) return [];
 
   const byDate = new Map<string, number>(daily.map((d) => [d.date, d.count]));
 
-  const today = new Date();
+  const today = new Date(now);
   today.setUTCHours(0, 0, 0, 0);
   const todayMs = today.getTime();
 
@@ -88,8 +89,9 @@ interface HoveredCell {
 export default function CalendarHeatmap({ feed }: { feed: FeedData | null }) {
   const [hovered, setHovered] = useState<HoveredCell | null>(null);
 
+  const now = useNow(feed);
   const daily = feed?.daily ?? [];
-  const weeks = buildGrid(daily);
+  const weeks = buildGrid(daily, now);
   const monthLabels = getMonthLabels(weeks);
 
   const closesByDate = new Map<string, MergeRecord[]>();
