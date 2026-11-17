@@ -33,6 +33,10 @@ const entryFor = (
  * crying wolf as the phantom cap warning it replaced. Its partial coverage is a footnote instead.
  */
 export function unconfirmedSources(coverage: AllowanceCoverage[] | undefined): string[] {
+  // When StellarIndex answered, the API read only its pairs and skipped the other two scans, so
+  // its own pass is the whole claim: complete unless it stopped early.
+  const indexer = entryFor(coverage, "indexer");
+  if (indexer?.status === "ok") return indexer.detail ? [label("indexer")] : [];
   return EXPECTED_SOURCES.filter((source) => {
     const entry = entryFor(coverage, source);
     if (!entry || entry.status !== "ok") return true;

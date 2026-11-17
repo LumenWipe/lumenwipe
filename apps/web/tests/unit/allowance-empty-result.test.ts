@@ -13,6 +13,32 @@ describe("empty allowance results", () => {
     expect(unconfirmedSources(complete)).toEqual([]);
   });
 
+  test("a complete StellarIndex scan stands in for the two scans it replaced", () => {
+    const viaIndexer: AllowanceCoverage[] = [
+      { source: "indexer", status: "ok" },
+      { source: "events", status: "skipped", detail: "StellarIndex answered" },
+      { source: "registry", status: "skipped", detail: "StellarIndex answered" },
+    ];
+    expect(isConfirmedEmpty(viaIndexer)).toBe(true);
+    expect(coverageNote(viaIndexer)).toBeNull();
+  });
+
+  test("a StellarIndex scan that stopped early cannot support the word none", () => {
+    expect(
+      unconfirmedSources([
+        { source: "indexer", status: "ok", detail: "4 operation pages read; older ones were not" },
+        { source: "events", status: "skipped", detail: "StellarIndex answered" },
+        { source: "registry", status: "skipped", detail: "StellarIndex answered" },
+      ])
+    ).toEqual(["the StellarIndex scan"]);
+  });
+
+  test("a failed StellarIndex scan leaves the fallback scans to decide", () => {
+    expect(
+      isConfirmedEmpty([{ source: "indexer", status: "failed", detail: "timeout" }, ...complete])
+    ).toBe(true);
+  });
+
   test("a failed source means the account is unconfirmed, not clear", () => {
     expect(
       unconfirmedSources([

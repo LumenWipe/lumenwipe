@@ -32,15 +32,21 @@ import { getRpcServer, readLatestLedger } from "./rpc";
  * allowance an account has granted. `approve(from, spender, amount, expiration_ledger)` has no
  * on-chain index by owner, so - the same shape of problem as Soroban token balances
  * (soroban-tokens.ts) - discovery is a union of candidate (token, spender) pairs, confirmed by
- * reading `allowance(from, spender)` on the ledger:
+ * reading `allowance(from, spender)` on the ledger.
+ *
+ * When StellarIndex is configured and answers, its pairs are the only candidates: `approve` calls
+ * in the account's operations, at any depth of their authorized invocations (and `approve` rows in
+ * the per-token transfer feed for the tokens it follows there), each with the expiration its
+ * newest `approve` set. It runs a ledger or two behind the tip, so it covers recent approvals as
+ * well as old ones, and a pair whose newest `approve` already expired is dropped unread. Reading
+ * only real approvals keeps the request to a few simulations, where the sources below cost about
+ * fifty and draw rate limiting from a public RPC.
+ *
+ * Without it, or when it fails, discovery falls back to:
  *
  *  - recent `approve` events naming this account as `from`, scanned in bounded windows exactly
  *    like soroban-tokens.ts's credit-event scan, each directly naming its own token (the emitting
  *    contract) and spender (the event's own topic);
- *  - StellarIndex, when a key is configured: `approve` calls in the account's operations, at any
- *    depth of their authorized invocations, and `approve` rows in the per-token transfer feed for
- *    the few tokens it follows there, which also carry the expiration. It reaches approvals older
- *    than the event window and only ever proposes;
  *  - the known DeFi contract registry's spenders (#152's shared registry, not a second one),
  *    crossed with a small curated list of well-known Soroban tokens - this is what still finds an
  *    approval old enough that its `approve` event has aged out of the event scan's retention
@@ -103,13 +109,11 @@ export const MAX_CANDIDATES = 50;
 export const ALLOWANCE_CONCURRENCY = 8;
 export const ALLOWANCE_TIMEOUT_MS = 5_000;
 const LEDGER_READS_RESERVE_MS = 6_000;
-/** Operation pages read per request; an older approval is left to the other sources. */
+/** Operation pages read per request; an older approval is missed, and the coverage says so. */
 export const INDEXER_MAX_PAGES = 4;
 export const INDEXER_PAGE_LIMIT = 200;
 /** For the whole indexer source, every request included; what it read before then still counts. */
-export const INDEXER_TIMEOUT_MS = 4_000;
-/** Half the request's pairs at most, so a flood from it cannot crowd out the known-contract sweep. */
-export const INDEXER_MAX_PAIRS = 25;
+export const INDEXER_TIMEOUT_MS = 8_000;
 /** Authorized invocations are walked no deeper than this. */
 const INDEXER_MAX_DEPTH = 8;
 
@@ -484,10 +488,6 @@ async function indexerAllowanceCandidates(
     if (seen.has(key)) continue;
     seen.add(key);
     pairs.push(pair);
-    if (pairs.length >= INDEXER_MAX_PAIRS) {
-      gaps.push(`stopped at ${INDEXER_MAX_PAIRS} candidate pairs`);
-      break;
-    }
   }
   return { pairs, partial: gaps.length > 0 ? gaps.join("; ") : null };
 }
@@ -673,102 +673,113 @@ export async function discoverAllowances(
   const candidates = new PairCandidates();
   const registryEntries = deps.registryEntries;
 
-  const indexerScan: Promise<IndexerAllowanceScan | Error | null> = deps.indexer
-    ? indexerAllowanceCandidates(address, deps.indexer, deps.indexerTransferTokens).catch(
+  const indexed: IndexerAllowanceScan | Error | null = deps.indexer
+    ? await indexerAllowanceCandidates(address, deps.indexer, deps.indexerTransferTokens).catch(
         (err: unknown) => (err instanceof Error ? err : new Error(reason(err)))
       )
-    : Promise.resolve(null);
-  const eventScan = await approveEventCandidates(
-    address,
-    deps,
-    deadline - LEDGER_READS_RESERVE_MS
-  ).catch((err: unknown) => {
-    coverage.push({ source: "events", status: "failed", detail: reason(err) });
-    return null;
-  });
+    : null;
+  const viaIndexer = indexed !== null && !(indexed instanceof Error);
   let eventsScanned: { fromLedger: number; toLedger: number } | null = null;
-  if (eventScan) {
-    for (const pair of eventScan.pairs.values()) {
-      candidates.add(pair.token, pair.spender, "events", pair.expirationLedger);
-    }
-    coverage.push({
-      source: "events",
-      status: eventScan.scanned ? "ok" : "failed",
-      ...(eventScan.stoppedEarly ? { detail: eventScan.stoppedEarly } : {}),
-    });
-    eventsScanned = eventScan.scanned;
-  }
 
-  // Added before the registry sweep, which only fills the room that real approvals leave.
-  const indexed = await indexerScan;
   if (indexed === null) {
     coverage.push({ source: "indexer", status: "skipped", detail: "not configured" });
   } else if (indexed instanceof Error) {
     coverage.push({ source: "indexer", status: "failed", detail: reason(indexed) });
   } else {
+    // A pair whose newest `approve` expired before this ledger holds nothing, so it is not read.
+    // Without the current ledger every pair is read: the filter only saves calls.
+    const current = await withTimeout(
+      readLatestLedger(deps.rpc),
+      Math.max(1, Math.min(deadline - deps.now(), RPC_CALL_TIMEOUT_MS)),
+      "latest ledger"
+    ).then(
+      (latest) => latest.sequence,
+      () => null
+    );
     for (const pair of indexed.pairs) {
-      candidates.add(
-        pair.token,
-        pair.spender,
-        "indexer",
-        candidates.has(pair.token, pair.spender) ? null : pair.expirationLedger
-      );
+      if (current !== null && pair.expirationLedger !== null && pair.expirationLedger < current)
+        continue;
+      candidates.add(pair.token, pair.spender, "indexer", pair.expirationLedger);
     }
     coverage.push({
       source: "indexer",
       status: "ok",
       ...(indexed.partial ? { detail: indexed.partial } : {}),
     });
+    coverage.push({ source: "events", status: "skipped", detail: "StellarIndex answered" });
+    coverage.push({ source: "registry", status: "skipped", detail: "StellarIndex answered" });
   }
 
-  const knownTokens = deps.knownTokens;
-  if (registryEntries.length > 0 && knownTokens.length > 0) {
-    let registryCandidateCount = 0;
-    let probed = 0;
-    const total = registryEntries.length * knownTokens.length;
-    // Token-major, so every registry entry is crossed with the first token before any entry gets
-    // a second one. Entry-major spent a small budget entirely on whichever protocol happens to
-    // sit first in the registry file, and never reached the last ones - on mainnet that is
-    // Soroswap, the spender most accounts have actually approved.
-    outer: for (const token of knownTokens) {
-      for (const entry of registryEntries) {
-        // Budget against what is already on the list, not just against this source's own cap.
-        // Filling MAX_CANDIDATES_PER_SOURCE blindly pushed the total past MAX_CANDIDATES
-        // whenever the event scan had found anything, so the cut below discarded exactly as many
-        // speculative pairs as the account had real approvals - and warned about it, which reads
-        // as "we may have missed some of yours" when nothing of the sort happened.
-        const known = candidates.has(token, entry.address);
-        if (!known && candidates.size >= MAX_CANDIDATES) break outer;
-        // A pair the event scan already found still records this source: dropping the second
-        // source purely because the list is full would make an entry's provenance depend on
-        // iteration order.
-        candidates.add(token, entry.address, "registry");
-        probed++;
-        // An N-entry registry crossed with an M-token list would otherwise keep growing this
-        // loop long after there is any chance of the pair surviving the cut.
-        if (++registryCandidateCount >= MAX_CANDIDATES_PER_SOURCE) break outer;
+  if (!viaIndexer) {
+    const eventScan = await approveEventCandidates(
+      address,
+      deps,
+      deadline - LEDGER_READS_RESERVE_MS
+    ).catch((err: unknown) => {
+      coverage.push({ source: "events", status: "failed", detail: reason(err) });
+      return null;
+    });
+    if (eventScan) {
+      for (const pair of eventScan.pairs.values()) {
+        candidates.add(pair.token, pair.spender, "events", pair.expirationLedger);
       }
+      coverage.push({
+        source: "events",
+        status: eventScan.scanned ? "ok" : "failed",
+        ...(eventScan.stoppedEarly ? { detail: eventScan.stoppedEarly } : {}),
+      });
+      eventsScanned = eventScan.scanned;
     }
-    coverage.push({
-      source: "registry",
-      status: "ok",
-      // Not a warning: these are guesses, not known approvals, so saying "N were not checked"
-      // reads as "we may have missed yours". It is still the difference between "nothing is
-      // outstanding" and "nothing we looked at was outstanding", which is why an empty result
-      // must not be presented as a clean account when this detail is present.
-      ...(probed < total
-        ? { detail: `${probed} of ${total} known-contract combinations were probed` }
-        : {}),
-    });
-  } else {
-    coverage.push({
-      source: "registry",
-      status: "skipped",
-      detail:
-        registryEntries.length === 0
-          ? "no registry entries for this network"
-          : "no known tokens for this network",
-    });
+
+    const knownTokens = deps.knownTokens;
+    if (registryEntries.length > 0 && knownTokens.length > 0) {
+      let registryCandidateCount = 0;
+      let probed = 0;
+      const total = registryEntries.length * knownTokens.length;
+      // Token-major, so every registry entry is crossed with the first token before any entry gets
+      // a second one. Entry-major spent a small budget entirely on whichever protocol happens to
+      // sit first in the registry file, and never reached the last ones - on mainnet that is
+      // Soroswap, the spender most accounts have actually approved.
+      outer: for (const token of knownTokens) {
+        for (const entry of registryEntries) {
+          // Budget against what is already on the list, not just against this source's own cap.
+          // Filling MAX_CANDIDATES_PER_SOURCE blindly pushed the total past MAX_CANDIDATES
+          // whenever the event scan had found anything, so the cut below discarded exactly as many
+          // speculative pairs as the account had real approvals - and warned about it, which reads
+          // as "we may have missed some of yours" when nothing of the sort happened.
+          const known = candidates.has(token, entry.address);
+          if (!known && candidates.size >= MAX_CANDIDATES) break outer;
+          // A pair the event scan already found still records this source: dropping the second
+          // source purely because the list is full would make an entry's provenance depend on
+          // iteration order.
+          candidates.add(token, entry.address, "registry");
+          probed++;
+          // An N-entry registry crossed with an M-token list would otherwise keep growing this
+          // loop long after there is any chance of the pair surviving the cut.
+          if (++registryCandidateCount >= MAX_CANDIDATES_PER_SOURCE) break outer;
+        }
+      }
+      coverage.push({
+        source: "registry",
+        status: "ok",
+        // Not a warning: these are guesses, not known approvals, so saying "N were not checked"
+        // reads as "we may have missed yours". It is still the difference between "nothing is
+        // outstanding" and "nothing we looked at was outstanding", which is why an empty result
+        // must not be presented as a clean account when this detail is present.
+        ...(probed < total
+          ? { detail: `${probed} of ${total} known-contract combinations were probed` }
+          : {}),
+      });
+    } else {
+      coverage.push({
+        source: "registry",
+        status: "skipped",
+        detail:
+          registryEntries.length === 0
+            ? "no registry entries for this network"
+            : "no known tokens for this network",
+      });
+    }
   }
 
   // Coverage alone is not enough: it is a machine-readable footnote, and a caller that only
@@ -778,10 +789,21 @@ export async function discoverAllowances(
   // can be dropped into the middle of a sentence.
   const sourceName = (source: AllowanceSource): string =>
     source === "events" ? "approval event" : "known-contract";
-  // The indexer only adds to the other sources, so it never warns: without it the list is what
-  // it was before it existed. Its coverage entry still says how it fared.
+  // When StellarIndex answered it is the whole discovery, so only its own early stop warns. When
+  // it did not, the fallback scans warn as they always have and its failure stays in coverage.
+  if (viaIndexer) {
+    const entry = coverage.find((c) => c.source === "indexer");
+    if (entry?.detail) {
+      warnings.push({
+        code: "allowances_scan_incomplete",
+        message:
+          `The StellarIndex scan stopped early (${entry.detail}), so an older approval may be ` +
+          "missing from this list.",
+      });
+    }
+  }
   for (const entry of coverage) {
-    if (entry.source === "indexer") continue;
+    if (viaIndexer || entry.source === "indexer") continue;
     if (entry.status === "failed") {
       warnings.push({
         code: "allowances_source_failed",

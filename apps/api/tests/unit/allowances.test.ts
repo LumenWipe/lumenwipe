@@ -7,7 +7,7 @@ import { expect, test } from "bun:test";
 import { Address, StrKey, xdr } from "@stellar/stellar-sdk";
 import {
   INDEXER_MAX_PAGES,
-  INDEXER_MAX_PAIRS,
+  MAX_CANDIDATES,
   defaultAllowancesDeps,
   discoverAllowances,
   onePerCode,
@@ -617,35 +617,82 @@ test("discoverAllowances › an approve row in a token's transfer feed is a cand
   ]);
 });
 
-test("discoverAllowances › a pair the event scan also saw keeps the event's expiration and lists both sources", async () => {
+test("discoverAllowances › when StellarIndex answers, only its pairs are read: no event scan and no registry sweep", async () => {
   const deps = fakeAllowancesDeps({
     world: {
-      allowances: [{ token: TOKEN, spender: SPENDER, amount: 5n }],
+      allowances: [
+        { token: TOKEN, spender: SPENDER, amount: 5n },
+        { token: OTHER_TOKEN, spender: OTHER_SPENDER, amount: 9n },
+      ],
       events: {
         "996001-1000000": [
           {
-            token: TOKEN,
-            spender: SPENDER,
+            token: OTHER_TOKEN,
+            spender: OTHER_SPENDER,
             ledger: 999_000,
-            amount: 5n,
+            amount: 9n,
             expirationLedger: 1_100_000,
           },
         ],
       },
     },
+    registryEntries: [registryEntry({ address: OTHER_SPENDER })],
+    knownTokens: [OTHER_TOKEN],
     indexer: () => ({
       status: 200,
       body: indexerOperationsBody(
-        [indexerInvocation(TOKEN, "approve", [OWNER, SPENDER, "5", "1"])],
+        [indexerInvocation(TOKEN, "approve", [OWNER, SPENDER, "5", "1100000"])],
+        null
+      ),
+    }),
+  });
+  let simulations = 0;
+  const simulate = deps.rpc.simulateTransaction.bind(deps.rpc);
+  deps.rpc.simulateTransaction = (tx) => {
+    simulations++;
+    return simulate(tx);
+  };
+  const result = await discoverAllowances(OWNER, "testnet", deps);
+  expect(result.allowances.map((a) => [a.token, a.spender, a.sources])).toEqual([
+    [TOKEN, SPENDER, ["indexer"]],
+  ]);
+  expect(deps.rpc.eventRequests).toEqual([]);
+  expect(simulations).toBe(3);
+  expect(result.eventsScanned).toBeNull();
+  expect(result.coverage).toEqual([
+    { source: "indexer", status: "ok" },
+    { source: "events", status: "skipped", detail: "StellarIndex answered" },
+    { source: "registry", status: "skipped", detail: "StellarIndex answered" },
+  ]);
+  expect(result.warnings).toEqual([]);
+});
+
+test("discoverAllowances › a pair whose newest approve expired before the current ledger is not read", async () => {
+  const deps = fakeAllowancesDeps({
+    world: {
+      latestLedger: 1_000_000,
+      allowances: [
+        { token: TOKEN, spender: SPENDER, amount: 5n },
+        { token: OTHER_TOKEN, spender: SPENDER, amount: 7n },
+      ],
+    },
+    indexer: () => ({
+      status: 200,
+      body: indexerOperationsBody(
+        [
+          indexerInvocation(TOKEN, "approve", [OWNER, SPENDER, "5", "999999"]),
+          indexerInvocation(OTHER_TOKEN, "approve", [OWNER, SPENDER, "7", "1000000"]),
+          indexerInvocation(OTHER_TOKEN, "approve", [OWNER, SPENDER, "7", "10"]),
+        ],
         null
       ),
     }),
   });
   const result = await discoverAllowances(OWNER, "testnet", deps);
-  expect(result.allowances[0]).toMatchObject({
-    expirationLedger: 1_100_000,
-    sources: ["events", "indexer"],
-  });
+  // TOKEN still holds 5 on the ledger stub, so it would be listed had it been read.
+  expect(result.allowances.map((a) => [a.token, a.expirationLedger])).toEqual([
+    [OTHER_TOKEN, 1_000_000],
+  ]);
 });
 
 test("discoverAllowances › operations are paged by cursor, even through short pages, up to the page budget", async () => {
@@ -662,15 +709,10 @@ test("discoverAllowances › operations are paged by cursor, even through short 
     status: "ok",
     detail: `${INDEXER_MAX_PAGES} operation pages read; older ones were not`,
   });
-  const baseline = await discoverAllowances(
-    OWNER,
-    "testnet",
-    fakeAllowancesDeps({ world: { allowances: [] } })
-  );
-  expect(result.warnings).toEqual(baseline.warnings);
+  expect(result.warnings.map((w) => w.code)).toEqual(["allowances_scan_incomplete"]);
 });
 
-test("discoverAllowances › a StellarIndex failure changes only its coverage entry, never the warnings", async () => {
+test("discoverAllowances › a StellarIndex failure falls back to the event scan and registry sweep, with the same result as without it", async () => {
   for (const reply of [{ throws: "socket hang up" }, { status: 503, body: {} }]) {
     const withIt = fakeAllowancesDeps({
       world: { allowances: [{ token: TOKEN, spender: SPENDER, amount: 1n }] },
@@ -692,26 +734,16 @@ test("discoverAllowances › a StellarIndex failure changes only its coverage en
   }
 });
 
-test("discoverAllowances › StellarIndex proposes at most its share of pairs, leaving the known-contract sweep room", async () => {
-  const flood = Array.from({ length: 40 }, (_, i) =>
-    indexerInvocation(contractAddress(100 + i), "approve", [OWNER, SPENDER, "1", "1"])
+test("discoverAllowances › more StellarIndex pairs than one request reads are capped with a warning", async () => {
+  const flood = Array.from({ length: MAX_CANDIDATES + 5 }, (_, i) =>
+    indexerInvocation(contractAddress(100 + i), "approve", [OWNER, SPENDER, "1", "2000000"])
   );
   const deps = fakeAllowancesDeps({
     world: { allowances: [] },
-    registryEntries: [registryEntry({ address: OTHER_SPENDER })],
-    knownTokens: [OTHER_TOKEN],
     indexer: () => ({ status: 200, body: indexerOperationsBody(flood, null) }),
   });
   const result = await discoverAllowances(OWNER, "testnet", deps);
-  expect(result.coverage).toContainEqual({
-    source: "indexer",
-    status: "ok",
-    detail: `stopped at ${INDEXER_MAX_PAIRS} candidate pairs`,
-  });
-  expect(result.coverage.find((c) => c.source === "registry")).toEqual({
-    source: "registry",
-    status: "ok",
-  });
+  expect(result.warnings.map((w) => w.code)).toEqual(["allowances_capped"]);
 });
 
 test("defaultAllowancesDeps › StellarIndex only with a key, never when turned off, and the transfer feed off", () => {
