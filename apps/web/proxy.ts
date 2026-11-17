@@ -65,8 +65,9 @@ export const config = {
     // The prerendered marketing pages are skipped too, with their RSC payloads: the build gives
     // each one a hash-based policy (scripts/marketing-csp.mjs), and a proxy run would cost every
     // CDN hit a function call. Exact paths only, so an unknown /blog slug still gets the nonce
-    // policy; a new post needs its line here (tests/unit/proxy-matcher.test.ts).
-    "/((?!_next/static|_next/image|favicon|api/|(?:(?:|faq|how-it-works|security|stats|registry|content|playground|blog|blog/account-merge-on-stellar|blog/cant-merge-a-stellar-account-because-of-extra-signers|blog/how-do-i-cancel-open-offers-on-stellar|blog/how-do-i-remove-a-trustline-on-stellar|blog/phase-0-launch|blog/phase-1-launch|blog/phase-2-launch|blog/what-are-stellar-data-entries|blog/why-cant-i-merge-my-stellar-account-claimable-balances)(?:\\.rsc|\\.segments/.*)?|index(?:\\.rsc|\\.segments/.*))$).*)",
+    // policy; a new post needs its line here (tests/unit/proxy-matcher.test.ts). The blog's feed
+    // is prerendered XML with no script, skipped the same way.
+    "/((?!_next/static|_next/image|favicon|api/|(?:(?:|faq|how-it-works|security|stats|registry|content|playground|blog|blog/feed\\.xml|blog/account-merge-on-stellar|blog/cant-merge-a-stellar-account-because-of-extra-signers|blog/how-do-i-cancel-open-offers-on-stellar|blog/how-do-i-remove-a-trustline-on-stellar|blog/phase-0-launch|blog/phase-1-launch|blog/phase-2-launch|blog/what-are-stellar-data-entries|blog/why-cant-i-merge-my-stellar-account-claimable-balances)(?:\\.rsc|\\.segments/.*)?|index(?:\\.rsc|\\.segments/.*))$).*)",
     "/api/:path*",
   ],
 };

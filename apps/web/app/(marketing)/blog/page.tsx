@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import JsonLd from "@/components/seo/JsonLd";
-import { pageMetadata } from "@/lib/site/pages";
+import { BLOG_DESCRIPTION, pageMetadata } from "@/lib/site/pages";
 import { blogJsonLd } from "@/lib/site/structured-data";
 import Link from "next/link";
 import { getAllPostMetas } from "@/lib/blog";
@@ -10,8 +10,8 @@ import { Button } from "@/components/ui/button";
 export const metadata: Metadata = pageMetadata({
   path: "/blog",
   title: "Blog",
-  description:
-    "Technical deep dives, project updates, and guides on Stellar account management, trustline removal, reserve recovery, and non-custodial DeFi tooling.",
+  description: BLOG_DESCRIPTION,
+  blogFeed: true,
 });
 
 export default function BlogPage() {

@@ -1,13 +1,16 @@
 ---
-title: "Can't Merge a Stellar Account Because of Extra Signers?"
-description: "What an extra signer is, why a Stellar account merge fails while one is attached, how weights and thresholds decide who can sign, and what a multisig close needs from you."
+title: "Can't Merge a Stellar Account With Extra Signers? Check the Thresholds"
+description: "Extra signers do not stop a Stellar account merge. What they can change is who has to sign it: how weights and thresholds work, what a failed merge's result code tells you, and what a multisig close needs from you."
 publishedAt: "2026-11-15"
+updatedAt: "2026-11-17"
 category: "Guides"
 tags: ["account-blockers", "signers", "multisig", "account-merge", "stellar"]
 cta: "Enter the account to see its extra signers and, for a multisig account, how many keys have to sign before anything is built."
 ---
 
-A wallet or another tool may have added a second key to your Stellar account. Years later you try to merge that account, and the merge fails with a result code such as `op_has_sub_entries` that says nothing about signers. The extra signer is still there, and it is one of the reasons.
+A wallet or another tool may have added a second key to your Stellar account, and now you want to close it. It is easy to assume that key is what stops the merge, but the network removes an account's signers itself when it merges the account. What an extra signer can change is who has to sign the merge, and that depends on the account's thresholds.
+
+If a merge already failed, its result code tells you which problem you have. `op_has_sub_entries` means something other than a signer is still on the account: a trustline, an open offer or a data entry. `op_bad_auth` or `tx_bad_auth` means the signatures on the transaction did not carry enough weight, and that is where signers and thresholds come in.
 
 This guide is one of five on the things that keep a Stellar account open. The others cover [claimable balances](/blog/why-cant-i-merge-my-stellar-account-claimable-balances), [trustlines](/blog/how-do-i-remove-a-trustline-on-stellar), [open offers](/blog/how-do-i-cancel-open-offers-on-stellar) and [data entries](/blog/what-are-stellar-data-entries).
 
@@ -15,7 +18,7 @@ This guide is one of five on the things that keep a Stellar account open. The ot
 
 Every Stellar account starts with one signer, its master key: the key pair whose public key is the account address. A `SetOptions` operation can add more signers, each with a weight. Most are ordinary keys, the kind a wallet holds. There are also special kinds: a hash(x) signer, which is satisfied by revealing a secret value; a pre-authorized transaction signer, which allows one exact transaction; and a signed-payload signer.
 
-Each extra signer is a subentry of the account, like a trustline or an offer, and locks one base reserve of <BaseReserve /> while it exists (checked on <BaseReserveCheckedOn />).
+Each extra signer counts as a subentry of the account, like a trustline or an offer, and locks one base reserve of <BaseReserve /> while it exists (checked on <BaseReserveCheckedOn />). That reserve comes back either way, whether you remove the signer or the merge removes it with the account.
 
 ## Weights and thresholds
 
@@ -25,19 +28,21 @@ The two operations that matter for a close both need the high threshold: `SetOpt
 
 On a fresh account the master key has weight 1 and every threshold is 0, so the master key alone can do anything. A multisig setup raises the thresholds and adds signers so that no single key is enough. For example, three keys of weight 1 with a high threshold of 2 means any two of them must sign a merge.
 
-## Why the merge fails
+## Signers do not block the merge
 
-There are two separate reasons.
+The network refuses to merge an account that still holds subentries, and reports `op_has_sub_entries` when it does. Signers are the exception. The check compares the account's subentry count with its number of signers and lets the merge through when the two match, which means every subentry left is a signer. The merge then deletes those signers along with the account.
 
-First, the network refuses to merge an account that still has subentries, and every extra signer is one. That is the `op_has_sub_entries` result: it does not say which subentry is left, and an extra signer is easy to forget because no wallet balance shows it.
+So you do not have to remove an extra signer before merging. If `op_has_sub_entries` comes back, look for a trustline, an offer or a data entry instead. The guides linked above cover each one.
 
-Second, if the thresholds were raised, the merge needs enough signing weight. A merge signed by the master key alone fails when the master key's weight is below the high threshold.
+## Thresholds decide who can sign the merge
 
-So before a merge, the extra signers have to be removed, and removing them needs the signatures the account currently requires.
+`AccountMerge` needs the high threshold. On a fresh account that threshold is 0, so the master key signs the merge alone and an extra signer changes nothing.
+
+If the thresholds were raised, a merge signed by a key whose weight is below the high threshold fails with `op_bad_auth`, or with `tx_bad_auth` when the signatures do not reach the threshold the transaction itself needs. The other signers then have to sign too, until their weights add up to the high threshold. This is how an extra signer can stand in the way of a close: the merge cannot happen without the keys the thresholds require, and you may no longer have them.
 
 ## How LumenWipe handles it
 
-The analyze screen shows how many extra signers the account has. When it has any, or when its medium or high threshold is above 1, the plan includes a step called "Remove extra signers". That step sets each other signer's weight to 0, which removes it, and then resets the thresholds to 0, 1 and 1, so the master key alone can authorize what follows.
+The analyze screen shows how many extra signers the account has. When it has any, or when its medium or high threshold is above 1, the plan includes a step called "Remove extra signers". That step sets each other signer's weight to 0, which removes it, and then resets the thresholds to 0, 1 and 1, so the master key alone can authorize what follows. The merge would remove the signers anyway. LumenWipe removes them earlier so that a single key can sign every remaining step, rather than collecting several signatures on each transaction of the close.
 
 The order is the same for every account. If no single key of the account can sign every step, the extra signers are removed first, in a transaction of their own. Any claimable balances you chose to claim come next, in their own transaction, with any trustline a claim needs added just before it. Once those are confirmed, LumenWipe builds the close itself, which removes the extra signers if that did not happen first, then clears data entries, cancels open offers, converts, returns or sends each remaining balance, removes the trustlines and merges the account last. A close with more than 100 operations is split into several transactions in that same order.
 
