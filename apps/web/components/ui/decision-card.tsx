@@ -13,7 +13,7 @@ export interface DecisionOption<V extends string> {
   value: V;
   /** The outcome sentence. */
   label: ReactNode;
-  tag?: { label: string; tone: "success" | "neutral" | "warning" };
+  tag?: { label: string; tone: "neutral" | "warning" };
   detail?: ReactNode;
   /** Shown in the warning color while this option is selected. */
   notice?: ReactNode;
@@ -22,7 +22,7 @@ export interface DecisionOption<V extends string> {
 }
 
 export const DECISION_TAGS = {
-  recommended: { label: "Recommended", tone: "success" },
+  recommended: { label: "Recommended", tone: "neutral" },
   confirmFirst: { label: "Needs your confirmation", tone: "warning" },
   keep: { label: "You keep the tokens", tone: "neutral" },
   giveUp: { label: "You give up the tokens", tone: "warning" },

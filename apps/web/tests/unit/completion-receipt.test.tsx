@@ -59,7 +59,7 @@ test("a partial close shows the incomplete banner with a resume link and no succ
   seed([step(0, "CANCEL_OFFERS", "confirmed"), step(1, "MERGE", "pending")]);
   const { container } = await show();
 
-  expect(screen.queryByText("Account successfully merged")).toBeNull();
+  expect(screen.queryByText("Account closed")).toBeNull();
   expect(container.textContent).not.toContain("removed from the Stellar ledger");
   expect(container.textContent).not.toContain("Account merged");
   // The banner is the status that holds the heading; each copy button has one of its own.
@@ -90,7 +90,7 @@ test("a close with only non-merge steps confirmed is incomplete", async () => {
   seed([step(0, "REMOVE_TRUSTLINES", "confirmed"), step(1, "CLOSE_ACCOUNT", "failed")]);
   await show("mainnet");
 
-  expect(screen.queryByText("Account successfully merged")).toBeNull();
+  expect(screen.queryByText("Account closed")).toBeNull();
   expect(screen.getByRole("link", { name: "Resume" }).getAttribute("href")).toBe("/mainnet");
 });
 
@@ -98,7 +98,7 @@ test("a confirmed merge shows the success banner and saves then cleans up", asyn
   seed([step(0, "CANCEL_OFFERS", "confirmed"), step(1, "MERGE", "confirmed")]);
   render(<CompletionReceipt network="testnet" />);
 
-  expect(screen.getByText("Account successfully merged")).toBeTruthy();
+  expect(screen.getByText("Account closed")).toBeTruthy();
   expect(screen.queryByRole("link", { name: "Resume" })).toBeNull();
   await waitFor(() => expect(document.title).toBe("Account closed | LumenWipe"));
   await waitFor(() => expect(cleanupSpy).toHaveBeenCalledWith("session-1"));
@@ -109,7 +109,7 @@ test("a fused confirmed close-account step shows the success banner", async () =
   seed([step(0, "CLOSE_ACCOUNT", "confirmed")]);
   await show();
 
-  expect(screen.getByText("Account successfully merged")).toBeTruthy();
+  expect(screen.getByText("Account closed")).toBeTruthy();
 });
 
 test("the explorer link on an unfinished close spans the receipt", async () => {

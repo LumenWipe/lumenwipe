@@ -11,7 +11,7 @@ test("the printed receipt has every hash, URL and the destination, and no chrome
   const api = await installApiFixtures(page);
   const record = closedReceipt();
   await openSeededReceipt(page, record);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Account successfully merged");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Account closed");
   await expect(page.getByRole("banner")).toBeVisible();
   await expect(page.locator("#app-root button:visible").first()).toBeVisible();
 

@@ -123,7 +123,7 @@ function SavedBanner({ record }: { record: ReceiptRecord }) {
         tone="success"
         announce="status"
         icon={<CheckCircle className="h-12 w-12" />}
-        title={<Heading>Account successfully merged</Heading>}
+        title={<Heading>Account closed</Heading>}
         className="flex-col items-center gap-3 p-6 text-center"
       >
         The merge transaction confirmed and the account was removed from the Stellar ledger.

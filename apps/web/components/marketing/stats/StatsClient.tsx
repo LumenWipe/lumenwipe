@@ -18,7 +18,7 @@ export default function StatsClient() {
       <Reveal>
         <div className="flex items-center justify-between">
           <div>
-            <span className="mkt-eyebrow inline-flex items-center gap-2 text-accent/90">
+            <span className="mkt-eyebrow inline-flex items-center gap-2 text-fg-muted">
               <span className="h-px w-6 bg-line-strong" />
               On-chain activity
             </span>

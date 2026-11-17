@@ -87,7 +87,7 @@ test("receipt not in this browser", async ({ page }) => {
 
 test("receipt saved in this browser", async ({ page }) => {
   await openSeededReceipt(page, closedReceipt());
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Account successfully merged");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Account closed");
   await expectNoAxeViolations(page, "receipt, groups collapsed");
 
   await page.getByRole("button", { name: /Offers cancelled/ }).click();

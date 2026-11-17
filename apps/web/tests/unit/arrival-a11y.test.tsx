@@ -121,7 +121,7 @@ test("the receipt has one h1, a valid outline and focus on its heading", async (
   await renderPage(<CompletionReceipt network="testnet" />);
   expectValidOutline();
   const h1 = screen.getByRole("heading", { level: 1 });
-  expect(h1.textContent).toBe("Account successfully merged");
+  expect(h1.textContent).toBe("Account closed");
   await expectFocused(h1);
   // The banner is the status that holds the heading; the copy button has a status of its own.
   expect(screen.getAllByRole("status").some((status) => status.contains(h1))).toBe(true);

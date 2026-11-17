@@ -15,6 +15,7 @@ export const GLOSSARY: readonly GlossaryTerm[] = [
       "merge history",
       "merges recorded",
       "account merges",
+      "successfully merged",
     ],
   },
   { concept: "the tool that closes accounts", preferred: "closer", banned: ["demolisher"] },
@@ -38,6 +39,7 @@ const FORMS: Record<string, string> = {
   "merge history": "merge\\s+history",
   "merges recorded": "merges\\s+recorded",
   "account merges": "account\\s+merges",
+  "successfully merged": "successfully\\s+merged",
 };
 
 const BRAND = /lumenwipe/gi;
