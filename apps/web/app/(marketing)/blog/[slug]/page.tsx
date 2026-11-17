@@ -45,6 +45,7 @@ export async function generateMetadata({
         title: post.title,
         description: post.description,
         shareImage: postShareImage(slug, post.title),
+        blogFeed: true,
         openGraph: {
           type: "article",
           publishedTime: postTimestamp(post.publishedAt),

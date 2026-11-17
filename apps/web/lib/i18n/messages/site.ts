@@ -154,6 +154,8 @@ const en = {
       "LumenWipe",
     ],
     shareImageAlt: "LumenWipe: an example close plan and the XLM it recovers",
+    blogDescription:
+      "Technical deep dives, project updates, and guides on Stellar account management, trustline removal, reserve recovery, and non-custodial DeFi tooling.",
   },
 };
 

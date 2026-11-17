@@ -54,6 +54,16 @@ export const INDEXED_PAGES: readonly IndexedPage[] = [
   { path: "/mainnet", priority: 0.5, changeFrequency: "monthly" },
 ];
 
+/** The blog's RSS feed, which the blog pages advertise with a `<link rel="alternate">`. */
+export const BLOG_FEED = {
+  path: "/blog/feed.xml",
+  type: "application/rss+xml",
+  title: `${SITE_NAME} blog`,
+} as const;
+
+/** The blog's own description, for the blog index and its feed. */
+export const BLOG_DESCRIPTION = COPY.blogDescription;
+
 /** Pages search engines must not index: kept out of the sitemap and marked `noindex`. */
 export const NOINDEX_PAGES: readonly string[] = ["/api-keys"];
 
@@ -63,6 +73,8 @@ interface PageInput {
   title: string;
   description: string;
   shareImage?: ShareImage;
+  /** Whether the page advertises the blog's feed. */
+  blogFeed?: boolean;
   openGraph?:
     | { type: "website" }
     | { type: "article"; publishedTime: string; modifiedTime: string; tags: string[] };
@@ -75,6 +87,7 @@ export function pageMetadata({
   title,
   description,
   shareImage = SHARE_IMAGE,
+  blogFeed = false,
   openGraph = { type: "website" },
 }: PageInput): Metadata {
   const isHome = path === "/";
@@ -83,7 +96,14 @@ export function pageMetadata({
   return {
     title: isHome ? { absolute: HOME_TITLE } : title,
     description,
-    alternates: { canonical: url },
+    alternates: {
+      canonical: url,
+      ...(blogFeed
+        ? {
+            types: { [BLOG_FEED.type]: [{ url: siteUrl(BLOG_FEED.path), title: BLOG_FEED.title }] },
+          }
+        : {}),
+    },
     openGraph: {
       ...openGraph,
       title: fullTitle,

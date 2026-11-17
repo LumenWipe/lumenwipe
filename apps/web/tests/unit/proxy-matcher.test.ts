@@ -52,6 +52,12 @@ describe("the proxy matcher", () => {
     }
   });
 
+  test("skips the prerendered blog feed", () => {
+    expect(runsProxy("/blog/feed.xml")).toBe(false);
+    expect(runsProxy("/blog/feedxxml")).toBe(true);
+    expect(runsProxy("/blog/feed.xml/x")).toBe(true);
+  });
+
   test("still runs for the network and sign-in routes, any unknown path and the API", () => {
     for (const path of [
       "/mainnet",
