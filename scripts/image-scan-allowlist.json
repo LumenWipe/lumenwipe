@@ -40,6 +40,14 @@
     "expires": "2027-02-14"
   },
   {
+    "advisory": "CVE-2026-107496",
+    "package": "libssl3t64",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie and trixie-security openssl 3.5.7-1~deb13u3: vulnerable, no fixed version. CMS_encrypt() loops forever on an EC recipient certificate of group order 1. From the distroless base image, which ships libssl3t64 3.5.7-1~deb13u3; nothing in the image loads the system libssl or libcrypto: a DT_NEEDED scan of every ELF in the pinned amd64 image (285 files, layers fetched by digest) finds libcrypto.so.3 only in libssl3t64's own libssl.so.3 and engines-3, node links neither (it bundles OpenSSL 3.5.9), and the API's production node_modules hold no ELF file. The API performs no CMS encryption.",
+    "added": "2026-11-17",
+    "expires": "2026-12-17"
+  },
+  {
     "advisory": "CVE-2026-19499",
     "package": "libc6",
     "severity": "high",
@@ -62,6 +70,14 @@
     "reason": "Debian security tracker, trixie glibc 2.41-12+deb13u4: vulnerable, no-dsa (Minor issue). gettext accepts LANGUAGE entries containing '/' or '..'. From the base image; exploiting it needs control of the process environment, which on Cloud Run is set only by the deploy.",
     "added": "2026-11-14",
     "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-88823",
+    "package": "libssl3t64",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie and trixie-security openssl 3.5.7-1~deb13u3: vulnerable, no fixed version. AES-GCM-SIV treats a zero-length AAD update as a reset of the AAD. From the distroless base image, which ships libssl3t64 3.5.7-1~deb13u3; nothing in the image loads the system libssl or libcrypto: a DT_NEEDED scan of every ELF in the pinned amd64 image (285 files, layers fetched by digest) finds libcrypto.so.3 only in libssl3t64's own libssl.so.3 and engines-3, node links neither (it bundles OpenSSL 3.5.9), and the API's production node_modules hold no ELF file. The API uses no AES-GCM-SIV.",
+    "added": "2026-11-17",
+    "expires": "2026-12-17"
   },
   {
     "advisory": "CVE-2026-95619",
@@ -102,5 +118,21 @@
     "reason": "Debian security tracker, trixie gcc-14 14.2.0-19: vulnerable, no-dsa (Minor issue). Integer overflow in libstdc++'s aligned operator new on very large sizes. From the base image; node links libstdc++6, libgcc-s1 and libatomic1 (DT_NEEDED of the pinned distroless node binary: libatomic.so.1, libdl.so.2, libm.so.6, libstdc++.so.6, libgcc_s.so.1, libpthread.so.0, libc.so.6), so this is accepted on Debian's rating until a trixie update lands.",
     "added": "2026-11-14",
     "expires": "2027-02-14"
+  },
+  {
+    "advisory": "CVE-2026-95691",
+    "package": "libssl3t64",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie and trixie-security openssl 3.5.7-1~deb13u3: vulnerable, no fixed version. Use after free on a retransmitted QUIC CRYPTO frame in the OpenSSL QUIC client. From the distroless base image, which ships libssl3t64 3.5.7-1~deb13u3; nothing in the image loads the system libssl or libcrypto: a DT_NEEDED scan of every ELF in the pinned amd64 image (285 files, layers fetched by digest) finds libcrypto.so.3 only in libssl3t64's own libssl.so.3 and engines-3, node links neither (it bundles OpenSSL 3.5.9), and the API's production node_modules hold no ELF file. The API opens no QUIC connection.",
+    "added": "2026-11-17",
+    "expires": "2026-12-17"
+  },
+  {
+    "advisory": "CVE-2026-95692",
+    "package": "libssl3t64",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie and trixie-security openssl 3.5.7-1~deb13u3: vulnerable, no fixed version. A short AES-GCM-SIV IV set through EVP_CipherInit_ex() reads out of bounds. From the distroless base image, which ships libssl3t64 3.5.7-1~deb13u3; nothing in the image loads the system libssl or libcrypto: a DT_NEEDED scan of every ELF in the pinned amd64 image (285 files, layers fetched by digest) finds libcrypto.so.3 only in libssl3t64's own libssl.so.3 and engines-3, node links neither (it bundles OpenSSL 3.5.9), and the API's production node_modules hold no ELF file. The API uses no AES-GCM-SIV.",
+    "added": "2026-11-17",
+    "expires": "2026-12-17"
   }
 ]
