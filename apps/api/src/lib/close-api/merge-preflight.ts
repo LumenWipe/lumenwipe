@@ -79,9 +79,19 @@ export function remainingTransactionBound(state: AccountState, viaMediator: bool
   return Math.ceil(classicOps / OP_BATCH_LIMIT) + soloRounds + (viaMediator ? 1 : 0);
 }
 
-/** The merge is refused once the source's sequence reaches `ledger << 32`. */
+/**
+ * The lowest merge sequence the network refuses, given the newest closed ledger.
+ *
+ * stellar-core v30.0.0 `MergeOpFrame::isSeqnumTooFar` (src/transactions/MergeOpFrame.cpp) refuses
+ * once the source's sequence reaches `getStartingSequenceNumber(header)`
+ * (src/transactions/TransactionUtils.cpp), which is `header.ledgerSeq << 32`. The header is that
+ * of the ledger being applied: `LedgerManagerImpl::applyLedger` increments `ledgerSeq` before it
+ * applies the transactions, and `TransactionFrame::processSeqNum` has already set the source's
+ * sequence to the merge transaction's own. A transaction submitted now applies in the ledger after
+ * the newest closed one at the earliest, so that ledger's starting sequence is the bound.
+ */
 export function sequenceLimit(latestLedger: number): bigint {
-  return BigInt(latestLedger) << 32n;
+  return BigInt(latestLedger + 1) << 32n;
 }
 
 function sequenceProblem(
@@ -89,7 +99,15 @@ function sequenceProblem(
   latestLedger: number,
   transactionCount: number
 ): MergePreflightProblem | null {
-  if (BigInt(sequence) + BigInt(transactionCount) < sequenceLimit(latestLedger)) return null;
+  const mergeSequence = BigInt(sequence) + BigInt(transactionCount);
+  if (mergeSequence < sequenceLimit(latestLedger)) return null;
+  if (mergeSequence < sequenceLimit(latestLedger + 1)) {
+    return {
+      code: "source_sequence_too_far",
+      message:
+        "This account's sequence number is one ledger ahead of what the network can merge yet. Plan again in a few seconds, once the next ledger closes.",
+    };
+  }
   return {
     code: "source_sequence_too_far",
     message:
