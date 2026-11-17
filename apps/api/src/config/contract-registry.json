@@ -1,5 +1,5 @@
 {
-  "version": "2026-11-16",
+  "version": "2026-11-17",
   "lastVerified": "2026-10-10",
   "validUntil": "2027-01-08",
   "source": "manually verified per-entry against each protocol's official docs/GitHub (Blend: docs.blend.capital/mainnet-deployments + blend-capital/blend-utils mainnet.contracts.json; Soroswap: soroswap/core public/mainnet.contracts.json; Aquarius: docs.aqua.network addresses-and-networks + the router's own instance) and the live instance's executable hash over RPC on lastVerified; mainnet labels cross-checked against the stellar.expert directory where it names the contract",
@@ -473,13 +473,13 @@
       "protocol": "xbull",
       "kind": "router",
       "address": "CCKXBE5GKJOCE7IKL64HLYKW3IJSUPVOLC4CS77GQT5QQHDZLDYV3DFT",
-      "wasmHash": "c2b3ec57fbd45d5bade9df2ad30c464d1588cead18495a5ce327a98c45c02219",
+      "wasmHash": "e2acb145fa324907437321dd2d1ad0d51e5dd5f07bf31f25f89bf30896a95e31",
       "version": "v1",
       "label": "xBull PathPayment swap router (mainnet, swap-api.xbull.io), strict_send only",
       "verifiedLive": true,
-      "verifiedBy": "2026-09-17: readLiveWasmHash over RPC (mainnet.sorobanrpc.com) against CCKXBE5GKJOCE7IKL64HLYKW3IJSUPVOLC4CS77GQT5QQHDZLDYV3DFT (xBullCorp/swap-kit SwapContract.MAINNET); 2026-10-10: live executable hash re-compared over public RPC in the full registry re-verification (#581)",
+      "verifiedBy": "2026-09-17: readLiveWasmHash over RPC (mainnet.sorobanrpc.com) against CCKXBE5GKJOCE7IKL64HLYKW3IJSUPVOLC4CS77GQT5QQHDZLDYV3DFT (xBullCorp/swap-kit SwapContract.MAINNET); 2026-10-10: live executable hash re-compared over public RPC in the full registry re-verification (#581); 2026-11-17: re-pinned after its admin-signed upgrade at ledger 65514477 (#979): same interface and storage keys, same strict_send auth on chain and in a read-only simulation",
       "source": "xBullCorp/swap-kit SwapContract.MAINNET (swap-api.xbull.io)",
-      "verifiedAt": "2026-10-10"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",

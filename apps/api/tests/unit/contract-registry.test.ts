@@ -228,6 +228,12 @@ test("the testnet contracts LumenWipe deployed itself are marked, and only those
   );
 });
 
+const XBULL_ROUTER = "CCKXBE5GKJOCE7IKL64HLYKW3IJSUPVOLC4CS77GQT5QQHDZLDYV3DFT";
+// The router's code since its 2026-11-16 upgrade (ledger 65514477), and the code it replaced.
+const XBULL_ROUTER_HASH = "e2acb145fa324907437321dd2d1ad0d51e5dd5f07bf31f25f89bf30896a95e31";
+const XBULL_ROUTER_RETIRED_HASH =
+  "c2b3ec57fbd45d5bade9df2ad30c464d1588cead18495a5ce327a98c45c02219";
+
 test("resolves the xBull mainnet router by its live wasm hash", () => {
   const lookup = createContractRegistryLookup(
     validateContractRegistry({
@@ -240,8 +246,8 @@ test("resolves the xBull mainnet router by its live wasm hash", () => {
           network: "mainnet",
           protocol: "xbull",
           kind: "router",
-          address: "CCKXBE5GKJOCE7IKL64HLYKW3IJSUPVOLC4CS77GQT5QQHDZLDYV3DFT",
-          wasmHash: "c2b3ec57fbd45d5bade9df2ad30c464d1588cead18495a5ce327a98c45c02219",
+          address: XBULL_ROUTER,
+          wasmHash: XBULL_ROUTER_HASH,
           version: "v1",
           label: "xBull PathPayment swap router",
           verifiedLive: true,
@@ -250,12 +256,27 @@ test("resolves the xBull mainnet router by its live wasm hash", () => {
       ],
     })
   );
-  expect(
-    lookup.resolveCode(
-      "mainnet",
-      wasm("c2b3ec57fbd45d5bade9df2ad30c464d1588cead18495a5ce327a98c45c02219")
-    )
-  ).toMatchObject({ status: "known", protocol: "xbull", kind: "router" });
+  expect(lookup.resolveCode("mainnet", wasm(XBULL_ROUTER_HASH))).toMatchObject({
+    status: "known",
+    protocol: "xbull",
+    kind: "router",
+  });
+});
+
+test("the shipped mainnet xBull router is pinned to its upgraded code alone, and the retired code is unknown", () => {
+  const [router, ...others] = entriesForProtocol("mainnet", "xbull");
+  expect(others).toEqual([]);
+  expect(router).toMatchObject({ address: XBULL_ROUTER, wasmHash: XBULL_ROUTER_HASH });
+  expect(isExitCapable(router!)).toBe(true);
+  expect(resolveCode("mainnet", wasm(XBULL_ROUTER_HASH))).toMatchObject({
+    status: "known",
+    protocol: "xbull",
+    kind: "router",
+  });
+  expect(resolveCode("mainnet", wasm(XBULL_ROUTER_RETIRED_HASH))).toEqual({
+    status: "unknown",
+    wasmHash: XBULL_ROUTER_RETIRED_HASH,
+  });
 });
 
 test("today's date is within the registry's verification window", () => {
