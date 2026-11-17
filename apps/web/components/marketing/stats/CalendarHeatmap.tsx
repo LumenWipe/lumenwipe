@@ -150,7 +150,13 @@ export default function CalendarHeatmap({ feed }: { feed: FeedData | null }) {
         </div>
       </div>
 
-      <div className="overflow-x-auto px-4 pb-4 pt-2">
+      {/* Focusable so a keyboard user can scroll the weeks that overflow a narrow screen. */}
+      <div
+        role="region"
+        aria-label="Activity heatmap, last 12 months"
+        tabIndex={0}
+        className="overflow-x-auto px-4 pb-4 pt-2 focus-visible:outline-offset-[-2px]"
+      >
         <div className="relative" style={{ minWidth: weeks.length * 14 + 24 }}>
           {/* month labels */}
           <div className="mb-1 flex" style={{ paddingLeft: 24 }}>

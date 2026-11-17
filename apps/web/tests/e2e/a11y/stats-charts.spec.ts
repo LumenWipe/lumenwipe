@@ -63,3 +63,23 @@ for (const name of CHARTS) {
     }
   });
 }
+
+test("the heatmap's scroll area is reached by Tab and scrolls with the arrow keys", async ({
+  page,
+}) => {
+  await page.goto("/stats");
+  await expect(page.getByText(/\d+ active days/)).toBeVisible();
+  const region = page.getByRole("region", { name: "Activity heatmap, last 12 months" });
+
+  for (let i = 0; i < 40 && !(await region.evaluate((el) => el === document.activeElement)); i++)
+    await page.keyboard.press("Tab");
+  await expect(region).toBeFocused();
+  const outline = await region.evaluate((el) => getComputedStyle(el).outlineStyle);
+  expect(outline).not.toBe("none");
+
+  const overflows = await region.evaluate((el) => el.scrollWidth > el.clientWidth);
+  test.skip(!overflows, "the grid fits, so there is nothing to scroll");
+  expect(await region.evaluate((el) => el.scrollLeft)).toBe(0);
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(() => region.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
+});
