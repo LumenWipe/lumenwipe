@@ -11,6 +11,11 @@ version number before 0.4.0. Neither has a git tag.
 
 ## [Unreleased]
 
+### Added
+
+- `SorobanTokenSource` gains `"indexer"`: a token the API found in the account's received
+  movements on StellarIndex. Its balance is read from the ledger like every other source's.
+
 ### Changed
 
 - `SorobanTokensResult.coverage` no longer has an `explorer` entry, and no `SorobanTokenBalance`

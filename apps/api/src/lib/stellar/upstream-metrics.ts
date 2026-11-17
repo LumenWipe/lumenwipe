@@ -8,7 +8,7 @@
 import { currentUpstreamCalls, currentUpstreamMs } from "@/common/request-context";
 import type { Network } from "@/config/networks";
 
-export type Upstream = "rpc" | "horizon" | "defi" | "paths";
+export type Upstream = "rpc" | "horizon" | "defi" | "indexer" | "paths";
 
 export type UpstreamMetric =
   "requests" | "rate_limited" | "timeouts" | "server_errors" | "failovers" | "unavailable";

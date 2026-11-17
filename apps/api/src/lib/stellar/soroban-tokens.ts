@@ -17,7 +17,8 @@ import {
   scValToNative,
   xdr,
 } from "@stellar/stellar-sdk";
-import { NETWORK_PASSPHRASES } from "@/config/networks";
+import { NETWORK_PASSPHRASES, STELLARINDEX_API_URLS } from "@/config/networks";
+import { countedFetch } from "./upstream-metrics";
 import bundledLists from "@/config/soroban-token-lists.json";
 import { mapConcurrent } from "@/lib/utils/concurrency";
 import { describeError } from "@/lib/utils/errors";
@@ -32,6 +33,9 @@ import { getRpcServer, readLatestLedger } from "./rpc";
  * that makes scanning its seven-day retention infeasible on mainnet (a window past a few thousand
  * ledgers times out). So discovery is a union of candidate sources, and truth is the ledger:
  *
+ *  - StellarIndex's account movements, the Soroban-native tokens the account has received, when
+ *    a key is configured: the one per-account listing left, a third party that only proposes. It
+ *    is read a few pages at most, so a busy account's oldest tokens can be missed;
  *  - the tokens named by the account's detected DeFi positions (what an exit pays out);
  *  - bundled lists of Soroban-native tokens with known liquidity (the only ones convertible);
  *  - recent on-chain `transfer` and `mint` events crediting the account, scanned in bounded
@@ -54,8 +58,23 @@ export interface SorobanTokenRpc {
   getLatestLedger: stellarRpc.Server["getLatestLedger"];
 }
 
+/** How to reach StellarIndex: shared by token and allowance discovery. */
+export interface IndexerClient {
+  baseUrl: string;
+  apiKey: string | null;
+  fetch: typeof fetch;
+}
+
+export function indexerHeaders(indexer: IndexerClient): Record<string, string> {
+  return indexer.apiKey
+    ? { accept: "application/json", authorization: `Bearer ${indexer.apiKey}` }
+    : { accept: "application/json" };
+}
+
 export interface SorobanTokensDeps {
   rpc: SorobanTokenRpc;
+  /** StellarIndex, or null to leave it out. */
+  indexer: IndexerClient | null;
   /** Contracts the bundled lists know for this network. */
   listCandidates: string[];
   /** Contracts the user typed in; read like any other candidate. */
@@ -73,6 +92,11 @@ export interface SorobanTokensDeps {
 
 /** Discovery never holds an analysis longer than this; sources that do not fit are skipped. */
 export const SOROBAN_TOKENS_BUDGET_MS = 20_000;
+/** Movement pages read per analysis. A busier account has more; its oldest tokens may be missed. */
+export const INDEXER_MAX_PAGES = 4;
+export const INDEXER_PAGE_LIMIT = 200;
+/** For the whole indexer source, every page included; pages read before it runs out still count. */
+export const INDEXER_TIMEOUT_MS = 4_000;
 /** The public RPC refuses `getEvents` windows much wider than this under its processing cap. */
 export const EVENTS_CHUNK_LEDGERS = 4_000;
 /** At most this many chunks per analysis (about 33 hours on mainnet). */
@@ -106,10 +130,11 @@ export function defaultSorobanTokensDeps(
   network: Network,
   positions: DefiPosition[],
   manualCandidates: string[] = [],
-  options: { budgetMs?: number; scanEvents?: boolean } = {}
+  options: { budgetMs?: number; scanEvents?: boolean; useIndexer?: boolean } = {}
 ): SorobanTokensDeps {
   return {
     rpc: getRpcServer(network),
+    indexer: options.useIndexer === false ? null : defaultIndexerClient(network),
     listCandidates: bundledListCandidates(network),
     manualCandidates,
     positions,
@@ -121,8 +146,21 @@ export function defaultSorobanTokensDeps(
   };
 }
 
-/** Sources in the order their candidates are kept when the cap bites: the user's own first. */
-const SOURCE_PRIORITY: SorobanTokenSource[] = ["manual", "positions", "events", "list"];
+/** StellarIndex for this network, or null when no key is configured. StellarIndex issues keys on
+ *  mainnet only; its testnet is anonymous and answers 401 to a key, so testnet sends none. */
+export function defaultIndexerClient(network: Network): IndexerClient | null {
+  const apiKey = process.env.STELLARINDEX_API_KEY?.trim();
+  if (!apiKey) return null;
+  return {
+    baseUrl: STELLARINDEX_API_URLS[network],
+    apiKey: network === "mainnet" ? apiKey : null,
+    fetch: countedFetch("indexer", network, globalThis.fetch),
+  };
+}
+
+/** Sources in the order their candidates are kept when the cap bites: the user's own first, the
+ *  third party's last, so a flood from it cannot push out what the ledger and the lists name. */
+const SOURCE_PRIORITY: SorobanTokenSource[] = ["manual", "positions", "events", "list", "indexer"];
 
 class Candidates {
   private readonly sources = new Map<string, Set<SorobanTokenSource>>();
@@ -179,6 +217,71 @@ function withTimeout<T>(promise: Promise<T>, ms: number, what: string): Promise<
 const reason = describeError;
 
 // ─── candidate sources ───────────────────────────────────────────────────────
+
+interface IndexerScan {
+  contracts: string[];
+  /** Set when older movements were left unread. */
+  partial: string | null;
+}
+
+/** StellarIndex `/accounts/{G}/movements`, received only: every Soroban-native token in it. */
+async function indexerCandidates(address: string, indexer: IndexerClient): Promise<IndexerScan> {
+  const base = `${indexer.baseUrl.replace(/\/$/, "")}/accounts/${address}/movements`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), INDEXER_TIMEOUT_MS);
+  timer.unref?.();
+  const contracts = new Set<string>();
+  let cursor: string | null = null;
+  try {
+    for (let page = 0; page < INDEXER_MAX_PAGES; page++) {
+      const params = new URLSearchParams({
+        direction: "received",
+        limit: String(INDEXER_PAGE_LIMIT),
+      });
+      if (cursor) params.set("cursor", cursor);
+      let body: unknown;
+      try {
+        const res = await indexer.fetch(`${base}?${params.toString()}`, {
+          signal: controller.signal,
+          headers: indexerHeaders(indexer),
+        });
+        if (res.status === 404) return { contracts: [...contracts], partial: null };
+        if (!res.ok) throw new Error(`indexer responded ${res.status}`);
+        body = await res.json();
+      } catch (err) {
+        if (page === 0) throw err;
+        return {
+          contracts: [...contracts],
+          partial: `stopped after ${page} page(s): ${controller.signal.aborted ? "time budget" : reason(err)}`,
+        };
+      }
+      const data = body && typeof body === "object" ? (body as { data?: unknown }).data : undefined;
+      const { movements, next_cursor } =
+        data && typeof data === "object"
+          ? (data as { movements?: unknown; next_cursor?: unknown })
+          : {};
+      if (!Array.isArray(movements)) throw new Error("indexer answered without movements");
+      for (const row of movements) {
+        if (!row || typeof row !== "object") continue;
+        const asset = (row as { asset?: unknown }).asset;
+        if (typeof asset === "string" && CONTRACT_ID.test(asset)) contracts.add(asset);
+        if (contracts.size >= MAX_CANDIDATES_PER_SOURCE) {
+          return { contracts: [...contracts], partial: "candidate cap" };
+        }
+      }
+      cursor = typeof next_cursor === "string" && next_cursor !== "" ? next_cursor : null;
+      if (!cursor || movements.length < INDEXER_PAGE_LIMIT) {
+        return { contracts: [...contracts], partial: null };
+      }
+    }
+    return {
+      contracts: [...contracts],
+      partial: `${INDEXER_MAX_PAGES} pages read; older movements were not`,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /** The topic shapes a credit to the account can take: SEP-41 `transfer` (3 topics), the Stellar
  *  Asset Contract's `transfer` (4, with the asset), SEP-41 `mint` (`[mint, to]`), the SAC's
@@ -495,19 +598,53 @@ export function startTokenEventScan(
   );
 }
 
+export interface TokenIndexerScan {
+  contracts: string[];
+  coverage: SorobanTokenCoverage;
+}
+
+/** The StellarIndex source on its own, started alongside the event scan for the same reason. Never
+ *  rejects: a scan that fails is a `failed` coverage entry. */
+export function startTokenIndexerScan(
+  address: string,
+  indexer: IndexerClient | null
+): Promise<TokenIndexerScan> {
+  if (!indexer) {
+    return Promise.resolve({
+      contracts: [],
+      coverage: { source: "indexer", status: "skipped", detail: "not configured" },
+    });
+  }
+  return indexerCandidates(address, indexer).then(
+    (scan): TokenIndexerScan => ({
+      contracts: scan.contracts,
+      coverage: {
+        source: "indexer",
+        status: "ok",
+        ...(scan.partial ? { detail: scan.partial } : {}),
+      },
+    }),
+    (err: unknown): TokenIndexerScan => ({
+      contracts: [],
+      coverage: { source: "indexer", status: "failed", detail: reason(err) },
+    })
+  );
+}
+
 /**
  * The account's Soroban token balances, best effort, with what was and was not consulted. Never
  * throws: a source that fails is reported in `coverage` and as a warning, and the ledger reads
  * that did succeed still count.
  *
- * `eventScan` is a scan the caller started earlier; without one the scan starts here. Either way the
+ * `eventScan` and `indexerScan` are scans the caller started earlier; without them they start here. Either way the
  * ledger reads get the whole budget counted from this call.
  */
 export async function discoverSorobanTokens(
   address: string,
   network: Network,
   deps: SorobanTokensDeps,
-  eventScan?: Promise<TokenEventScan>
+  eventScan?: Promise<TokenEventScan>,
+  indexerScan?: Promise<TokenIndexerScan>
 ): Promise<SorobanTokensResult> {
   const started = deps.now();
   const deadline = started + deps.budgetMs;
@@ -542,10 +679,15 @@ export async function discoverSorobanTokens(
   coverage.push({ source: "positions", status: "ok" });
   coverage.push({ source: "list", status: deps.listCandidates.length > 0 ? "ok" : "skipped" });
 
-  const events = await scan;
+  const [events, indexer] = await Promise.all([
+    scan,
+    indexerScan ?? startTokenIndexerScan(address, deps.indexer),
+  ]);
   for (const c of events.contracts) candidates.add(c, "events");
   coverage.push(events.coverage);
   const eventsScanned = events.scanned;
+  for (const c of indexer.contracts) candidates.add(c, "indexer");
+  coverage.push(indexer.coverage);
 
   const ordered = candidates.ordered();
   const kept = ordered.slice(0, MAX_CANDIDATES);
@@ -647,7 +789,9 @@ export async function discoverSorobanTokens(
         "anything they hold cannot be moved by this close and stays with the address.",
     });
   }
-  const failed = coverage.filter((c) => c.status === "failed");
+  // The indexer only adds to what the other sources find, so its outage leaves the read as it was
+  // without it rather than marking it short, which would block a close round.
+  const failed = coverage.filter((c) => c.status === "failed" && c.source !== "indexer");
   if (failed.length > 0) {
     warnings.push({
       code: "soroban_tokens_partial",

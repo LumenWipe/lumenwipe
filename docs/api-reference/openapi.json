@@ -11073,6 +11073,7 @@
               "type": "string",
               "enum": [
                 "explorer",
+                "indexer",
                 "positions",
                 "list",
                 "events",
@@ -11096,6 +11097,7 @@
             "type": "string",
             "enum": [
               "explorer",
+              "indexer",
               "positions",
               "list",
               "events",

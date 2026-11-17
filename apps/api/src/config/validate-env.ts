@@ -59,6 +59,12 @@ const OPTIONAL: Array<{ name: string; consequence: string }> = [
       "Soroban token conversion to XLM is unavailable: held tokens can be sent or left, not swapped",
   },
   {
+    name: "STELLARINDEX_API_KEY",
+    consequence:
+      "Soroban token and allowance discovery do not read StellarIndex, so a token outside the " +
+      "bundled lists and detected positions is found only in recent events or by contract address",
+  },
+  {
     name: "OCTOPOS_API_KEY",
     consequence:
       "DeFi position detection runs at OctoPos's free/IP rate-limit tier instead of the " +

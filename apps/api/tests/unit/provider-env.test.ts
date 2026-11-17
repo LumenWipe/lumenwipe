@@ -18,6 +18,7 @@ const COMPLETE = {
   ADMIN_API_TOKEN: "synthetic",
   FIRESTORE_PROJECT_ID: "synthetic",
   INTEGRATOR_AUTH_SECRET: "synthetic",
+  STELLARINDEX_API_KEY: "synthetic",
 };
 
 interface Report {

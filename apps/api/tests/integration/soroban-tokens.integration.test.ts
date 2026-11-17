@@ -66,11 +66,19 @@ test.skipIf(!RUN_INTEGRATION)(
     expect(found!.symbol).toBe("deJTRSY");
     // The bundled list proposed it and the ledger confirmed it; the event scan covered a real
     // window (the public mainnet RPC's processing cap may stop it early, which is reported, not
-    // hidden). No source outside the lists, the positions, the events and the user is consulted.
+    // hidden). No source outside the lists, the positions, the events and the user is consulted
+    // unless the StellarIndex key is set.
     expect(found!.sources).toContain("list");
     expect(result.coverage.map((c): string => c.source).sort()).toEqual(
-      ["events", "list", "manual", "positions"].sort()
+      ["events", "indexer", "list", "manual", "positions"].sort()
     );
+    if (!process.env.STELLARINDEX_API_KEY) {
+      expect(result.coverage).toContainEqual({
+        source: "indexer",
+        status: "skipped",
+        detail: "not configured",
+      });
+    }
     expect(result.eventsScanned).not.toBeNull();
     expect(
       result.eventsScanned!.toLedger - result.eventsScanned!.fromLedger

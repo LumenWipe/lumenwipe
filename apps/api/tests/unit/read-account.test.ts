@@ -32,7 +32,7 @@ const STATE: AccountState = {
 
 afterEach(() => mock.restore());
 
-test("a close round reads the account with the quick token scan inside its budget", async () => {
+test("a close round reads the account with the quick token scan inside its budget, without the indexer", async () => {
   const read = spyOn(accountStateModule, "getAccountState").mockResolvedValue(STATE);
   const contract = StrKey.encodeContract(Buffer.alloc(32, 7));
   expect(await readAccountState(ADDRESS, "testnet", [contract])).toBe(STATE);
@@ -41,6 +41,7 @@ test("a close round reads the account with the quick token scan inside its budge
     manualTokenCandidates: [contract],
     sorobanTokensBudgetMs: 8_000,
     scanTokenEvents: false,
+    useTokenIndexer: false,
   });
   expect(CLOSE_ROUND_TOKENS_BUDGET_MS).toBe(8_000);
 });

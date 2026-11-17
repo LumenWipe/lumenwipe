@@ -20,8 +20,10 @@ import {
   defaultSorobanTokensDeps,
   discoverSorobanTokens,
   startTokenEventScan,
+  startTokenIndexerScan,
   type SorobanTokensDeps,
   type TokenEventScan,
+  type TokenIndexerScan,
 } from "./soroban-tokens";
 import {
   resolveDefiPositions,
@@ -233,6 +235,8 @@ export interface AccountReadOptions {
   sorobanTokensBudgetMs?: number;
   /** Whether discovery scans recent events (the slow, find-new-tokens source). Default true. */
   scanTokenEvents?: boolean;
+  /** Whether discovery asks the indexer, when one is configured. Default true. */
+  useTokenIndexer?: boolean;
   /** Injectable for tests; defaults to the live sources for the network. The read fills in the
    *  detected positions. */
   sorobanTokensDeps?: () => SorobanTokensDeps;
@@ -385,7 +389,12 @@ export async function readAccountStateFrom(
   // waits for them. Settled into a value here, so a read that fails while the scan is in flight
   // leaves no rejection behind.
   const tokenScan: Promise<
-    { deps: SorobanTokensDeps; events: Promise<TokenEventScan> } | { failure: unknown }
+    | {
+        deps: SorobanTokensDeps;
+        events: Promise<TokenEventScan>;
+        indexer: Promise<TokenIndexerScan>;
+      }
+    | { failure: unknown }
   > = detectionStarted
     .then(() => {
       const tokenDeps =
@@ -393,8 +402,13 @@ export async function readAccountStateFrom(
         defaultSorobanTokensDeps(network, [], options.manualTokenCandidates ?? [], {
           budgetMs: options.sorobanTokensBudgetMs,
           scanEvents: options.scanTokenEvents,
+          useIndexer: options.useTokenIndexer,
         });
-      return { deps: tokenDeps, events: startTokenEventScan(address, tokenDeps) };
+      return {
+        deps: tokenDeps,
+        events: startTokenEventScan(address, tokenDeps),
+        indexer: startTokenIndexerScan(address, tokenDeps.indexer),
+      };
     })
     .catch((failure: unknown) => ({ failure }));
   const [snapshot, [detectedPositions, ledgerCloseTime]] = await Promise.all([
@@ -451,7 +465,7 @@ export async function readAccountStateFrom(
       .then((scan) => {
         if ("failure" in scan) throw scan.failure;
         const tokenDeps = { ...scan.deps, positions: detectedPositions.positions };
-        return discoverSorobanTokens(address, network, tokenDeps, scan.events);
+        return discoverSorobanTokens(address, network, tokenDeps, scan.events, scan.indexer);
       })
       .catch((err: unknown): SorobanTokensResult => ({
         // The discovery module never throws by design; this is the belt to its braces.
