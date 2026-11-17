@@ -89,8 +89,9 @@ and a changelog entry.
 3. It smoke tests the candidate on its tagged URL: `/health`, `/` reporting the commit being
    deployed (`gitSha`), `/health/deep`, `/v1/config/exchange-registry`, and an analyze of the
    registry's first address on mainnet when the `API_SMOKE_KEY` repository secret is set (skipped
-   with a warning otherwise). `/health/deep` is tried six times, 10 seconds apart, to ride out a
-   short RPC slowdown. If it still fails, the script reads `/health/deep` once on the service URL,
+   with a warning otherwise). Each analyze try waits up to 45 seconds, past the API's own 40-second
+   request deadline, and the summary records how long the analyze took. `/health/deep` is tried
+   six times, 10 seconds apart, to ride out a short RPC slowdown. If it still fails, the script reads `/health/deep` once on the service URL,
    which serves the recorded revision until promotion. When every dependency the candidate reports
    down is an RPC that the recorded revision reports down too, the check is recorded as `upstream`
    with those names, the run warns, and the smoke test continues: an outage both share is not the

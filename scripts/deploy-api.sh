@@ -14,8 +14,8 @@
 #
 # Reads SERVICE, REGION, IMAGE, GITHUB_SHA, GITHUB_RUN_ID, GITHUB_RUN_ATTEMPT, and optionally
 # DRILL (none or fail-smoke) and API_SMOKE_KEY. Writes its progress to DEPLOY_STATE and a report
-# to GITHUB_STEP_SUMMARY. SMOKE_TRIES, VERIFY_TRIES and RETRY_DELAY tune the retries, and DEEP_TRIES
-# and DEEP_DELAY the candidate's /health/deep check.
+# to GITHUB_STEP_SUMMARY. SMOKE_TRIES, VERIFY_TRIES and RETRY_DELAY tune the retries, DEEP_TRIES
+# and DEEP_DELAY the candidate's /health/deep check, and ANALYZE_TIMEOUT how long one analyze try waits.
 set -euo pipefail
 
 : "${SERVICE:?}" "${REGION:?}"
@@ -29,6 +29,9 @@ RETRY_DELAY="${RETRY_DELAY:-5}"
 # which cleared within a minute; the API caches the check for 2 s, so every try probes afresh.
 DEEP_TRIES="${DEEP_TRIES:-6}"
 DEEP_DELAY="${DEEP_DELAY:-10}"
+# A mainnet analyze takes about 10 s on any account, past the 10 s every other check waits. It waits
+# longer than the API's own deadline (REQUEST_DEADLINE_MS, 40 s), so the API's answer decides.
+ANALYZE_TIMEOUT="${ANALYZE_TIMEOUT:-45}"
 RESOURCE_FLAGS=(--min-instances=0 --max-instances=1 --cpu=1 --memory=512Mi --execution-environment=gen1 --cpu-boost)
 
 note() { printf '%s\n' "$*" >> "$SUMMARY"; }
@@ -49,14 +52,14 @@ serving_revision() {
 tag_url() { jq -r --arg tag "$1" '[.status.traffic[]? | select(.tag == $tag) | .url][0] // empty'; }
 
 # get URL JQ_FILTER TRIES [VALUE] [HEADER_FILE]: succeeds once a 2xx body satisfies the filter,
-# which reads VALUE as $v.
+# which reads VALUE as $v. Each try waits max_time seconds, 10 unless the caller sets it.
 get() {
   local url="$1" filter="$2" tries="$3" value="${4:-}" header="${5:-}" body i
   for ((i = 1; i <= tries; i++)); do
     if [ -n "$header" ]; then
-      body="$(curl -fsS --max-time 10 -H "@$header" "$url" 2> /dev/null)" || body=""
+      body="$(curl -fsS --max-time "${max_time:-10}" -H "@$header" "$url" 2> /dev/null)" || body=""
     else
-      body="$(curl -fsS --max-time 10 "$url" 2> /dev/null)" || body=""
+      body="$(curl -fsS --max-time "${max_time:-10}" "$url" 2> /dev/null)" || body=""
     fi
     if [ -n "$body" ] && jq -e --arg v "$value" "$filter" > /dev/null 2>&1 <<< "$body"; then
       printf '%s' "$body"
@@ -139,7 +142,7 @@ remove_tag() {
 run_traffic() { gcloud run services update-traffic "$SERVICE" --region "$REGION" "$@" --quiet; }
 
 smoke_candidate() {
-  local url="$1" expected="$GITHUB_SHA" registry address header
+  local url="$1" expected="$GITHUB_SHA" registry address header start took ok=0
   [ "${DRILL:-none}" = "fail-smoke" ] && expected="drill-forced-mismatch"
   note "| Check | Result |"
   note "| --- | --- |"
@@ -159,10 +162,14 @@ smoke_candidate() {
   address="$(jq -r '.entries[0].address' <<< "$registry")"
   header="$(mktemp)"
   printf 'Authorization: Bearer %s\n' "$API_SMOKE_KEY" > "$header"
-  if check "analyze" "$url/v1/mainnet/account/$address" ".address == \$v" "$SMOKE_TRIES" "$address" "$header"; then
-    rm -f "$header"
+  start="$(date +%s.%N)"
+  max_time="$ANALYZE_TIMEOUT" get "$url/v1/mainnet/account/$address" ".address == \$v" "$SMOKE_TRIES" "$address" "$header" > /dev/null && ok=1
+  rm -f "$header"
+  took="$(awk -v s="$start" -v e="$(date +%s.%N)" 'BEGIN { printf "%.1f", e - s }')"
+  if [ "$ok" = 1 ]; then
+    note "| analyze | pass ($took s) |"
   else
-    rm -f "$header"
+    note "| analyze | **fail** ($took s) |"
     return 1
   fi
 }
