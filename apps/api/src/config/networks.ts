@@ -82,6 +82,13 @@ export const PATH_ROUTING_API_URLS: Record<Network, string> = {
  */
 export const OCTOPOS_API_URL_MAINNET: string = process.env.OCTOPOS_API_URL_MAINNET || "";
 
+/** StellarIndex, the per-account candidate source for Soroban tokens and allowances. Used only
+ *  when `STELLARINDEX_API_KEY` is set. */
+export const STELLARINDEX_API_URLS: Record<Network, string> = {
+  mainnet: process.env.STELLARINDEX_API_URL_MAINNET ?? "https://api.stellarindex.io/v1",
+  testnet: process.env.STELLARINDEX_API_URL_TESTNET ?? "https://api.testnet.stellarindex.io/v1",
+};
+
 export const SE_EXPLORER_BASE: Record<Network, string> = {
   mainnet: "https://stellar.expert/explorer/public",
   testnet: "https://stellar.expert/explorer/testnet",

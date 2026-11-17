@@ -466,6 +466,20 @@ export const ENVIRONMENT: Record<EnvApp, Record<string, EnvironmentFacts>> = {
       false
     ),
     OCTOPOS_API_KEY: optional("Raises OctoPos to its authenticated rate tier", true),
+    STELLARINDEX_API_KEY: optional(
+      "StellarIndex key; adds its account data to token and allowance discovery",
+      true
+    ),
+    STELLARINDEX_API_URL_MAINNET: optional(
+      "StellarIndex API on mainnet",
+      false,
+      "`https://api.stellarindex.io/v1`"
+    ),
+    STELLARINDEX_API_URL_TESTNET: optional(
+      "StellarIndex API on testnet",
+      false,
+      "`https://api.testnet.stellarindex.io/v1`"
+    ),
     MEDIATOR_PUBLIC_TESTNET: optional(
       "Public key of the testnet mediator; checked against its secret",
       false

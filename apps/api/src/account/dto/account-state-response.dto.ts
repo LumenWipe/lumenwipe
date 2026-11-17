@@ -276,6 +276,7 @@ const EXPLORER_DEPRECATED = "`explorer` is deprecated and no longer reported.";
 
 const SOROBAN_TOKEN_SOURCES: SorobanTokenSource[] = [
   "explorer",
+  "indexer",
   "positions",
   "list",
   "events",

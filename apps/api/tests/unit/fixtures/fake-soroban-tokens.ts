@@ -49,6 +49,8 @@ export interface FakeSorobanWorld {
   latestLedger?: number;
   /** Per requested window `${startLedger}-${endLedger}`; a window listed with `error` rejects. */
   events?: Record<string, FakeEventWindow | { error: string }>;
+  /** What the indexer answers, one entry per page in order; no entry means the source is off. */
+  indexer?: Array<{ status: number; body: unknown } | { throws: string }>;
 }
 
 export const ACCOUNT = "GBUYBKHUCCAKG4LM76DONHABFRZSZEHK7ARNEEXBZ3CMVIYKZXPLPVRG";
@@ -205,6 +207,47 @@ export function fakeSorobanRpc(world: FakeSorobanWorld): SorobanTokenRpc & {
   };
 }
 
+export interface IndexerCall {
+  url: string;
+  authorization: string | null;
+}
+
+export function fakeIndexerFetch(
+  pages: NonNullable<FakeSorobanWorld["indexer"]>,
+  calls: IndexerCall[] = []
+): typeof fetch {
+  return (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    calls.push({ url, authorization: new Headers(init?.headers).get("authorization") });
+    const answer = pages[calls.length - 1] ?? { status: 500, body: {} };
+    if ("throws" in answer) throw new Error(answer.throws);
+    return new Response(JSON.stringify(answer.body), {
+      status: answer.status,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+}
+
+/** One page of the indexer's `/accounts/{G}/movements`, received rows only, as it answers. */
+export function indexerMovementsBody(assets: string[], nextCursor: string | null): unknown {
+  return {
+    data: {
+      account: ACCOUNT,
+      movements: assets.map((asset, i) => ({
+        ledger: 65_000_000 - i,
+        movement_kind: "transfer",
+        direction: "received",
+        asset,
+        amount: "1",
+        provenance: "cap67_event",
+      })),
+      next_cursor: nextCursor,
+      coverage_note: "all assets through ledger 65000000",
+    },
+    as_of: "2026-11-17T00:00:00Z",
+  };
+}
+
 export interface FakeDepsOptions {
   world: FakeSorobanWorld;
   listCandidates?: string[];
@@ -217,11 +260,21 @@ export interface FakeDepsOptions {
 
 export function fakeSorobanDeps(options: FakeDepsOptions): SorobanTokensDeps & {
   rpc: ReturnType<typeof fakeSorobanRpc>;
+  indexerCalls: IndexerCall[];
 } {
   const rpcStub = fakeSorobanRpc(options.world);
   const clock = options.clock ?? { now: 1_700_000_000_000 };
+  const indexerCalls: IndexerCall[] = [];
   return {
     rpc: rpcStub,
+    indexerCalls,
+    indexer: options.world.indexer
+      ? {
+          baseUrl: "https://indexer.test/v1",
+          apiKey: "sip_test",
+          fetch: fakeIndexerFetch(options.world.indexer, indexerCalls),
+        }
+      : null,
     listCandidates: options.listCandidates ?? [],
     manualCandidates: options.manualCandidates ?? [],
     positions: options.positions ?? [],

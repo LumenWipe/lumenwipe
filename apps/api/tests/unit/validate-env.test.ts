@@ -13,6 +13,7 @@ const OK = {
   FEE_ACCOUNT_SECRET_MAINNET: "S...",
   SOROSWAP_API_KEY: "sk_test",
   OCTOPOS_API_KEY: "oct_abc123",
+  STELLARINDEX_API_KEY: "sip_test",
   ADMIN_API_TOKEN: "admin_test_token",
   FIRESTORE_PROJECT_ID: "test-project",
   INTEGRATOR_AUTH_SECRET: "test-integrator-auth-secret-0123456789",
@@ -52,6 +53,7 @@ test("a missing mediator secret warns rather than blocking the boot", () => {
     FEE_ACCOUNT_SECRET_TESTNET: "S...",
     FEE_ACCOUNT_SECRET_MAINNET: "S...",
     OCTOPOS_API_KEY: "oct_abc123",
+    STELLARINDEX_API_KEY: "sip_test",
     SOROSWAP_API_KEY: "sk_test",
     ADMIN_API_TOKEN: "admin_test_token",
     FIRESTORE_PROJECT_ID: "test-project",
@@ -72,6 +74,7 @@ test("a missing fee-account secret warns rather than blocking the boot", () => {
     MEDIATOR_SECRET_TESTNET: "S...",
     MEDIATOR_SECRET_MAINNET: "S...",
     OCTOPOS_API_KEY: "oct_abc123",
+    STELLARINDEX_API_KEY: "sip_test",
     SOROSWAP_API_KEY: "sk_test",
     ADMIN_API_TOKEN: "admin_test_token",
     FIRESTORE_PROJECT_ID: "test-project",
@@ -84,6 +87,23 @@ test("a missing fee-account secret warns rather than blocking the boot", () => {
   ]);
 });
 
+test("a missing STELLARINDEX_API_KEY warns rather than blocking the boot", () => {
+  const { problems, warnings } = checkEnv({
+    API_KEYS: "ci=abc",
+    MEDIATOR_SECRET_TESTNET: "S...",
+    MEDIATOR_SECRET_MAINNET: "S...",
+    FEE_ACCOUNT_SECRET_TESTNET: "S...",
+    FEE_ACCOUNT_SECRET_MAINNET: "S...",
+    SOROSWAP_API_KEY: "sk_test",
+    OCTOPOS_API_KEY: "oct_abc123",
+    ADMIN_API_TOKEN: "admin_test_token",
+    FIRESTORE_PROJECT_ID: "test-project",
+    INTEGRATOR_AUTH_SECRET: "test-integrator-auth-secret-0123456789",
+  });
+  expect(problems).toEqual([]);
+  expect(warnings.map((w) => w.variable)).toEqual(["STELLARINDEX_API_KEY"]);
+});
+
 test("a missing OCTOPOS_API_KEY warns rather than blocking the boot", () => {
   // Disables the authenticated rate-limit tier, not DeFi detection outright: OctoPos's
   // positions endpoints are reachable unauthenticated at the free tier (architecture.md §7.1).
@@ -94,6 +114,7 @@ test("a missing OCTOPOS_API_KEY warns rather than blocking the boot", () => {
     FEE_ACCOUNT_SECRET_TESTNET: "S...",
     FEE_ACCOUNT_SECRET_MAINNET: "S...",
     SOROSWAP_API_KEY: "sk_test",
+    STELLARINDEX_API_KEY: "sip_test",
     ADMIN_API_TOKEN: "admin_test_token",
     FIRESTORE_PROJECT_ID: "test-project",
     INTEGRATOR_AUTH_SECRET: "test-integrator-auth-secret-0123456789",
@@ -111,6 +132,7 @@ test("a missing ADMIN_API_TOKEN, FIRESTORE_PROJECT_ID or INTEGRATOR_AUTH_SECRET 
     FEE_ACCOUNT_SECRET_TESTNET: "S...",
     FEE_ACCOUNT_SECRET_MAINNET: "S...",
     OCTOPOS_API_KEY: "oct_abc123",
+    STELLARINDEX_API_KEY: "sip_test",
     SOROSWAP_API_KEY: "sk_test",
   };
   const { problems, warnings } = checkEnv(base);

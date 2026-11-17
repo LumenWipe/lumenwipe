@@ -14,7 +14,9 @@ import { getAccountState } from "@/lib/stellar/account-state";
 // (account.controller.ts): the bundled lists, detected positions' payout tokens, and any
 // contract the caller named by hand, never the slow recent-events scan. A
 // close re-reads state on every round, so the rounds only need to re-confirm balances within a
-// budget that keeps a multi-round close moving.
+// budget that keeps a multi-round close moving. StellarIndex is left out too: every token the
+// user decided about is named by hand, and its outage would read as a short read and block the
+// round.
 export const CLOSE_ROUND_TOKENS_BUDGET_MS = 8_000;
 
 export async function readAccountState(
@@ -26,5 +28,6 @@ export async function readAccountState(
     manualTokenCandidates,
     sorobanTokensBudgetMs: CLOSE_ROUND_TOKENS_BUDGET_MS,
     scanTokenEvents: false,
+    useTokenIndexer: false,
   });
 }

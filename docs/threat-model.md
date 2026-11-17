@@ -40,7 +40,7 @@ surface 8 is the integrator session layer at the API's edge (boundary 3).
 Out of scope, deliberately:
 
 - **Read-only external data sources** (RPC providers, the Horizon-compatible enumeration endpoint, the
-  Soroswap routing API, OctoPos). These carry availability risk, not custody risk - they cannot move funds -
+  Soroswap routing API, OctoPos, and StellarIndex, a candidate source for tokens and allowances). These carry availability risk, not custody risk - they cannot move funds -
   and are already addressed as a trust-minimization concern in [Section 14](/architecture#14-trust-minimization-and-decentralization),
   not repeated here.
 - **A third-party penetration test or formal audit.** Not done yet, and outside this document's scope.

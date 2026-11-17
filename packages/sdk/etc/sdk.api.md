@@ -1217,7 +1217,7 @@ export interface SorobanTokenCoverage {
 }
 
 // @public
-export type SorobanTokenSource = "explorer" | "positions" | "list" | "events" | "manual";
+export type SorobanTokenSource = "explorer" | "indexer" | "positions" | "list" | "events" | "manual";
 
 // @public
 export interface SorobanTokensResult {

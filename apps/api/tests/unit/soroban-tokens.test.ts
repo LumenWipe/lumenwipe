@@ -14,12 +14,19 @@ import type {
 import {
   EVENTS_CHUNK_LEDGERS,
   EVENTS_PAGE_LIMIT,
+  INDEXER_MAX_PAGES,
+  INDEXER_PAGE_LIMIT,
   MAX_CANDIDATES,
   MAX_CANDIDATES_PER_SOURCE,
   defaultSorobanTokensDeps,
   discoverSorobanTokens,
 } from "@/lib/stellar/soroban-tokens";
-import { ACCOUNT, fakeSorobanDeps, type FakeToken } from "./fixtures/fake-soroban-tokens";
+import {
+  ACCOUNT,
+  fakeSorobanDeps,
+  indexerMovementsBody,
+  type FakeToken,
+} from "./fixtures/fake-soroban-tokens";
 import { ARCHIVED } from "./fixtures/entry-archival";
 
 const token = (n: number): string => Address.contract(Buffer.alloc(32, n)).toString();
@@ -104,7 +111,7 @@ describe("Soroban token discovery", () => {
     expect(result.unreadable).toEqual([]);
     expect(result.warnings).toEqual([]);
     expect(result.coverage.map((c) => `${c.source}:${c.status}`).sort()).toEqual(
-      ["events:ok", "list:ok", "manual:skipped", "positions:ok"].sort()
+      ["events:ok", "indexer:skipped", "list:ok", "manual:skipped", "positions:ok"].sort()
     );
     expect(result.eventsScanned).toEqual({
       fromLedger: LATEST - EVENTS_CHUNK_LEDGERS + 1,
@@ -539,5 +546,158 @@ describe("Soroban token discovery", () => {
     });
     const result = await discoverSorobanTokens(ACCOUNT, "testnet", deps);
     expect(result.tokens).toEqual([]);
+  });
+});
+
+describe("the indexer source", () => {
+  const fullPage = (cursor: string) =>
+    indexerMovementsBody(Array<string>(INDEXER_PAGE_LIMIT).fill("native"), cursor);
+
+  test("a token only the indexer knows is listed once the ledger confirms it, and nothing it names skips that read", async () => {
+    const deps = fakeSorobanDeps({
+      world: {
+        tokens: [held(NATIVE_A, 5n), held(NATIVE_B, 9n), held(token(7), 0n)],
+        indexer: [
+          {
+            status: 200,
+            body: indexerMovementsBody(
+              [
+                NATIVE_B,
+                NATIVE_A,
+                token(7),
+                GHOST,
+                "native",
+                "USDC-GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+              ],
+              null
+            ),
+          },
+        ],
+      },
+      listCandidates: [NATIVE_A],
+    });
+    const result = await discoverSorobanTokens(ACCOUNT, "mainnet", deps);
+    expect(Object.fromEntries(result.tokens.map((t) => [t.contract, t.sources]))).toEqual({
+      [NATIVE_A]: ["list", "indexer"],
+      [NATIVE_B]: ["indexer"],
+    });
+    expect(result.coverage).toContainEqual({ source: "indexer", status: "ok" });
+    expect(result.warnings).toEqual([]);
+    expect(deps.indexerCalls).toHaveLength(1);
+    const url = new URL(deps.indexerCalls[0]!.url);
+    expect(url.origin + url.pathname).toBe(`https://indexer.test/v1/accounts/${ACCOUNT}/movements`);
+    expect(url.searchParams.get("direction")).toBe("received");
+    expect(url.searchParams.get("limit")).toBe(String(INDEXER_PAGE_LIMIT));
+    expect(deps.indexerCalls[0]!.authorization).toBe("Bearer sip_test");
+  });
+
+  test("it reads at most its page budget, following the cursor, and says older movements were left unread", async () => {
+    const pages = Array.from({ length: INDEXER_MAX_PAGES + 2 }, (_, i) => ({
+      status: 200,
+      body:
+        i === 1
+          ? indexerMovementsBody(
+              [NATIVE_B, ...Array<string>(INDEXER_PAGE_LIMIT - 1).fill("native")],
+              `c${i}`
+            )
+          : fullPage(`c${i}`),
+    }));
+    const deps = fakeSorobanDeps({ world: { tokens: [held(NATIVE_B, 1n)], indexer: pages } });
+    const result = await discoverSorobanTokens(ACCOUNT, "mainnet", deps);
+    expect(deps.indexerCalls).toHaveLength(INDEXER_MAX_PAGES);
+    expect(new URL(deps.indexerCalls[0]!.url).searchParams.get("cursor")).toBeNull();
+    expect(new URL(deps.indexerCalls[1]!.url).searchParams.get("cursor")).toBe("c0");
+    expect(result.tokens.map((t) => t.contract)).toEqual([NATIVE_B]);
+    expect(result.coverage).toContainEqual({
+      source: "indexer",
+      status: "ok",
+      detail: `${INDEXER_MAX_PAGES} pages read; older movements were not`,
+    });
+    expect(result.warnings).toEqual([]);
+  });
+
+  test("a page that fails after the first keeps what the earlier pages proposed", async () => {
+    const deps = fakeSorobanDeps({
+      world: {
+        tokens: [held(NATIVE_B, 1n)],
+        indexer: [
+          {
+            status: 200,
+            body: indexerMovementsBody(
+              [NATIVE_B, ...Array<string>(INDEXER_PAGE_LIMIT - 1).fill("native")],
+              "c0"
+            ),
+          },
+          { status: 502, body: {} },
+        ],
+      },
+    });
+    const result = await discoverSorobanTokens(ACCOUNT, "mainnet", deps);
+    expect(result.tokens.map((t) => t.contract)).toEqual([NATIVE_B]);
+    expect(result.coverage).toContainEqual({
+      source: "indexer",
+      status: "ok",
+      detail: "stopped after 1 page(s): indexer responded 502",
+    });
+  });
+
+  test("an indexer that fails, errors, or answers garbage changes only its own coverage entry", async () => {
+    for (const answer of [
+      { throws: "socket hang up" },
+      { status: 503, body: {} },
+      { status: 200, body: { data: { movements: "nope" } } },
+    ]) {
+      const deps = fakeSorobanDeps({
+        world: { tokens: [held(NATIVE_A, 3n)], indexer: [answer] },
+        listCandidates: [NATIVE_A],
+      });
+      const result = await discoverSorobanTokens(ACCOUNT, "mainnet", deps);
+      expect(result.tokens.map((t) => [t.contract, t.sources])).toEqual([[NATIVE_A, ["list"]]]);
+      expect(result.coverage.find((c) => c.source === "indexer")?.status).toBe("failed");
+      expect(result.warnings).toEqual([]);
+    }
+  });
+
+  test("its candidates rank last, so a flood from it cannot push out the other sources' under the cap", async () => {
+    const flood = Array.from({ length: MAX_CANDIDATES_PER_SOURCE }, (_, i) => token(100 + i));
+    const deps = fakeSorobanDeps({
+      world: {
+        tokens: [held(NATIVE_A, 2n)],
+        indexer: [{ status: 200, body: indexerMovementsBody(flood, null) }],
+      },
+      listCandidates: [NATIVE_A],
+    });
+    const result = await discoverSorobanTokens(ACCOUNT, "mainnet", deps);
+    expect(result.tokens.map((t) => t.contract)).toEqual([NATIVE_A]);
+    expect(result.warnings.map((w) => w.code)).toContain("soroban_tokens_capped");
+  });
+
+  test("an account the indexer has never seen proposes nothing and is not a failure", async () => {
+    const deps = fakeSorobanDeps({
+      world: { tokens: [], indexer: [{ status: 404, body: { title: "Not found" } }] },
+    });
+    const result = await discoverSorobanTokens(ACCOUNT, "mainnet", deps);
+    expect(result.coverage).toContainEqual({ source: "indexer", status: "ok" });
+    expect(result.tokens).toEqual([]);
+  });
+
+  test("the default deps use the indexer only with a key, per network, and never when a caller turns it off", () => {
+    const saved = process.env.STELLARINDEX_API_KEY;
+    try {
+      delete process.env.STELLARINDEX_API_KEY;
+      expect(defaultSorobanTokensDeps("mainnet", []).indexer).toBeNull();
+      process.env.STELLARINDEX_API_KEY = " sip_abc ";
+      expect(defaultSorobanTokensDeps("mainnet", []).indexer).toMatchObject({
+        baseUrl: "https://api.stellarindex.io/v1",
+        apiKey: "sip_abc",
+      });
+      expect(defaultSorobanTokensDeps("testnet", []).indexer?.baseUrl).toBe(
+        "https://api.testnet.stellarindex.io/v1"
+      );
+      expect(defaultSorobanTokensDeps("mainnet", [], [], { useIndexer: false }).indexer).toBeNull();
+    } finally {
+      if (saved === undefined) delete process.env.STELLARINDEX_API_KEY;
+      else process.env.STELLARINDEX_API_KEY = saved;
+    }
   });
 });
