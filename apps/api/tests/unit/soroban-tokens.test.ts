@@ -591,6 +591,16 @@ describe("the indexer source", () => {
     expect(deps.indexerCalls[0]!.authorization).toBe("Bearer sip_test");
   });
 
+  test("a client without a key sends no authorization header", async () => {
+    const deps = fakeSorobanDeps({
+      world: { tokens: [], indexer: [{ status: 200, body: indexerMovementsBody([], null) }] },
+      indexerApiKey: null,
+    });
+    await discoverSorobanTokens(ACCOUNT, "testnet", deps);
+    expect(deps.indexerCalls).toHaveLength(1);
+    expect(deps.indexerCalls[0]!.authorization).toBeNull();
+  });
+
   test("it reads at most its page budget, following the cursor, and says older movements were left unread", async () => {
     const pages = Array.from({ length: INDEXER_MAX_PAGES + 2 }, (_, i) => ({
       status: 200,
@@ -691,9 +701,10 @@ describe("the indexer source", () => {
         baseUrl: "https://api.stellarindex.io/v1",
         apiKey: "sip_abc",
       });
-      expect(defaultSorobanTokensDeps("testnet", []).indexer?.baseUrl).toBe(
-        "https://api.testnet.stellarindex.io/v1"
-      );
+      expect(defaultSorobanTokensDeps("testnet", []).indexer).toMatchObject({
+        baseUrl: "https://api.testnet.stellarindex.io/v1",
+        apiKey: null,
+      });
       expect(defaultSorobanTokensDeps("mainnet", [], [], { useIndexer: false }).indexer).toBeNull();
     } finally {
       if (saved === undefined) delete process.env.STELLARINDEX_API_KEY;

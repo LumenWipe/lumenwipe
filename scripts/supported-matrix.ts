@@ -467,7 +467,7 @@ export const ENVIRONMENT: Record<EnvApp, Record<string, EnvironmentFacts>> = {
     ),
     OCTOPOS_API_KEY: optional("Raises OctoPos to its authenticated rate tier", true),
     STELLARINDEX_API_KEY: optional(
-      "StellarIndex key; adds its account data to token and allowance discovery",
+      "StellarIndex mainnet key; turns its account data on for token and allowance discovery",
       true
     ),
     STELLARINDEX_API_URL_MAINNET: optional(

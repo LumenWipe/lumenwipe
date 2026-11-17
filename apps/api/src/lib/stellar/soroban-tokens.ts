@@ -61,8 +61,14 @@ export interface SorobanTokenRpc {
 /** How to reach StellarIndex: shared by token and allowance discovery. */
 export interface IndexerClient {
   baseUrl: string;
-  apiKey: string;
+  apiKey: string | null;
   fetch: typeof fetch;
+}
+
+export function indexerHeaders(indexer: IndexerClient): Record<string, string> {
+  return indexer.apiKey
+    ? { accept: "application/json", authorization: `Bearer ${indexer.apiKey}` }
+    : { accept: "application/json" };
 }
 
 export interface SorobanTokensDeps {
@@ -140,13 +146,14 @@ export function defaultSorobanTokensDeps(
   };
 }
 
-/** StellarIndex for this network, or null when no key is configured. */
+/** StellarIndex for this network, or null when no key is configured. StellarIndex issues keys on
+ *  mainnet only; its testnet is anonymous and answers 401 to a key, so testnet sends none. */
 export function defaultIndexerClient(network: Network): IndexerClient | null {
   const apiKey = process.env.STELLARINDEX_API_KEY?.trim();
   if (!apiKey) return null;
   return {
     baseUrl: STELLARINDEX_API_URLS[network],
-    apiKey,
+    apiKey: network === "mainnet" ? apiKey : null,
     fetch: countedFetch("indexer", network, globalThis.fetch),
   };
 }
@@ -236,7 +243,7 @@ async function indexerCandidates(address: string, indexer: IndexerClient): Promi
       try {
         const res = await indexer.fetch(`${base}?${params.toString()}`, {
           signal: controller.signal,
-          headers: { accept: "application/json", authorization: `Bearer ${indexer.apiKey}` },
+          headers: indexerHeaders(indexer),
         });
         if (res.status === 404) return { contracts: [...contracts], partial: null };
         if (!res.ok) throw new Error(`indexer responded ${res.status}`);

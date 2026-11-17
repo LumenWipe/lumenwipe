@@ -256,6 +256,7 @@ export interface FakeDepsOptions {
   budgetMs?: number;
   /** A controllable clock, in ms; advanced by the tests that exercise the budget. */
   clock?: { now: number };
+  indexerApiKey?: string | null;
 }
 
 export function fakeSorobanDeps(options: FakeDepsOptions): SorobanTokensDeps & {
@@ -271,7 +272,7 @@ export function fakeSorobanDeps(options: FakeDepsOptions): SorobanTokensDeps & {
     indexer: options.world.indexer
       ? {
           baseUrl: "https://indexer.test/v1",
-          apiKey: "sip_test",
+          apiKey: options.indexerApiKey === undefined ? "sip_test" : options.indexerApiKey,
           fetch: fakeIndexerFetch(options.world.indexer, indexerCalls),
         }
       : null,
