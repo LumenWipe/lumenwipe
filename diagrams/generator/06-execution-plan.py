@@ -105,22 +105,9 @@ with g.subgraph(name="cluster_close") as c:
          "the merge, then AccountMerge into the mediator and the forward Payment run in one transaction of their own",
          fillcolor=F_SUCCESS, color=B_SUCCESS, penwidth="2.5")
 
-# ── Fused plan shape ──────────────────────────────────────────────────────────
-g.node("fused",
-       hl("Fused plan shape  (buildPlan with fastPathEligible)",
-          "One CLOSE_ACCOUNT step, plus the co-signed mediator MERGE for an exchange destination",
-          "Excluded by any of: nothing to clean up  ·  a blocker other than a forfeited balance  ·\n"
-          "a claimable balance to claim  ·  signers normalized first  ·  a Soroban token that moves  ·  a DeFi exit  ·\n"
-          "a sponsored entry  ·  more than 100 operations\n"
-          "Both API callers pass fastPathEligible = false today, so the plan lists steps 1-11 as above"),
-       fillcolor=F_ACCENT, color=B_ACCENT, style="filled,rounded,dashed",
-       width="7.5", margin="0.3,0.16")
-
 # ── Pipeline edges ────────────────────────────────────────────────────────────
 order = ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11"]
 for a, b in zip(order, order[1:]):
     g.edge(a, b)
-
-g.edge("s11", "fused", style="dashed", label="see note", color=B_ACCENT)
 
 render(g, "06-execution-plan")
