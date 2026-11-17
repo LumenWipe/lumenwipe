@@ -184,7 +184,7 @@ test("a reopened closed receipt focuses its h1 inside a status banner and retitl
   await openReceipt();
 
   const h1 = screen.getByRole("heading", { level: 1 });
-  expect(h1.textContent).toBe("Account successfully merged");
+  expect(h1.textContent).toBe("Account closed");
   await expectFocused(h1);
   expect(screen.getAllByRole("status").some((s) => s.contains(h1))).toBe(true);
   await waitFor(() => expect(document.title).toBe("Account closed | LumenWipe"));

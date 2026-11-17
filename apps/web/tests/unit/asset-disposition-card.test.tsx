@@ -101,3 +101,12 @@ test("a swap that is only planned shows a neutral arrow, not the confirmed green
   expect(arrow?.classList.contains("text-fg-muted")).toBe(true);
   expect(arrow?.classList.contains("text-success")).toBe(false);
 });
+
+test("a planned swap's badge and its Recommended tag are neutral, not the confirmed green", () => {
+  renderAnswered({ quote: QUOTE }, "convert");
+  for (const text of ["Swap", "Recommended"]) {
+    const badge = screen.getByText(text, { exact: true });
+    expect(badge.classList.contains("text-fg-muted"), text).toBe(true);
+    expect(badge.classList.contains("text-success"), text).toBe(false);
+  }
+});

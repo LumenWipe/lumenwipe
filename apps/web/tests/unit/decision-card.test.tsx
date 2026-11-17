@@ -5,7 +5,7 @@ import { DecisionCard, type DecisionOption } from "@/components/ui/decision-card
 type Choice = "keep" | "drop";
 
 const OPTIONS: DecisionOption<Choice>[] = [
-  { value: "keep", label: "Keep it.", tag: { label: "Recommended", tone: "success" } },
+  { value: "keep", label: "Keep it.", tag: { label: "Recommended", tone: "neutral" } },
   {
     value: "drop",
     label: "Drop it.",

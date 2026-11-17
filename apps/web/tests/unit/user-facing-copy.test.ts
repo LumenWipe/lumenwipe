@@ -111,6 +111,7 @@ describe("scanSource", () => {
   test("flags merge used for the whole act in labels and text", () => {
     expect(scanSource(`const a = <button aria-label="Merge history" />;`)).toHaveLength(1);
     expect(scanSource(`const a = <a href="/">Merge another account</a>;`)).toHaveLength(1);
+    expect(scanSource(`const a = <h1>Account successfully merged</h1>;`)).toHaveLength(1);
     expect(scanSource(`const a = <p>An Account Merge removes the account.</p>;`)).toEqual([]);
   });
 

@@ -194,10 +194,7 @@ export default function AssetDispositionCard({
               </p>
               {issuerLine}
             </div>
-            <Badge
-              tone={isTransfer || isIssuer ? "neutral" : "success"}
-              className="shrink-0 uppercase tracking-wide"
-            >
+            <Badge tone="neutral" className="shrink-0 uppercase tracking-wide">
               {isTransfer ? "Send" : isIssuer ? "Return" : "Swap"}
             </Badge>
           </div>

@@ -80,7 +80,7 @@ test("the route renders a stored receipt from this browser alone", async () => {
   await saveHistory(record());
   await openReceipt("r-1");
 
-  expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Account successfully merged");
+  expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Account closed");
   expect(screen.getByText("Offers cancelled")).toBeTruthy();
   expect(screen.getByText("10 USDC → XLM")).toBeTruthy();
   expect(screen.getByText("aaaaaa…beef01")).toBeTruthy();
@@ -135,7 +135,7 @@ test("an incomplete receipt never reads as closed", async () => {
   await openReceipt("r-1");
 
   expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Close not finished");
-  expect(container.textContent).not.toContain("successfully merged");
+  expect(container.textContent).not.toContain("Account closed");
   expect(screen.queryAllByRole("link", { name: /Close another account/ })).toHaveLength(0);
   await waitFor(() => expect(document.title).toBe("Close incomplete | LumenWipe"));
 });
@@ -168,7 +168,7 @@ test("a failed read is not reported as a missing receipt, and can be retried", a
   });
   await waitForRead();
   expect(read).toHaveBeenCalledTimes(2);
-  expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Account successfully merged");
+  expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Account closed");
   consoleSpy.mockRestore();
 });
 

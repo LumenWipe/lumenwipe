@@ -98,7 +98,7 @@ export default function CompletionReceipt({ network, onSaved }: CompletionReceip
           tabIndex={-1}
           className="mkt-display text-2xl font-bold text-white outline-none"
         >
-          Account successfully merged
+          Account closed
         </h1>
       }
       className="flex-col items-center gap-3 p-6 text-center"

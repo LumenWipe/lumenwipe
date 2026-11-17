@@ -1,3 +1,5 @@
+import { cn } from "@/lib/utils/cn";
+
 export interface AxisLabel {
   label: string;
   /** Position in the chart's viewBox units. */
@@ -41,7 +43,10 @@ export default function AxisLabels({
             key={l.label + l.x}
             data-axis-label
             data-anchor={anchor}
-            className={`mkt-mono absolute top-0 whitespace-nowrap text-caption text-fg-subtle ${ANCHOR_CLASS[anchor]}`}
+            className={cn(
+              "mkt-mono absolute top-0 whitespace-nowrap text-caption text-fg-subtle",
+              ANCHOR_CLASS[anchor]
+            )}
             style={{ left: `${fraction * 100}%` }}
           >
             {l.label}

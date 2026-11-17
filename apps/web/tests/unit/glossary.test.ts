@@ -21,6 +21,8 @@ describe("findBannedWords", () => {
     expect(findBannedWords("Completed account merges will appear here.")).toEqual([
       "account merges",
     ]);
+    expect(findBannedWords("Account successfully merged")).toEqual(["successfully merged"]);
+    expect(findBannedWords("once the account is merged")).toEqual([]);
     expect(findBannedWords("An Account Merge transfers the XLM balance")).toEqual([]);
     expect(findBannedWords("a successful ACCOUNT_MERGE operation")).toEqual([]);
     expect(findBannedWords("merge only to the stated destination")).toEqual([]);

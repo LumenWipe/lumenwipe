@@ -11,6 +11,7 @@ test.beforeEach(async ({ page }) => {
 test.afterEach(() => api.expectAllAnswered());
 
 const DESKTOP = 1024;
+const STATS_NOW = new Date("2026-01-20T00:00:00Z");
 
 function isPhoneWidth(page: Page): boolean {
   return (page.viewportSize()?.width ?? 0) < DESKTOP;
@@ -29,10 +30,14 @@ for (const path of [
   "/content",
   "/blog/how-do-i-remove-a-trustline-on-stellar",
   "/blog/phase-1-launch",
+  "/stats",
 ]) {
   test(`${path} has no serious accessibility violations`, async ({ page }) => {
+    // A fixed date keeps the fixture's close inside the charts' windows on any day the scan runs.
+    if (path === "/stats") await page.clock.setFixedTime(STATS_NOW);
     await page.goto(path);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    if (path === "/stats") await expect(page.getByText(/\d+ active days/)).toBeVisible();
     await expectNoAxeViolations(page, path);
   });
 }

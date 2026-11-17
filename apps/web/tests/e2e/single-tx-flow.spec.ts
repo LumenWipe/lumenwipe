@@ -284,7 +284,7 @@ test("redesigned flow: non-convertible asset is returned to issuer, then merged 
   await expect(hash).toBeVisible();
   const shownHash = await hash.textContent();
   await page.reload();
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Account successfully merged");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Account closed");
   await expect(page.getByText(shownHash!, { exact: true })).toBeVisible();
   // Each "what was done" group shows its heading and keeps its details closed until opened.
   const assetsHandled = page.getByRole("button", { name: /^Assets handled/ });

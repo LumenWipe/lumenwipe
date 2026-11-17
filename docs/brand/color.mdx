@@ -21,7 +21,7 @@ The examples below are taken from the current product. A "do not" names a place 
 
 **Do.** The primary variant of `Button` is a solid cyan fill with `--accent-fg` text (`apps/web/components/ui/button.tsx`). Links and the focus ring are cyan for the same reason: they can be acted on.
 
-**Do not.** Set static text in cyan. The section label on the how it works page is cyan text that cannot be pressed (`apps/web/app/(marketing)/how-it-works/page.tsx`, the `Eyebrow` component), as are the labels on the content, blog, stats and API keys pages. A label is neutral, and the decorative rule before it uses `--line-strong`.
+**Do not.** Set static text in cyan. A section label cannot be pressed, so it is neutral on every page, and the decorative rule before it uses `--line-strong`. `apps/web/tests/unit/marketing-eyebrow.test.ts` fails on a cyan label or rule.
 
 ## Gold is recovered value only
 
@@ -45,7 +45,7 @@ The examples below are taken from the current product. A "do not" names a place 
 
 **Do.** In the execution sidebar, a step turns green with a check mark only once its transaction is confirmed (`apps/web/components/execution/PlanSidebar.tsx`).
 
-**Do not.** Mark something planned in green. On the plan screen, an asset set to be swapped to XLM still carries a green "Swap" badge, and the swap option a green "Recommended" tag, before anything has been signed or submitted (`apps/web/components/plan/AssetDispositionCard.tsx`, `apps/web/components/ui/decision-card.tsx`). Its swap arrow is already neutral; a planned conversion stays neutral until it is confirmed.
+**Do not.** Mark something planned in green. On the plan screen, nothing has been signed or submitted yet, so the "Swap" badge, the swap arrow and the "Recommended" tag are neutral (`apps/web/components/plan/AssetDispositionCard.tsx`, `apps/web/components/ui/decision-card.tsx`). A decision tag has no green tone at all; a planned conversion stays neutral until it is confirmed.
 
 ## Text on the marketing pages
 
