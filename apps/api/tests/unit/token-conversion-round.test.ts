@@ -477,7 +477,7 @@ function account(balance: string, over: Partial<AccountState> = {}): AccountStat
     defiPositions: emptyDefiPositionsResult(ACCOUNT),
     defiPositionsWarnings: [],
     sorobanTokens: {
-      tokens: [{ contract: TOKEN, balance, symbol: "TKN", decimals: 7, sources: ["explorer"] }],
+      tokens: [{ contract: TOKEN, balance, symbol: "TKN", decimals: 7, sources: ["list"] }],
       unreadable: [],
       coverage: [],
       eventsScanned: null,

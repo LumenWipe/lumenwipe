@@ -1,17 +1,26 @@
 import { expect, test } from "bun:test";
 import {
+  Account,
+  Address,
+  Contract,
+  TransactionBuilder,
+  rpc as stellarRpc,
+  scValToNative,
+} from "@stellar/stellar-sdk";
+import {
   EVENTS_CHUNK_LEDGERS,
   discoverSorobanTokens,
   defaultSorobanTokensDeps,
 } from "@/lib/stellar/soroban-tokens";
-import { STELLAR_EXPERT_API_URL } from "@/config/networks";
+import { NETWORK_PASSPHRASES } from "@/config/networks";
+import { getRpcServer } from "@/lib/stellar/rpc";
 
-// Live, read-only, against the public explorer and RPC of each network: no account of ours, no
-// transaction, no funds. Opt-in like every integration test: `bun run test:integration`.
+// Live, read-only, against the public RPC of each network: no account of ours, no transaction,
+// no funds. Opt-in like every integration test: `bun run test:integration`.
 const RUN_INTEGRATION = !!process.env.LUMENWIPE_RUN_INTEGRATION;
 
-// A mainnet holder of deJTRSY (Centrifuge), a Soroban-native token with no classic issuer, taken
-// from the token's holder list on stellar.expert. The balance is re-read from the ledger here.
+// A mainnet holder of deJTRSY (Centrifuge), a Soroban-native token with no classic issuer and an
+// entry in the bundled mainnet list. The balance is re-read from the ledger here.
 const MAINNET_HOLDER = "GBZVDYLAYVGQW6GVBUXROVXZO3AQXC6ZQRJYCNHVXU7NG26BJTHKFSIK";
 const DEJTRSY = "CBI7UCH5KGSVQRO5H4SUCZUTZABCITZLRHQQZTWL2TK4RZ72TAR6IHRV";
 // A testnet account of ours that has traded on the Soroswap testnet AMM.
@@ -20,26 +29,28 @@ const TESTNET_HOLDER = "GDGHXOVHOT5PWDAR3GZWZ6KUD2ZBFYCDWWJBUMMC4BEWGB3RD254NRKR
 // attempts of the suite-level retry in CI would otherwise fail the run.
 const LIVE_RPC_OPTIONS = { timeout: 60_000, retry: 2 };
 
-/** Whether the explorer still lists the token for the holder; a third party moving its funds is
- *  not a failure of the code under test, so the mainnet case steps aside rather than fail. */
-async function explorerListing(
-  holder: string,
-  contract: string
-): Promise<"listed" | "not_listed" | "unavailable"> {
-  const res = await fetch(`${STELLAR_EXPERT_API_URL}/explorer/public/account/${holder}/value`);
-  if (!res.ok) return "unavailable";
-  const body = (await res.json()) as { balances?: Array<{ asset?: string; balance?: string }> };
-  return (body.balances ?? []).some((b) => b.asset === contract && b.balance !== "0")
-    ? "listed"
-    : "not_listed";
+/** The holder's balance read straight from the ledger; a third party moving its funds is not a
+ *  failure of the code under test, so the mainnet case steps aside rather than fail. */
+async function ledgerBalance(holder: string, contract: string): Promise<bigint> {
+  const tx = new TransactionBuilder(new Account(holder, "0"), {
+    fee: "100",
+    networkPassphrase: NETWORK_PASSPHRASES.mainnet,
+  })
+    .addOperation(new Contract(contract).call("balance", new Address(holder).toScVal()))
+    .setTimeout(30)
+    .build();
+  const simulation = await getRpcServer("mainnet").simulateTransaction(tx);
+  if (!stellarRpc.Api.isSimulationSuccess(simulation) || !simulation.result) {
+    throw new Error("balance() did not answer on mainnet");
+  }
+  return scValToNative(simulation.result.retval) as bigint;
 }
 
 test.skipIf(!RUN_INTEGRATION)(
   "mainnet: a real Soroban-native holding is found through the live sources and confirmed on the ledger",
   async () => {
-    const listing = await explorerListing(MAINNET_HOLDER, DEJTRSY);
-    if (listing === "not_listed") {
-      console.warn("mainnet holder no longer holds deJTRSY per the explorer; pick another holder");
+    if ((await ledgerBalance(MAINNET_HOLDER, DEJTRSY)) === 0n) {
+      console.warn("mainnet holder no longer holds deJTRSY; pick another holder");
       return;
     }
     const result = await discoverSorobanTokens(
@@ -53,20 +64,13 @@ test.skipIf(!RUN_INTEGRATION)(
     // deJTRSY is an 18-decimal token; what matters is that the contract answered.
     expect(found!.decimals).toBe(18);
     expect(found!.symbol).toBe("deJTRSY");
-    // The explorer proposed it and the ledger confirmed it; the event scan covered a real window
-    // (the public mainnet RPC's processing cap may stop it early, which is reported, not hidden).
-    // An explorer that refuses the read (a non-ok answer) must show as a failed source, not vanish.
-    if (listing === "listed") {
-      expect(found!.sources).toContain("explorer");
-      expect(result.coverage.find((c) => c.source === "explorer")?.status).toBe("ok");
-    } else {
-      expect(found!.sources.length).toBeGreaterThan(0);
-      expect(found!.sources).not.toContain("explorer");
-      expect(result.coverage.find((c) => c.source === "explorer")).toMatchObject({
-        source: "explorer",
-        status: "failed",
-      });
-    }
+    // The bundled list proposed it and the ledger confirmed it; the event scan covered a real
+    // window (the public mainnet RPC's processing cap may stop it early, which is reported, not
+    // hidden). No source outside the lists, the positions, the events and the user is consulted.
+    expect(found!.sources).toContain("list");
+    expect(result.coverage.map((c): string => c.source).sort()).toEqual(
+      ["events", "list", "manual", "positions"].sort()
+    );
     expect(result.eventsScanned).not.toBeNull();
     expect(
       result.eventsScanned!.toLedger - result.eventsScanned!.fromLedger

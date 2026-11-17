@@ -2,7 +2,6 @@ export type UpstreamKind = "rpc" | "horizon" | "defi";
 
 /** Hosts the API calls without an endpoint variable. */
 const FIXED_HOSTS: Record<string, string> = {
-  "api.stellar.expert": "explorer",
   "stellarview.acachete.xyz": "explorer",
   "swap-api.xbull.io": "quotes",
 };

@@ -513,11 +513,6 @@ export const ENVIRONMENT: Record<EnvApp, Record<string, EnvironmentFacts>> = {
     FXDAO_EXIT_ENABLED: killSwitch("FxDAO exits"),
     PHOENIX_EXIT_ENABLED: killSwitch("Phoenix exits"),
     SOROSWAP_EXIT_ENABLED: killSwitch("Soroswap exits"),
-    STELLAR_EXPERT_API_URL: optional(
-      "stellar.expert API for Soroban token discovery; empty disables that source",
-      false,
-      "`https://api.stellar.expert`"
-    ),
     PHOENIX_TESTNET_TOKEN_ADMIN_SECRET: {
       required: "Tests only",
       secret: true,

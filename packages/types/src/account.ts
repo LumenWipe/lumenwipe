@@ -84,7 +84,9 @@ export type SponsoredEntry =
   | { kind: "signer"; owner: string; signerKey: string }
   | { kind: "claimable_balance"; balanceId: string };
 
-/** Where a Soroban token candidate came from before its balance was confirmed on the ledger. */
+/** Where a Soroban token candidate came from before its balance was confirmed on the ledger.
+ *  `"explorer"` is deprecated and no longer reported: the API stopped reading stellar.expert. It
+ *  stays in the union so code that matches on it keeps compiling. */
 export type SorobanTokenSource = "explorer" | "positions" | "list" | "events" | "manual";
 
 /** A SEP-41 token balance the account holds in a contract's storage - not a classic trustline. */
@@ -110,8 +112,8 @@ export interface SorobanTokenCoverage {
 
 /**
  * Soroban token balances the account holds directly. Soroban has no per-account token index, so
- * this is a best-effort union of candidate sources - an explorer, the tokens named by detected
- * positions, bundled lists, recent on-chain `transfer`/`mint` events, and contracts the user added
+ * this is a best-effort union of candidate sources - the tokens named by detected positions,
+ * bundled lists, recent on-chain `transfer`/`mint` events, and contracts the user added
  * by hand - each confirmed by reading `balance(account)` on the ledger. What could not be read is
  * listed, never dropped; classic assets' contracts are excluded (their balance is the trustline).
  */

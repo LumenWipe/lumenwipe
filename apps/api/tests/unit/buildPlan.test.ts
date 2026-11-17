@@ -653,7 +653,7 @@ test("buildPlan › token steps list every transfer by contract, then each conve
     balance: "10",
     symbol,
     decimals: 7,
-    sources: ["explorer" as const],
+    sources: ["list" as const],
   });
   const account = makeAccount({
     sorobanTokens: {

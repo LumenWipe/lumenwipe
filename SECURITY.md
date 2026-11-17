@@ -87,7 +87,7 @@ The following components are in scope for security reports:
 
 The following are not considered security vulnerabilities for this project:
 
-- Vulnerabilities in the Stellar protocol itself, Stellar RPC, or third-party data services (stellar.expert, OctoPos, Orion, Soroswap API) - report those to the respective projects
+- Vulnerabilities in the Stellar protocol itself, Stellar RPC, or third-party data services (OctoPos, Orion, Soroswap API) - report those to the respective projects
 - Phishing sites that impersonate LumenWipe - report these to us for awareness, but they are not code vulnerabilities
 - Denial of service against the API: it holds no user funds or user keys, so disrupting it affects availability, not custody. Draining the fee-bump sponsor or the mediator is in scope
 - Social engineering attacks

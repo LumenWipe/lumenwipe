@@ -48,7 +48,7 @@ function flaggedTokenAccount(address: string): AccountState {
           balance: "2500000000",
           symbol: "XTAR",
           decimals: 7,
-          sources: ["explorer"],
+          sources: ["list"],
         },
       ],
       unreadable: [],

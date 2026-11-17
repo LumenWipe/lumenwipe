@@ -272,6 +272,8 @@ export class ClaimableBalanceDto implements ClaimableBalance {
   sponsor!: string | null;
 }
 
+const EXPLORER_DEPRECATED = "`explorer` is deprecated and no longer reported.";
+
 const SOROBAN_TOKEN_SOURCES: SorobanTokenSource[] = [
   "explorer",
   "positions",
@@ -296,12 +298,12 @@ export class SorobanTokenBalanceDto implements SorobanTokenBalance {
   @ApiProperty({ type: "integer", nullable: true })
   decimals!: number | null;
 
-  @ApiProperty({ enum: SOROBAN_TOKEN_SOURCES, isArray: true })
+  @ApiProperty({ enum: SOROBAN_TOKEN_SOURCES, isArray: true, description: EXPLORER_DEPRECATED })
   sources!: SorobanTokenSource[];
 }
 
 export class SorobanTokenCoverageDto implements SorobanTokenCoverage {
-  @ApiProperty({ enum: SOROBAN_TOKEN_SOURCES })
+  @ApiProperty({ enum: SOROBAN_TOKEN_SOURCES, description: EXPLORER_DEPRECATED })
   source!: SorobanTokenSource;
 
   @ApiProperty({ enum: ["ok", "failed", "skipped"] })

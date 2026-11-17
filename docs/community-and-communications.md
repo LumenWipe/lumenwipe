@@ -47,7 +47,7 @@ Closing positions correctly depends on each DeFi protocol's contract interfaces,
 
 - The DeFi Position API provider, OctoPos, since the backend consumes it and the tool relies on accurate position detection.
 - The DeFi protocol teams whose positions the tool unwinds: Blend, Aquarius, Soroswap, Phoenix, and FxDAO (exit testnet only), to track contract upgrades and confirm exit interfaces. This is not theoretical: exactly this kind of check found that FxDAO's mainnet contract had stopped exposing its vault-management interface, months after the protocol itself had stopped operating - see [architecture.md §9.7](/architecture) for what was found and how.
-- Orbit Lens and the stellar.expert team, whose demolisher this project extends and whose API the tool reads for enumeration.
+- Orbit Lens and the stellar.expert team, whose demolisher this project extends.
 - The stellar-wallets-kit maintainers, for wallet integration and Soroban authorization-entry signing.
 
 ## 6. Maintenance after launch

@@ -63,7 +63,7 @@ test("a far-too-large xBull quote with no impact field is flagged and never reco
           balance: BALANCE.toString(),
           symbol: "USDC",
           decimals: 7,
-          sources: ["explorer" as const],
+          sources: ["list" as const],
         },
       ],
       unreadable: [],

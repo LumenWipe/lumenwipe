@@ -80,7 +80,7 @@ function accountState(...args: Parameters<typeof makeState>): AccountState {
 function withToken(balance: string, over: Partial<AccountState> = {}): AccountState {
   return accountState({
     sorobanTokens: {
-      tokens: [{ contract: TOKEN, balance, symbol: "XTAR", decimals: 7, sources: ["explorer"] }],
+      tokens: [{ contract: TOKEN, balance, symbol: "XTAR", decimals: 7, sources: ["list"] }],
       unreadable: [],
       coverage: [],
       eventsScanned: null,

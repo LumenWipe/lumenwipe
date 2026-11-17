@@ -189,10 +189,10 @@ run on that warning says nothing about the deployed list.
 ### Upstream metrics and dependency health
 
 The API counts `requests`, `rate_limited`, `timeouts`, `server_errors`, `failovers` and `unavailable` for each
-upstream (`rpc`, `horizon`, `paths`, `defi`, `explorer`) on each network. Every HTTP attempt counts, retries
+upstream (`rpc`, `horizon`, `paths`, `defi`) on each network. Every HTTP attempt counts, retries
 included, because each one spends quota. Soroswap and xBull quotes are not counted. Over RPC,
 `unavailable` is counted per attempt and again when a whole provider list is exhausted, so it is not comparable
-with the Horizon figure. An explorer connection failure with no status counts as a request only.
+with the Horizon figure.
 
 The counts are buffered in memory and written to Firestore at most once a minute while requests arrive, and once
 on SIGTERM, so they survive a restart and scale-to-zero. A crash loses at most the last minute. The write runs
@@ -209,7 +209,7 @@ row is a separate cached and coalesced probe: 60 seconds for RPC and Horizon, 30
 DeFi position provider, which spend third-party quota. Probes run only when the route is called. With a provider
 list, `degraded` means some of its providers answered. The body holds fixed values only, never a hostname, key or
 balance. Do not point a startup or liveness probe at it: `/health` stays dependency-free, and `/health/deep` stays
-the cheap RPC check. The explorer is counted but not probed.
+the cheap RPC check.
 
 Every access log line carries `upstreamCalls`, the attempts that request made per upstream, so the cost of an
 analyze and of each build round can be read from the logs.

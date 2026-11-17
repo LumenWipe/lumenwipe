@@ -308,9 +308,9 @@ describe("the exit round repays from the account's ledger-confirmed Soroban toke
     return {
       tokens: tokens.map((t) => ({ ...t, symbol: "USDx", decimals: 7, sources: ["positions"] })),
       unreadable,
-      // The explorer did not answer: the balance below is still the ledger's `balance()` read.
+      // The event scan did not answer: the balance below is still the ledger's `balance()` read.
       coverage: [
-        { source: "explorer", status: "failed" },
+        { source: "events", status: "failed" },
         { source: "positions", status: "ok" },
       ],
       eventsScanned: null,

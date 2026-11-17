@@ -91,9 +91,7 @@ function multisigEverything(over: Partial<AccountState> = {}): AccountState {
     numSubEntries: 4,
     defiPositions: { ...emptyDefiPositionsResult(SOURCE), positions: [position] },
     sorobanTokens: {
-      tokens: [
-        { contract: TOKEN, balance: "10", symbol: "XTAR", decimals: 7, sources: ["explorer"] },
-      ],
+      tokens: [{ contract: TOKEN, balance: "10", symbol: "XTAR", decimals: 7, sources: ["list"] }],
       unreadable: [],
       coverage: [],
       eventsScanned: null,

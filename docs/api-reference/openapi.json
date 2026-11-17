@@ -11068,6 +11068,7 @@
           },
           "sources": {
             "type": "array",
+            "description": "`explorer` is deprecated and no longer reported.",
             "items": {
               "type": "string",
               "enum": [
@@ -11099,7 +11100,8 @@
               "list",
               "events",
               "manual"
-            ]
+            ],
+            "description": "`explorer` is deprecated and no longer reported."
           },
           "status": {
             "type": "string",

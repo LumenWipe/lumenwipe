@@ -41,7 +41,7 @@ const en = {
     },
     network: {
       label: "Stellar network & data",
-      sub: "Stellar RPC · stellar.expert · Soroswap API",
+      sub: "Stellar RPC · Horizon · Soroswap API",
       note: "read · simulate · submit",
     },
   },

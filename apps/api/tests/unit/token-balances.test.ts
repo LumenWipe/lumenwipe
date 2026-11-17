@@ -155,7 +155,7 @@ function withSorobanTokens(
     sorobanTokens: {
       tokens: tokens.map((t) => ({ ...t, symbol: null, decimals: null, sources: ["positions"] })),
       unreadable,
-      coverage: [{ source: "explorer", status: "failed" }],
+      coverage: [{ source: "events", status: "failed" }],
       eventsScanned: null,
       warnings: [],
     },

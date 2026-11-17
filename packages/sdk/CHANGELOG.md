@@ -11,6 +11,12 @@ version number before 0.4.0. Neither has a git tag.
 
 ## [Unreleased]
 
+### Changed
+
+- `SorobanTokensResult.coverage` no longer has an `explorer` entry, and no `SorobanTokenBalance`
+  lists `explorer` in `sources`: the API stopped reading the stellar.expert explorer. The value
+  stays in `SorobanTokenSource`, deprecated, so code that matches on it keeps compiling.
+
 ## [0.12.0] - 2026-11-17
 
 ### Added
