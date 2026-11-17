@@ -55,13 +55,15 @@ export function configureApp(
   // external load balancer in front of the service would add a second entry and need 2.
   app.getHttpAdapter().getInstance().set("trust proxy", TRUSTED_PROXY_HOPS);
 
+  app.getHttpAdapter().getInstance().disable("x-powered-by");
+
   app.useLogger(logger);
 
   // First, ahead of the rate limiter, body parsing and authentication, so the limiter's own 429,
-  // a 401 and a body error all carry x-request-id. Also sets Cache-Control: no-store: every
-  // response is dynamic and non-cacheable (account state, plans, unsigned XDR, mediator
-  // co-signatures), success or error. Order: request context, legacy aliases, discovery links,
-  // rate limiter, filters, body parser, body-error mapping, body normalization, secret
+  // a 401 and a body error all carry x-request-id, HSTS and nosniff. Also sets Cache-Control:
+  // no-store: every response is dynamic and non-cacheable (account state, plans, unsigned XDR,
+  // mediator co-signatures), success or error. Order: request context, legacy aliases, discovery
+  // links, rate limiter, filters, body parser, body-error mapping, body normalization, secret
   // registration.
   app.use(requestContextMiddleware());
 
