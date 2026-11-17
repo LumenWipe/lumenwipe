@@ -54,7 +54,7 @@
     "pack:check": "bun scripts/pack-check.ts",
     "release:check": "bun ../../scripts/package-release.ts sdk offline",
     "type-check": "bun run --filter '@lumenwipe/verify' build && tsc --noEmit && tsc -p tests/tsconfig.json --noEmit && tsc -p examples/tsconfig.json --noEmit",
-    "lint": "eslint src examples scripts",
+    "lint": "eslint src examples scripts tests",
     "test": "bun run --filter '@lumenwipe/verify' build:js && bun test tests",
     "test:coverage": "bun run --filter '@lumenwipe/verify' build:js && bun test tests --coverage --coverage-reporter=text --coverage-reporter=lcov --coverage-dir=coverage",
     "coverage:gate": "bun ../../scripts/coverage-gate.ts",

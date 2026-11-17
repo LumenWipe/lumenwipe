@@ -8,15 +8,16 @@ import {
   listKeys,
 } from "@/lib/integrator/client";
 import { buildUpstreamRequest } from "@/lib/integrator/upstream";
+import { fakeFetch } from "./fixtures/fetch";
 
 const realFetch = globalThis.fetch;
 
 function stubFetch(status: number, body: unknown): { calls: { url: string; init: RequestInit }[] } {
   const calls: { url: string; init: RequestInit }[] = [];
-  globalThis.fetch = (async (url: string, init: RequestInit) => {
-    calls.push({ url, init });
+  globalThis.fetch = fakeFetch(async (url, init) => {
+    calls.push({ url, init: init ?? {} });
     return new Response(JSON.stringify(body), { status });
-  }) as unknown as typeof fetch;
+  });
   return { calls };
 }
 
@@ -69,7 +70,7 @@ describe("integrator client", () => {
       ["/api/integrator/auth/session", "GET"],
       ["/api/integrator/auth/session", "POST"],
     ]);
-    globalThis.fetch = (async () => new Response(null, { status: 204 })) as unknown as typeof fetch;
+    globalThis.fetch = fakeFetch(async () => new Response(null, { status: 204 }));
     expect(await endSession()).toBeUndefined();
   });
 
@@ -106,9 +107,9 @@ describe("integrator client", () => {
   });
 
   test("reports a network failure in plain language", async () => {
-    globalThis.fetch = (async () => {
+    globalThis.fetch = fakeFetch(async () => {
       throw new TypeError("fetch failed");
-    }) as unknown as typeof fetch;
+    });
     const error = await listKeys().catch((e: unknown) => e);
     expect((error as IntegratorRequestError).message).toContain("Could not reach LumenWipe");
   });

@@ -10,6 +10,7 @@ import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import type { AccountState } from "@/types/account";
 import type { PlanResponse } from "@/types/close-api";
+import { fakeFetch } from "./fixtures/fetch";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 
 /** The radios of the claim cards: the destination's memo type choice is on the page too. */
@@ -66,7 +67,7 @@ function planWith(options: unknown, currentlyClaimable = false): PlanResponse {
 
 const FORFEIT_ONLY = [{ id: "forfeit", note: FORFEIT_NOTE }];
 
-const account = {
+const account: AccountState = {
   address: SOURCE,
   network: "testnet",
   sequence: "1",
@@ -89,7 +90,7 @@ const account = {
   subEntryMismatch: false,
   defiPositions: emptyDefiPositionsResult(SOURCE),
   defiPositionsWarnings: [],
-} as unknown as AccountState;
+};
 
 async function mountView(plan: PlanResponse): Promise<void> {
   await act(async () => {
@@ -200,15 +201,16 @@ test("a restored answer the latest plan does not offer is asked again", async ()
   };
   window.sessionStorage.setItem(`lumenwipe:decisions:testnet:${SOURCE}`, JSON.stringify(snapshot));
   const plans: string[] = [];
-  spyOn(globalThis, "fetch").mockImplementation((async (input: unknown, init?: RequestInit) => {
-    const url = String(input);
-    if (url.includes("/close/plan")) {
-      plans.push(String(init?.body));
-      return Response.json(planWith(FORFEIT_ONLY));
-    }
-    if (url.includes("/account/")) return Response.json(account);
-    return Response.json({});
-  }) as unknown as typeof fetch);
+  spyOn(globalThis, "fetch").mockImplementation(
+    fakeFetch(async (url, init) => {
+      if (url.includes("/close/plan")) {
+        plans.push(String(init?.body));
+        return Response.json(planWith(FORFEIT_ONLY));
+      }
+      if (url.includes("/account/")) return Response.json(account);
+      return Response.json({});
+    })
+  );
   const params = Object.assign(Promise.resolve({ network: "testnet" as const }), {
     status: "fulfilled",
     value: { network: "testnet" as const },

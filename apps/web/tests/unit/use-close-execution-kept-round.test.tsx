@@ -19,6 +19,8 @@ import {
 } from "@/lib/utils/user-error";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
+import type { StepType } from "@/types/plan";
+import { closeTransaction } from "./fixtures/close-transactions";
 import { installIndexedDb, removeIndexedDb } from "./fixtures/indexed-db";
 
 // A 2-of-3 account: the master key signs first and the round pauses at weight 1 of 2. The tests
@@ -131,12 +133,11 @@ interface Setup {
   submitted: string[];
 }
 
-function setup(transactions?: { id: string; xdr: string; covers: string[] }[]): Setup {
+function setup(transactions?: { id: string; xdr: string; covers: StepType[] }[]): Setup {
   const xdr = mergeXdr();
-  const txs = (transactions ?? [{ id: "t0", xdr, covers: ["MERGE"] }]).map((tx, order) => ({
-    ...tx,
-    order,
-  }));
+  const txs = (transactions ?? [{ id: "t0", xdr, covers: ["MERGE"] }]).map((tx, order) =>
+    closeTransaction({ ...tx, order })
+  );
   useNetworkStore.setState({ network: "testnet" });
   useDemolishStore.setState({
     sourceAddress: SOURCE,
@@ -149,7 +150,7 @@ function setup(transactions?: { id: string; xdr: string; covers: string[] }[]): 
     executionPlan: txs.map((tx, i) => planStep(i, tx.covers[0])),
   } as never);
   let fetches = 0;
-  spyOn(closeClient, "fetchCloseTransactions").mockImplementation((async () => {
+  spyOn(closeClient, "fetchCloseTransactions").mockImplementation(async () => {
     fetches++;
     return {
       planHash: "h",
@@ -157,12 +158,12 @@ function setup(transactions?: { id: string; xdr: string; covers: string[] }[]): 
       transactions: txs,
       remaining: { steps: 0, requiresAnotherCall: false },
     };
-  }) as unknown as typeof closeClient.fetchCloseTransactions);
+  });
   const submitted: string[] = [];
-  spyOn(submitViaApiModule, "submitViaApi").mockImplementation((async (sent: string) => {
+  spyOn(submitViaApiModule, "submitViaApi").mockImplementation(async (sent) => {
     submitted.push(sent);
     return { ledger: 0, txHash: submissionHash(sent, PASSPHRASE) };
-  }) as unknown as typeof submitViaApiModule.submitViaApi);
+  });
   return { xdr: txs[0].xdr, fetches: () => fetches, submitted };
 }
 

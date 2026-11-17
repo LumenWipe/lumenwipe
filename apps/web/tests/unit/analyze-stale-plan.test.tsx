@@ -5,7 +5,10 @@ import * as navigation from "next/navigation";
 import AnalyzePage from "@/app/(app)/[network]/analyze/page";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
-import { freshAccount, freshPlan } from "./fixtures/fresh-plan";
+import { fakeFetch } from "./fixtures/fetch";
+import { freshPlan } from "./fixtures/fresh-plan";
+import { freshAccount } from "./fixtures/account";
+import { fakeRouter, searchParams } from "./fixtures/navigation";
 
 const SOURCE = Keypair.random().publicKey();
 const STALE = "The plan below may not reflect your last answer";
@@ -15,20 +18,23 @@ function settled<T>(value: T): Promise<T> {
 }
 
 /** Answers every account read, and each plan request with the next of `plans`. */
-function stubFetch(plans: Array<() => Response>): { planCalls: () => number } {
+type Answer = () => Response | Promise<Response>;
+
+function stubFetch(plans: Answer[]): { planCalls: () => number } {
   let calls = 0;
-  spyOn(globalThis, "fetch").mockImplementation((async (input: string | URL | Request) => {
-    const url = String(input);
-    if (url.includes("/close/plan")) {
-      const next = plans[Math.min(calls, plans.length - 1)]!;
-      calls++;
-      return next();
-    }
-    if (url.includes("/account/")) {
-      return Response.json(freshAccount(SOURCE));
-    }
-    return Response.json({});
-  }) as unknown as typeof fetch);
+  spyOn(globalThis, "fetch").mockImplementation(
+    fakeFetch(async (url) => {
+      if (url.includes("/close/plan")) {
+        const next = plans[Math.min(calls, plans.length - 1)]!;
+        calls++;
+        return next();
+      }
+      if (url.includes("/account/")) {
+        return Response.json(freshAccount(SOURCE));
+      }
+      return Response.json({});
+    })
+  );
   return { planCalls: () => calls };
 }
 
@@ -44,7 +50,7 @@ function reasons(): string {
   return screen.getByRole("list", { name: "Before you can review" }).textContent ?? "";
 }
 
-async function analyzeThenReplan(plans: Array<() => Response>) {
+async function analyzeThenReplan(plans: Answer[]) {
   const fetched = stubFetch(plans);
   await act(async () => {
     render(<AnalyzePage params={settled({ network: "testnet" as const })} />);
@@ -60,14 +66,9 @@ async function analyzeThenReplan(plans: Array<() => Response>) {
 beforeEach(() => {
   useNetworkStore.setState({ network: "testnet" });
   useDemolishStore.getState().reset();
-  const params = new URLSearchParams(`source=${SOURCE}`);
-  spyOn(navigation, "useRouter").mockImplementation(
-    () =>
-      ({ push: () => {}, replace: () => {} }) as unknown as ReturnType<typeof navigation.useRouter>
-  );
-  spyOn(navigation, "useSearchParams").mockImplementation(
-    () => params as unknown as ReturnType<typeof navigation.useSearchParams>
-  );
+  const params = searchParams(`source=${SOURCE}`);
+  spyOn(navigation, "useRouter").mockImplementation(() => fakeRouter());
+  spyOn(navigation, "useSearchParams").mockImplementation(() => params);
 });
 
 afterEach(() => mock.restore());
@@ -116,7 +117,7 @@ test("a first load that works shows no stale banner", async () => {
 });
 
 test("Retry is held while the plan it asked for is being fetched", async () => {
-  const pending = () => new Promise<Response>(() => {}) as unknown as Response;
+  const pending = () => new Promise<Response>(() => {});
   await analyzeThenReplan([ok, down, pending]);
   await screen.findByTestId("stale-plan");
 
@@ -128,7 +129,7 @@ test("Retry is held while the plan it asked for is being fetched", async () => {
 });
 
 test("Retry is held while a refresh of the account runs", async () => {
-  const pending = () => new Promise<Response>(() => {}) as unknown as Response;
+  const pending = () => new Promise<Response>(() => {});
   await analyzeThenReplan([ok, down, pending]);
   await screen.findByTestId("stale-plan");
 

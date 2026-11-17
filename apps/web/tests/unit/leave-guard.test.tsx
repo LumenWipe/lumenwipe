@@ -23,7 +23,10 @@ import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import type { PlannedStep, StepStatus, StepType } from "@/types/plan";
 import { RECORD_VERSION } from "@/types/session";
+import { closeExecution as closeExecutionState } from "./fixtures/close-execution";
 import { installIndexedDb, removeIndexedDb } from "./fixtures/indexed-db";
+import { fakeRouter } from "./fixtures/navigation";
+import { walletConnection } from "./fixtures/wallet-connection";
 
 const SOURCE = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -52,41 +55,19 @@ let calls: string[] = [];
 
 function stubRouter(): void {
   calls = [];
-  const router = {
-    push: (path: string) => calls.push(`push ${path}`),
-    replace: (path: string) => calls.push(`replace ${path}`),
-  } as unknown as ReturnType<typeof navigation.useRouter>;
+  const router = fakeRouter({
+    push: (path) => calls.push(`push ${path}`),
+    replace: (path) => calls.push(`replace ${path}`),
+  });
   spyOn(navigation, "useRouter").mockImplementation(() => router);
 }
 
 function stubExecution(): void {
-  spyOn(closeExecution, "useCloseExecution").mockImplementation(
-    () =>
-      ({
-        run: async () => {},
-        progress: null,
-        signatureStatus: null,
-        submitPreAuthTransaction: async () => {},
-        checkUnconfirmed: async () => {},
-        retrySafe: null,
-        stillUnconfirmed: false,
-      }) as unknown as ReturnType<typeof closeExecution.useCloseExecution>
+  spyOn(closeExecution, "useCloseExecution").mockImplementation(() =>
+    closeExecutionState({ retrySafe: null })
   );
-  spyOn(walletKit, "useWalletKitConnection").mockImplementation(
-    () =>
-      ({
-        address: null,
-        connecting: false,
-        error: null,
-        status: "connected",
-        checking: false,
-        network: "yes",
-        networkConfirmed: false,
-        confirmNetwork: () => {},
-        verified: true,
-        connect: async () => {},
-        disconnect: async () => {},
-      }) as unknown as ReturnType<typeof walletKit.useWalletKitConnection>
+  spyOn(walletKit, "useWalletKitConnection").mockImplementation(() =>
+    walletConnection({ status: "connected", network: "yes", verified: true })
   );
 }
 

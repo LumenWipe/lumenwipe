@@ -12,6 +12,7 @@ import { randomBytes } from "node:crypto";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { NextRequest } from "next/server";
+import { fakeFetch } from "./fixtures/fetch";
 
 const API_DIR = join(import.meta.dir, "../../app/api");
 const UPSTREAM = "https://upstream.invalid";
@@ -78,10 +79,12 @@ beforeAll(() => {
     process.env[key] = value;
   }
   // Every caller is far over every bucket.
-  fetchSpy = spyOn(globalThis, "fetch").mockImplementation((async (input: unknown) => {
-    if (originOf(input) === LIMITER) return Response.json([{ result: 100_000 }, { result: 1 }]);
-    return Response.json({});
-  }) as unknown as typeof globalThis.fetch);
+  fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
+    fakeFetch((url) => {
+      if (originOf(url) === LIMITER) return Response.json([{ result: 100_000 }, { result: 1 }]);
+      return Response.json({});
+    })
+  );
   setSystemTime(NOW);
 });
 

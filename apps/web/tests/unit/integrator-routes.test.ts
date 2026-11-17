@@ -7,6 +7,7 @@ import * as sessionRoute from "@/app/api/integrator/auth/session/route";
 import * as keysRoute from "@/app/api/integrator/keys/route";
 import * as rotateRoute from "@/app/api/integrator/keys/[id]/rotate/route";
 import { SESSION_COOKIE } from "@/lib/integrator/session-cookie";
+import { fakeFetch } from "./fixtures/fetch";
 
 const SITE = "https://www.lumenwipe.com";
 const APP_URL = "https://app.lumenwipe.test";
@@ -102,12 +103,14 @@ beforeAll(() => {
     saved.set(key, process.env[key]);
     process.env[key] = value;
   }
-  fetchSpy = spyOn(globalThis, "fetch").mockImplementation((async (input: unknown) => {
-    if (originOf(input) === new URL(LIMITER).origin) {
-      return Response.json([{ result: limiterCount }, { result: 1 }]);
-    }
-    return Response.json(upstream.body, { status: upstream.status });
-  }) as unknown as typeof globalThis.fetch);
+  fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
+    fakeFetch(async (url) => {
+      if (originOf(url) === new URL(LIMITER).origin) {
+        return Response.json([{ result: limiterCount }, { result: 1 }]);
+      }
+      return Response.json(upstream.body, { status: upstream.status });
+    })
+  );
 });
 
 beforeEach(() => {

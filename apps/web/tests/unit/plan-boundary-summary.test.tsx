@@ -7,7 +7,9 @@ import * as navigation from "next/navigation";
 import PlanView from "@/components/plan/PlanView";
 import { useDemolishStore } from "@/store/demolish";
 import type { AccountState } from "@/types/account";
+import { fakeFetch } from "./fixtures/fetch";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { fakeRouter, searchParams } from "./fixtures/navigation";
 
 const SOURCE = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -38,27 +40,24 @@ function account(): AccountState {
 }
 
 function stubFetch(plan: () => Response): void {
-  spyOn(globalThis, "fetch").mockImplementation((async (input: string | URL | Request) => {
-    const url = String(input);
-    if (url.includes("/close/plan")) return plan();
-    if (url.includes("/mediator/check/")) {
-      return Response.json({ requiresMediator: false, available: true });
-    }
-    if (url.includes("/account/")) return Response.json(account());
-    return Response.json({});
-  }) as unknown as typeof fetch);
+  spyOn(globalThis, "fetch").mockImplementation(
+    fakeFetch(async (url) => {
+      if (url.includes("/close/plan")) return plan();
+      if (url.includes("/mediator/check/")) {
+        return Response.json({ requiresMediator: false, available: true });
+      }
+      if (url.includes("/account/")) return Response.json(account());
+      return Response.json({});
+    })
+  );
 }
 
 beforeEach(() => {
   useDemolishStore.getState().reset();
-  const router = { push: () => {}, replace: () => {} };
-  const params = new URLSearchParams(`source=${SOURCE}`);
-  spyOn(navigation, "useRouter").mockImplementation(
-    () => router as unknown as ReturnType<typeof navigation.useRouter>
-  );
-  spyOn(navigation, "useSearchParams").mockImplementation(
-    () => params as unknown as ReturnType<typeof navigation.useSearchParams>
-  );
+  const router = fakeRouter();
+  const params = searchParams(`source=${SOURCE}`);
+  spyOn(navigation, "useRouter").mockImplementation(() => router);
+  spyOn(navigation, "useSearchParams").mockImplementation(() => params);
 });
 
 afterEach(() => {

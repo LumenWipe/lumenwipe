@@ -22,6 +22,8 @@ import { NO_MERGE_CONFIRMED } from "@/lib/utils/user-error";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import type { AccountSigner } from "@/types/account";
+import type { StepType } from "@/types/plan";
+import { closeTransaction } from "./fixtures/close-transactions";
 import { installIndexedDb, removeIndexedDb } from "./fixtures/indexed-db";
 
 const master = Keypair.random();
@@ -78,19 +80,18 @@ function setup(
   ops: xdr.Operation[],
   signers: AccountSigner[],
   high: number,
-  covers = ["NORMALIZE_SIGNERS"]
+  covers: StepType[] = ["NORMALIZE_SIGNERS"]
 ) {
-  const submit = spyOn(submitViaApiModule, "submitViaApi").mockImplementation((async (
-    xdr: string
-  ) => ({
+  const submit = spyOn(submitViaApiModule, "submitViaApi").mockImplementation(async (xdr) => ({
+    ledger: 1,
     txHash: submissionHash(xdr, Networks.TESTNET),
-  })) as unknown as typeof submitViaApiModule.submitViaApi);
-  spyOn(closeClient, "fetchCloseTransactions").mockImplementation((async () => ({
+  }));
+  spyOn(closeClient, "fetchCloseTransactions").mockImplementation(async () => ({
     planHash: "h",
     status: "ready",
-    transactions: [{ id: "t0", order: 0, xdr: envelope(ops), covers }],
+    transactions: [closeTransaction({ id: "t0", order: 0, xdr: envelope(ops), covers })],
     remaining: { steps: 0, requiresAnotherCall: false },
-  })) as unknown as typeof closeClient.fetchCloseTransactions);
+  }));
   useDemolishStore.setState({
     accountState: { signers, thresholds: { low: high, med: high, high } },
   } as never);
@@ -145,7 +146,7 @@ test("a preimage is never attached to a claim round, whatever the round says it 
 
 test("a paused exit round refuses the preimage and stops instead of carrying it", async () => {
   const { submit, hook } = setup([CLAIM], [signerEntries.master!, signerEntries.hashX!], 3, [
-    "DEFI_EXIT",
+    "EXIT_POSITIONS",
   ]);
   await runWith(hook, keySigner(master));
   expect(hook.current.signatureStatus?.accumulatedWeight).toBe(1);

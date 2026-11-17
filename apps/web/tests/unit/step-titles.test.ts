@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Metadata } from "next";
+import { createElement } from "react";
 import AnalyzeLayout, { metadata as analyze } from "@/app/(app)/[network]/analyze/layout";
 import CompleteLayout, { metadata as complete } from "@/app/(app)/[network]/complete/layout";
 import ExecuteLayout, { metadata as execute } from "@/app/(app)/[network]/execute/layout";
@@ -23,7 +24,7 @@ describe("close step titles", () => {
   });
 
   test.each(STEPS)("%s renders its page unchanged", (_step, layout) => {
-    const page = { page: true } as unknown as React.ReactNode;
+    const page = createElement("main");
     expect(layout({ children: page })).toBe(page);
   });
 

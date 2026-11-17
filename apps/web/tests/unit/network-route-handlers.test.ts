@@ -15,6 +15,7 @@ import { NextRequest, type NextResponse } from "next/server";
 import { Keypair } from "@stellar/stellar-sdk";
 import { LumenWipeInvalidNetworkError, type Network } from "@lumenwipe/sdk";
 import { proxyErrorResponse } from "@/lib/api/proxy-error";
+import { fakeFetch } from "./fixtures/fetch";
 
 const API_DIR = join(import.meta.dir, "../../app/api");
 const UPSTREAM = "https://upstream.invalid";
@@ -121,10 +122,12 @@ beforeAll(() => {
     saved.set(key, process.env[key]);
     process.env[key] = value;
   }
-  fetchSpy = spyOn(globalThis, "fetch").mockImplementation((async (input: unknown) => {
-    const pipeline = originOf(input) === LIMITER;
-    return Response.json(pipeline ? [{ result: 1 }, { result: 1 }] : {});
-  }) as unknown as typeof globalThis.fetch);
+  fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
+    fakeFetch((url) => {
+      const pipeline = originOf(url) === LIMITER;
+      return Response.json(pipeline ? [{ result: 1 }, { result: 1 }] : {});
+    })
+  );
 });
 
 beforeEach(() => fetchSpy.mockClear());
@@ -169,10 +172,12 @@ describe("route handlers while the rate limiter is unreachable", () => {
 
   beforeEach(() => {
     const forward = fetchSpy.getMockImplementation() as typeof globalThis.fetch;
-    fetchSpy.mockImplementation((async (input: unknown, init?: RequestInit) => {
-      if (originOf(input) === LIMITER) throw new TypeError("fetch failed");
-      return forward(input as RequestInfo, init);
-    }) as unknown as typeof globalThis.fetch);
+    fetchSpy.mockImplementation(
+      fakeFetch((url, init) => {
+        if (originOf(url) === LIMITER) throw new TypeError("fetch failed");
+        return forward(url, init);
+      })
+    );
     const quiet = spyOn(console, "error").mockImplementation(() => {});
     restore = () => {
       fetchSpy.mockImplementation(forward as never);

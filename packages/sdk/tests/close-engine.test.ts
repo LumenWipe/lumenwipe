@@ -8,9 +8,10 @@ import {
   STATE_CHANGED_REFETCH_DELAY_MS,
 } from "../src/close-engine";
 import type { CloseTransaction, TransactionsResponse } from "@lumenwipe/types";
+import { closeTransaction } from "./support/fixtures";
 
 function tx(order: number, id = `tx${order}`): CloseTransaction {
-  return { id, order, xdr: `xdr-${id}` } as unknown as CloseTransaction;
+  return closeTransaction({ id, order, xdr: `xdr-${id}` });
 }
 
 function resp(

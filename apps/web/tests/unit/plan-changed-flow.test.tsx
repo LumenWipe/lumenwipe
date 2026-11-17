@@ -9,6 +9,7 @@ import { useDemolishStore } from "@/store/demolish";
 import * as recovery from "@/lib/session/recovery";
 import type { SessionRecord } from "@/types/session";
 import type { PlannedStep } from "@/types/plan";
+import { fakeRouter } from "./fixtures/navigation";
 
 const SOURCE = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -32,13 +33,11 @@ function settled<T>(value: T): Promise<T> {
 
 function stubRouter() {
   const calls: string[] = [];
-  const router = {
-    push: (path: string) => calls.push(`push ${path}`),
-    replace: (path: string) => calls.push(`replace ${path}`),
-  };
-  spyOn(navigation, "useRouter").mockImplementation(
-    () => router as unknown as ReturnType<typeof navigation.useRouter>
-  );
+  const router = fakeRouter({
+    push: (path) => calls.push(`push ${path}`),
+    replace: (path) => calls.push(`replace ${path}`),
+  });
+  spyOn(navigation, "useRouter").mockImplementation(() => router);
   return calls;
 }
 

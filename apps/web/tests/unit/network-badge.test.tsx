@@ -4,14 +4,12 @@ import * as navigation from "next/navigation";
 import { LeaveGuardProvider } from "@/components/layout/LeaveGuard";
 import NavBar from "@/components/layout/NavBar";
 import NetworkBadge from "@/components/layout/NetworkBadge";
+import { fakeRouter } from "./fixtures/navigation";
 
 afterEach(() => mock.restore());
 
 test("the nav names the network at every width: its badge carries no display rule", () => {
-  spyOn(navigation, "useRouter").mockImplementation(
-    () =>
-      ({ push: () => {}, replace: () => {} }) as unknown as ReturnType<typeof navigation.useRouter>
-  );
+  spyOn(navigation, "useRouter").mockImplementation(() => fakeRouter());
   render(
     <LeaveGuardProvider>
       <NavBar network="mainnet" />

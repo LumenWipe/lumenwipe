@@ -55,13 +55,19 @@ function StoreBackedAssetCard(): ReactElement {
 function StoreBackedTokenCard(): ReactElement {
   const stored = useDemolishStore((s) => s.transferDestinations[ASSET]);
   const setTransferDestination = useDemolishStore((s) => s.setTransferDestination);
-  const item = {
+  const item: AssetConvertibility = {
     asset: ASSET,
     code: "USDC",
     balance: "5",
     convertible: false,
-    token: { contract: "CTOKEN", decimals: 7 },
-  } as unknown as AssetConvertibility;
+    token: {
+      contract: "CTOKEN",
+      symbol: "USDC",
+      decimals: 7,
+      rawBalance: "50000000",
+      arrivesFromExit: false,
+    },
+  };
   return (
     <TokenDispositionCard
       network="mainnet"

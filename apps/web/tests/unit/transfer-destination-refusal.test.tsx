@@ -25,13 +25,19 @@ const classic: AssetConvertibility = {
   balance: "5",
   convertible: true,
 } as AssetConvertibility;
-const token = {
+const token: AssetConvertibility = {
   asset: TOKEN,
   code: "TKN",
   balance: "5",
   convertible: false,
-  token: { contract: TOKEN, decimals: 7 },
-} as unknown as AssetConvertibility;
+  token: {
+    contract: TOKEN,
+    symbol: "TKN",
+    decimals: 7,
+    rawBalance: "50000000",
+    arrivesFromExit: false,
+  },
+};
 
 function assetCard(destination: string | undefined, merge: string | null) {
   return (

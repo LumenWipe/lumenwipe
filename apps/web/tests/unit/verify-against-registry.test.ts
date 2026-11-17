@@ -22,6 +22,10 @@ import type { AccountState } from "@/types/account";
 import type { IntentOperation, TxIntent } from "@/types/close-api";
 import { assertCloseIntent, type CloseExpectation } from "@/lib/stellar/verify";
 import embeddedRegistry from "@registry/contract-registry.json";
+import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { freshAccount } from "./fixtures/account";
+import { sorobanTokensOf } from "./fixtures/soroban-tokens";
+import { authorizationOf } from "./fixtures/trustline";
 import { exitExpectations } from "@/lib/stellar/exit-expectations";
 import { isContractRegistryUsable } from "@/lib/contract-registry";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
@@ -45,11 +49,7 @@ const PHOENIX_STAKE = "CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP"
 const FXDAO_VAULT = "CBUZ5NJKA5PRS4TBPHWMN4JGGRVIOQOKI4JUYLA2IXS3BEJKQKEWFW7D";
 
 function accountWith(positions: AccountState["defiPositions"]["positions"]): AccountState {
-  return {
-    address: SRC,
-    trustlines: [],
-    defiPositions: { positions },
-  } as unknown as AccountState;
+  return freshAccount(SRC, { defiPositions: { ...emptyDefiPositionsResult(SRC), positions } });
 }
 
 /** Assembled the way `useCloseExecution` does: the fixed half by hand, the exit half from the
@@ -93,7 +93,9 @@ function exitOnly(op: IntentOperation): TxIntent {
 /** `submit(from, spender, to, requests)` as the decoder renders it. */
 const submitArgs = (...requests: object[]): string[] => [SRC, SRC, SRC, JSON.stringify(requests)];
 
-function call(contract: string, fn: string, referenced: string[] = []): IntentOperation {
+type InvokeOperation = Extract<IntentOperation, { type: "invoke_host_function" }>;
+
+function call(contract: string, fn: string, referenced: string[] = []): InvokeOperation {
   return {
     source: SRC,
     type: "invoke_host_function",
@@ -106,7 +108,7 @@ function call(contract: string, fn: string, referenced: string[] = []): IntentOp
     authorizesBeyondSelf: false,
     authDepth: 0,
     subInvocations: [],
-  } as unknown as IntentOperation;
+  };
 }
 
 test("the registry is usable, or every expectation below would be empty and prove nothing", () => {
@@ -357,7 +359,7 @@ describe("xBull's router, derived from the real registry (mainnet, the only netw
       authorizesBeyondSelf: false,
       authDepth: 0,
       subInvocations: [],
-    } as unknown as IntentOperation;
+    };
     expect(() => assertCloseIntent(exitOnly(swap), xbullExpectation())).not.toThrow();
     const toUsdcAgain = { ...swap, args: [SRC, SRC, "100000000", "1", "[[4,25,1112,25]]", "[]"] };
     expect(() =>
@@ -409,21 +411,21 @@ describe("mainnet exits through every live pool the registry lists, not only its
     positions: AccountState["defiPositions"]["positions"],
     sorobanTokens: Array<{ contract: string; balance: string }> = []
   ): AccountState {
-    return {
-      address: SRC,
+    return freshAccount(SRC, {
       trustlines: [
         {
           asset: `USDC:${USDC_ISSUER}`,
           code: "USDC",
           issuer: USDC_ISSUER,
           balance: "5",
-          isAuthorized: true,
-          isAuthorizedToMaintainLiabilities: false,
+          ...authorizationOf(true),
         },
       ],
-      sorobanTokens: { tokens: sorobanTokens },
-      defiPositions: { positions },
-    } as unknown as AccountState;
+      sorobanTokens: sorobanTokensOf(
+        sorobanTokens.map((t) => ({ ...t, symbol: null, decimals: null, sources: [] }))
+      ),
+      defiPositions: { ...emptyDefiPositionsResult(SRC, "mainnet"), positions },
+    });
   }
 
   const mainnetExpectation = (account: AccountState): CloseExpectation =>
@@ -450,7 +452,7 @@ describe("mainnet exits through every live pool the registry lists, not only its
     ] as AccountState["defiPositions"]["positions"];
   }
 
-  function repayAndWithdraw(pool: string, repaid: string): IntentOperation {
+  function repayAndWithdraw(pool: string, repaid: string): InvokeOperation {
     return {
       ...call(pool, "submit", [repaid, XLM]),
       args: submitArgs(
@@ -458,7 +460,7 @@ describe("mainnet exits through every live pool the registry lists, not only its
         { address: XLM, amount: "1", request_type: 3 }
       ),
       subInvocations: [{ contract: repaid, function: "transfer", args: [SRC, pool, "1000"] }],
-    } as unknown as IntentOperation;
+    };
   }
 
   test("a Blend repay and withdraw that pays USDC into YieldBlox V2 passes", () => {
@@ -509,7 +511,7 @@ describe("mainnet exits through every live pool the registry lists, not only its
       ] as AccountState["defiPositions"]["positions"],
       [{ contract: PHOENIX_XLM_USDC_SHARE, balance: "1000" }]
     );
-    const withdraw = {
+    const withdraw: InvokeOperation = {
       ...call(PHOENIX_XLM_USDC, "withdraw_liquidity", [PHOENIX_XLM_USDC_SHARE]),
       subInvocations: [
         {
@@ -518,7 +520,7 @@ describe("mainnet exits through every live pool the registry lists, not only its
           args: [SRC, PHOENIX_XLM_USDC, "1000"],
         },
       ],
-    } as unknown as IntentOperation;
+    };
     expect(() => assertCloseIntent(exitOnly(withdraw), mainnetExpectation(account))).not.toThrow();
   });
 
@@ -560,10 +562,10 @@ describe("mainnet exits through every live pool the registry lists, not only its
         usdValue: null,
       },
     ] as AccountState["defiPositions"]["positions"]);
-    const withdraw = {
+    const withdraw: InvokeOperation = {
       ...call(AQUARIUS_UNLISTED_POOL, "withdraw", [AQUARIUS_SHARE]),
       subInvocations: [{ contract: AQUARIUS_SHARE, function: "burn", args: [SRC, "1000"] }],
-    } as unknown as IntentOperation;
+    };
     expect(mainnetExpectation(account).registryContracts).not.toContain(AQUARIUS_UNLISTED_POOL);
     expect(() => assertCloseIntent(exitOnly(withdraw), mainnetExpectation(account))).not.toThrow();
   });

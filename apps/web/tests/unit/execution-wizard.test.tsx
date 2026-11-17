@@ -23,7 +23,7 @@ import { useDemolishStore } from "@/store/demolish";
 import { InvalidPreAuthTxError } from "@/lib/stellar/pre-auth-tx";
 import * as navigation from "next/navigation";
 import * as closeExecution from "@/hooks/useCloseExecution";
-import type { PreAuthSubmission, RunOptions } from "@/hooks/useCloseExecution";
+import type { PreAuthSubmission, RunOptions, SignatureStatus } from "@/hooks/useCloseExecution";
 import * as walletKit from "@/hooks/useWalletKitConnection";
 import * as sessionStore from "@/lib/session/store";
 import { fromHex } from "@/lib/stellar/hex";
@@ -48,7 +48,10 @@ import * as walletKitClient from "@/lib/wallet-kit/client";
 import { VARIAL_ID } from "@/lib/wallet-kit/wallet-ids";
 import type { CloseProgress } from "@/lib/execution/progress";
 import { hashFingerprint, type SigningPrompt } from "@/lib/execution/signing-prompt";
+import { closeExecution as closeExecutionState } from "./fixtures/close-execution";
 import { expectFocused, expectFocusedNow, expectSameElement } from "./fixtures/focus";
+import { fakeRouter } from "./fixtures/navigation";
+import { walletConnection } from "./fixtures/wallet-connection";
 
 const WAITING_LINE = "Transaction 1 of 1: approve in your wallet";
 
@@ -62,9 +65,7 @@ const WAITING_LINE = "Transaction 1 of 1: approve in your wallet";
 // file ran first - Bun's file order differs between machines - so that file was testing this
 // stub instead of the hook.
 function stubRouter(): void {
-  spyOn(navigation, "useRouter").mockImplementation(
-    () => ({ push: () => {} }) as unknown as ReturnType<typeof navigation.useRouter>
-  );
+  spyOn(navigation, "useRouter").mockImplementation(() => fakeRouter());
 }
 
 // Mocks kept minimal and behavior-focused: this test exercises ExecutionWizard's own
@@ -77,22 +78,18 @@ let submitPreAuthTxImpl: (
   xdr: string
 ) => Promise<PreAuthSubmission>;
 function stubCloseExecution(): void {
-  spyOn(closeExecution, "useCloseExecution").mockImplementation(
-    () =>
-      ({
-        run: (signer: { publicKey: string } | null, options?: RunOptions) =>
-          runImpl(signer as { publicKey: string }, options),
-        progress: currentProgress,
-        signatureStatus: currentSignatureStatus,
-        signingPrompt: currentSigningPrompt,
-        submitPreAuthTransaction: (
-          signer: { key: string; weight: number; type: string },
-          xdr: string
-        ) => submitPreAuthTxImpl(signer, xdr),
-        checkUnconfirmed: () => checkImpl(),
-        retrySafe: currentRetrySafe,
-        stillUnconfirmed: currentStillUnconfirmed,
-      }) as unknown as ReturnType<typeof closeExecution.useCloseExecution>
+  spyOn(closeExecution, "useCloseExecution").mockImplementation(() =>
+    closeExecutionState({
+      run: (signer: { publicKey: string } | null, options?: RunOptions) =>
+        runImpl(signer as { publicKey: string }, options),
+      progress: currentProgress,
+      signatureStatus: currentSignatureStatus,
+      signingPrompt: currentSigningPrompt,
+      submitPreAuthTransaction: (signer, xdr) => submitPreAuthTxImpl(signer, xdr),
+      checkUnconfirmed: () => checkImpl(),
+      retrySafe: currentRetrySafe,
+      stillUnconfirmed: currentStillUnconfirmed,
+    })
   );
 }
 
@@ -104,34 +101,19 @@ let currentSigningPrompt: SigningPrompt | null = null;
 function progressAt(wait: CloseProgress["wait"]): CloseProgress {
   return { wait, position: { n: 1, total: 1, atLeast: false }, since: Date.now() };
 }
-let currentSignatureStatus: {
-  requiredWeight: number;
-  accumulatedWeight: number;
-  contributed: { key: string; weight: number; type: string }[];
-  remainingSigners: { key: string; weight: number; type: string }[];
-  notice?: string | null;
-} | null = null;
+let currentSignatureStatus: SignatureStatus | null = null;
 
 let currentWalletAddress: string | null = null;
 let currentWalletState: Partial<walletKit.WalletKitConnection> = {};
 function stubWalletKit(): void {
-  spyOn(walletKit, "useWalletKitConnection").mockImplementation(
-    () =>
-      ({
-        address: currentWalletAddress,
-        connecting: false,
-        error: null,
-        status: "connected",
-        checking: false,
-        network: "yes",
-        networkConfirmed: false,
-        confirmNetwork: () => {},
-        verified: true,
-        beforeSigning: () => async () => {},
-        connect: async () => {},
-        disconnect: async () => {},
-        ...currentWalletState,
-      }) as unknown as ReturnType<typeof walletKit.useWalletKitConnection>
+  spyOn(walletKit, "useWalletKitConnection").mockImplementation(() =>
+    walletConnection({
+      address: currentWalletAddress,
+      status: "connected",
+      network: "yes",
+      verified: true,
+      ...currentWalletState,
+    })
   );
   // The real walletKitSigner refuses until the kit's code has loaded, which no test here does: a
   // connected address stands for a loaded kit, so it gets a signer, the same one per address.
@@ -160,9 +142,7 @@ function stubWalletKit(): void {
 // module across ExecutionWizard's render tree, not just a direct call from this component.
 const mockSaveSession = mock(async (..._args: unknown[]) => {});
 function stubSessionStore(): void {
-  spyOn(sessionStore, "saveSession").mockImplementation(
-    mockSaveSession as unknown as typeof sessionStore.saveSession
-  );
+  spyOn(sessionStore, "saveSession").mockImplementation(mockSaveSession);
   spyOn(sessionStore, "loadSession").mockImplementation(async () => null);
   spyOn(sessionStore, "listSessions").mockImplementation(async () => []);
   spyOn(sessionStore, "deleteSession").mockImplementation(async () => {});
@@ -212,6 +192,7 @@ beforeEach(() => {
 
 test("execution-wizard › shows signing progress and remaining signers when weight is short", async () => {
   currentSignatureStatus = {
+    notice: null,
     requiredWeight: 2,
     accumulatedWeight: 1,
     contributed: [],
@@ -231,6 +212,7 @@ test("execution-wizard › shows signing progress and remaining signers when wei
 
 test("execution-wizard › connecting a second (co-signer) wallet enables and drives the Add signature CTA", async () => {
   currentSignatureStatus = {
+    notice: null,
     requiredWeight: 2,
     accumulatedWeight: 1,
     contributed: [],
@@ -285,6 +267,7 @@ test("execution-wizard › a hash(x) signer among remainingSigners renders its e
   const preimage = fromHex("deadbeef");
   const hashXKey = StrKey.encodeSha256Hash(hash(preimage));
   currentSignatureStatus = {
+    notice: null,
     requiredWeight: 2,
     accumulatedWeight: 1,
     contributed: [],
@@ -306,6 +289,7 @@ test("execution-wizard › a correct hash(x) preimage calls run() with a signer 
   const preimage = fromHex("deadbeef");
   const hashXKey = StrKey.encodeSha256Hash(hash(preimage));
   currentSignatureStatus = {
+    notice: null,
     requiredWeight: 2,
     accumulatedWeight: 1,
     contributed: [],
@@ -332,6 +316,7 @@ test("execution-wizard › a correct hash(x) preimage calls run() with a signer 
 test("execution-wizard › an incorrect hash(x) preimage shows an inline error and never calls run()", async () => {
   const hashXKey = StrKey.encodeSha256Hash(hash(fromHex("deadbeef")));
   currentSignatureStatus = {
+    notice: null,
     requiredWeight: 2,
     accumulatedWeight: 1,
     contributed: [],
@@ -452,6 +437,7 @@ test("execution-wizard › an unknown outcome shows the hash and a check, never 
 test("execution-wizard › a preauth_tx signer among remainingSigners renders its explanation, an XDR textarea, and the persistent warning", async () => {
   const preAuthKey = "TAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAJRY"; // any-shaped preauth key for display purposes
   currentSignatureStatus = {
+    notice: null,
     requiredWeight: 2,
     accumulatedWeight: 1,
     contributed: [],
@@ -501,6 +487,7 @@ function preAuthXdr(mergeTo: string): string {
 
 function pausedOnPreAuthSigner(): void {
   currentSignatureStatus = {
+    notice: null,
     requiredWeight: 2,
     accumulatedWeight: 1,
     contributed: [],
@@ -686,6 +673,7 @@ test("execution-wizard › a single-signer account gets no multisig notice", () 
 
 test("execution-wizard › the notice does not repeat once signing progress is on screen", () => {
   currentSignatureStatus = {
+    notice: null,
     requiredWeight: 2,
     accumulatedWeight: 1,
     contributed: [],
@@ -732,6 +720,7 @@ test("execution-wizard › announces progress through one status region and hide
 
 test("execution-wizard › announces that more signatures are needed", () => {
   currentSignatureStatus = {
+    notice: null,
     requiredWeight: 2,
     accumulatedWeight: 1,
     contributed: [],
@@ -1086,6 +1075,7 @@ test("execution-wizard › after a hash(x) round, the next Add signature uses th
   } as never);
   currentWalletAddress = cosigner;
   currentSignatureStatus = {
+    notice: null,
     requiredWeight: 3,
     accumulatedWeight: 1,
     contributed: [{ key: source, weight: 1, type: "ed25519_public_key" }],
@@ -1122,6 +1112,7 @@ test("execution-wizard › after a hash(x) round, the next Add signature uses th
 
   // The round pauses again, still one signature short.
   currentSignatureStatus = {
+    notice: null,
     requiredWeight: 3,
     accumulatedWeight: 2,
     contributed: [
@@ -1149,6 +1140,7 @@ test("execution-wizard › after a hash(x) round, the next Add signature uses th
 test("execution-wizard › a wallet that already signed cannot start another prompt, and says why", async () => {
   currentWalletAddress = source;
   currentSignatureStatus = {
+    notice: null,
     requiredWeight: 2,
     accumulatedWeight: 1,
     contributed: [{ key: source, weight: 1, type: "ed25519_public_key" }],
@@ -1184,6 +1176,7 @@ test("execution-wizard › a secret key that already signed cannot sign again, a
     } as never,
   } as never);
   currentSignatureStatus = {
+    notice: null,
     requiredWeight: 2,
     accumulatedWeight: 1,
     contributed: [{ key: sourceKey.publicKey(), weight: 1, type: "ed25519_public_key" }],
@@ -1218,6 +1211,7 @@ test("execution-wizard › a secret key that already signed cannot sign again, a
 test("execution-wizard › a hash(x) preimage is not offered again once its round has counted it", async () => {
   const hashXKey = StrKey.encodeSha256Hash(hash(fromHex("deadbeef")));
   currentSignatureStatus = {
+    notice: null,
     requiredWeight: 3,
     accumulatedWeight: 1,
     contributed: [{ key: source, weight: 1, type: "ed25519_public_key" }],
@@ -1229,6 +1223,7 @@ test("execution-wizard › a hash(x) preimage is not offered again once its roun
   useDemolishStore.setState({ phase: "STEP_FAILED" } as never);
   const runSpy = mock(async (_signer: { publicKey: string }) => {
     currentSignatureStatus = {
+      notice: null,
       requiredWeight: 3,
       accumulatedWeight: 2,
       contributed: [
@@ -1260,6 +1255,7 @@ test("execution-wizard › a hash(x) preimage is not offered again once its roun
 test("execution-wizard › the signed list and the still-needed line show each signer's weight", () => {
   const third = Keypair.random().publicKey();
   currentSignatureStatus = {
+    notice: null,
     requiredWeight: 4,
     accumulatedWeight: 2,
     contributed: [{ key: source, weight: 2, type: "ed25519_public_key" }],
@@ -1477,6 +1473,7 @@ test("execution-wizard › a secret key the user entered is not replaced by a co
 test("execution-wizard › after a pause on the secret-key tab, the wallet is not picked up until the user goes back to it", async () => {
   currentWalletAddress = cosigner;
   currentSignatureStatus = {
+    notice: null,
     requiredWeight: 2,
     accumulatedWeight: 1,
     contributed: [{ key: source, weight: 1, type: "ed25519_public_key" }],
@@ -1493,7 +1490,10 @@ test("execution-wizard › after a pause on the secret-key tab, the wallet is no
   fireEvent.click(screen.getByRole("tab", { name: "Use secret key (advanced)" }));
 
   // The round pauses again while the user is on the secret-key tab.
-  currentSignatureStatus = { ...currentSignatureStatus, accumulatedWeight: 1 };
+  currentSignatureStatus = currentSignatureStatus && {
+    ...currentSignatureStatus,
+    accumulatedWeight: 1,
+  };
   rerender(<ExecutionWizard network="testnet" />);
   await waitFor(() => expect(activeSignerText()).toBeNull());
   const add = screen.getByRole("button", { name: /add signature/i }) as HTMLButtonElement;
@@ -1799,6 +1799,7 @@ test("execution-wizard › a multisig pause drops the held key signer", async ()
   await waitFor(() => expect(held()?.kind).toBe("secret-key"));
 
   currentSignatureStatus = {
+    notice: null,
     requiredWeight: 2,
     accumulatedWeight: 1,
     contributed: [{ key: source, weight: 1, type: "ed25519_public_key" }],
@@ -1835,6 +1836,7 @@ test("execution-wizard › a preimage after a key replaces the held key signer",
   const preimage = fromHex("deadbeef");
   const hashXKey = StrKey.encodeSha256Hash(hash(preimage));
   currentSignatureStatus = {
+    notice: null,
     requiredWeight: 2,
     accumulatedWeight: 1,
     contributed: [],
@@ -1952,6 +1954,7 @@ test("execution-wizard › an invalid key names no account and enables nothing",
 test("execution-wizard › Add signature is held for a key that is not a signer on the account", async () => {
   const key = Keypair.random();
   currentSignatureStatus = {
+    notice: null,
     requiredWeight: 2,
     accumulatedWeight: 1,
     contributed: [{ key: source, weight: 1, type: "ed25519_public_key" }],
@@ -2030,6 +2033,7 @@ test("execution-wizard › a hash(x) run stops before its next signature once th
   const preimage = fromHex("deadbeef");
   const hashXKey = StrKey.encodeSha256Hash(hash(preimage));
   currentSignatureStatus = {
+    notice: null,
     requiredWeight: 2,
     accumulatedWeight: 1,
     contributed: [],
@@ -2077,6 +2081,7 @@ test("execution-wizard › a co-signer added after review is judged by the live 
   const added = Keypair.random();
   seedSigners([{ key: source, weight: 1 }]);
   currentSignatureStatus = {
+    notice: null,
     requiredWeight: 2,
     accumulatedWeight: 1,
     contributed: [{ key: source, weight: 1, type: "ed25519_public_key" }],
@@ -2109,6 +2114,7 @@ test("execution-wizard › a key whose live weight is 0 cannot sign, whatever th
     { key: key.publicKey(), weight: 1 },
   ]);
   currentSignatureStatus = {
+    notice: null,
     requiredWeight: 2,
     accumulatedWeight: 1,
     contributed: [{ key: source, weight: 1, type: "ed25519_public_key" }],
@@ -2172,6 +2178,7 @@ test("execution-wizard › a preimage for a signer whose live weight is 0 is nam
   const preimage = fromHex("deadbeef");
   const hashXKey = StrKey.encodeSha256Hash(hash(preimage));
   currentSignatureStatus = {
+    notice: null,
     requiredWeight: 2,
     accumulatedWeight: 1,
     contributed: [{ key: source, weight: 1, type: "ed25519_public_key" }],

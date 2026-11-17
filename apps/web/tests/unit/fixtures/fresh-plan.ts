@@ -1,39 +1,12 @@
 import { spyOn } from "bun:test";
-import type { PlanResponse } from "@lumenwipe/sdk";
+import type { PlanEstimate, PlanResponse } from "@lumenwipe/sdk";
 import * as analyzeClient from "@/lib/api/analyze-client";
 import * as closeClient from "@/lib/api/close-client";
 import { signatureOf } from "@/lib/plan/plan-freshness";
 import { useDemolishStore } from "@/store/demolish";
 import type { AccountState } from "@/types/account";
 import type { PlannedStep } from "@/types/plan";
-import { emptyDefiPositionsResult } from "./defi-positions";
-
-/** The reviewed account as a confirm-time refresh reads it again. */
-export function freshAccount(address: string, overrides: Partial<AccountState> = {}): AccountState {
-  return {
-    address,
-    network: "testnet",
-    sequence: "1",
-    nativeBalanceLumens: "12.5000000",
-    dataEntries: [],
-    signers: [],
-    thresholds: { low: 0, med: 0, high: 0 },
-    numSubEntries: 0,
-    numSponsoring: 0,
-    sponsoredEntries: [],
-    sponsorshipEnumerationIncomplete: false,
-    sponsoredBy: null,
-    authImmutable: false,
-    trustlines: [],
-    openOffers: [],
-    poolShares: [],
-    claimableBalances: [],
-    subEntryMismatch: false,
-    defiPositions: emptyDefiPositionsResult(address),
-    defiPositionsWarnings: [],
-    ...overrides,
-  };
-}
+import { freshAccount } from "./account";
 
 /** A ready plan of these steps, as the API returns it. */
 export function freshPlan(
@@ -53,10 +26,23 @@ export function freshPlan(
     })),
     decisionPoints: [],
     blockers: [],
-    estimate: { feeStroops: "100", freedReserveXlm: "1.0000000" },
+    estimate: planEstimate("100"),
     execution: { estimatedTransactionCount: steps.length, transactions: [] },
     ...overrides,
-  } as unknown as PlanResponse;
+  };
+}
+
+/** A plan estimate whose whole fee is classic base fees. */
+export function planEstimate(feeStroops: string, freedReserveXlm = "1.0000000"): PlanEstimate {
+  return {
+    feeStroops,
+    freedReserveXlm,
+    feeParts: {
+      classicStroops: feeStroops,
+      sorobanSimulatedStroops: "0",
+      sorobanBoundStroops: "0",
+    },
+  };
 }
 
 /**

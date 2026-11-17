@@ -10,12 +10,13 @@ import {
   xdr,
 } from "@stellar/stellar-sdk";
 import { VerificationError } from "@lumenwipe/verify";
-import type { AccountState, CloseTransaction, DecisionPoint } from "../../src/index";
+import type { CloseTransaction, DecisionPoint } from "../../src/index";
 import {
   buildDecisions,
   destinationDecisionId,
   verifyCloseTransaction,
 } from "../../examples/verify";
+import { accountState } from "../support/fixtures";
 
 const source = Keypair.random().publicKey();
 const destination = Keypair.random().publicKey();
@@ -36,14 +37,10 @@ function closeTx(
 }
 
 /** The account read the example passes on: one master key, no positions. */
-const account = {
-  address: source,
+const account = accountState(source, {
   nativeBalanceLumens: "100.0000000",
   signers: [{ key: source, weight: 1, type: "ed25519_public_key" }],
-  thresholds: { low: 0, med: 0, high: 0 },
-  trustlines: [],
-  defiPositions: { positions: [] },
-} as unknown as AccountState;
+});
 
 const expected = { account, destination, network: "testnet" as const };
 

@@ -9,6 +9,8 @@ import {
   isContractRegistryUsable,
   registryContractsFor,
 } from "@/lib/contract-registry";
+import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { freshAccount } from "./fixtures/account";
 import { authorizationOf } from "./fixtures/trustline";
 
 const ACCOUNT = "GBUYBKHUCCAKG4LM76DONHABFRZSZEHK7ARNEEXBZ3CMVIYKZXPLPVRG";
@@ -23,8 +25,7 @@ const TOKEN_1 = "CCZGLAUBDKJSQK72QOZHVU7CUWKW45OZWYWCLL27AEK74U2OIBK6LXF2";
 const ISSUER = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN";
 
 function state(positions: AccountState["defiPositions"]["positions"]): AccountState {
-  return {
-    address: ACCOUNT,
+  return freshAccount(ACCOUNT, {
     trustlines: [
       {
         asset: `USDC:${ISSUER}`,
@@ -34,8 +35,8 @@ function state(positions: AccountState["defiPositions"]["positions"]): AccountSt
         ...authorizationOf(true),
       },
     ],
-    defiPositions: { positions },
-  } as unknown as AccountState;
+    defiPositions: { ...emptyDefiPositionsResult(ACCOUNT), positions },
+  });
 }
 
 test("no account read vouches for nothing", () => {
@@ -312,7 +313,7 @@ test("a registered contract running a no-exit version is nothing an exit may tou
 
 test("a Soroban token balance the analysis confirmed is a held token contract an exit may reference; an older read adds none", () => {
   const TOKEN = "CBI7UCH5KGSVQRO5H4SUCZUTZABCITZLRHQQZTWL2TK4RZ72TAR6IHRV";
-  const withTokens = {
+  const withTokens: AccountState = {
     ...state([]),
     sorobanTokens: {
       tokens: [
@@ -323,7 +324,7 @@ test("a Soroban token balance the analysis confirmed is a held token contract an
       eventsScanned: null,
       warnings: [],
     },
-  } as unknown as AccountState;
+  };
   expect(exitExpectations(withTokens, "testnet").heldTokenContracts).toContain(TOKEN);
   expect(exitExpectations(state([]), "testnet").heldTokenContracts).not.toContain(TOKEN);
 });

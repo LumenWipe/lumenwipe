@@ -12,7 +12,7 @@ import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 
 const SOURCE = "aaaaaaaa";
 
-const account = {
+const account: AccountState = {
   address: SOURCE,
   network: "testnet",
   sequence: "1",
@@ -33,7 +33,7 @@ const account = {
   subEntryMismatch: false,
   defiPositions: emptyDefiPositionsResult(SOURCE),
   defiPositionsWarnings: [],
-} as unknown as AccountState;
+};
 
 type Kind = "now" | "trustline" | "late" | "unreadable";
 

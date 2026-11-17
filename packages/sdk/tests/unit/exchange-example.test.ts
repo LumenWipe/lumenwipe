@@ -11,7 +11,7 @@ import {
 } from "@stellar/stellar-sdk";
 import { VerificationError } from "@lumenwipe/verify";
 import vectors from "@lumenwipe/verify/vectors/close-v1.json";
-import type { AccountState, CloseTransaction, MediatorCheckResult } from "../../src/index";
+import type { CloseTransaction, MediatorCheckResult } from "../../src/index";
 import {
   EXCHANGE_DESTINATION,
   NETWORK,
@@ -26,6 +26,7 @@ import {
   assertCosignOnlyAddedSignature,
   describeError,
 } from "../../examples/support";
+import { accountSigner, accountState } from "../support/fixtures";
 
 const passphrase = Networks.TESTNET;
 const user = Keypair.random();
@@ -224,14 +225,11 @@ describe("cosignMerge", () => {
 describe("verifyCloseTransaction on an exchange close", () => {
   const vector = vectors.vectors.find((v) => v.name === "exchange-close-through-intermediary")!;
   const { input } = vector;
-  const account = {
-    address: input.expected.source,
+  const account = accountState(input.expected.source, {
     nativeBalanceLumens: input.expected.nativeBalance,
-    signers: input.expected.accountSigners,
+    signers: input.expected.accountSigners.map(accountSigner),
     thresholds: input.expected.accountThresholds,
-    trustlines: [],
-    defiPositions: { positions: [] },
-  } as unknown as AccountState;
+  });
   const tx = { xdr: input.unsignedXdr } as CloseTransaction;
   const memo = { value: "deposit-1", type: "text" } as const;
 

@@ -21,7 +21,9 @@ import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import type { AccountState } from "@/types/account";
 import type { PlannedStep } from "@/types/plan";
-import { freshAccount, freshPlan, stubUnchangedRefresh } from "./fixtures/fresh-plan";
+import { freshPlan, stubUnchangedRefresh } from "./fixtures/fresh-plan";
+import { freshAccount } from "./fixtures/account";
+import { fakeRouter } from "./fixtures/navigation";
 
 const SOURCE = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -85,12 +87,10 @@ beforeEach(() => {
   pushed = [];
   useNetworkStore.setState({ network: "testnet" });
   seed();
-  spyOn(navigation, "useRouter").mockImplementation(
-    () =>
-      ({
-        push: (path: string) => pushed.push(path),
-        replace: () => {},
-      }) as unknown as ReturnType<typeof navigation.useRouter>
+  spyOn(navigation, "useRouter").mockImplementation(() =>
+    fakeRouter({
+      push: (path) => void pushed.push(path),
+    })
   );
   spyOn(recovery, "readUnresolved").mockResolvedValue(null);
   spyOn(closeRecord, "saveCloseSession").mockResolvedValue("s");
@@ -622,11 +622,11 @@ test("an added signer is a change to consent to again", async () => {
 
 test("a fresh plan of an unexpected shape is a failed refresh, and the button comes back", async () => {
   const save = spyOn(closeRecord, "saveCloseSession").mockResolvedValue("s");
-  const malformed = freshPlan([STEP], { planHash: FRESH_HASH }) as unknown as Record<
-    string,
-    unknown
-  >;
-  delete malformed.decisionPoints;
+  const malformed = Object.fromEntries(
+    Object.entries(freshPlan([STEP], { planHash: FRESH_HASH })).filter(
+      ([key]) => key !== "decisionPoints"
+    )
+  );
   refreshReads(freshAccount(SOURCE), malformed as never);
   await show();
 

@@ -24,6 +24,7 @@ import MarketingFooter from "@/components/marketing/MarketingFooter";
 import NotFoundView, { NOT_FOUND_METADATA } from "@/components/marketing/NotFoundView";
 import { renderLlmsTxt } from "@/lib/site/llms";
 import { ROOT_METADATA } from "@/lib/site/root-metadata";
+import { fakeRouter } from "./fixtures/navigation";
 
 // Recorded from the English copy as it stood before it moved into the locale dictionary. A change
 // here is a change to what an English reader sees, so it is never updated alongside a refactor.
@@ -50,9 +51,7 @@ const METADATA: Record<string, Metadata> = {
 };
 
 function serverRender(element: ReactElement): string {
-  spyOn(navigation, "useRouter").mockReturnValue({
-    push: () => {},
-  } as unknown as ReturnType<typeof navigation.useRouter>);
+  spyOn(navigation, "useRouter").mockReturnValue(fakeRouter());
   spyOn(navigation, "usePathname").mockReturnValue("/");
   return renderToString(element);
 }

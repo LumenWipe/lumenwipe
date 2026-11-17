@@ -8,14 +8,10 @@ import {
   type PendingRound,
 } from "../src/close-engine";
 import type { CloseTransaction, TransactionsResponse } from "@lumenwipe/types";
+import { closeTransaction } from "./support/fixtures";
 
 function tx(order: number, id = `tx${order}`): CloseTransaction {
-  return {
-    id,
-    order,
-    xdr: `xdr-${id}`,
-    covers: ["NORMALIZE_SIGNERS"],
-  } as unknown as CloseTransaction;
+  return closeTransaction({ id, order, xdr: `xdr-${id}`, covers: ["NORMALIZE_SIGNERS"] });
 }
 
 function resp(
@@ -262,7 +258,8 @@ test("pinned hash › a throwing transactionHash surfaces its error with nothing
 
 test("pinned hash › an unpinned resume at full weight still calls the signer", async () => {
   const pending = await pauseRound();
-  const { approvedHash: _dropped, ...unpinned } = pending;
+  const unpinned: PendingRound = { ...pending };
+  delete unpinned.approvedHash;
   const d = deps();
   await runClose(d, { ...unpinned, accumulatedWeight: 2 });
   expect(d.rec.signed[0]).toBe("xdr-tx0+sig-A");
@@ -309,8 +306,9 @@ test("pinned hash › the skip path opens the submission on the final envelope's
 });
 
 test("pinned hash › a transactionHash that returns no hash stops the close before signing", async () => {
-  for (const bad of [undefined, "", 42]) {
-    const d = deps({ transactionHash: () => bad as unknown as string }, [resp([tx(0)], false)]);
+  const unanswered = JSON.parse("{}");
+  for (const bad of [unanswered.hash, "", JSON.parse("42")]) {
+    const d = deps({ transactionHash: () => bad }, [resp([tx(0)], false)]);
     expect(await caught(runClose(d))).toBeInstanceOf(TypeError);
     expect(d.rec.signed).toEqual([]);
     nothingSent(d.rec);
@@ -319,9 +317,9 @@ test("pinned hash › a transactionHash that returns no hash stops the close bef
 
 test("pinned hash › a NaN, negative or missing carried weight still calls the signer", async () => {
   const pending = await pauseRound();
-  for (const weight of [Number.NaN, -1, null]) {
+  for (const weight of [Number.NaN, -1, JSON.parse("null")]) {
     const d = deps();
-    await runClose(d, { ...pending, accumulatedWeight: weight as unknown as number });
+    await runClose(d, { ...pending, accumulatedWeight: weight });
     expect(d.rec.signed[0]).toBe("xdr-tx0+sig-A");
   }
 });

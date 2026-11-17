@@ -7,7 +7,6 @@ import {
   TransactionBuilder,
   xdr,
 } from "@stellar/stellar-sdk";
-import type { PendingRound } from "@lumenwipe/sdk";
 import {
   cosignRequirement,
   cosignStatement,
@@ -21,6 +20,7 @@ import { findBannedWords } from "@/lib/glossary";
 import type { AccountSigner } from "@/types/account";
 import type { ExecutionTxBreakdown } from "@/types/close-api";
 import type { StepType } from "@/types/plan";
+import { closeTransaction } from "./fixtures/close-transactions";
 
 const MASTER = Keypair.random().publicKey();
 const A = Keypair.random().publicKey();
@@ -490,7 +490,12 @@ describe("cosignStatement agrees with what the signing step offers", () => {
     signed.sign(master);
     return cosignExport({
       round: {
-        tx: { xdr: built.toEnvelope().toXDR("base64") },
+        tx: closeTransaction({
+          id: "t0",
+          order: 0,
+          xdr: built.toEnvelope().toXDR("base64"),
+          covers: ["NORMALIZE_SIGNERS"],
+        }),
         xdr: signed.toEnvelope().toXDR("base64"),
         queue: [],
         requiresAnotherCall: true,
@@ -499,7 +504,7 @@ describe("cosignStatement agrees with what the signing step offers", () => {
         round: 0,
         txIndex: 0,
         approvedHash: toHex(built.hash()),
-      } as unknown as PendingRound,
+      },
       network: "testnet",
       account: master.publicKey(),
       signers: SIGNERS,

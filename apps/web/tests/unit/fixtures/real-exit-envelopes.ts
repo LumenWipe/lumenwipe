@@ -1,4 +1,7 @@
 import type { AccountState } from "@/types/account";
+import { sorobanTokensOf } from "./soroban-tokens";
+import { emptyDefiPositionsResult } from "./defi-positions";
+import { freshAccount } from "./account";
 
 export interface RealExitEnvelope {
   name: string;
@@ -25,7 +28,6 @@ export interface RealExitEnvelope {
     /** The one token call the signature authorizes below the root. */
     tokenCall: { contract: string; function: string; amountArg: number };
   };
-  /** Only the fields `exitExpectations` and the expectation around it read. */
   account: AccountState;
 }
 
@@ -44,17 +46,15 @@ function accountWith(
   position: AccountState["defiPositions"]["positions"][number],
   tokens: { contract: string; balance: string }[]
 ): AccountState {
-  return {
-    address,
+  return freshAccount(address, {
     nativeBalanceLumens: "100.0000000",
     signers: [{ key: address, weight: 1, type: "ed25519_public_key" }],
     thresholds: { low: 0, med: 0, high: 0 },
-    trustlines: [],
-    defiPositions: { positions: [position] },
-    sorobanTokens: {
-      tokens: tokens.map((t) => ({ ...t, symbol: null, decimals: 7, sources: ["positions"] })),
-    },
-  } as unknown as AccountState;
+    defiPositions: { ...emptyDefiPositionsResult(address), positions: [position] },
+    sorobanTokens: sorobanTokensOf(
+      tokens.map((t) => ({ ...t, symbol: null, decimals: 7, sources: ["positions"] }))
+    ),
+  });
 }
 
 export const REAL_EXIT_ENVELOPES: RealExitEnvelope[] = [

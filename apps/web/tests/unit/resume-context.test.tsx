@@ -31,6 +31,7 @@ import type { PlannedStep } from "@/types/plan";
 import { RECORD_VERSION, type SessionRecord } from "@/types/session";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { installIndexedDb, removeIndexedDb } from "./fixtures/indexed-db";
+import { fakeFetch } from "./fixtures/fetch";
 
 const NOW = new Date("2026-11-03T12:00:00.000Z");
 const SOURCE = Keypair.random().publicKey();
@@ -96,43 +97,44 @@ async function home(session: SessionRecord, reload = async () => {}): Promise<vo
 }
 
 function stubFetch(accountGone = false): void {
-  spyOn(globalThis, "fetch").mockImplementation((async (input: unknown) => {
-    const url = String(input);
-    if (url.includes("/account/")) {
-      if (accountGone) {
-        return Response.json(
-          { error: { code: "account_not_found", message: "raw" } },
-          { status: 404 }
-        );
+  spyOn(globalThis, "fetch").mockImplementation(
+    fakeFetch((url) => {
+      if (url.includes("/account/")) {
+        if (accountGone) {
+          return Response.json(
+            { error: { code: "account_not_found", message: "raw" } },
+            { status: 404 }
+          );
+        }
+        return Response.json({
+          address: SOURCE,
+          network: "testnet",
+          sequence: "1",
+          nativeBalanceLumens: "10.0000000",
+          dataEntries: [],
+          signers: [],
+          thresholds: { low: 0, med: 0, high: 0 },
+          numSubEntries: 0,
+          numSponsoring: 0,
+          sponsoredEntries: [],
+          sponsorshipEnumerationIncomplete: false,
+          sponsoredBy: null,
+          authImmutable: false,
+          trustlines: [],
+          openOffers: [],
+          poolShares: [],
+          claimableBalances: [],
+          subEntryMismatch: false,
+          defiPositions: emptyDefiPositionsResult(SOURCE),
+          defiPositionsWarnings: [],
+        });
       }
-      return Response.json({
-        address: SOURCE,
-        network: "testnet",
-        sequence: "1",
-        nativeBalanceLumens: "10.0000000",
-        dataEntries: [],
-        signers: [],
-        thresholds: { low: 0, med: 0, high: 0 },
-        numSubEntries: 0,
-        numSponsoring: 0,
-        sponsoredEntries: [],
-        sponsorshipEnumerationIncomplete: false,
-        sponsoredBy: null,
-        authImmutable: false,
-        trustlines: [],
-        openOffers: [],
-        poolShares: [],
-        claimableBalances: [],
-        subEntryMismatch: false,
-        defiPositions: emptyDefiPositionsResult(SOURCE),
-        defiPositionsWarnings: [],
-      });
-    }
-    if (url.includes("/close/plan")) {
-      return Response.json({ status: "ready", blockers: [], steps: [], decisionPoints: [] });
-    }
-    return Response.json({});
-  }) as unknown as typeof fetch);
+      if (url.includes("/close/plan")) {
+        return Response.json({ status: "ready", blockers: [], steps: [], decisionPoints: [] });
+      }
+      return Response.json({});
+    })
+  );
 }
 
 beforeEach(() => {

@@ -10,6 +10,7 @@ import type { ReceiptRecord } from "@/types/history";
 import type { PlannedStep } from "@/types/plan";
 import { RECORD_VERSION } from "@/types/session";
 import { installIndexedDb, removeIndexedDb } from "./fixtures/indexed-db";
+import { fakeRouter } from "./fixtures/navigation";
 
 const SOURCE = "GSOURCE00000000000000000000000000000000000000000000000000";
 const DEST = "GDESTINATION000000000000000000000000000000000000000000000";
@@ -22,10 +23,8 @@ beforeEach(() => {
   installIndexedDb();
   useDemolishStore.getState().reset();
   replace = mock(() => {});
-  const router = { push: () => {}, replace };
-  spyOn(navigation, "useRouter").mockImplementation(
-    () => router as unknown as ReturnType<typeof navigation.useRouter>
-  );
+  const router = fakeRouter({ replace });
+  spyOn(navigation, "useRouter").mockImplementation(() => router);
   // A receipt that records its amount asks nothing; a test that expects a lookup answers it.
   fetchSpy = spyOn(globalThis, "fetch").mockRejectedValue(new Error("no network in unit tests"));
 });

@@ -10,7 +10,9 @@ import {
 import { restoreAssetDecisions, snapshotOf } from "@/lib/session/restore-decisions";
 import { isValidGAddress, isValidSecretKey } from "@/lib/utils/validation";
 import { useDemolishStore } from "@/store/demolish";
-import type { AccountState } from "@/types/account";
+import type { AccountState, Trustline } from "@/types/account";
+import { freshAccount } from "./fixtures/account";
+import { authorizationOf } from "./fixtures/trustline";
 
 const SOURCE = Keypair.random().publicKey();
 const PAYEE = Keypair.random().publicKey();
@@ -30,18 +32,17 @@ const HALF_TYPED = Keypair.random().publicKey().slice(0, 20);
 const TYPO = PAYEE.slice(0, 28) + (PAYEE[28] === "A" ? "B" : "A") + PAYEE.slice(29);
 
 function account(): AccountState {
-  const line = (asset: string) => ({
+  const line = (asset: string): Trustline => ({
     asset,
+    code: asset.split(":")[0]!,
+    issuer: ISSUER,
     balance: "5.0000000",
     limit: "1000",
-    buyingLiabilities: "0",
-    sellingLiabilities: "0",
+    ...authorizationOf(true),
   });
-  return {
-    address: SOURCE,
+  return freshAccount(SOURCE, {
     trustlines: [line(USDC), line(AQUA), line(EURC), line(BTC), line(ETH)],
-    claimableBalances: [],
-  } as unknown as AccountState;
+  });
 }
 
 function transferTo(asset: string, destination: string): void {

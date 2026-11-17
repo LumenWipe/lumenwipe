@@ -3,24 +3,27 @@ import type { PlanResponse } from "@lumenwipe/sdk";
 import type { AccountState } from "@/types/account";
 import type { ClaimAnswers } from "@/lib/api/analyze-client";
 import { loadAnalysis } from "@/lib/api/analyze-client";
+import { freshPlan } from "./fixtures/fresh-plan";
+import { freshAccount } from "./fixtures/account";
 
 const BALANCE_A = "00000000a1";
 
+const ADDRESS = "GBXIT5W7J7BWYPAZUPFV3RHDVGD5EKIIHKTSYOL5GSADD3YGMIHPLNQX";
+
 function accountState(claimableBalanceIds: string[] = []): AccountState {
-  return {
-    address: "GBXIT5W7J7BWYPAZUPFV3RHDVGD5EKIIHKTSYOL5GSADD3YGMIHPLNQX",
+  return freshAccount(ADDRESS, {
     claimableBalances: claimableBalanceIds.map((id) => ({
       id,
       asset: "USDC:GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
       amount: "1.0000000",
-      claimable: true,
-      forfeited: false,
+      claimants: [{ destination: ADDRESS, predicate: { type: "unconditional" } }],
+      sponsor: null,
     })),
-  } as unknown as AccountState;
+  });
 }
 
 const planFor = (answers: ClaimAnswers): PlanResponse =>
-  ({ planHash: Object.keys(answers).sort().join("+") || "no-answers" }) as unknown as PlanResponse;
+  freshPlan([], { planHash: Object.keys(answers).sort().join("+") || "no-answers" });
 
 /** A promise a test resolves by hand, so "did both requests start?" is observable. */
 function deferred<T>(): {

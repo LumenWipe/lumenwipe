@@ -9,6 +9,7 @@ import { useNetworkStore } from "@/store/network";
 import type { AccountState, Trustline } from "@/types/account";
 import type { PlannedStep } from "@/types/plan";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { fakeRouter } from "./fixtures/navigation";
 
 const SOURCE = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -96,10 +97,7 @@ const STEPS: PlannedStep[] = [
 ];
 
 beforeEach(() => {
-  spyOn(navigation, "useRouter").mockImplementation(
-    () =>
-      ({ push: () => {}, replace: () => {} }) as unknown as ReturnType<typeof navigation.useRouter>
-  );
+  spyOn(navigation, "useRouter").mockImplementation(() => fakeRouter());
   useNetworkStore.setState({ network: "testnet" });
   const store = useDemolishStore.getState();
   store.reset();

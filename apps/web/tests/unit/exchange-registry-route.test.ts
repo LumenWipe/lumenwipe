@@ -2,16 +2,17 @@ import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { NextRequest } from "next/server";
 import { GET } from "@/app/api/config/exchange-registry/route";
 import * as redis from "@/lib/upstash-redis";
+import { fakeFetch } from "./fixtures/fetch";
 
 const realFetch = globalThis.fetch;
 const realBase = process.env.LUMENWIPE_API_URL;
 let calls: { url: string; init: RequestInit }[];
 
 function stubFetch(status: number, body: unknown): void {
-  globalThis.fetch = (async (url: string, init: RequestInit) => {
+  globalThis.fetch = fakeFetch((url, init = {}) => {
     calls.push({ url, init });
     return new Response(JSON.stringify(body), { status });
-  }) as unknown as typeof fetch;
+  });
 }
 
 function call() {

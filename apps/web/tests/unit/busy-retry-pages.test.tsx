@@ -14,7 +14,9 @@ import { ApiRequestError } from "@/lib/utils/user-error";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import type { PlannedStep } from "@/types/plan";
-import { freshAccount, freshPlan } from "./fixtures/fresh-plan";
+import { fakeFetch } from "./fixtures/fetch";
+import { freshPlan } from "./fixtures/fresh-plan";
+import { freshAccount } from "./fixtures/account";
 import { installIndexedDb, removeIndexedDb } from "./fixtures/indexed-db";
 
 const SOURCE = Keypair.random().publicKey();
@@ -61,21 +63,22 @@ function stubFetch(routes: {
   const seen = { account: 0, plan: 0, check: 0, tx: 0 };
   const next = (list: Answer[] | undefined, n: number, fallback: Answer): Promise<Response> =>
     Promise.resolve((list?.[Math.min(n, list.length - 1)] ?? fallback)());
-  spyOn(globalThis, "fetch").mockImplementation((async (input: unknown) => {
-    const url = String(input);
-    if (url.includes("/close/transactions")) return next(routes.tx, seen.tx++, () => busy("0"));
-    if (url.includes("/close/plan"))
-      return next(routes.plan, seen.plan++, () => Response.json(PLAN));
-    if (url.includes("/mediator/check/")) {
-      return next(routes.check, seen.check++, () =>
-        Response.json({ requiresMediator: false, available: true })
-      );
-    }
-    if (url.includes("/account/")) {
-      return next(routes.account, seen.account++, () => Response.json(freshAccount(SOURCE)));
-    }
-    return Response.json({});
-  }) as unknown as typeof fetch);
+  spyOn(globalThis, "fetch").mockImplementation(
+    fakeFetch(async (url) => {
+      if (url.includes("/close/transactions")) return next(routes.tx, seen.tx++, () => busy("0"));
+      if (url.includes("/close/plan"))
+        return next(routes.plan, seen.plan++, () => Response.json(PLAN));
+      if (url.includes("/mediator/check/")) {
+        return next(routes.check, seen.check++, () =>
+          Response.json({ requiresMediator: false, available: true })
+        );
+      }
+      if (url.includes("/account/")) {
+        return next(routes.account, seen.account++, () => Response.json(freshAccount(SOURCE)));
+      }
+      return Response.json({});
+    })
+  );
   return seen;
 }
 

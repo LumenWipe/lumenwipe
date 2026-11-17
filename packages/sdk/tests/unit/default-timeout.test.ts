@@ -1,4 +1,4 @@
-import { expect, spyOn, test } from "bun:test";
+import { expect, jest, test } from "bun:test";
 import {
   LumenWipeClient,
   LumenWipeIntegratorClient,
@@ -44,20 +44,27 @@ const timeoutOf = (request: Promise<unknown>): Promise<unknown> =>
     (e: unknown) => e
   );
 
+async function settle(): Promise<void> {
+  for (let i = 0; i < 50; i++) await Promise.resolve();
+}
+
 test.each(CLIENTS)("%s waits the default timeout when none is given", async (_name, request) => {
-  const delays: unknown[] = [];
-  const timers = spyOn(globalThis, "setTimeout").mockImplementation(((
-    run: () => void,
-    ms?: number
-  ) => {
-    delays.push(ms);
-    queueMicrotask(run);
-    return 0;
-  }) as unknown as typeof setTimeout);
-  const error = await timeoutOf(request()).finally(() => timers.mockRestore());
-  expect(error).toBeInstanceOf(LumenWipeTimeoutError);
-  expect((error as LumenWipeTimeoutError).timeoutMs).toBe(DEFAULT_TIMEOUT_MS);
-  expect(delays).toEqual([DEFAULT_TIMEOUT_MS]);
+  jest.useFakeTimers();
+  try {
+    let error: unknown;
+    void timeoutOf(request()).then((e) => (error = e));
+    await settle();
+    expect(jest.getTimerCount()).toBe(1);
+    jest.advanceTimersByTime(DEFAULT_TIMEOUT_MS - 1);
+    await settle();
+    expect(error).toBeUndefined();
+    jest.advanceTimersByTime(1);
+    await settle();
+    expect(error).toBeInstanceOf(LumenWipeTimeoutError);
+    expect((error as LumenWipeTimeoutError).timeoutMs).toBe(DEFAULT_TIMEOUT_MS);
+  } finally {
+    jest.useRealTimers();
+  }
 });
 
 test.each(CLIENTS)("%s honors an explicit timeout", async (_name, request) => {

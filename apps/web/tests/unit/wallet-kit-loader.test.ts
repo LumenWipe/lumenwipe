@@ -1,5 +1,5 @@
 import { afterEach, expect, mock, spyOn, test } from "bun:test";
-import { LocalStorageKeys, Networks } from "@creit-tech/stellar-wallets-kit/types";
+import { LocalStorageKeys, ModuleType, Networks } from "@creit-tech/stellar-wallets-kit/types";
 import type { ModuleInterface } from "@creit-tech/stellar-wallets-kit/types";
 import {
   forgetStoredWalletSession,
@@ -19,7 +19,22 @@ afterEach(() => {
 
 /** A stand-in for the kit's code: records how the singleton was set up, never fetches anything. */
 function standIn() {
-  const modules: ModuleInterface[] = [{ productId: "vetted" } as unknown as ModuleInterface];
+  const notStubbed = () => Promise.reject(new Error("the vetted stand-in never signs"));
+  const modules: ModuleInterface[] = [
+    {
+      moduleType: ModuleType.HOT_WALLET,
+      productId: "vetted",
+      productName: "Vetted",
+      productUrl: "https://wallet.invalid",
+      productIcon: "",
+      isAvailable: async () => true,
+      getAddress: notStubbed,
+      signTransaction: notStubbed,
+      signAuthEntry: notStubbed,
+      signMessage: notStubbed,
+      getNetwork: notStubbed,
+    },
+  ];
   const kit = {
     init: mock((_params: { modules: ModuleInterface[]; network: Networks }) => {}),
     setNetwork: mock((_network: Networks) => {}),
@@ -29,7 +44,7 @@ function standIn() {
     modules: mock(() => modules),
   };
   const importKit = mock(async () => bundle);
-  return { kit, modules, importKit };
+  return { kit, bundle, modules, importKit };
 }
 
 test("wallet kit loader › nothing is imported until the kit is first asked for", () => {
@@ -39,15 +54,15 @@ test("wallet kit loader › nothing is imported until the kit is first asked for
 });
 
 test("wallet kit loader › the first use initializes once, with the vetted modules and its network", async () => {
-  const { kit, modules, importKit } = standIn();
+  const { kit, bundle, modules, importKit } = standIn();
   const loader = walletKitLoader(importKit);
   expect(loader.current()).toBeNull();
 
-  expect(await loader.ensure("mainnet")).toBe(kit as unknown as WalletKit);
+  expect(await loader.ensure("mainnet")).toBe(bundle.kit);
   expect(kit.init).toHaveBeenCalledTimes(1);
   expect(kit.init.mock.calls[0]?.[0]).toEqual({ modules, network: Networks.PUBLIC });
   expect(kit.setNetwork).toHaveBeenLastCalledWith(Networks.PUBLIC);
-  expect(loader.current()).toBe(kit as unknown as WalletKit);
+  expect(loader.current()).toBe(bundle.kit);
 });
 
 test("wallet kit loader › later uses never initialize again and move the kit to their network", async () => {
@@ -84,12 +99,12 @@ test("wallet kit loader › code that fails to load is a plain error, and the ne
   expect(kit.init).not.toHaveBeenCalled();
 
   importKit.mockImplementation(async () => bundle);
-  expect(await loader.ensure("testnet")).toBe(kit as unknown as WalletKit);
+  expect(await loader.ensure("testnet")).toBe(bundle.kit);
   expect(importKit).toHaveBeenCalledTimes(2);
 });
 
 test("wallet kit loader › a kit that throws while initializing is not kept", async () => {
-  const { kit, importKit } = standIn();
+  const { kit, bundle, importKit } = standIn();
   kit.init.mockImplementationOnce(() => {
     throw new Error("init failed");
   });
@@ -98,7 +113,7 @@ test("wallet kit loader › a kit that throws while initializing is not kept", a
     WalletKitLoadError
   );
   expect(loader.current()).toBeNull();
-  expect(await loader.ensure("testnet")).toBe(kit as unknown as WalletKit);
+  expect(await loader.ensure("testnet")).toBe(bundle.kit);
   expect(kit.init).toHaveBeenCalledTimes(2);
 });
 

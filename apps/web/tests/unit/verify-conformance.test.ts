@@ -6,9 +6,9 @@
  * `bun run --filter '@lumenwipe/verify' vectors`.
  */
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { VerificationError, verifyCloseTransaction } from "@/lib/stellar/verify";
 import type { VerificationErrorCode } from "@/lib/stellar/verification-error";
-import vectorFile from "../../../../packages/verify/vectors/close-v1.json";
 
 type Expected = Parameters<typeof verifyCloseTransaction>[0]["expected"];
 
@@ -20,7 +20,10 @@ interface Vector {
   error?: { name: string; code: VerificationErrorCode; message: string };
 }
 
-const { schema, vectors } = vectorFile as unknown as { schema: number; vectors: Vector[] };
+const VECTOR_FILE = new URL("../../../../packages/verify/vectors/close-v1.json", import.meta.url);
+const { schema, vectors }: { schema: number; vectors: Vector[] } = JSON.parse(
+  readFileSync(VECTOR_FILE, "utf8")
+);
 
 afterEach(() => {
   setSystemTime();

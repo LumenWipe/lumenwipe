@@ -18,29 +18,16 @@ import { WalletKitSigner, WalletNotUsableError } from "@/lib/stellar/signer";
 import { toHex } from "@/lib/stellar/hex";
 import type { Allowance } from "@/types/allowance";
 import { expectFocused, expectNotFocused, expectSameElement } from "./fixtures/focus";
+import { fakeFetch } from "./fixtures/fetch";
 import { installIndexedDb, removeIndexedDb } from "./fixtures/indexed-db";
+import { walletConnection } from "./fixtures/wallet-connection";
 
 function stubWalletKit(
   address: string | null = null,
   state: Partial<walletKit.WalletKitConnection> = {}
 ): void {
-  spyOn(walletKit, "useWalletKitConnection").mockImplementation(
-    () =>
-      ({
-        address,
-        connecting: false,
-        error: null,
-        status: "connected",
-        checking: false,
-        network: "yes",
-        networkConfirmed: false,
-        confirmNetwork: () => {},
-        verified: true,
-        beforeSigning: () => async () => {},
-        connect: async () => {},
-        disconnect: async () => {},
-        ...state,
-      }) as unknown as ReturnType<typeof walletKit.useWalletKitConnection>
+  spyOn(walletKit, "useWalletKitConnection").mockImplementation(() =>
+    walletConnection({ address, status: "connected", network: "yes", verified: true, ...state })
   );
 }
 
@@ -118,11 +105,11 @@ function realRevokeXdr(options: { token?: string; spender?: string; owner?: stri
 
 function mockFetchSequence(responses: Array<{ status: number; body: unknown }>): void {
   let call = 0;
-  globalThis.fetch = (async () => {
+  globalThis.fetch = fakeFetch(async () => {
     const r = responses[Math.min(call, responses.length - 1)]!;
     call++;
     return new Response(JSON.stringify(r.body), { status: r.status });
-  }) as unknown as typeof fetch;
+  });
 }
 
 test("RevokeAllowanceModal › shows the token, spender, and amount being revoked", () => {
@@ -198,7 +185,7 @@ test("RevokeAllowanceModal › a response that revokes a different spender is re
   stubWalletKit();
   const attackerSpender = Address.contract(Buffer.alloc(32, 9)).toString();
   let submitCalled = false;
-  globalThis.fetch = (async (url: string) => {
+  globalThis.fetch = fakeFetch(async (url: string) => {
     if (url.includes("/submit")) {
       submitCalled = true;
       return new Response(JSON.stringify({ hash: "x", ledger: 1 }), { status: 200 });
@@ -207,7 +194,7 @@ test("RevokeAllowanceModal › a response that revokes a different spender is re
       JSON.stringify({ transaction: realRevokeXdr({ spender: attackerSpender }) }),
       { status: 200 }
     );
-  }) as unknown as typeof fetch;
+  });
 
   const onRevoked = mock((_a: Allowance) => {});
   render(
@@ -254,10 +241,10 @@ test("RevokeAllowanceModal › an unresolved hash for the owner stops the revoke
   stubWalletKit();
   spyOn(recovery, "findUnresolved").mockImplementation(async () => ({ id: "s" }) as never);
   let fetched = 0;
-  globalThis.fetch = (async () => {
+  globalThis.fetch = fakeFetch(async () => {
     fetched++;
     return new Response("{}", { status: 200 });
-  }) as unknown as typeof fetch;
+  });
   const onRevoked = mock((_a: Allowance) => {});
   render(
     <RevokeAllowanceModal
@@ -368,22 +355,8 @@ test("RevokeAllowanceModal › both tabs are disabled while signing", async () =
 });
 
 test("RevokeAllowanceModal › the tablist goes inert with the dialog while the wallet connects", () => {
-  spyOn(walletKit, "useWalletKitConnection").mockImplementation(
-    () =>
-      ({
-        address: null,
-        connecting: true,
-        error: null,
-        status: "connected",
-        checking: false,
-        network: "yes",
-        networkConfirmed: false,
-        confirmNetwork: () => {},
-        verified: true,
-        beforeSigning: () => async () => {},
-        connect: async () => {},
-        disconnect: async () => {},
-      }) as unknown as ReturnType<typeof walletKit.useWalletKitConnection>
+  spyOn(walletKit, "useWalletKitConnection").mockImplementation(() =>
+    walletConnection({ connecting: true, status: "connected", network: "yes", verified: true })
   );
   renderModal();
   const dialog = document.querySelector("dialog") as HTMLDialogElement;
@@ -423,10 +396,10 @@ test("RevokeAllowanceModal › leaving the key tab forgets the key, so coming ba
   stubWalletKit();
   spyOn(recovery, "findUnresolved").mockResolvedValue(undefined as never);
   let fetched = 0;
-  globalThis.fetch = (async () => {
+  globalThis.fetch = fakeFetch(async () => {
     fetched++;
     return new Response("{}", { status: 200 });
-  }) as unknown as typeof fetch;
+  });
   renderSecretKeyModal(() => {});
   expect(confirmButton().disabled).toBe(false);
 
@@ -482,10 +455,10 @@ function holdFetch(): {
   const response = new Promise<Response>((_resolve, reject) => {
     fail = reject;
   });
-  globalThis.fetch = (() => {
+  globalThis.fetch = fakeFetch(() => {
     asked();
     return response;
-  }) as unknown as typeof fetch;
+  });
   return { requested, response, fail };
 }
 
@@ -533,22 +506,8 @@ test("RevokeAllowanceModal › the result step closes with Done", async () => {
 });
 
 test("RevokeAllowanceModal › while the wallet picker is open the dialog hands over the keyboard", () => {
-  spyOn(walletKit, "useWalletKitConnection").mockImplementation(
-    () =>
-      ({
-        address: null,
-        connecting: true,
-        error: null,
-        status: "connected",
-        checking: false,
-        network: "yes",
-        networkConfirmed: false,
-        confirmNetwork: () => {},
-        verified: true,
-        beforeSigning: () => async () => {},
-        connect: async () => {},
-        disconnect: async () => {},
-      }) as unknown as ReturnType<typeof walletKit.useWalletKitConnection>
+  spyOn(walletKit, "useWalletKitConnection").mockImplementation(() =>
+    walletConnection({ connecting: true, status: "connected", network: "yes", verified: true })
   );
   const onClose = mock(() => {});
   render(
@@ -653,13 +612,13 @@ test("RevokeAllowanceModal › an owner wallet that signs with another account i
       })
   );
   let submitCalled = false;
-  globalThis.fetch = (async (url: string) => {
+  globalThis.fetch = fakeFetch(async (url: string) => {
     if (url.includes("/submit")) {
       submitCalled = true;
       return new Response(JSON.stringify({ hash: "x", ledger: 1 }), { status: 200 });
     }
     return new Response(JSON.stringify({ transaction: realRevokeXdr() }), { status: 200 });
-  }) as unknown as typeof fetch;
+  });
 
   const onRevoked = mock((_a: Allowance) => {});
   render(
@@ -700,14 +659,14 @@ function stubOwnerWallet(
       })
   );
   const submitted: string[] = [];
-  globalThis.fetch = (async (url: string, init?: RequestInit) => {
+  globalThis.fetch = fakeFetch(async (url: string, init?: RequestInit) => {
     if (url.includes("/submit")) {
       const { signedXdr } = JSON.parse(String(init?.body)) as { signedXdr: string };
       submitted.push(signedXdr);
       return new Response(JSON.stringify({ hash: "x", ledger: 1 }), { status: 200 });
     }
     return new Response(JSON.stringify({ transaction: served }), { status: 200 });
-  }) as unknown as typeof fetch;
+  });
   return { submitted };
 }
 
@@ -769,12 +728,12 @@ test("RevokeAllowanceModal › a wallet session that changes while the revoke is
     },
   });
   spyOn(recovery, "findUnresolved").mockResolvedValue(undefined as never);
-  const sign = mock(async (xdr: string) => xdr);
+  const sign = mock(async (xdr: string) => ({ signedTxXdr: xdr }));
   spyOn(walletKitClient, "walletKitSigner").mockImplementation(
-    () => ({ publicKey: OWNER, sign }) as unknown as WalletKitSigner
+    () => new WalletKitSigner(OWNER, sign)
   );
   let submitCalled = false;
-  globalThis.fetch = (async (url: string) => {
+  globalThis.fetch = fakeFetch(async (url: string) => {
     if (url.includes("/submit")) {
       submitCalled = true;
       return new Response(JSON.stringify({ hash: "x", ledger: 1 }), { status: 200 });
@@ -782,7 +741,7 @@ test("RevokeAllowanceModal › a wallet session that changes while the revoke is
     // The account switches inside the wallet while the transaction is being built.
     switched = true;
     return new Response(JSON.stringify({ transaction: realRevokeXdr() }), { status: 200 });
-  }) as unknown as typeof fetch;
+  });
 
   const onRevoked = mock((_a: Allowance) => {});
   render(

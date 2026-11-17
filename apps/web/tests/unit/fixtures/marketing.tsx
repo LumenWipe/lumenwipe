@@ -2,18 +2,12 @@ import { spyOn } from "bun:test";
 import type { ReactElement } from "react";
 import { render } from "@testing-library/react";
 import * as navigation from "next/navigation";
+import { fakeRouter } from "./navigation";
 
 /** Renders a marketing page or component and returns its root, with the router stubbed for the
  *  hero analyzer. */
 export function renderMarketing(element: ReactElement): HTMLElement {
-  spyOn(navigation, "useRouter").mockReturnValue({
-    push: () => {},
-    replace: () => {},
-    prefetch: () => {},
-    back: () => {},
-    forward: () => {},
-    refresh: () => {},
-  } as unknown as ReturnType<typeof navigation.useRouter>);
+  spyOn(navigation, "useRouter").mockReturnValue(fakeRouter());
   spyOn(navigation, "usePathname").mockReturnValue("/");
   return render(element).container;
 }

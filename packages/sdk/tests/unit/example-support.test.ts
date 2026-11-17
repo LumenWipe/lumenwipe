@@ -27,6 +27,7 @@ import {
   waitForAccount,
   type SignerState,
 } from "../../examples/support";
+import { closeTransaction } from "../support/fixtures";
 
 const source = Keypair.random().publicKey();
 const destination = Keypair.random().publicKey();
@@ -247,12 +248,11 @@ function closeTx(...ops: xdr.Operation[]): CloseTransaction {
     networkPassphrase: Networks.TESTNET,
   }).setTimeout(60);
   for (const op of ops) builder.addOperation(op);
-  return {
+  return closeTransaction({
     id: "tx-1",
     xdr: builder.build().toEnvelope().toXdr("base64"),
-    covers: [],
-    intent: { summary: "close" },
-  } as unknown as CloseTransaction;
+    intent: { ...closeTransaction().intent, summary: "close" },
+  });
 }
 
 describe("signing weight", () => {

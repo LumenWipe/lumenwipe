@@ -17,6 +17,7 @@ import { getHistory, saveHistory } from "@/lib/session/history";
 import type { ReceiptRecord } from "@/types/history";
 import { RECORD_VERSION } from "@/types/session";
 import { installIndexedDb, removeIndexedDb } from "./fixtures/indexed-db";
+import { fakeRouter } from "./fixtures/navigation";
 
 const SOURCE = "GSOURCE00000000000000000000000000000000000000000000000000";
 const DEST = "GDESTINATION000000000000000000000000000000000000000000000";
@@ -29,10 +30,8 @@ let consoleSpy: ReturnType<typeof spyOn>;
 
 beforeEach(() => {
   installIndexedDb();
-  const router = { push: () => {}, replace: () => {} };
-  spyOn(navigation, "useRouter").mockImplementation(
-    () => router as unknown as ReturnType<typeof navigation.useRouter>
-  );
+  const router = fakeRouter();
+  spyOn(navigation, "useRouter").mockImplementation(() => router);
   consoleSpy = spyOn(console, "error").mockImplementation(() => {});
   fetchSpy = spyOn(globalThis, "fetch");
 });
