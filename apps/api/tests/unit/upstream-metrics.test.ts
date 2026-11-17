@@ -187,11 +187,11 @@ describe("counting", () => {
     expect(counts()).toEqual({ "mainnet/defi/requests": 1, "mainnet/defi/unavailable": 1 });
   });
 
-  test("the explorer wrapper counts a 429", async () => {
-    await countedFetch("explorer", "mainnet", respondWith(429))("https://x.test");
+  test("the counted fetch wrapper counts a 429", async () => {
+    await countedFetch("defi", "mainnet", respondWith(429))("https://x.test");
     expect(counts()).toEqual({
-      "mainnet/explorer/requests": 1,
-      "mainnet/explorer/rate_limited": 1,
+      "mainnet/defi/requests": 1,
+      "mainnet/defi/rate_limited": 1,
     });
   });
 

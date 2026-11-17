@@ -70,7 +70,7 @@ function held(
   balance: string,
   over: Partial<SorobanTokenBalance> = {}
 ): SorobanTokenBalance {
-  return { contract, balance, symbol: "TKN", decimals: 7, sources: ["explorer"], ...over };
+  return { contract, balance, symbol: "TKN", decimals: 7, sources: ["list"], ...over };
 }
 
 function withTokens(tokens: SorobanTokenBalance[]): Pick<AccountState, "sorobanTokens"> {

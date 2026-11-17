@@ -36,7 +36,7 @@ const en = {
       analyze: {
         title: "Analyze the account",
         body: "Enumerate every subentry (trustlines, offers, data entries, signers) and detect DeFi positions through OctoPos. The result is a single, ordered execution plan.",
-        op: "stellar.expert + Stellar RPC",
+        op: "Horizon + Stellar RPC",
       },
       signers: {
         title: "Normalize signers",
@@ -127,7 +127,7 @@ const en = {
       },
       network: {
         label: "Stellar network",
-        sub: "Stellar RPC · stellar.expert · Soroswap",
+        sub: "Stellar RPC · Horizon · Soroswap",
         note: "read · submit",
       },
     },

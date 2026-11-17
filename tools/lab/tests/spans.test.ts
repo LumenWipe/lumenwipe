@@ -43,7 +43,7 @@ describe("spanLabel", () => {
 
   test("labels fixed hosts and leaves anything else as other, without its host", () => {
     expect(spanLabel("https://positions.example.org/v1/x", undefined, UPSTREAMS)).toBe("defi");
-    expect(spanLabel("https://api.stellar.expert/explorer/x", undefined, UPSTREAMS)).toBe(
+    expect(spanLabel("https://stellarview.acachete.xyz/en/mainnet", undefined, UPSTREAMS)).toBe(
       "explorer"
     );
     expect(spanLabel("https://swap-api.xbull.io/swaps", undefined, UPSTREAMS)).toBe("quotes");

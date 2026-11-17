@@ -1,8 +1,8 @@
 /**
- * Stand-ins for what Soroban token discovery talks to: the explorer's per-account listing, and an
- * RPC that serves contract instances, answers `getEvents` per requested window, and simulates a
- * token's `balance` / `symbol` / `decimals`. Real XDR throughout, so the decode path is the one
- * under test; the shapes mirror live responses captured from stellar.expert and the public RPC.
+ * A stand-in for what Soroban token discovery talks to: an RPC that serves contract instances,
+ * answers `getEvents` per requested window, and simulates a token's `balance` / `symbol` /
+ * `decimals`. Real XDR throughout, so the decode path is the one under test; the shapes mirror
+ * live responses captured from the public RPC.
  */
 import {
   Address,
@@ -45,8 +45,6 @@ export interface FakeSorobanWorld {
   latestLedger?: number;
   /** Per requested window `${startLedger}-${endLedger}`; a window listed with `error` rejects. */
   events?: Record<string, FakeEventWindow | { error: string }>;
-  /** What the explorer answers: a status and body, or a thrown network error. */
-  explorer?: { status: number; body: unknown } | { throws: string };
 }
 
 export const ACCOUNT = "GBUYBKHUCCAKG4LM76DONHABFRZSZEHK7ARNEEXBZ3CMVIYKZXPLPVRG";
@@ -194,46 +192,11 @@ export function fakeSorobanRpc(world: FakeSorobanWorld): SorobanTokenRpc & {
   };
 }
 
-export function fakeExplorerFetch(world: FakeSorobanWorld, calls: string[] = []): typeof fetch {
-  return (async (input: string | URL | Request) => {
-    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-    calls.push(url);
-    const answer = world.explorer ?? { status: 404, body: { error: "not found" } };
-    if ("throws" in answer) throw new Error(answer.throws);
-    return new Response(JSON.stringify(answer.body), {
-      status: answer.status,
-      headers: { "content-type": "application/json" },
-    });
-  }) as typeof fetch;
-}
-
-/** The explorer's `/account/{G}/value` body, as captured live: classic and contract balances mixed. */
-export function explorerValueBody(
-  contracts: Array<{ contract: string; balance: string }>
-): unknown {
-  return {
-    address: ACCOUNT,
-    balances: [
-      { asset: "XLM", balance: "32829200", flags: 1, updated: 1782250501, value: 0.62 },
-      ...contracts.map((c) => ({ asset: c.contract, balance: c.balance, flags: 1, updated: 1 })),
-      {
-        asset: "USDC-GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN-1",
-        balance: "0",
-        flags: 1,
-        updated: 1,
-      },
-    ],
-    total: 0.62,
-    currency: "USD",
-  };
-}
-
 export interface FakeDepsOptions {
   world: FakeSorobanWorld;
   listCandidates?: string[];
   manualCandidates?: string[];
   positions?: DefiPosition[];
-  explorerBaseUrl?: string;
   budgetMs?: number;
   /** A controllable clock, in ms; advanced by the tests that exercise the budget. */
   clock?: { now: number };
@@ -241,16 +204,11 @@ export interface FakeDepsOptions {
 
 export function fakeSorobanDeps(options: FakeDepsOptions): SorobanTokensDeps & {
   rpc: ReturnType<typeof fakeSorobanRpc>;
-  explorerCalls: string[];
 } {
-  const explorerCalls: string[] = [];
   const rpcStub = fakeSorobanRpc(options.world);
   const clock = options.clock ?? { now: 1_700_000_000_000 };
   return {
     rpc: rpcStub,
-    explorerCalls,
-    fetch: fakeExplorerFetch(options.world, explorerCalls),
-    explorerBaseUrl: options.explorerBaseUrl ?? "https://explorer.test",
     listCandidates: options.listCandidates ?? [],
     manualCandidates: options.manualCandidates ?? [],
     positions: options.positions ?? [],
@@ -262,8 +220,7 @@ export function fakeSorobanDeps(options: FakeDepsOptions): SorobanTokensDeps & {
 /** No network at all: the account-state tests are about the Horizon read, not token discovery. */
 export const OFFLINE_SOROBAN_TOKENS: AccountReadOptions = {
   ledgerCloseTime: () => Promise.resolve(null),
-  sorobanTokensDeps: () =>
-    fakeSorobanDeps({ world: { tokens: [] }, explorerBaseUrl: "", listCandidates: [] }),
+  sorobanTokensDeps: () => fakeSorobanDeps({ world: { tokens: [] }, listCandidates: [] }),
 };
 
 export { scValToNative };

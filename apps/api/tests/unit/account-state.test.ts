@@ -1,6 +1,7 @@
 import { test, expect, describe } from "bun:test";
 import { Keypair, StrKey } from "@stellar/stellar-sdk";
 import { readAccountStateFrom, readNativeBalance } from "@/lib/stellar/account-state";
+import { EVENTS_CHUNK_LEDGERS } from "@/lib/stellar/soroban-tokens";
 import { findStateDrift } from "@/lib/close-api/state-drift";
 import {
   assessSignerNormalizationSafety,
@@ -9,11 +10,7 @@ import {
 import { signerNormalizationOps } from "@/lib/stellar/tx-builder/signers";
 import type { LiveLedger } from "@/lib/stellar/live-ledger";
 import type { AccountSigner } from "@lumenwipe/types";
-import {
-  OFFLINE_SOROBAN_TOKENS,
-  explorerValueBody,
-  fakeSorobanDeps,
-} from "./fixtures/fake-soroban-tokens";
+import { OFFLINE_SOROBAN_TOKENS, fakeSorobanDeps } from "./fixtures/fake-soroban-tokens";
 import { tokenAssetsById } from "@/lib/close-api/decisions";
 import { AccountNotFoundError, UnusableProviderResponseError } from "@/lib/utils/errors";
 import type { ResolveDefiPositionsDeps } from "@/lib/defi-positions/resolve-defi-positions";
@@ -369,9 +366,9 @@ test("a detected Phoenix position's share token is never offered as its own toke
       fakeSorobanDeps({
         world: {
           tokens: [{ contract: PHOENIX_SHARE, balance: 42_0000000n, symbol: "PHO", decimals: 7 }],
-          explorer: {
-            status: 200,
-            body: explorerValueBody([{ contract: PHOENIX_SHARE, balance: "420000000" }]),
+          latestLedger: 1_000_000,
+          events: {
+            [`${1_000_001 - EVENTS_CHUNK_LEDGERS}-1000000`]: { contracts: [PHOENIX_SHARE] },
           },
         },
         listCandidates: [PHOENIX_SHARE],
@@ -425,7 +422,8 @@ test("the account read carries the Soroban token balances discovery confirmed, a
       return fakeSorobanDeps({
         world: {
           tokens: [{ contract: TOKEN, balance: 100_000_000n, symbol: "deJTRSY", decimals: 7 }],
-          explorer: { throws: "down" },
+          latestLedger: 1_000_000,
+          events: { [`${1_000_001 - EVENTS_CHUNK_LEDGERS}-1000000`]: { error: "down" } },
         },
         listCandidates: [TOKEN],
       });

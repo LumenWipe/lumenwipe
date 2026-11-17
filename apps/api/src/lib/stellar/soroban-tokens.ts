@@ -17,8 +17,7 @@ import {
   scValToNative,
   xdr,
 } from "@stellar/stellar-sdk";
-import { NETWORK_PASSPHRASES, STELLAR_EXPERT_API_URL } from "@/config/networks";
-import { countedFetch } from "./upstream-metrics";
+import { NETWORK_PASSPHRASES } from "@/config/networks";
 import bundledLists from "@/config/soroban-token-lists.json";
 import { mapConcurrent } from "@/lib/utils/concurrency";
 import { describeError } from "@/lib/utils/errors";
@@ -33,15 +32,11 @@ import { getRpcServer } from "./rpc";
  * that makes scanning its seven-day retention infeasible on mainnet (a window past a few thousand
  * ledgers times out). So discovery is a union of candidate sources, and truth is the ledger:
  *
- *  - the stellar.expert API, the one free per-account listing of contract balances (a third party
- *    with an undocumented endpoint and indexer lag: it proposes, it never decides);
  *  - the tokens named by the account's detected DeFi positions (what an exit pays out);
  *  - bundled lists of Soroban-native tokens with known liquidity (the only ones convertible);
  *  - recent on-chain `transfer` and `mint` events crediting the account, scanned in bounded
  *    windows as a freshness supplement, not as the source of record - by far the slowest
- *    source (up to ~14s of its own reserved budget), so every current caller disables it by
- *    default (`scanEvents: false`) and leans on stellar.expert instead; it stays available for
- *    a caller that explicitly asks for it;
+ *    source, so it is opt-in (`scanEvents`): the analysis asks for it, a close round does not;
  *  - contracts the user adds by hand.
  *
  * Every candidate is then confirmed by simulating `balance(account)` on the RPC - the
@@ -60,9 +55,6 @@ export interface SorobanTokenRpc {
 
 export interface SorobanTokensDeps {
   rpc: SorobanTokenRpc;
-  fetch: typeof fetch;
-  /** stellar.expert API base; empty disables the explorer source. */
-  explorerBaseUrl: string;
   /** Contracts the bundled lists know for this network. */
   listCandidates: string[];
   /** Contracts the user typed in; read like any other candidate. */
@@ -80,8 +72,6 @@ export interface SorobanTokensDeps {
 
 /** Discovery never holds an analysis longer than this; sources that do not fit are skipped. */
 export const SOROBAN_TOKENS_BUDGET_MS = 20_000;
-/** The explorer answers in a few hundred milliseconds or not at all. */
-export const EXPLORER_TIMEOUT_MS = 3_000;
 /** The public RPC refuses `getEvents` windows much wider than this under its processing cap. */
 export const EVENTS_CHUNK_LEDGERS = 4_000;
 /** At most this many chunks per analysis (about 33 hours on mainnet). */
@@ -119,8 +109,6 @@ export function defaultSorobanTokensDeps(
 ): SorobanTokensDeps {
   return {
     rpc: getRpcServer(network),
-    fetch: countedFetch("explorer", network, globalThis.fetch),
-    explorerBaseUrl: STELLAR_EXPERT_API_URL,
     listCandidates: bundledListCandidates(network),
     manualCandidates,
     positions,
@@ -133,16 +121,15 @@ export function defaultSorobanTokensDeps(
 }
 
 /** Sources in the order their candidates are kept when the cap bites: the user's own first. */
-const SOURCE_PRIORITY: SorobanTokenSource[] = ["manual", "positions", "explorer", "events", "list"];
+const SOURCE_PRIORITY: SorobanTokenSource[] = ["manual", "positions", "events", "list"];
 
 class Candidates {
   private readonly sources = new Map<string, Set<SorobanTokenSource>>();
   constructor(private readonly excluded: Set<string>) {}
-  /** Whether any source that actually looked at THIS account has proposed something: the
-   *  explorer's per-account listing, a detected position's payout token, a contract the user
-   *  typed in, or the event scan. The bundled lists are excluded on purpose - they propose the
-   *  same handful of contracts for every address on the network, so counting them would mean the
-   *  deep sweep never runs for anyone. */
+  /** Whether any source that actually looked at THIS account has proposed something: a
+   *  detected position's payout token, a contract the user typed in, or the event scan. The
+   *  bundled lists are excluded on purpose - they propose the same handful of contracts for every
+   *  address on the network, so counting them would mean the deep sweep never runs for anyone. */
   get hasAccountSpecific(): boolean {
     for (const sources of this.sources.values()) {
       for (const source of sources) if (source !== "list") return true;
@@ -191,45 +178,6 @@ function withTimeout<T>(promise: Promise<T>, ms: number, what: string): Promise<
 const reason = describeError;
 
 // ─── candidate sources ───────────────────────────────────────────────────────
-
-/** stellar.expert's per-account value listing: every `C...` asset with a non-zero balance. */
-async function explorerCandidates(
-  address: string,
-  network: Network,
-  deps: SorobanTokensDeps
-): Promise<string[]> {
-  const segment = network === "mainnet" ? "public" : "testnet";
-  const url = `${deps.explorerBaseUrl.replace(/\/$/, "")}/explorer/${segment}/account/${address}/value`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), EXPLORER_TIMEOUT_MS);
-  timer.unref?.();
-  try {
-    const res = await deps.fetch(url, {
-      signal: controller.signal,
-      headers: { accept: "application/json" },
-    });
-    // An account the explorer has not indexed yet is not an error: it simply proposes nothing.
-    if (res.status === 404) return [];
-    if (!res.ok) throw new Error(`explorer responded ${res.status}`);
-    const body: unknown = await res.json();
-    const balances =
-      body && typeof body === "object" && Array.isArray((body as { balances?: unknown }).balances)
-        ? ((body as { balances: unknown[] }).balances as unknown[])
-        : [];
-    const out: string[] = [];
-    for (const entry of balances) {
-      if (!entry || typeof entry !== "object") continue;
-      const { asset, balance } = entry as { asset?: unknown; balance?: unknown };
-      if (typeof asset !== "string" || !CONTRACT_ID.test(asset)) continue;
-      if (typeof balance === "string" && /^0+$/.test(balance)) continue;
-      out.push(asset);
-      if (out.length >= MAX_CANDIDATES_PER_SOURCE) break;
-    }
-    return out;
-  } finally {
-    clearTimeout(timer);
-  }
-}
 
 /** The topic shapes a credit to the account can take: SEP-41 `transfer` (3 topics), the Stellar
  *  Asset Contract's `transfer` (4, with the asset), SEP-41 `mint` (`[mint, to]`), the SAC's
@@ -512,9 +460,9 @@ export async function discoverSorobanTokens(
   const positionTokens = new Set<string>();
   for (const position of deps.positions) {
     // The position's own contract is a pool, pair, market, or vault. A Soroswap pair is also its
-    // own share token, and the explorer lists it as a balance. Aquarius and Phoenix keep shares in
-    // a separate contract (the pool's `TokenShare` and `CONFIG.share_token`), carried on the
-    // position as `shareToken` and excluded below.
+    // own share token. Aquarius and Phoenix keep shares in a separate contract (the pool's
+    // `TokenShare` and `CONFIG.share_token`), carried on the position as `shareToken` and
+    // excluded below.
     excluded.add(position.contractAddress);
     if ("shareToken" in position && position.shareToken) excluded.add(position.shareToken);
     if ("tokens" in position && position.tokens)
@@ -533,23 +481,9 @@ export async function discoverSorobanTokens(
   coverage.push({ source: "positions", status: "ok" });
   coverage.push({ source: "list", status: deps.listCandidates.length > 0 ? "ok" : "skipped" });
 
-  const explorer = deps.explorerBaseUrl
-    ? explorerCandidates(address, network, deps).then(
-        (found) => {
-          for (const c of found) candidates.add(c, "explorer");
-          coverage.push({ source: "explorer", status: "ok" });
-        },
-        (err: unknown) => {
-          coverage.push({ source: "explorer", status: "failed", detail: reason(err) });
-        }
-      )
-    : Promise.resolve(
-        coverage.push({ source: "explorer", status: "skipped", detail: "not configured" })
-      );
   // Leave room for the ledger reads: the scan may use most of the budget, not all of it.
-  // The event scan is the only source that can find a token no list and no third-party indexer
-  // knows about - measured against mainnet on 2026-09-17, stellar.expert returns only tokens its
-  // own indexer tracks, so an account holding anything outside every curated list reads as empty.
+  // The event scan is the only source that can find a token no list and no detected position
+  // names.
   //
   // One window, not the six this used to walk. Six cost ~17s and, on an account where there is
   // nothing to find, that is paid by every analysis for no gain; one 4,000-ledger window costs
@@ -579,7 +513,7 @@ export async function discoverSorobanTokens(
             return null;
           }
         );
-  const [, eventsScanned] = await Promise.all([explorer, events]);
+  const eventsScanned = await events;
 
   const ordered = candidates.ordered();
   const kept = ordered.slice(0, MAX_CANDIDATES);

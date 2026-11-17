@@ -11,8 +11,8 @@ import { getAccountState } from "@/lib/stellar/account-state";
 // answer rather than a prompt to look again - and it reaches the plan builder as a blocker.
 //
 // Soroban token discovery runs in its quick form here, same as the initial /analyze call
-// (account.controller.ts): stellar.expert, the bundled lists, detected positions' payout
-// tokens, and any contract the caller named by hand, never the slow recent-events scan. A
+// (account.controller.ts): the bundled lists, detected positions' payout tokens, and any
+// contract the caller named by hand, never the slow recent-events scan. A
 // close re-reads state on every round, so the rounds only need to re-confirm balances within a
 // budget that keeps a multi-round close moving.
 export const CLOSE_ROUND_TOKENS_BUDGET_MS = 8_000;

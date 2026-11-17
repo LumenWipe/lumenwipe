@@ -19,12 +19,7 @@ import {
   defaultSorobanTokensDeps,
   discoverSorobanTokens,
 } from "@/lib/stellar/soroban-tokens";
-import {
-  ACCOUNT,
-  explorerValueBody,
-  fakeSorobanDeps,
-  type FakeToken,
-} from "./fixtures/fake-soroban-tokens";
+import { ACCOUNT, fakeSorobanDeps, type FakeToken } from "./fixtures/fake-soroban-tokens";
 
 const token = (n: number): string => Address.contract(Buffer.alloc(32, n)).toString();
 const NATIVE_A = token(1);
@@ -49,7 +44,13 @@ describe("Soroban token discovery", () => {
     expect(defaultSorobanTokensDeps("mainnet", [], [], { scanEvents: true }).scanEvents).toBe(true);
   });
 
-  test("merges the explorer, lists, positions, and recent events into candidates, and reports only what the ledger confirms", async () => {
+  test("no source reads a third-party indexer: the deps carry the RPC and nothing to fetch with", () => {
+    const deps = defaultSorobanTokensDeps("mainnet", []);
+    expect("fetch" in deps).toBe(false);
+    expect("explorerBaseUrl" in deps).toBe(false);
+  });
+
+  test("merges lists, positions, and recent events into candidates, and reports only what the ledger confirms", async () => {
     const position: AquariusLpPosition = {
       protocol: "aquarius",
       positionType: "lp",
@@ -70,16 +71,10 @@ describe("Soroban token discovery", () => {
           { contract: GHOST, exists: false, balance: 1n },
           held(token(7), 0n),
         ],
-        explorer: {
-          status: 200,
-          body: explorerValueBody([
-            { contract: NATIVE_A, balance: "1500000" },
-            { contract: SAC, balance: "10" },
-            { contract: SHARE, balance: "7" },
-          ]),
-        },
         events: {
-          [`${LATEST - EVENTS_CHUNK_LEDGERS + 1}-${LATEST}`]: { contracts: [NATIVE_A, token(7)] },
+          [`${LATEST - EVENTS_CHUNK_LEDGERS + 1}-${LATEST}`]: {
+            contracts: [NATIVE_A, SAC, SHARE, token(7)],
+          },
         },
       },
       listCandidates: [GHOST, NATIVE_B],
@@ -92,7 +87,7 @@ describe("Soroban token discovery", () => {
         balance: "1500000",
         symbol: "ALPHA",
         decimals: 6,
-        sources: ["explorer", "events"],
+        sources: ["events"],
       },
       {
         contract: NATIVE_B,
@@ -108,15 +103,12 @@ describe("Soroban token discovery", () => {
     expect(result.unreadable).toEqual([]);
     expect(result.warnings).toEqual([]);
     expect(result.coverage.map((c) => `${c.source}:${c.status}`).sort()).toEqual(
-      ["events:ok", "explorer:ok", "list:ok", "manual:skipped", "positions:ok"].sort()
+      ["events:ok", "list:ok", "manual:skipped", "positions:ok"].sort()
     );
     expect(result.eventsScanned).toEqual({
       fromLedger: LATEST - EVENTS_CHUNK_LEDGERS + 1,
       toLedger: LATEST,
     });
-    expect(deps.explorerCalls[0]).toBe(
-      `https://explorer.test/explorer/testnet/account/${ACCOUNT}/value`
-    );
   });
 
   test("a Blend position's asset is a candidate too: the exit pays it out", async () => {
@@ -131,16 +123,14 @@ describe("Soroban token discovery", () => {
     const deps = fakeSorobanDeps({
       world: { tokens: [held(NATIVE_A, 5n)] },
       positions: [supply],
-      explorerBaseUrl: "",
     });
     const result = await discoverSorobanTokens(ACCOUNT, "testnet", deps);
     expect(result.tokens.map((t) => [t.contract, t.sources])).toEqual([[NATIVE_A, ["positions"]]]);
   });
 
-  // The tokens of the real exits in apps/web/tests/unit/fixtures/real-exit-envelopes.ts, with
-  // the explorer answering 402 as stellar.expert does since 2026-11-06 and the credit older than
-  // the event window: the position itself is what names the token, not an indexer.
-  describe("with the explorer refusing and nothing in the event window", () => {
+  // The tokens of the real exits in apps/web/tests/unit/fixtures/real-exit-envelopes.ts, with the
+  // credit older than the event window: the position itself is what names the token.
+  describe("with nothing in the event window", () => {
     const PHOENIX_POOL = "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV";
     const PHOENIX_SHARE = "CC53IRMBHWTXE4BWPD5N4LH2L43YSYBMOFD6UARPMZBTWPSODFFKW2EG";
     const FXDAO_VAULT = "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N";
@@ -163,12 +153,11 @@ describe("Soroban token discovery", () => {
       debtToken: FXDAO_USD,
       usdValue: null,
     };
-    const outage = (positions: Array<PhoenixLpPosition | FxdaoCdpPosition>, extra = {}) =>
+    const quiet = (positions: Array<PhoenixLpPosition | FxdaoCdpPosition>, extra = {}) =>
       fakeSorobanDeps({
         world: {
           latestLedger: LATEST,
           tokens: [held(PHOENIX_SHARE, 388315n), held(FXDAO_USD, 100000000n)],
-          explorer: { status: 402, body: { error: "Payment Required" } },
           events: { [`${LATEST - EVENTS_CHUNK_LEDGERS + 1}-${LATEST}`]: { contracts: [] } },
         },
         positions,
@@ -176,12 +165,7 @@ describe("Soroban token discovery", () => {
       });
 
     test("an FxDAO vault's stablecoin is still confirmed on the ledger, through the position", async () => {
-      const result = await discoverSorobanTokens(ACCOUNT, "testnet", outage([fxdao]));
-      expect(result.coverage).toContainEqual({
-        source: "explorer",
-        status: "failed",
-        detail: "explorer responded 402",
-      });
+      const result = await discoverSorobanTokens(ACCOUNT, "testnet", quiet([fxdao]));
       expect(result.tokens.map((t) => [t.contract, t.balance, t.sources])).toEqual([
         [FXDAO_USD, "100000000", ["positions"]],
       ]);
@@ -192,10 +176,6 @@ describe("Soroban token discovery", () => {
         world: {
           latestLedger: LATEST,
           tokens: [held(PHOENIX_SHARE, 388315n)],
-          explorer: {
-            status: 200,
-            body: explorerValueBody([{ contract: PHOENIX_SHARE, balance: "388315" }]),
-          },
           events: {
             [`${LATEST - EVENTS_CHUNK_LEDGERS + 1}-${LATEST}`]: { contracts: [PHOENIX_SHARE] },
           },
@@ -204,7 +184,7 @@ describe("Soroban token discovery", () => {
         manualCandidates: [PHOENIX_SHARE],
         positions: [phoenix],
       });
-      for (const deps of [outage([phoenix]), proposedEverywhere]) {
+      for (const deps of [quiet([phoenix]), proposedEverywhere]) {
         const result = await discoverSorobanTokens(ACCOUNT, "mainnet", deps);
         expect(result.tokens).toEqual([]);
         expect(result.unreadable).toEqual([]);
@@ -215,7 +195,6 @@ describe("Soroban token discovery", () => {
   test("the event scan asks for every credit shape - SEP-41 and Stellar-asset transfers, and mints - over one recent window", async () => {
     const deps = fakeSorobanDeps({
       world: { latestLedger: LATEST, tokens: [] },
-      explorerBaseUrl: "",
     });
     await discoverSorobanTokens(ACCOUNT, "testnet", deps);
     const first = deps.rpc.eventRequests[0]!;
@@ -251,7 +230,6 @@ describe("Soroban token discovery", () => {
           },
         },
       },
-      explorerBaseUrl: "",
     });
     const result = await discoverSorobanTokens(ACCOUNT, "testnet", deps);
     const forNewest = deps.rpc.eventRequests.filter(
@@ -273,7 +251,6 @@ describe("Soroban token discovery", () => {
   test("the event scan skipped on request: a close round re-confirms known balances, it does not go looking", async () => {
     const deps = fakeSorobanDeps({
       world: { latestLedger: LATEST, tokens: [held(NATIVE_A, 5n)] },
-      explorerBaseUrl: "",
       listCandidates: [NATIVE_A],
     });
     deps.scanEvents = false;
@@ -300,7 +277,6 @@ describe("Soroban token discovery", () => {
           },
         },
       },
-      explorerBaseUrl: "",
       listCandidates: [NATIVE_A],
     });
     const result = await discoverSorobanTokens(ACCOUNT, "testnet", deps);
@@ -315,34 +291,24 @@ describe("Soroban token discovery", () => {
     expect(events.detail).not.toContain("[object");
   });
 
-  test("an explorer outage is a failed source and a plain warning, never a hidden balance", async () => {
+  test("a failed event scan is a plain warning naming the source, never a hidden balance", async () => {
     const deps = fakeSorobanDeps({
-      world: { tokens: [held(NATIVE_A, 3n)], explorer: { throws: "socket hang up" } },
+      world: {
+        latestLedger: LATEST,
+        tokens: [held(NATIVE_A, 3n)],
+        events: { [`${LATEST - EVENTS_CHUNK_LEDGERS + 1}-${LATEST}`]: { error: "socket hang up" } },
+      },
       listCandidates: [NATIVE_A],
     });
     const result = await discoverSorobanTokens(ACCOUNT, "mainnet", deps);
     expect(result.tokens.map((t) => t.contract)).toEqual([NATIVE_A]);
-    expect(result.coverage.find((c) => c.source === "explorer")).toEqual({
-      source: "explorer",
+    expect(result.coverage.find((c) => c.source === "events")).toEqual({
+      source: "events",
       status: "failed",
       detail: "socket hang up",
     });
     expect(result.warnings.map((w) => w.code)).toEqual(["soroban_tokens_partial"]);
-    expect(deps.explorerCalls[0]).toContain("/explorer/public/account/");
-    // 404 (an account the explorer never indexed) proposes nothing and is not a failure.
-    const unknown = fakeSorobanDeps({
-      world: { tokens: [], explorer: { status: 404, body: { error: "not found" } } },
-    });
-    const none = await discoverSorobanTokens(ACCOUNT, "mainnet", unknown);
-    expect(none.coverage.find((c) => c.source === "explorer")?.status).toBe("ok");
-    expect(none.warnings).toEqual([]);
-    // A 5xx is a failure.
-    const down = fakeSorobanDeps({ world: { tokens: [], explorer: { status: 503, body: {} } } });
-    expect(
-      (await discoverSorobanTokens(ACCOUNT, "mainnet", down)).coverage.find(
-        (c) => c.source === "explorer"
-      )?.status
-    ).toBe("failed");
+    expect(result.warnings[0]!.message).toContain("(events)");
   });
 
   test("a token that will not report a balance, or never answers, is unreadable and named in a warning", async () => {
@@ -355,7 +321,6 @@ describe("Soroban token discovery", () => {
         ],
       },
       listCandidates: [BROKEN, GHOST, NATIVE_A],
-      explorerBaseUrl: "",
     });
     const result = await discoverSorobanTokens(ACCOUNT, "testnet", deps);
     expect(result.tokens.map((t) => t.contract)).toEqual([NATIVE_A]);
@@ -369,7 +334,6 @@ describe("Soroban token discovery", () => {
     const deps = fakeSorobanDeps({
       world: { tokens: [held(NATIVE_A, 11n, { symbol: null, decimals: null })] },
       listCandidates: [NATIVE_A],
-      explorerBaseUrl: "",
     });
     const result = await discoverSorobanTokens(ACCOUNT, "testnet", deps);
     expect(result.tokens[0]).toEqual({
@@ -388,7 +352,6 @@ describe("Soroban token discovery", () => {
       world: { tokens: [...many.map((c) => held(c, 1n)), held(manual, 2n)] },
       listCandidates: many,
       manualCandidates: [manual],
-      explorerBaseUrl: "",
     });
     const result = await discoverSorobanTokens(ACCOUNT, "testnet", deps);
     expect(result.tokens).toHaveLength(MAX_CANDIDATES);
@@ -405,7 +368,6 @@ describe("Soroban token discovery", () => {
         "GBUYBKHUCCAKG4LM76DONHABFRZSZEHK7ARNEEXBZ3CMVIYKZXPLPVRG",
         NATIVE_A,
       ],
-      explorerBaseUrl: "",
     });
     deps.rpc.getLedgerEntries = async () => {
       throw new Error("rpc down");
@@ -423,7 +385,6 @@ describe("Soroban token discovery", () => {
         latestLedger: LATEST,
         tokens: [held(NATIVE_A, 1n), { contract: SAC, isStellarAsset: true, balance: 9n }],
       },
-      explorerBaseUrl: "",
       manualCandidates: [NATIVE_A, GHOST, SAC],
     });
     const result = await discoverSorobanTokens(ACCOUNT, "testnet", deps);
@@ -444,7 +405,6 @@ describe("Soroban token discovery", () => {
           held(GHOST, 1n, { symbol: "ünïcødé" }),
         ],
       },
-      explorerBaseUrl: "",
       listCandidates: [NATIVE_A, NATIVE_B, GHOST],
     });
     const result = await discoverSorobanTokens(ACCOUNT, "testnet", deps);
@@ -456,7 +416,7 @@ describe("Soroban token discovery", () => {
     expect(result.tokens).toHaveLength(3);
   });
 
-  test("a position's own contract is never a held token, even when the explorer lists it as a balance", async () => {
+  test("a position's own contract is never a held token, even when the event scan proposes it", async () => {
     const pair = token(9);
     const position = {
       protocol: "soroswap",
@@ -468,12 +428,8 @@ describe("Soroban token discovery", () => {
       world: {
         latestLedger: LATEST,
         tokens: [held(pair, 1n), held(NATIVE_A, 1n)],
-        explorer: {
-          status: 200,
-          body: explorerValueBody([
-            { contract: pair, balance: "1" },
-            { contract: NATIVE_A, balance: "1" },
-          ]),
+        events: {
+          [`${LATEST - EVENTS_CHUNK_LEDGERS + 1}-${LATEST}`]: { contracts: [pair, NATIVE_A] },
         },
       },
       positions: [position],
@@ -482,16 +438,13 @@ describe("Soroban token discovery", () => {
     expect(result.tokens.map((t) => t.contract)).toEqual([NATIVE_A]);
   });
 
-  test("one source cannot flood the candidates: the explorer contributes at most its per-source share", async () => {
+  test("one source cannot flood the candidates: the event scan contributes at most its per-source share", async () => {
     const many = Array.from({ length: MAX_CANDIDATES_PER_SOURCE + 10 }, (_, i) => token(100 + i));
     const deps = fakeSorobanDeps({
       world: {
         latestLedger: LATEST,
         tokens: many.map((c) => held(c, 1n)),
-        explorer: {
-          status: 200,
-          body: explorerValueBody(many.map((c) => ({ contract: c, balance: "1" }))),
-        },
+        events: { [`${LATEST - EVENTS_CHUNK_LEDGERS + 1}-${LATEST}`]: { contracts: many } },
       },
     });
     const result = await discoverSorobanTokens(ACCOUNT, "testnet", deps);
@@ -502,19 +455,16 @@ describe("Soroban token discovery", () => {
   test("when the sources spend the whole budget, the unprobed tokens are unreadable for that reason, not missing", async () => {
     const clock = { now: 1_700_000_000_000 };
     const deps = fakeSorobanDeps({
-      world: {
-        latestLedger: LATEST,
-        tokens: [held(NATIVE_A, 1n)],
-        explorer: { status: 200, body: explorerValueBody([{ contract: NATIVE_A, balance: "1" }]) },
-      },
+      world: { latestLedger: LATEST, tokens: [held(NATIVE_A, 1n)] },
+      listCandidates: [NATIVE_A],
       budgetMs: 1_000,
       clock,
     });
-    const slowFetch = deps.fetch;
-    deps.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
-      clock.now += 2_000; // the explorer alone overran the budget
-      return slowFetch(input, init);
-    }) as typeof fetch;
+    const latest = deps.rpc.getLatestLedger.bind(deps.rpc);
+    deps.rpc.getLatestLedger = async () => {
+      clock.now += 2_000; // the event scan alone overran the budget
+      return latest();
+    };
     const result = await discoverSorobanTokens(ACCOUNT, "testnet", deps);
     expect(result.tokens).toEqual([]);
     expect(result.unreadable).toEqual([NATIVE_A]);
@@ -527,7 +477,6 @@ describe("Soroban token discovery", () => {
     const clock = { now: 1_700_000_000_000 };
     const deps = fakeSorobanDeps({
       world: { latestLedger: LATEST, tokens: [held(NATIVE_A, 5n)] },
-      explorerBaseUrl: "",
       listCandidates: [NATIVE_A],
       // LEDGER_READS_RESERVE_MS (6s) is held back for the balance reads, so a 5s budget leaves
       // the scan nothing at all - reading what the account holds outranks looking for more.
@@ -556,7 +505,6 @@ describe("Soroban token discovery", () => {
         latestLedger: LATEST,
         tokens: [held(NATIVE_A, 0n, { symbol: "AAA", decimals: 7 }), held(NATIVE_B, 3n)],
       },
-      explorerBaseUrl: "",
       listCandidates: [GHOST],
       positions: [position],
     });
@@ -570,7 +518,6 @@ describe("Soroban token discovery", () => {
   test("an empty balance from any other source is not listed at all", async () => {
     const deps = fakeSorobanDeps({
       world: { latestLedger: LATEST, tokens: [held(NATIVE_A, 0n)] },
-      explorerBaseUrl: "",
       listCandidates: [NATIVE_A],
     });
     const result = await discoverSorobanTokens(ACCOUNT, "testnet", deps);

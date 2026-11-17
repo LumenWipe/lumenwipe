@@ -107,13 +107,11 @@ export class AccountController {
     }
 
     try {
-      // The analysis is where discovery happens, so the event scan runs here. The gap it covers
-      // is not the narrow one this comment used to describe: measured against mainnet on
-      // 2026-09-17, stellar.expert's per-account listing returns only tokens its own indexer
-      // knows - an account holding a Soroban-native token outside every curated list comes back
-      // as if it held nothing, and the close would then leave that balance behind in silence.
-      // The scan is the only source that can find such a token, so paying for it here is the
-      // difference between a correct close and a quiet loss.
+      // The analysis is where discovery happens, so the event scan runs here. An account holding
+      // a Soroban-native token outside every curated list and every detected position would
+      // otherwise come back as if it held nothing, and the close would then leave that balance
+      // behind in silence. The scan is the only source that can find such a token, so paying for
+      // it here is the difference between a correct close and a quiet loss.
       //
       // Its cost is bounded by the two-pass shape in soroban-tokens.ts: a ~0.6s shallow window
       // on every analysis, and the deeper sweep only for an account no other source could say
