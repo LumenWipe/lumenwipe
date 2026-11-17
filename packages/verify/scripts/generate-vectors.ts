@@ -24,6 +24,8 @@ import {
   TransactionBuilder,
   xdr,
 } from "@stellar/stellar-sdk";
+import { bundledRegistry } from "../../../apps/web/lib/exchange-registry";
+import { MAX_EXTENSION_DAYS } from "../../../apps/web/lib/exchange-registry/merge";
 import { REAL_EXIT_ENVELOPES } from "../../../apps/web/tests/unit/fixtures/real-exit-envelopes";
 import {
   exitExpectations,
@@ -694,9 +696,14 @@ reject(
 // The snapshot is the integrator's copy of `GET /v1/config/exchange-registry`. It is merged over
 // the bundled registry and can only tighten; it never enables the intermediary.
 
-/** The date the bundled exchange registry is valid until, and 2027-02-01T00:00:00Z, past it. */
-const BUNDLED_UNTIL = "2027-01-08";
-const PAST_BUNDLED_EXPIRY = 1_801_440_000;
+/** The date the bundled exchange registry is valid until, the first second past it, the last
+ *  date a snapshot may extend it to, and the day after that. */
+const BUNDLED_UNTIL = bundledRegistry().validUntil;
+const daysAfterBundled = (days: number): string =>
+  new Date(Date.parse(`${BUNDLED_UNTIL}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+const PAST_BUNDLED_EXPIRY = Date.parse(`${daysAfterBundled(1)}T00:00:00Z`) / 1000;
+const EXTENDED_UNTIL = daysAfterBundled(MAX_EXTENSION_DAYS);
+const PAST_CAP = daysAfterBundled(MAX_EXTENSION_DAYS + 1);
 const NEW_EXCHANGE = publicKey("newly listed exchange");
 
 const listing = (
@@ -868,16 +875,16 @@ accept(
 );
 const extended = accept(
   "exchange-close-past-bundled-expiry-extended-by-snapshot",
-  "The exchange close through the intermediary on 2027-02-01, past the bundled registry's validity, with a snapshot valid until 2027-03-01: within 120 days of the bundled date, so it extends it.",
+  `The exchange close through the intermediary at the start of ${daysAfterBundled(1)}, past the bundled registry's validity, with a snapshot valid until ${EXTENDED_UNTIL}: exactly ${MAX_EXTENSION_DAYS} days after the bundled date, so it extends it.`,
   build([merge(INTERMEDIARY), forward()], { memo: deposit, maxTime: PAST_BUNDLED_EXPIRY + 300 }),
   expectation({ destination: COINBASE, memo: "deposit-1", memoType: "text" }),
-  { nowSeconds: PAST_BUNDLED_EXPIRY, servedRegistry: snapshot([], "2027-03-01") }
+  { nowSeconds: PAST_BUNDLED_EXPIRY, servedRegistry: snapshot([], EXTENDED_UNTIL) }
 );
 rejectUnderSnapshot(
   extended,
   "snapshot-extends-expiry-past-cap",
-  "Passes a snapshot valid until 2027-06-01, more than 120 days past the bundled date, so the bundled date stands and has passed.",
-  snapshot([], "2027-06-01"),
+  `Passes a snapshot valid until ${PAST_CAP}, ${MAX_EXTENSION_DAYS + 1} days past the bundled date, so the bundled date stands and has passed.`,
+  snapshot([], PAST_CAP),
   "registry_expired",
   "The exchange deposit rules have expired and have not been re-verified, so this close cannot be checked. Refresh the page; if it persists, the registry needs updating."
 );

@@ -7,6 +7,15 @@ release is cut.
 
 ## [Unreleased]
 
+### Changed
+
+- The bundled exchange and contract registries are re-verified and restamped: `lastVerified`
+  2026-11-17 and `validUntil` 2027-02-15. No entry is added, removed or re-pinned; contract
+  entries record the day their live code was re-read. The two vectors that run past the bundled
+  expiry now take their clock and snapshot dates from the bundled registry, so their
+  `nowSeconds`, descriptions and dates move with it; their names and expected results are
+  unchanged.
+
 ## [0.5.0] - 2026-11-17
 
 ### Added

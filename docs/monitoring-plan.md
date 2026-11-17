@@ -86,11 +86,11 @@ read, and `mainnet-registry.integration.test.ts` runs that comparison. `S4a.Elev
 risk whose primary control is operational - the mediator holds no spendable surplus - so the alert exists to
 catch the funding policy being broken, not to be the only thing standing in the way.
 
-### Registry coverage by protocol (as of 2026-10-10)
+### Registry coverage by protocol (as of 2026-11-17)
 
 The registry comparison behind `S7.Tampering.1.M.1` reads every mainnet entry with `verifiedLive: true`
 (`mainnet-registry.integration.test.ts`). What each protocol's rows contribute today, from
-`contract-registry.json` (`lastVerified` 2026-10-10):
+`contract-registry.json` (`lastVerified` 2026-11-17):
 
 | Protocol | Mainnet entries compared daily                                 | Status                                                                                                                                                               |
 | -------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
