@@ -172,9 +172,20 @@ test("Google and GitHub sign-in loads only once it is chosen, and every Pollar c
   expect(await pollar.scripts()).toEqual([]);
   expect(pollar.requests).toEqual([]);
 
+  const google = page.getByRole("button", { name: "Continue with Google", exact: true });
+  const github = page.getByRole("button", { name: "Continue with GitHub", exact: true });
+  await choice.hover();
+  await choice.focus();
+  await expect.poll(async () => (await pollar.scripts()).length).toBeGreaterThan(0);
+  // No event marks the end of the prefetched module's evaluation, so it gets a settle window.
+  await page.waitForTimeout(1_000);
+  expect(pollar.requests).toEqual([]);
+  await expect(google).toHaveCount(0);
+  await expect(github).toHaveCount(0);
+
   await choice.click();
-  await expect(page.getByRole("button", { name: "Continue with Google" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Continue with GitHub" })).toBeVisible();
+  await expect(google).toBeVisible();
+  await expect(github).toBeVisible();
   await expect(page.getByRole("heading", { name: "Or continue with an account" })).toBeFocused();
   expect((await pollar.scripts()).length).toBeGreaterThan(0);
   await expect.poll(() => pollar.requests.length).toBeGreaterThan(0);
