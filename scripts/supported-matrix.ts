@@ -415,11 +415,13 @@ export const ENVIRONMENT: Record<EnvApp, Record<string, EnvironmentFacts>> = {
       true,
       "`https://soroban-testnet.stellar.org`"
     ),
-    STELLAR_RPC_MAINNET: optional(
-      "Mainnet Stellar RPC, one URL or a comma-separated failover list; secret because a provider URL can carry its key",
-      true,
-      "`https://mainnet.sorobanrpc.com`"
-    ),
+    STELLAR_RPC_MAINNET: {
+      required: "Production",
+      secret: true,
+      default: "`https://mainnet.sorobanrpc.com`",
+      purpose:
+        "Mainnet Stellar RPC, one URL or a list; the default is for development, a production boot refuses to start without it. Secret: a URL can carry its key",
+    },
     STELLAR_RPC_HEADER_NAME_TESTNET: header("Stellar RPC", "first testnet", "NAME"),
     STELLAR_RPC_HEADER_VALUE_TESTNET: header("Stellar RPC", "first testnet", "VALUE"),
     STELLAR_RPC_HEADER_NAME_MAINNET: header("Stellar RPC", "first mainnet", "NAME"),
@@ -432,10 +434,13 @@ export const ENVIRONMENT: Record<EnvApp, Record<string, EnvironmentFacts>> = {
       "Testnet Horizon-compatible endpoint for account state and conversion paths; account reads fail without it. Secret because a provider URL can carry its key",
       true
     ),
-    PATH_ROUTING_API_MAINNET: optional(
-      "Mainnet Horizon-compatible endpoint for account state and conversion paths; account reads fail without it. Secret because a provider URL can carry its key",
-      true
-    ),
+    PATH_ROUTING_API_MAINNET: {
+      required: "Production",
+      secret: true,
+      default: NONE,
+      purpose:
+        "Mainnet Horizon-compatible endpoint for account state and conversion paths; a production boot refuses to start without it. Secret: a URL can carry its key",
+    },
     PATH_ROUTING_API_HEADER_NAME_MAINNET: header(
       "Horizon-compatible endpoint",
       "first mainnet",
@@ -455,11 +460,6 @@ export const ENVIRONMENT: Record<EnvApp, Record<string, EnvironmentFacts>> = {
       "Horizon-compatible endpoint",
       "second mainnet",
       "VALUE"
-    ),
-    REQUIRE_EXPLICIT_MAINNET_ENDPOINTS: optional(
-      "`true` refuses to start while a mainnet endpoint is unset",
-      false,
-      "`false`"
     ),
     OCTOPOS_API_URL_MAINNET: optional(
       "OctoPos DeFi position detection; unset means a classic-only close",

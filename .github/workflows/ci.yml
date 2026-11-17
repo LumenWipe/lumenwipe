@@ -558,13 +558,17 @@ jobs:
           fi
           echo "the image runs Node ${actual}"
 
-      # API_KEYS is the only variable the startup check treats as fatal (src/config/validate-env.ts)
-      # and boot makes no network calls, so a throwaway value is enough to reach /health. No route
-      # is exercised with it. Container logs are printed on failure - the interesting output is
-      # the crash, and it is not visible anywhere else.
+      # The startup check (src/config/validate-env.ts) refuses a production boot without API_KEYS
+      # and both mainnet endpoints. Boot makes no network calls, so throwaway values and reserved
+      # .invalid hosts are enough to reach /health. No route is exercised with them. Container logs
+      # are printed on failure - the interesting output is the crash, and it is not visible anywhere
+      # else.
       - name: Boot the image and check /health and the commit at /
         run: |
-          docker run -d --name api-smoke -e API_KEYS=ci=ci-smoke -e PORT=8080 -p 8080:8080 lumenwipe-api:ci
+          docker run -d --name api-smoke -e API_KEYS=ci=ci-smoke -e PORT=8080 \
+            -e STELLAR_RPC_MAINNET=https://rpc.mainnet.invalid \
+            -e PATH_ROUTING_API_MAINNET=https://horizon.mainnet.invalid \
+            -p 8080:8080 lumenwipe-api:ci
           for i in $(seq 1 30); do
             if curl -fs http://127.0.0.1:8080/health > /dev/null 2>&1; then
               echo "healthy after ${i}s"

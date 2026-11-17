@@ -180,52 +180,74 @@ function endpointCheck(env: Record<string, string>) {
   return checkEnv({ ...OK, ...env });
 }
 
-test("in production an unset mainnet endpoint warns and boots", () => {
+test("in production an unset mainnet endpoint refuses to start, naming each one", () => {
   const { problems, warnings } = endpointCheck({ NODE_ENV: "production" });
-  expect(problems).toEqual([]);
-  expect(warnings.map((w) => w.variable)).toEqual([
+  expect(warnings).toEqual([]);
+  expect(problems.map((p) => p.variable)).toEqual([
     "STELLAR_RPC_MAINNET",
     "PATH_ROUTING_API_MAINNET",
   ]);
+  const msg = formatEnvFailure(problems);
+  expect(msg).toContain("Refusing to start");
+  expect(msg).toContain("STELLAR_RPC_MAINNET is not set");
+  expect(msg).toContain("PATH_ROUTING_API_MAINNET is not set");
 });
 
-test("outside production an unset mainnet endpoint is not worth a warning", () => {
-  expect(endpointCheck({ NODE_ENV: "development" }).warnings).toEqual([]);
-});
-
-test("REQUIRE_EXPLICIT_MAINNET_ENDPOINTS=true refuses an unset mainnet endpoint, naming it", () => {
-  const { problems, warnings } = endpointCheck({
+test("in production each mainnet endpoint is required on its own", () => {
+  const rpcOnly = endpointCheck({
     NODE_ENV: "production",
-    REQUIRE_EXPLICIT_MAINNET_ENDPOINTS: "true",
+    STELLAR_RPC_MAINNET: "https://rpc.test",
+  });
+  expect(rpcOnly.problems.map((p) => p.variable)).toEqual(["PATH_ROUTING_API_MAINNET"]);
+  const routingOnly = endpointCheck({
+    NODE_ENV: "production",
     PATH_ROUTING_API_MAINNET: "https://h.test",
   });
-  expect(warnings).toEqual([]);
-  expect(problems.map((p) => p.variable)).toEqual(["STELLAR_RPC_MAINNET"]);
-  expect(formatEnvFailure(problems)).toContain("REQUIRE_EXPLICIT_MAINNET_ENDPOINTS=true");
+  expect(routingOnly.problems.map((p) => p.variable)).toEqual(["STELLAR_RPC_MAINNET"]);
 });
 
-test("only the literal true turns the refusal on", () => {
-  const { problems } = endpointCheck({ REQUIRE_EXPLICIT_MAINNET_ENDPOINTS: "false" });
+test("in production a value that names no endpoint counts as unset", () => {
+  for (const value of ["", "   ", ",", " , ,"]) {
+    const { problems } = endpointCheck({
+      NODE_ENV: "production",
+      STELLAR_RPC_MAINNET: value,
+      PATH_ROUTING_API_MAINNET: value,
+    });
+    expect(problems.map((p) => p.variable)).toEqual([
+      "STELLAR_RPC_MAINNET",
+      "PATH_ROUTING_API_MAINNET",
+    ]);
+  }
+});
+
+test("in production explicit mainnet endpoints boot", () => {
+  const { problems, warnings } = endpointCheck({ NODE_ENV: "production", ...MAINNET_SET });
   expect(problems).toEqual([]);
+  expect(warnings).toEqual([]);
+});
+
+test("outside production an unset mainnet endpoint is not a finding", () => {
+  for (const NODE_ENV of ["development", "test"]) {
+    const { problems, warnings } = endpointCheck({ NODE_ENV });
+    expect(problems).toEqual([]);
+    expect(warnings).toEqual([]);
+  }
+  expect(endpointCheck({}).problems).toEqual([]);
 });
 
 test("a legacy name counts as explicit, and an empty new name overrides it", () => {
-  const strict = { NODE_ENV: "production", REQUIRE_EXPLICIT_MAINNET_ENDPOINTS: "true" };
+  const production = { NODE_ENV: "production" };
   const legacy = {
     NEXT_PUBLIC_STELLAR_RPC_MAINNET: "https://rpc.test",
     NEXT_PUBLIC_PATH_ROUTING_API_MAINNET: "https://h.test",
   };
-  expect(endpointCheck({ ...strict, ...legacy }).problems).toEqual([]);
-  const cleared = endpointCheck({ ...strict, ...legacy, STELLAR_RPC_MAINNET: "" });
+  expect(endpointCheck({ ...production, ...legacy }).problems).toEqual([]);
+  const cleared = endpointCheck({ ...production, ...legacy, STELLAR_RPC_MAINNET: "" });
   expect(cleared.problems.map((p) => p.variable)).toEqual(["STELLAR_RPC_MAINNET"]);
 });
 
 test("an unset testnet endpoint is never a finding", () => {
-  const { problems, warnings } = endpointCheck({
-    ...MAINNET_SET,
-    NODE_ENV: "production",
-    REQUIRE_EXPLICIT_MAINNET_ENDPOINTS: "true",
-  });
+  const { problems, warnings } = endpointCheck({ ...MAINNET_SET, NODE_ENV: "production" });
   expect(problems).toEqual([]);
   expect(warnings).toEqual([]);
 });
