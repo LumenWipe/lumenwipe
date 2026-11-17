@@ -58,6 +58,14 @@ const verifierBuilds = [
   "MemberExpression[object.object.name='xdr'][object.property.name='OperationBody']:not([property.name='fromXDR'])",
 ].map((selector) => ({ selector, message: NOT_BUILT_HERE }));
 
+// A cast through unknown hides where a test double stops matching the type it stands in for.
+const DOUBLE_CAST = {
+  selector:
+    ":matches(TSAsExpression, TSTypeAssertion) > :matches(TSAsExpression, TSTypeAssertion).expression[typeAnnotation.type='TSUnknownKeyword']",
+  message:
+    "Do not cast through unknown in tests: build the real type with a typed builder so a drifted fixture fails type-check.",
+};
+
 const restrict = (...extra) => ({
   "no-restricted-imports": ["error", { patterns: [...appPatterns, ...extra] }],
 });
@@ -128,6 +136,7 @@ const config = [
       message: "The mess executors and their seeding never import the verifier.",
     }),
   },
+  { files: ["tests/**/*.{ts,tsx}"], rules: { "no-restricted-syntax": ["error", DOUBLE_CAST] } },
 ];
 
 export default config;

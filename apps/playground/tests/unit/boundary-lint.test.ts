@@ -134,3 +134,24 @@ describe("the verifier and the mess executors never import each other", () => {
     }
   });
 });
+
+describe("tests never cast through unknown", () => {
+  const CAST = /^no-restricted-syntax: Do not cast through unknown in tests/;
+
+  test("a double cast in a test fails lint", async () => {
+    for (const code of [
+      "export const n = 1 as unknown as string;\n",
+      "export const n = (globalThis as unknown as { x: number }).x;\n",
+    ]) {
+      expect(await errors(code, "tests/unit/zz-fixture.test.ts")).toEqual([
+        expect.stringMatching(CAST),
+      ]);
+    }
+  });
+
+  test("a single assertion in a test is allowed", async () => {
+    expect(
+      await errors("export const n = 1 as number;\n", "tests/unit/zz-fixture.test.ts")
+    ).toEqual([]);
+  });
+});
