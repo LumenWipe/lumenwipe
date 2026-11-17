@@ -65,7 +65,7 @@ const ROUTER_HASH_LIVE = "4c3db3ebd2d6a2ab23de1f622eaabb39501539b4611b68622ec4e4
 // The registry's mainnet xBull router hash (apps/api/src/config/contract-registry.json, protocol
 // "xbull"): distinct from Soroswap's above, so a test can prove the round resolves each branch's
 // live code against the right protocol, not just "some known hash".
-const XBULL_ROUTER_HASH_LIVE = "c2b3ec57fbd45d5bade9df2ad30c464d1588cead18495a5ce327a98c45c02219";
+const XBULL_ROUTER_HASH_LIVE = "e2acb145fa324907437321dd2d1ad0d51e5dd5f07bf31f25f89bf30896a95e31";
 const PAIR = Address.contract(Buffer.alloc(32, 9)).toString();
 const STRANGER_PAIR = Address.contract(Buffer.alloc(32, 10)).toString();
 const STRANGER = Address.contract(Buffer.alloc(32, 8)).toString();
