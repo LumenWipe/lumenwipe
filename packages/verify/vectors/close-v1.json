@@ -870,7 +870,7 @@
             }
           ],
           "lastVerified": "2026-10-25",
-          "validUntil": "2027-01-08"
+          "validUntil": "2027-02-15"
         }
       }
     },
@@ -944,7 +944,7 @@
         "servedRegistry": {
           "entries": [],
           "lastVerified": "2026-10-25",
-          "validUntil": "2027-01-08"
+          "validUntil": "2027-02-15"
         }
       }
     },
@@ -1027,7 +1027,7 @@
             }
           ],
           "lastVerified": "2026-10-25",
-          "validUntil": "2027-01-08"
+          "validUntil": "2027-02-15"
         }
       }
     },
@@ -1177,10 +1177,10 @@
     {
       "name": "exchange-close-past-bundled-expiry-extended-by-snapshot",
       "verdict": "accept",
-      "description": "The exchange close through the intermediary on 2027-02-01, past the bundled registry's validity, with a snapshot valid until 2027-03-01: within 120 days of the bundled date, so it extends it.",
-      "nowSeconds": 1801440000,
+      "description": "The exchange close through the intermediary at the start of 2027-02-16, past the bundled registry's validity, with a snapshot valid until 2027-06-15: exactly 120 days after the bundled date, so it extends it.",
+      "nowSeconds": 1802736000,
       "input": {
-        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAAMgAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABrX8wsAAAAAQAAAAlkZXBvc2l0LTEAAAAAAAACAAAAAAAAAAgAAAAA3rHiv//lEtGqV1AcBCOq1tI1xY1Kye4rLiOHkHguhdEAAAABAAAAAN6x4r//5RLRqldQHAQjqtbSNcWNSsnuKy4jh5B4LoXRAAAAAQAAAAB6JcbUEGHhlVpce5ZZP4CqQO7qY+cKYENGA8HHKQkt5gAAAAAAAAAAO5rKAAAAAAAAAAAA",
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAAMgAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABrc5KsAAAAAQAAAAlkZXBvc2l0LTEAAAAAAAACAAAAAAAAAAgAAAAA3rHiv//lEtGqV1AcBCOq1tI1xY1Kye4rLiOHkHguhdEAAAABAAAAAN6x4r//5RLRqldQHAQjqtbSNcWNSsnuKy4jh5B4LoXRAAAAAQAAAAB6JcbUEGHhlVpce5ZZP4CqQO7qY+cKYENGA8HHKQkt5gAAAAAAAAAAO5rKAAAAAAAAAAAA",
         "network": "testnet",
         "expected": {
           "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
@@ -1244,7 +1244,7 @@
         "servedRegistry": {
           "entries": [],
           "lastVerified": "2026-10-25",
-          "validUntil": "2027-03-01"
+          "validUntil": "2027-06-15"
         }
       }
     },
@@ -3960,7 +3960,7 @@
             }
           ],
           "lastVerified": "2026-10-25",
-          "validUntil": "2027-01-08"
+          "validUntil": "2027-02-15"
         }
       },
       "error": {
@@ -4040,7 +4040,7 @@
         "servedRegistry": {
           "entries": [],
           "lastVerified": "2026-10-25",
-          "validUntil": "2027-01-08"
+          "validUntil": "2027-02-15"
         }
       },
       "error": {
@@ -4129,7 +4129,7 @@
             }
           ],
           "lastVerified": "2026-10-25",
-          "validUntil": "2027-01-08"
+          "validUntil": "2027-02-15"
         }
       },
       "error": {
@@ -4218,7 +4218,7 @@
             }
           ],
           "lastVerified": "2026-10-25",
-          "validUntil": "2027-01-08"
+          "validUntil": "2027-02-15"
         }
       },
       "error": {
@@ -4307,7 +4307,7 @@
             }
           ],
           "lastVerified": "2026-10-25",
-          "validUntil": "2027-01-08"
+          "validUntil": "2027-02-15"
         }
       },
       "error": {
@@ -4401,7 +4401,7 @@
             }
           ],
           "lastVerified": "2026-10-25",
-          "validUntil": "2027-01-08"
+          "validUntil": "2027-02-15"
         }
       },
       "error": {
@@ -4490,7 +4490,7 @@
             }
           ],
           "lastVerified": "2026-10-25",
-          "validUntil": "2027-01-08"
+          "validUntil": "2027-02-15"
         }
       },
       "error": {
@@ -4579,7 +4579,7 @@
             }
           ],
           "lastVerified": "2026-10-25",
-          "validUntil": "2027-01-08"
+          "validUntil": "2027-02-15"
         }
       },
       "error": {
@@ -4668,7 +4668,7 @@
             }
           ],
           "lastVerified": "2026-10-25",
-          "validUntil": "2027-01-08"
+          "validUntil": "2027-02-15"
         }
       },
       "error": {
@@ -4757,7 +4757,7 @@
             }
           ],
           "lastVerified": "2026-10-25",
-          "validUntil": "2027-01-08"
+          "validUntil": "2027-02-15"
         }
       },
       "error": {
@@ -4770,10 +4770,10 @@
       "name": "snapshot-extends-expiry-past-cap",
       "verdict": "reject",
       "base": "exchange-close-past-bundled-expiry-extended-by-snapshot",
-      "mutation": "Passes a snapshot valid until 2027-06-01, more than 120 days past the bundled date, so the bundled date stands and has passed.",
-      "nowSeconds": 1801440000,
+      "mutation": "Passes a snapshot valid until 2027-06-16, 121 days past the bundled date, so the bundled date stands and has passed.",
+      "nowSeconds": 1802736000,
       "input": {
-        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAAMgAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABrX8wsAAAAAQAAAAlkZXBvc2l0LTEAAAAAAAACAAAAAAAAAAgAAAAA3rHiv//lEtGqV1AcBCOq1tI1xY1Kye4rLiOHkHguhdEAAAABAAAAAN6x4r//5RLRqldQHAQjqtbSNcWNSsnuKy4jh5B4LoXRAAAAAQAAAAB6JcbUEGHhlVpce5ZZP4CqQO7qY+cKYENGA8HHKQkt5gAAAAAAAAAAO5rKAAAAAAAAAAAA",
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAAMgAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABrc5KsAAAAAQAAAAlkZXBvc2l0LTEAAAAAAAACAAAAAAAAAAgAAAAA3rHiv//lEtGqV1AcBCOq1tI1xY1Kye4rLiOHkHguhdEAAAABAAAAAN6x4r//5RLRqldQHAQjqtbSNcWNSsnuKy4jh5B4LoXRAAAAAQAAAAB6JcbUEGHhlVpce5ZZP4CqQO7qY+cKYENGA8HHKQkt5gAAAAAAAAAAO5rKAAAAAAAAAAAA",
         "network": "testnet",
         "expected": {
           "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
@@ -4837,7 +4837,7 @@
         "servedRegistry": {
           "entries": [],
           "lastVerified": "2026-10-25",
-          "validUntil": "2027-06-01"
+          "validUntil": "2027-06-16"
         }
       },
       "error": {
@@ -4917,7 +4917,7 @@
         "servedRegistry": {
           "entries": "none",
           "lastVerified": "2026-10-25",
-          "validUntil": "2027-01-08"
+          "validUntil": "2027-02-15"
         }
       },
       "error": {

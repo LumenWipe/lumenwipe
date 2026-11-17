@@ -14,6 +14,7 @@ As of 2026-11-14, the mediator flow (exchange closes) and sponsored fees are ava
 
 ### 2026-11-17
 
+- **Registry:** the contract and exchange registries were re-verified and are valid until 2027-02-15.
 - **API:** Soroban token discovery no longer asks the stellar.expert explorer, whose API answers `402 Payment Required` on every request. Tokens are found through detected DeFi positions, the bundled token lists, the recent-events scan during analysis and contracts added by address, and `sorobanTokens.coverage` no longer has an `explorer` entry. A token outside the lists that arrived before the event window (about 5.5 hours) is added by contract address.
 
 ### 2026-11-09

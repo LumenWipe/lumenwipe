@@ -28,6 +28,7 @@ import type { IntentOperation, TxIntent } from "@/types/close-api";
 import type { AccountSigner } from "@/types/account";
 import { fromHex, toHex } from "@/lib/stellar/hex";
 import { activeRegistry, bundledRegistry, setRegistry } from "@/lib/exchange-registry";
+import { MAX_EXTENSION_DAYS } from "@/lib/exchange-registry/merge";
 import { confirmedMemo } from "@/lib/plan/memo-field";
 import { exitExpectations } from "@/lib/stellar/exit-expectations";
 import type { AccountState } from "@/types/account";
@@ -4638,7 +4639,10 @@ describe("a transfer is never sent to an exchange deposit address", () => {
 // can only tighten. Never over module state, and never a way to enable the mediated hand-off.
 
 const NEW_EXCHANGE = Keypair.random().publicKey();
-const BUNDLED_UNTIL = "2027-01-08";
+const BUNDLED_UNTIL = bundledRegistry().validUntil;
+const daysAfterBundled = (days: number): string =>
+  new Date(Date.parse(`${BUNDLED_UNTIL}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+const PAST_BUNDLED_EXPIRY = new Date(`${daysAfterBundled(1)}T00:00:00Z`);
 
 function servedEntry(address: string, over: Record<string, unknown> = {}) {
   return {
@@ -4882,7 +4886,7 @@ describe("a served registry snapshot passed to verifyCloseTransaction", () => {
   });
 
   test("it may extend validity past the bundled date, within the cap", () => {
-    setSystemTime(new Date("2027-02-01T12:00:00Z"));
+    setSystemTime(PAST_BUNDLED_EXPIRY);
     const memo = { memo: "deposit-1", memoType: "text" as const };
     expectRefusal(
       closeTo(COINBASE, "mediated", { ...memo, served: snapshot([]) }),
@@ -4890,11 +4894,17 @@ describe("a served registry snapshot passed to verifyCloseTransaction", () => {
       "have expired"
     );
     expect(
-      closeTo(COINBASE, "mediated", { ...memo, served: snapshot([], "2027-03-01") })
+      closeTo(COINBASE, "mediated", {
+        ...memo,
+        served: snapshot([], daysAfterBundled(MAX_EXTENSION_DAYS)),
+      })
     ).not.toThrow();
-    // Past the cap (120 days after the bundled date) the bundled date stands.
+    // Past the cap the bundled date stands.
     expectRefusal(
-      closeTo(COINBASE, "mediated", { ...memo, served: snapshot([], "2027-06-01") }),
+      closeTo(COINBASE, "mediated", {
+        ...memo,
+        served: snapshot([], daysAfterBundled(MAX_EXTENSION_DAYS + 1)),
+      }),
       "registry_expired",
       "have expired"
     );
@@ -4909,7 +4919,7 @@ describe("a served registry snapshot passed to verifyCloseTransaction", () => {
   });
 
   test("an address only the snapshot lists is held to its expiry like any listed exchange", () => {
-    setSystemTime(new Date("2027-02-01T12:00:00Z"));
+    setSystemTime(PAST_BUNDLED_EXPIRY);
     expect(closeTo(NEW_EXCHANGE, "direct")).not.toThrow();
     expectRefusal(
       closeTo(NEW_EXCHANGE, "direct", { served: snapshot([servedEntry(NEW_EXCHANGE)]) }),

@@ -1,7 +1,7 @@
 {
   "version": "2026-11-17",
-  "lastVerified": "2026-10-10",
-  "validUntil": "2027-01-08",
+  "lastVerified": "2026-11-17",
+  "validUntil": "2027-02-15",
   "source": "manually verified per-entry against each protocol's official docs/GitHub (Blend: docs.blend.capital/mainnet-deployments + blend-capital/blend-utils mainnet.contracts.json; Soroswap: soroswap/core public/mainnet.contracts.json; Aquarius: docs.aqua.network addresses-and-networks + the router's own instance) and the live instance's executable hash over RPC on lastVerified; mainnet labels cross-checked against the stellar.expert directory where it names the contract",
   "noExitVersions": { "fxdao": ["wind-down"] },
   "entries": [
@@ -13,7 +13,9 @@
       "wasmHash": "31328050548831f63d2b72e37bcfd0bb7371b7907135755dbe09ed434d755ca9",
       "version": "v2",
       "label": "Blend V2 pool factory (testnet) - reference only, not probed for balances",
-      "verifiedLive": true
+      "verifiedLive": true,
+      "verifiedBy": "2026-11-17: live executable hash re-read over public RPC and matched (#1008)",
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "testnet",
@@ -23,7 +25,9 @@
       "wasmHash": "c1f4502a757e25c611f5a159bc1ab0eef64085adac6c68123dca66e87faffbc2",
       "version": "v2",
       "label": "Blend V2 backstop (testnet) - read for the account's deposit per pool; the exit withdraws unlocked queued shares from it",
-      "verifiedLive": true
+      "verifiedLive": true,
+      "verifiedBy": "2026-11-17: live executable hash re-read over public RPC and matched (#1008)",
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "testnet",
@@ -33,7 +37,9 @@
       "wasmHash": "a41fc53d6753b6c04eb15b021c55052366a4c8e0e21bc72700f461264ec1350e",
       "version": "v2",
       "label": "Blend V2 official testnet test pool",
-      "verifiedLive": true
+      "verifiedLive": true,
+      "verifiedBy": "2026-11-17: live executable hash re-read over public RPC and matched (#1008)",
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "testnet",
@@ -43,7 +49,9 @@
       "wasmHash": "840aa116e14f3f01578933c76c472b372a65e8a2ecff3a8b8d69b2df0a114108",
       "version": "v1",
       "label": "Aquarius testnet router - reference only; no specific pool instance is publicly documented yet; hash re-verified 2026-11-14 after an in-place upstream upgrade (interface unchanged, get_reward_token and get_reward_token_count added)",
-      "verifiedLive": true
+      "verifiedLive": true,
+      "verifiedBy": "2026-11-17: live executable hash re-read over public RPC and matched (#1008)",
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "testnet",
@@ -55,7 +63,9 @@
       "executableTag": "amm.constant",
       "version": "constant_product",
       "label": "Aquarius testnet constant-product pool - stands for the code every standard pool shares; pools are enumerated from the router; hash re-verified 2026-11-14 after an in-place upstream upgrade to a CAP-85 shared release: the instance names tag amm.constant on the registered executable owner, whose entry holds this hash (interface unchanged, enroll_shared_release and get_shared_release_owner added)",
-      "verifiedLive": true
+      "verifiedLive": true,
+      "verifiedBy": "2026-11-17: live executable hash re-read over public RPC and matched through the recorded owner and tag (#1008)",
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "testnet",
@@ -67,7 +77,9 @@
       "executableTag": "amm.stable",
       "version": "stable",
       "label": "Aquarius testnet stableswap pool - stands for the code every stableswap pool shares; hash re-verified 2026-11-14 after an in-place upstream upgrade to a CAP-85 shared release: the instance names tag amm.stable on the registered executable owner, whose entry holds this hash (interface unchanged, enroll_shared_release and get_shared_release_owner added)",
-      "verifiedLive": true
+      "verifiedLive": true,
+      "verifiedBy": "2026-11-17: live executable hash re-read over public RPC and matched through the recorded owner and tag (#1008)",
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "testnet",
@@ -79,7 +91,9 @@
       "executableTag": "amm.concentrated",
       "version": "concentrated",
       "label": "Aquarius testnet concentrated-liquidity pool - positions are tick ranges, not shares; recognized so they are never mistaken for a share pool, not exited; hash re-verified 2026-11-14 after an in-place upstream upgrade to a CAP-85 shared release: the instance names tag amm.concentrated on the registered executable owner, whose entry holds this hash (interface unchanged, enroll_shared_release and get_shared_release_owner added)",
-      "verifiedLive": true
+      "verifiedLive": true,
+      "verifiedBy": "2026-11-17: live executable hash re-read over public RPC and matched through the recorded owner and tag (#1008)",
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "testnet",
@@ -90,7 +104,8 @@
       "version": "v1",
       "label": "Aquarius testnet shared-release owner - holds the amm.constant, amm.stable and amm.concentrated tags every testnet pool takes its code from; it can repoint them, so its own code is verified on every read; never a call target of an exit",
       "verifiedLive": true,
-      "verifiedBy": "2026-11-14: readLiveCodeIdentity over RPC (soroban-rpc.testnet.stellar.gateway.fm and soroban-testnet.stellar.org) on the owner and on all 412 router pools, each an external reference to one of its three tags"
+      "verifiedBy": "2026-11-14: readLiveCodeIdentity over RPC (soroban-rpc.testnet.stellar.gateway.fm and soroban-testnet.stellar.org) on the owner and on all 412 router pools, each an external reference to one of its three tags; 2026-11-17: live executable hash re-read over public RPC and matched (#1008)",
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "testnet",
@@ -100,7 +115,9 @@
       "wasmHash": "86285a9234d3f0d687eaf88efe8d5d72172b38c9a86624c9934c0cbf2aff2993",
       "version": "v1",
       "label": "Soroswap testnet factory - reference only, not probed for balances",
-      "verifiedLive": true
+      "verifiedLive": true,
+      "verifiedBy": "2026-11-17: live executable hash re-read over public RPC and matched (#1008)",
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "testnet",
@@ -110,7 +127,9 @@
       "wasmHash": "4b95bbf9caec2c6e00c786f53c5f392c2fcdb8435ac0a862ab5e0645eb65824c",
       "version": "v1",
       "label": "Soroswap testnet router - reference only; no specific pair instance is publicly documented yet",
-      "verifiedLive": true
+      "verifiedLive": true,
+      "verifiedBy": "2026-11-17: live executable hash re-read over public RPC and matched (#1008)",
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "testnet",
@@ -120,7 +139,9 @@
       "wasmHash": "8447525edd62f72ffaf52136358034657ea0511a8fec1cd0ebde649f86cca464",
       "version": "v1",
       "label": "Soroswap testnet pair ARST/XTAR (factory index 1) - stands for the pair code every factory-deployed pair shares; pairs are enumerated from the factory, not listed here",
-      "verifiedLive": true
+      "verifiedLive": true,
+      "verifiedBy": "2026-11-17: live executable hash re-read over public RPC and matched (#1008)",
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "testnet",
@@ -144,7 +165,8 @@
       "label": "Phoenix pool factory (testnet) - own redeploy of Phoenix-Protocol-Group/phoenix-contracts' live_factory.wasm mainnet binary; the previously known testnet factory had gone unresolvable, a testnet-reset staleness case; reference only, not probed for balances",
       "verifiedLive": true,
       "ownDeployment": true,
-      "verifiedBy": "2026-09-26: stellar contract deploy of .wasm_binaries_mainnet/live_factory.wasm to testnet, then stellar contract info hash over RPC (soroban-testnet.stellar.org) confirmed against the file's own sha256"
+      "verifiedBy": "2026-09-26: stellar contract deploy of .wasm_binaries_mainnet/live_factory.wasm to testnet, then stellar contract info hash over RPC (soroban-testnet.stellar.org) confirmed against the file's own sha256; 2026-11-17: live executable hash re-read over public RPC and matched (#1008)",
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "testnet",
@@ -156,7 +178,8 @@
       "label": "Phoenix multihop router (testnet) - own redeploy of live_multihop.wasm; enumerates/routes swaps, never a call target of this codebase's exit",
       "verifiedLive": true,
       "ownDeployment": true,
-      "verifiedBy": "2026-09-26: stellar contract deploy of .wasm_binaries_mainnet/live_multihop.wasm to testnet, then stellar contract info hash over RPC (soroban-testnet.stellar.org) confirmed against the file's own sha256"
+      "verifiedBy": "2026-09-26: stellar contract deploy of .wasm_binaries_mainnet/live_multihop.wasm to testnet, then stellar contract info hash over RPC (soroban-testnet.stellar.org) confirmed against the file's own sha256; 2026-11-17: live executable hash re-read over public RPC and matched (#1008)",
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "testnet",
@@ -168,7 +191,8 @@
       "label": "Phoenix XYK pool (testnet) - own redeploy of live_xlm_usdc_pool.wasm, genuinely initialized (not just a bytecode reference) with a custom SEP-41 test token so the integration suite can provide and withdraw real liquidity every run; interface confirmed to still expose withdraw_liquidity via stellar contract info interface",
       "verifiedLive": true,
       "ownDeployment": true,
-      "verifiedBy": "2026-09-28: initialize()'d directly with native XLM and a fresh admin-mintable token as token_a/token_b, using the real Phoenix LP share-token wasm fetched from a live mainnet pool's own query_share_token_address (the v2.0.0 GitHub release's generic soroban_token_contract.wasm has an incompatible constructor); a real LP position provided and fully withdrawn end to end via withdraw_liquidity"
+      "verifiedBy": "2026-09-28: initialize()'d directly with native XLM and a fresh admin-mintable token as token_a/token_b, using the real Phoenix LP share-token wasm fetched from a live mainnet pool's own query_share_token_address (the v2.0.0 GitHub release's generic soroban_token_contract.wasm has an incompatible constructor); a real LP position provided and fully withdrawn end to end via withdraw_liquidity; 2026-11-17: live executable hash re-read over public RPC and matched (#1008)",
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "testnet",
@@ -180,7 +204,8 @@
       "label": "Phoenix stake (testnet) - deployed internally by the pool's own initialize() call (the same wasmHash as the previously standalone, unwired redeploy), read from the pool's own query_config stake_contract field; the exit's unbond call target",
       "verifiedLive": true,
       "ownDeployment": true,
-      "verifiedBy": "2026-09-28: query_config simulated live against CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV returned this as stake_contract right after the pool's initialize(); interface confirmed to still expose bond/unbond via stellar contract info interface"
+      "verifiedBy": "2026-09-28: query_config simulated live against CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV returned this as stake_contract right after the pool's initialize(); interface confirmed to still expose bond/unbond via stellar contract info interface; 2026-11-17: live executable hash re-read over public RPC and matched (#1008)",
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -191,9 +216,9 @@
       "version": "v1",
       "label": "Blend V1 pool factory (mainnet, blend-utils poolFactory) - reference only, not probed for balances; not in the stellar.expert directory",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-10: live executable hash read over public RPC and compared to wasmHash in the full registry re-verification (#581); address and V1 hash matched against blend-utils mainnet.contracts.json",
+      "verifiedBy": "2026-10-10 (#581) and 2026-11-17 (#1008): live executable hash re-read over public RPC and matched wasmHash; address and V1 hash matched against blend-utils mainnet.contracts.json",
       "source": "docs.blend.capital/mainnet-deployments and blend-capital/blend-utils mainnet.contracts.json (poolFactory)",
-      "verifiedAt": "2026-10-10"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -204,9 +229,9 @@
       "version": "v1",
       "label": "Blend V1 backstop (mainnet, blend-utils backstop) - read for the account's deposit per V1 pool; 21-day withdrawal queue; not in the stellar.expert directory",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-10: live executable hash read over public RPC and compared to wasmHash in the full registry re-verification (#581); address and V1 hash matched against blend-utils mainnet.contracts.json",
+      "verifiedBy": "2026-10-10 (#581) and 2026-11-17 (#1008): live executable hash re-read over public RPC and matched wasmHash; address and V1 hash matched against blend-utils mainnet.contracts.json",
       "source": "docs.blend.capital/mainnet-deployments and blend-capital/blend-utils mainnet.contracts.json (backstop)",
-      "verifiedAt": "2026-10-10"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -217,9 +242,9 @@
       "version": "v1",
       "label": "Blend V1 'Fixed' pool (mainnet; stellar.expert: 'Blend Pool') - stands for the V1 lendingPool code every V1 pool shares (YieldBlox CBP7NO6F\u2026 runs the same hash); positions come from OctoPos, not from this list",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-10: live executable hash read over public RPC and compared to wasmHash in the full registry re-verification (#581); address and V1 hash matched against blend-utils mainnet.contracts.json",
+      "verifiedBy": "2026-10-10 (#581) and 2026-11-17 (#1008): live executable hash re-read over public RPC and matched wasmHash; address and V1 hash matched against blend-utils mainnet.contracts.json",
       "source": "docs.blend.capital/mainnet-deployments and blend-capital/blend-utils mainnet.contracts.json; stellar.expert directory 'Blend Pool'",
-      "verifiedAt": "2026-10-10"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -230,9 +255,9 @@
       "version": "v1",
       "label": "Blend V1 'YieldBlox' pool (mainnet; blend-utils YieldBlox; stellar.expert: 'Blend Pool'; in the V1 backstop's reward zone) - listed by address so an exit that repays into it is verified like the Fixed pool; its backstop is the registered V1 backstop",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the V1 pool hash; simulated is_pool on the V1 factory (CCZD6ESMOG...) returned true; instance Name 'YieldBlox'",
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the V1 pool hash; simulated is_pool on the V1 factory (CCZD6ESMOG...) returned true; instance Name 'YieldBlox'; 2026-11-17: live executable hash re-read over public RPC and matched (#1008)",
       "source": "blend-capital/blend-utils mainnet.contracts.json (YieldBlox); the V1 backstop's reward zone; stellar.expert directory 'Blend Pool'",
-      "verifiedAt": "2026-10-15"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -243,9 +268,9 @@
       "version": "v1",
       "label": "Blend V1 'FxDAO' pool (mainnet; stellar.expert: 'Blend Pool'; in the V1 backstop's reward zone) - listed by address so an exit that repays into it is verified like the Fixed pool; its backstop is the registered V1 backstop",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the V1 pool hash; simulated is_pool on the V1 factory (CCZD6ESMOG...) returned true; instance Name 'FxDAO'",
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the V1 pool hash; simulated is_pool on the V1 factory (CCZD6ESMOG...) returned true; instance Name 'FxDAO'; 2026-11-17: live executable hash re-read over public RPC and matched (#1008)",
       "source": "the V1 backstop's reward zone; stellar.expert directory 'Blend Pool'",
-      "verifiedAt": "2026-10-15"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -256,9 +281,9 @@
       "version": "v1",
       "label": "Blend V1 'ReflectorFusion' pool (mainnet; not in the stellar.expert directory; in the V1 backstop's reward zone) - listed by address so an exit that repays into it is verified like the Fixed pool; its backstop is the registered V1 backstop",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the V1 pool hash; simulated is_pool on the V1 factory (CCZD6ESMOG...) returned true; instance Name 'ReflectorFusion'",
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the V1 pool hash; simulated is_pool on the V1 factory (CCZD6ESMOG...) returned true; instance Name 'ReflectorFusion'; 2026-11-17: live executable hash re-read over public RPC and matched (#1008)",
       "source": "the V1 backstop's reward zone",
-      "verifiedAt": "2026-10-15"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -269,9 +294,9 @@
       "version": "v1",
       "label": "Blend V1 'ClickPesa DebtFund Managed' pool (mainnet; not in the stellar.expert directory; in the V1 backstop's reward zone) - listed by address so an exit that repays into it is verified like the Fixed pool; its backstop is the registered V1 backstop",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the V1 pool hash; simulated is_pool on the V1 factory (CCZD6ESMOG...) returned true; instance Name 'ClickPesa DebtFund Managed'",
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the V1 pool hash; simulated is_pool on the V1 factory (CCZD6ESMOG...) returned true; instance Name 'ClickPesa DebtFund Managed'; 2026-11-17: live executable hash re-read over public RPC and matched (#1008)",
       "source": "the V1 backstop's reward zone",
-      "verifiedAt": "2026-10-15"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -282,9 +307,9 @@
       "version": "v2",
       "label": "Blend V2 pool factory (mainnet; stellar.expert: 'Blend Pool Factory', verified build of blend-contracts-v2) - reference only, not probed for balances; same code hash as the testnet factory",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-10: live executable hash read over public RPC and compared to wasmHash in the full registry re-verification (#581); address matched against blend-utils mainnet.contracts.json",
+      "verifiedBy": "2026-10-10 (#581) and 2026-11-17 (#1008): live executable hash re-read over public RPC and matched wasmHash; address matched against blend-utils mainnet.contracts.json",
       "source": "docs.blend.capital/mainnet-deployments and blend-capital/blend-utils mainnet.contracts.json; stellar.expert directory 'Blend Pool Factory'",
-      "verifiedAt": "2026-10-10"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -295,9 +320,9 @@
       "version": "v2",
       "label": "Blend V2 backstop (mainnet; stellar.expert: 'Blend Backstop') - read for the account's deposit per V2 pool; the exit withdraws unlocked queued shares from it; same code hash as the testnet backstop",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-10: live executable hash read over public RPC and compared to wasmHash in the full registry re-verification (#581); address matched against blend-utils mainnet.contracts.json",
+      "verifiedBy": "2026-10-10 (#581) and 2026-11-17 (#1008): live executable hash re-read over public RPC and matched wasmHash; address matched against blend-utils mainnet.contracts.json",
       "source": "docs.blend.capital/mainnet-deployments and blend-capital/blend-utils mainnet.contracts.json; stellar.expert directory 'Blend Backstop'",
-      "verifiedAt": "2026-10-10"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -308,9 +333,9 @@
       "version": "v2",
       "label": "Blend V2 'Fixed' pool (mainnet; stellar.expert: 'Blend Pool') - stands for the V2 pool code the factory's PoolMeta.pool_hash deploys (YieldBlox V2 CCCCIQSD\u2026 runs the same hash, as does the testnet pool); positions come from OctoPos, not from this list",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-10: live executable hash read over public RPC and compared to wasmHash in the full registry re-verification (#581); address matched against blend-utils mainnet.contracts.json",
+      "verifiedBy": "2026-10-10 (#581) and 2026-11-17 (#1008): live executable hash re-read over public RPC and matched wasmHash; address matched against blend-utils mainnet.contracts.json",
       "source": "docs.blend.capital/mainnet-deployments and blend-capital/blend-utils mainnet.contracts.json; stellar.expert directory 'Blend Pool'",
-      "verifiedAt": "2026-10-10"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -321,9 +346,9 @@
       "version": "v2",
       "label": "Blend V2 'YieldBlox' pool (mainnet; blend-utils YieldBloxV2; stellar.expert: 'Blend Pool') - listed by address so an exit that repays into it is verified like the Fixed pool; its backstop is the registered V2 backstop",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the V2 pool hash; simulated is_pool on the V2 factory (CDSYOAVXFY...) returned true; instance Name 'YieldBlox'",
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the V2 pool hash; simulated is_pool on the V2 factory (CDSYOAVXFY...) returned true; instance Name 'YieldBlox'; 2026-11-17: live executable hash re-read over public RPC and matched (#1008)",
       "source": "blend-capital/blend-utils mainnet.contracts.json (YieldBloxV2); stellar.expert directory 'Blend Pool'",
-      "verifiedAt": "2026-10-15"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -334,9 +359,9 @@
       "version": "v2",
       "label": "Blend V2 'Orbit' pool (mainnet; stellar.expert: 'Blend Pool') - listed by address so an exit that repays into it is verified like the Fixed pool; its backstop is the registered V2 backstop",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the V2 pool hash; simulated is_pool on the V2 factory (CDSYOAVXFY...) returned true; instance Name 'Orbit'",
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the V2 pool hash; simulated is_pool on the V2 factory (CDSYOAVXFY...) returned true; instance Name 'Orbit'; 2026-11-17: live executable hash re-read over public RPC and matched (#1008)",
       "source": "stellar.expert directory 'Blend Pool'",
-      "verifiedAt": "2026-10-15"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -347,9 +372,9 @@
       "version": "v2",
       "label": "Blend V2 'Forex' pool (mainnet; stellar.expert: 'Blend Pool') - listed by address so an exit that repays into it is verified like the Fixed pool; its backstop is the registered V2 backstop",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the V2 pool hash; simulated is_pool on the V2 factory (CDSYOAVXFY...) returned true; instance Name 'Forex'",
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the V2 pool hash; simulated is_pool on the V2 factory (CDSYOAVXFY...) returned true; instance Name 'Forex'; 2026-11-17: live executable hash re-read over public RPC and matched (#1008)",
       "source": "stellar.expert directory 'Blend Pool'",
-      "verifiedAt": "2026-10-15"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -360,9 +385,9 @@
       "version": "v2",
       "label": "Blend V2 'Etherfuse' pool (mainnet; stellar.expert: 'Blend Pool') - listed by address so an exit that repays into it is verified like the Fixed pool; its backstop is the registered V2 backstop",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the V2 pool hash; simulated is_pool on the V2 factory (CDSYOAVXFY...) returned true; instance Name 'Etherfuse'",
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the V2 pool hash; simulated is_pool on the V2 factory (CDSYOAVXFY...) returned true; instance Name 'Etherfuse'; 2026-11-17: live executable hash re-read over public RPC and matched (#1008)",
       "source": "stellar.expert directory 'Blend Pool'",
-      "verifiedAt": "2026-10-15"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -373,9 +398,9 @@
       "version": "v1",
       "label": "Aquarius AMM router (mainnet, docs.aqua.network; stellar.expert: 'Aquarius Router') - enumerates the pools; never a call target of an exit; hash re-verified 2026-10-02 after an upstream upgrade (interface unchanged)",
       "verifiedLive": true,
-      "verifiedBy": "2026-11-06: readLiveWasmHash over RPC (mainnet.sorobanrpc.com) returned this hash, unchanged (#713); 2026-10-10: address matched against docs.aqua.network addresses-and-networks and live hash compared in the full registry re-verification (#581)",
+      "verifiedBy": "2026-11-06: readLiveWasmHash over RPC (mainnet.sorobanrpc.com) returned this hash, unchanged (#713); 2026-10-10: address matched against docs.aqua.network addresses-and-networks and live hash compared in the full registry re-verification (#581); 2026-11-17: live executable hash re-read over public RPC and matched (#1008)",
       "source": "docs.aqua.network/developers/reference/addresses-and-networks; stellar.expert directory 'Aquarius Router'",
-      "verifiedAt": "2026-11-06"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -386,9 +411,9 @@
       "version": "constant_product",
       "label": "Aquarius mainnet constant-product pool XLM/AQUA (router ConstantPoolHash; stellar.expert: 'Aquarius Pool') - stands for the code 273 of the router's 346 pools shared on lastVerified; hash re-verified 2026-10-02 after an upstream upgrade (the router's own pool hash, interface only gained view functions)",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-10: live executable hash read over public RPC and compared to wasmHash in the full registry re-verification (#581)",
+      "verifiedBy": "2026-10-10 (#581) and 2026-11-17 (#1008): live executable hash re-read over public RPC and matched wasmHash",
       "source": "the mainnet Aquarius router's own ConstantPoolHash; stellar.expert directory 'Aquarius Pool'",
-      "verifiedAt": "2026-10-10"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -399,9 +424,9 @@
       "version": "stable",
       "label": "Aquarius mainnet stableswap pool (router StableSwapPoolHash; stellar.expert: 'Aquarius Pool') - stands for the code 42 of the router's pools shared on lastVerified; hash re-verified 2026-10-02 after an upstream upgrade (the router's own pool hash, interface only gained view functions)",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-10: live executable hash read over public RPC and compared to wasmHash in the full registry re-verification (#581)",
+      "verifiedBy": "2026-10-10 (#581) and 2026-11-17 (#1008): live executable hash re-read over public RPC and matched wasmHash",
       "source": "the mainnet Aquarius router's own StableSwapPoolHash; stellar.expert directory 'Aquarius Pool'",
-      "verifiedAt": "2026-10-10"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -412,9 +437,9 @@
       "version": "concentrated",
       "label": "Aquarius mainnet concentrated-liquidity pool, current router ConcentratedPoolHash (stellar.expert: 'Aquarius Pool') - positions are tick ranges, not shares; recognized so they are never mistaken for a share pool, not exited; added 2026-10-02, and since 2026-10-07 the only concentrated code: all 43 of the router's concentrated pools run it after the older pools were upgraded in place",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-10: live executable hash read over public RPC and compared to wasmHash in the full registry re-verification (#581)",
+      "verifiedBy": "2026-10-10 (#581) and 2026-11-17 (#1008): live executable hash re-read over public RPC and matched wasmHash",
       "source": "the mainnet Aquarius router's own ConcentratedPoolHash; stellar.expert directory 'Aquarius Pool'",
-      "verifiedAt": "2026-10-10"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -425,9 +450,9 @@
       "version": "v1",
       "label": "Soroswap factory (mainnet, soroswap/core mainnet.contracts.json; stellar.expert: 'SoroSwap') - 214 pairs on lastVerified; reference only, not probed for balances",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-10: live executable hash read over public RPC and compared to wasmHash in the full registry re-verification (#581); address and hash matched against soroswap/core public/mainnet.contracts.json",
+      "verifiedBy": "2026-10-10 (#581) and 2026-11-17 (#1008): live executable hash re-read over public RPC and matched wasmHash; address and hash matched against soroswap/core public/mainnet.contracts.json",
       "source": "soroswap/core public/mainnet.contracts.json (factory); stellar.expert directory 'SoroSwap'",
-      "verifiedAt": "2026-10-10"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -438,9 +463,9 @@
       "version": "v1",
       "label": "Soroswap router (mainnet, soroswap/core mainnet.contracts.json; stellar.expert: 'SoroSwap Router') - the exit's remove_liquidity call target",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-10: live executable hash read over public RPC and compared to wasmHash in the full registry re-verification (#581); address and hash matched against soroswap/core public/mainnet.contracts.json",
+      "verifiedBy": "2026-10-10 (#581) and 2026-11-17 (#1008): live executable hash re-read over public RPC and matched wasmHash; address and hash matched against soroswap/core public/mainnet.contracts.json",
       "source": "soroswap/core public/mainnet.contracts.json (router); stellar.expert directory 'SoroSwap Router'",
-      "verifiedAt": "2026-10-10"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -451,9 +476,9 @@
       "version": "v1",
       "label": "Soroswap mainnet pair BLAH/YAWN (factory index 0) - stands for the pair code soroswap/core publishes as 'pair' and every factory-deployed pair shares; pairs are enumerated from the factory, not listed here; not in the stellar.expert directory",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-10: live executable hash read over public RPC and compared to wasmHash in the full registry re-verification (#581); address and hash matched against soroswap/core public/mainnet.contracts.json",
+      "verifiedBy": "2026-10-10 (#581) and 2026-11-17 (#1008): live executable hash re-read over public RPC and matched wasmHash; address and hash matched against soroswap/core public/mainnet.contracts.json",
       "source": "soroswap/core public/mainnet.contracts.json (pair)",
-      "verifiedAt": "2026-10-10"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -464,9 +489,9 @@
       "version": "v2",
       "label": "Soroswap aggregator v2 (mainnet, deployed 2026-09-14) - the contract a multi-protocol token conversion invokes; swap_exact_in only, partner None",
       "verifiedLive": true,
-      "verifiedBy": "2026-09-29: readLiveWasmHash over RPC (mainnet.sorobanrpc.com); the Soroswap API's own swap builds call it; confirmed as the current aggregator by the Soroswap team; its config() names the registry's Soroswap and Aquarius routers. Not yet in soroswap/aggregator public/mainnet.contracts.json; 2026-10-10: live executable hash re-compared over public RPC in the full registry re-verification (#581)",
+      "verifiedBy": "2026-09-29: readLiveWasmHash over RPC (mainnet.sorobanrpc.com); the Soroswap API's own swap builds call it; confirmed as the current aggregator by the Soroswap team; its config() names the registry's Soroswap and Aquarius routers. Not yet in soroswap/aggregator public/mainnet.contracts.json; 2026-10-10 (#581) and 2026-11-17 (#1008): live executable hash re-read over public RPC and matched wasmHash",
       "source": "the Soroswap API's own swap builds and the Soroswap team's confirmation; not yet in soroswap/aggregator public/mainnet.contracts.json",
-      "verifiedAt": "2026-10-10"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -477,7 +502,7 @@
       "version": "v1",
       "label": "xBull PathPayment swap router (mainnet, swap-api.xbull.io), strict_send only",
       "verifiedLive": true,
-      "verifiedBy": "2026-09-17: readLiveWasmHash over RPC (mainnet.sorobanrpc.com) against CCKXBE5GKJOCE7IKL64HLYKW3IJSUPVOLC4CS77GQT5QQHDZLDYV3DFT (xBullCorp/swap-kit SwapContract.MAINNET); 2026-10-10: live executable hash re-compared over public RPC in the full registry re-verification (#581); 2026-11-17: re-pinned after its admin-signed upgrade at ledger 65514477 (#979): same interface and storage keys, same strict_send auth on chain and in a read-only simulation",
+      "verifiedBy": "2026-09-17: readLiveWasmHash over RPC (mainnet.sorobanrpc.com) against CCKXBE5GKJOCE7IKL64HLYKW3IJSUPVOLC4CS77GQT5QQHDZLDYV3DFT (xBullCorp/swap-kit SwapContract.MAINNET); 2026-10-10 (#581) and 2026-11-17 (#1008): live executable hash re-read over public RPC and matched wasmHash; 2026-11-17: re-pinned after its admin-signed upgrade at ledger 65514477 (#979): same interface and storage keys, same strict_send auth on chain and in a read-only simulation",
       "source": "xBullCorp/swap-kit SwapContract.MAINNET (swap-api.xbull.io)",
       "verifiedAt": "2026-11-17"
     },
@@ -490,9 +515,9 @@
       "version": "v1",
       "label": "Phoenix XYK pool (mainnet; stellar.expert: 'Phoenix Pool') - stands for the v1 pool code that 10 of the 11 listed Phoenix pools run; positions come from OctoPos, not from this list",
       "verifiedLive": true,
-      "verifiedBy": "2026-09-26: stellar contract info hash over RPC (mainnet.sorobanrpc.com) against CB5QUVK5GS3IU23TMFZQ3P5J24YBBZP5PHUQAEJ2SP5K55PFTJRUQG2L, one of the stellar.expert directory's 'Phoenix Pool' entries (domain phoenix-hub.io); stellar contract info interface confirms it still exposes withdraw_liquidity; 2026-10-10: live executable hash re-compared over public RPC in the full registry re-verification (#581)",
+      "verifiedBy": "2026-09-26: stellar contract info hash over RPC (mainnet.sorobanrpc.com) against CB5QUVK5GS3IU23TMFZQ3P5J24YBBZP5PHUQAEJ2SP5K55PFTJRUQG2L, one of the stellar.expert directory's 'Phoenix Pool' entries (domain phoenix-hub.io); stellar contract info interface confirms it still exposes withdraw_liquidity; 2026-10-10 (#581) and 2026-11-17 (#1008): live executable hash re-read over public RPC and matched wasmHash",
       "source": "stellar.expert directory 'Phoenix Pool' (domain phoenix-hub.io)",
-      "verifiedAt": "2026-10-10"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -503,9 +528,9 @@
       "version": "v1",
       "label": "Phoenix XYK pool (mainnet; stellar.expert: 'Phoenix Pool') - runs the v1 pool code; listed by address so its withdraw_liquidity is verified like the representative pool's",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the v1 pool hash; its persistent CONFIG entry names its share token and stake contract",
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the v1 pool hash; its persistent CONFIG entry names its share token and stake contract; 2026-11-17: live executable hash re-read over public RPC and matched (#1008)",
       "source": "stellar.expert directory 'Phoenix Pool'",
-      "verifiedAt": "2026-10-15"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -516,9 +541,9 @@
       "version": "v1",
       "label": "Phoenix XYK pool (mainnet; stellar.expert: 'Phoenix Pool') - runs the v1 pool code; listed by address so its withdraw_liquidity is verified like the representative pool's",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the v1 pool hash; its persistent CONFIG entry names its share token and stake contract",
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the v1 pool hash; its persistent CONFIG entry names its share token and stake contract; 2026-11-17: live executable hash re-read over public RPC and matched (#1008)",
       "source": "stellar.expert directory 'Phoenix Pool'",
-      "verifiedAt": "2026-10-15"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -529,9 +554,9 @@
       "version": "v1",
       "label": "Phoenix XYK pool (mainnet; stellar.expert: 'Phoenix Pool') - runs the v1 pool code; listed by address so its withdraw_liquidity is verified like the representative pool's",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the v1 pool hash; its persistent CONFIG entry names its share token and stake contract",
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the v1 pool hash; its persistent CONFIG entry names its share token and stake contract; 2026-11-17: live executable hash re-read over public RPC and matched (#1008)",
       "source": "stellar.expert directory 'Phoenix Pool'",
-      "verifiedAt": "2026-10-15"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -542,9 +567,9 @@
       "version": "v1",
       "label": "Phoenix XYK pool (mainnet; stellar.expert: 'Phoenix Pool') - runs the v1 pool code; listed by address so its withdraw_liquidity is verified like the representative pool's",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the v1 pool hash; its persistent CONFIG entry names its share token and stake contract",
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the v1 pool hash; its persistent CONFIG entry names its share token and stake contract; 2026-11-17: live executable hash re-read over public RPC and matched (#1008)",
       "source": "stellar.expert directory 'Phoenix Pool'",
-      "verifiedAt": "2026-10-15"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -555,9 +580,9 @@
       "version": "v1",
       "label": "Phoenix XYK pool (mainnet; stellar.expert: 'Phoenix Pool') - runs the v1 pool code; listed by address so its withdraw_liquidity is verified like the representative pool's",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the v1 pool hash; its persistent CONFIG entry names its share token and stake contract",
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the v1 pool hash; its persistent CONFIG entry names its share token and stake contract; 2026-11-17: live executable hash re-read over public RPC and matched (#1008)",
       "source": "stellar.expert directory 'Phoenix Pool'",
-      "verifiedAt": "2026-10-15"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -568,9 +593,9 @@
       "version": "v1",
       "label": "Phoenix XYK pool (mainnet; stellar.expert: 'Phoenix Pool') - runs the v1 pool code; listed by address so its withdraw_liquidity is verified like the representative pool's",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the v1 pool hash; its persistent CONFIG entry names its share token and stake contract",
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the v1 pool hash; its persistent CONFIG entry names its share token and stake contract; 2026-11-17: live executable hash re-read over public RPC and matched (#1008)",
       "source": "stellar.expert directory 'Phoenix Pool'",
-      "verifiedAt": "2026-10-15"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -581,9 +606,9 @@
       "version": "v1",
       "label": "Phoenix XYK pool (mainnet; stellar.expert: 'Phoenix Pool') - runs the v1 pool code; listed by address so its withdraw_liquidity is verified like the representative pool's",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the v1 pool hash; its persistent CONFIG entry names its share token and stake contract",
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the v1 pool hash; its persistent CONFIG entry names its share token and stake contract; 2026-11-17: live executable hash re-read over public RPC and matched (#1008)",
       "source": "stellar.expert directory 'Phoenix Pool'",
-      "verifiedAt": "2026-10-15"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -594,9 +619,9 @@
       "version": "v1",
       "label": "Phoenix XYK pool (mainnet; stellar.expert: 'Phoenix Pool') - runs the v1 pool code; listed by address so its withdraw_liquidity is verified like the representative pool's",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the v1 pool hash; its persistent CONFIG entry names its share token and stake contract",
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the v1 pool hash; its persistent CONFIG entry names its share token and stake contract; 2026-11-17: live executable hash re-read over public RPC and matched (#1008)",
       "source": "stellar.expert directory 'Phoenix Pool'",
-      "verifiedAt": "2026-10-15"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -607,9 +632,9 @@
       "version": "v1",
       "label": "Phoenix XYK pool (mainnet; stellar.expert: 'Phoenix Pool') - runs the v1 pool code; listed by address so its withdraw_liquidity is verified like the representative pool's",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the v1 pool hash; its persistent CONFIG entry names its share token and stake contract",
+      "verifiedBy": "2026-10-15: getLedgerEntries on the instance returned the v1 pool hash; its persistent CONFIG entry names its share token and stake contract; 2026-11-17: live executable hash re-read over public RPC and matched (#1008)",
       "source": "stellar.expert directory 'Phoenix Pool'",
-      "verifiedAt": "2026-10-15"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -620,9 +645,9 @@
       "version": "v1",
       "label": "Phoenix stake (mainnet) - the exit's unbond call target for the v1 pool family, read from that pool's own query_config stake_contract field; not listed under its own name in the stellar.expert directory",
       "verifiedLive": true,
-      "verifiedBy": "2026-09-26: query_config simulated live against CB5QUVK5GS3IU23TMFZQ3P5J24YBBZP5PHUQAEJ2SP5K55PFTJRUQG2L returned this as stake_contract; stellar contract info hash over RPC (mainnet.sorobanrpc.com) confirmed the hash, and stellar contract info interface confirms it still exposes bond/unbond; 2026-10-10: live executable hash re-compared over public RPC in the full registry re-verification (#581)",
+      "verifiedBy": "2026-09-26: query_config simulated live against CB5QUVK5GS3IU23TMFZQ3P5J24YBBZP5PHUQAEJ2SP5K55PFTJRUQG2L returned this as stake_contract; stellar contract info hash over RPC (mainnet.sorobanrpc.com) confirmed the hash, and stellar contract info interface confirms it still exposes bond/unbond; 2026-10-10 (#581) and 2026-11-17 (#1008): live executable hash re-read over public RPC and matched wasmHash; 2026-11-17: query_config simulated, lp_token is the pool's share_token",
       "source": "the stake_contract in pool CB5QUVK5GS3IU23TMFZQ3P5J24YBBZP5PHUQAEJ2SP5K55PFTJRUQG2L's own query_config",
-      "verifiedAt": "2026-10-10"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -633,9 +658,9 @@
       "version": "v1",
       "label": "Phoenix stake (mainnet) - the unbond call target for pool CBCZGGNOEUZG4CAAE7TGTQQHETZMKUT4OIPFHHPKEUX46U4KXBBZ3GLH, read from that pool's own CONFIG stake_contract field; an earlier build of the v1 stake code, same unbond signature and BondingInfo layout",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-16: the pool's persistent CONFIG entry names this stake_contract; getLedgerEntries on the instance returned this hash; stellar contract info interface shows the same unbond(sender, stake_amount, stake_timestamp) and BondingInfo as the registered v1 stake code, and a staker's entry is keyed by the bare account address",
+      "verifiedBy": "2026-10-16: the pool's persistent CONFIG entry names this stake_contract; getLedgerEntries on the instance returned this hash; stellar contract info interface shows the same unbond(sender, stake_amount, stake_timestamp) and BondingInfo as the registered v1 stake code, and a staker's entry is keyed by the bare account address; 2026-11-17: live executable hash re-read over public RPC and matched (#1008); 2026-11-17: query_config simulated, lp_token is the pool's share_token",
       "source": "the CONFIG stake_contract of pool CBCZGGNOEUZG4CAAE7TGTQQHETZMKUT4OIPFHHPKEUX46U4KXBBZ3GLH",
-      "verifiedAt": "2026-10-16"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -646,9 +671,9 @@
       "version": "v1",
       "label": "Phoenix stake (mainnet) - the unbond call target for pool CBHCRSVX3ZZ7EGTSYMKPEFGZNWRVCSESQR3UABET4MIW52N4EVU6BIZX, read from that pool's own CONFIG stake_contract field; an earlier build of the v1 stake code, same unbond signature and BondingInfo layout",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-16: the pool's persistent CONFIG entry names this stake_contract; getLedgerEntries on the instance returned this hash; stellar contract info interface shows the same unbond(sender, stake_amount, stake_timestamp) and BondingInfo as the registered v1 stake code, and a staker's entry is keyed by the bare account address",
+      "verifiedBy": "2026-10-16: the pool's persistent CONFIG entry names this stake_contract; getLedgerEntries on the instance returned this hash; stellar contract info interface shows the same unbond(sender, stake_amount, stake_timestamp) and BondingInfo as the registered v1 stake code, and a staker's entry is keyed by the bare account address; 2026-11-17: live executable hash re-read over public RPC and matched (#1008); 2026-11-17: query_config simulated, lp_token is the pool's share_token",
       "source": "the CONFIG stake_contract of pool CBHCRSVX3ZZ7EGTSYMKPEFGZNWRVCSESQR3UABET4MIW52N4EVU6BIZX",
-      "verifiedAt": "2026-10-16"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -659,9 +684,9 @@
       "version": "v1",
       "label": "Phoenix stake (mainnet) - the unbond call target for pool CBISULYO5ZGS32WTNCBMEFCNKNSLFXCQ4Z3XHVDP4X4FLPSEALGSY3PS, read from that pool's own CONFIG stake_contract field",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-16: the pool's persistent CONFIG entry names this stake_contract; getLedgerEntries on the instance returned this hash",
+      "verifiedBy": "2026-10-16: the pool's persistent CONFIG entry names this stake_contract; getLedgerEntries on the instance returned this hash; 2026-11-17: live executable hash re-read over public RPC and matched (#1008); 2026-11-17: query_config simulated, lp_token is the pool's share_token",
       "source": "the CONFIG stake_contract of pool CBISULYO5ZGS32WTNCBMEFCNKNSLFXCQ4Z3XHVDP4X4FLPSEALGSY3PS",
-      "verifiedAt": "2026-10-16"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -672,9 +697,9 @@
       "version": "v1",
       "label": "Phoenix stake (mainnet) - the unbond call target for pool CBW5G5SO5SDYUGQVU7RMZ2KJ34POM3AMODOBIV2RQYG4KJDUUBVC3P2T, read from that pool's own CONFIG stake_contract field; an earlier build of the v1 stake code, same unbond signature and BondingInfo layout",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-16: the pool's persistent CONFIG entry names this stake_contract; getLedgerEntries on the instance returned this hash; stellar contract info interface shows the same unbond(sender, stake_amount, stake_timestamp) and BondingInfo as the registered v1 stake code, and a staker's entry is keyed by the bare account address",
+      "verifiedBy": "2026-10-16: the pool's persistent CONFIG entry names this stake_contract; getLedgerEntries on the instance returned this hash; stellar contract info interface shows the same unbond(sender, stake_amount, stake_timestamp) and BondingInfo as the registered v1 stake code, and a staker's entry is keyed by the bare account address; 2026-11-17: live executable hash re-read over public RPC and matched (#1008); 2026-11-17: query_config simulated, lp_token is the pool's share_token",
       "source": "the CONFIG stake_contract of pool CBW5G5SO5SDYUGQVU7RMZ2KJ34POM3AMODOBIV2RQYG4KJDUUBVC3P2T",
-      "verifiedAt": "2026-10-16"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -685,9 +710,9 @@
       "version": "v1",
       "label": "Phoenix stake (mainnet) - the unbond call target for pool CC6MJZN3HFOJKXN42ANTSCLRFOMHLFXHWPNAX64DQNUEBDMUYMPHASAV, read from that pool's own CONFIG stake_contract field",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-16: the pool's persistent CONFIG entry names this stake_contract; getLedgerEntries on the instance returned this hash",
+      "verifiedBy": "2026-10-16: the pool's persistent CONFIG entry names this stake_contract; getLedgerEntries on the instance returned this hash; 2026-11-17: live executable hash re-read over public RPC and matched (#1008); 2026-11-17: query_config simulated, lp_token is the pool's share_token",
       "source": "the CONFIG stake_contract of pool CC6MJZN3HFOJKXN42ANTSCLRFOMHLFXHWPNAX64DQNUEBDMUYMPHASAV",
-      "verifiedAt": "2026-10-16"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -698,9 +723,9 @@
       "version": "v1",
       "label": "Phoenix stake (mainnet) - the unbond call target for pool CCKOC2LJTPDBKDHTL3M5UO7HFZ2WFIHSOKCELMKQP3TLCIVUBKOQL4HB, read from that pool's own CONFIG stake_contract field",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-16: the pool's persistent CONFIG entry names this stake_contract; getLedgerEntries on the instance returned this hash",
+      "verifiedBy": "2026-10-16: the pool's persistent CONFIG entry names this stake_contract; getLedgerEntries on the instance returned this hash; 2026-11-17: live executable hash re-read over public RPC and matched (#1008); 2026-11-17: query_config simulated, lp_token is the pool's share_token",
       "source": "the CONFIG stake_contract of pool CCKOC2LJTPDBKDHTL3M5UO7HFZ2WFIHSOKCELMKQP3TLCIVUBKOQL4HB",
-      "verifiedAt": "2026-10-16"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -711,9 +736,9 @@
       "version": "v1",
       "label": "Phoenix stake (mainnet) - the unbond call target for pool CCUCE5H5CKW3S7JBESGCES6ZGDMWLNRY3HOFET3OH33MXZWKXNJTKSM3, read from that pool's own CONFIG stake_contract field",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-16: the pool's persistent CONFIG entry names this stake_contract; getLedgerEntries on the instance returned this hash",
+      "verifiedBy": "2026-10-16: the pool's persistent CONFIG entry names this stake_contract; getLedgerEntries on the instance returned this hash; 2026-11-17: live executable hash re-read over public RPC and matched (#1008); 2026-11-17: query_config simulated, lp_token is the pool's share_token",
       "source": "the CONFIG stake_contract of pool CCUCE5H5CKW3S7JBESGCES6ZGDMWLNRY3HOFET3OH33MXZWKXNJTKSM3",
-      "verifiedAt": "2026-10-16"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -724,9 +749,9 @@
       "version": "v1",
       "label": "Phoenix stake (mainnet) - the unbond call target for pool CDMXKSLG5GITGFYERUW2MRYOBUQCMRT2QE5Y4PU3QZ53EBFWUXAXUTBC, read from that pool's own CONFIG stake_contract field",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-16: the pool's persistent CONFIG entry names this stake_contract; getLedgerEntries on the instance returned this hash",
+      "verifiedBy": "2026-10-16: the pool's persistent CONFIG entry names this stake_contract; getLedgerEntries on the instance returned this hash; 2026-11-17: live executable hash re-read over public RPC and matched (#1008); 2026-11-17: query_config simulated, lp_token is the pool's share_token",
       "source": "the CONFIG stake_contract of pool CDMXKSLG5GITGFYERUW2MRYOBUQCMRT2QE5Y4PU3QZ53EBFWUXAXUTBC",
-      "verifiedAt": "2026-10-16"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -737,9 +762,9 @@
       "version": "v1",
       "label": "Phoenix stake (mainnet) - the unbond call target for pool CDQLKNH3725BUP4HPKQKMM7OO62FDVXVTO7RCYPID527MZHJG2F3QBJW, read from that pool's own CONFIG stake_contract field; an earlier build of the v1 stake code, same unbond signature and BondingInfo layout",
       "verifiedLive": true,
-      "verifiedBy": "2026-10-16: the pool's persistent CONFIG entry names this stake_contract; getLedgerEntries on the instance returned this hash; stellar contract info interface shows the same unbond(sender, stake_amount, stake_timestamp) and BondingInfo as the registered v1 stake code, and a staker's entry is keyed by the bare account address",
+      "verifiedBy": "2026-10-16: the pool's persistent CONFIG entry names this stake_contract; getLedgerEntries on the instance returned this hash; stellar contract info interface shows the same unbond(sender, stake_amount, stake_timestamp) and BondingInfo as the registered v1 stake code, and a staker's entry is keyed by the bare account address; 2026-11-17: live executable hash re-read over public RPC and matched (#1008); 2026-11-17: query_config simulated, lp_token is the pool's share_token",
       "source": "the CONFIG stake_contract of pool CDQLKNH3725BUP4HPKQKMM7OO62FDVXVTO7RCYPID527MZHJG2F3QBJW",
-      "verifiedAt": "2026-10-16"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -750,9 +775,9 @@
       "version": "v2",
       "label": "Phoenix XYK pool, a second live code family (mainnet; stellar.expert: 'Phoenix Pool') - the remaining 1 of 10 directory-listed pools runs this hash instead of the v1 entry's",
       "verifiedLive": true,
-      "verifiedBy": "2026-09-26: stellar contract info hash over RPC (mainnet.sorobanrpc.com) against CD5XNKK3B6BEF2N7ULNHHGAMOKZ7P6456BFNIHRF4WNTEDKBRWAE7IAA, one of the stellar.expert directory's 'Phoenix Pool' entries (domain phoenix-hub.io); stellar contract info interface confirms it still exposes withdraw_liquidity; 2026-10-10: live executable hash re-compared over public RPC in the full registry re-verification (#581)",
+      "verifiedBy": "2026-09-26: stellar contract info hash over RPC (mainnet.sorobanrpc.com) against CD5XNKK3B6BEF2N7ULNHHGAMOKZ7P6456BFNIHRF4WNTEDKBRWAE7IAA, one of the stellar.expert directory's 'Phoenix Pool' entries (domain phoenix-hub.io); stellar contract info interface confirms it still exposes withdraw_liquidity; 2026-10-10 (#581) and 2026-11-17 (#1008): live executable hash re-read over public RPC and matched wasmHash",
       "source": "stellar.expert directory 'Phoenix Pool' (domain phoenix-hub.io)",
-      "verifiedAt": "2026-10-10"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -763,9 +788,9 @@
       "version": "v2",
       "label": "Phoenix stake (mainnet) - the exit's unbond call target for the v2 pool family, read from that pool's own query_config stake_contract field",
       "verifiedLive": true,
-      "verifiedBy": "2026-09-26: query_config simulated live against CD5XNKK3B6BEF2N7ULNHHGAMOKZ7P6456BFNIHRF4WNTEDKBRWAE7IAA returned this as stake_contract; stellar contract info hash over RPC (mainnet.sorobanrpc.com) confirmed the hash, and stellar contract info interface confirms it still exposes bond/unbond; 2026-10-10: live executable hash re-compared over public RPC in the full registry re-verification (#581)",
+      "verifiedBy": "2026-09-26: query_config simulated live against CD5XNKK3B6BEF2N7ULNHHGAMOKZ7P6456BFNIHRF4WNTEDKBRWAE7IAA returned this as stake_contract; stellar contract info hash over RPC (mainnet.sorobanrpc.com) confirmed the hash, and stellar contract info interface confirms it still exposes bond/unbond; 2026-10-10 (#581) and 2026-11-17 (#1008): live executable hash re-read over public RPC and matched wasmHash; 2026-11-17: query_config simulated, lp_token CBSM6C6O... is not the pool's share_token (#1008)",
       "source": "the stake_contract in pool CD5XNKK3B6BEF2N7ULNHHGAMOKZ7P6456BFNIHRF4WNTEDKBRWAE7IAA's own query_config",
-      "verifiedAt": "2026-10-10"
+      "verifiedAt": "2026-11-17"
     },
     {
       "network": "mainnet",
@@ -776,9 +801,9 @@
       "version": "wind-down",
       "label": "FxDAO Vaults (mainnet, per fxdao.io/docs/addresses) - registered so its code is recognized and refused: the deployed code exposes no repay entry point (only evict and upgrade) and the protocol reports panic mode, so no exit is built and no exit may touch it (noExitVersions)",
       "verifiedLive": true,
-      "verifiedBy": "2026-11-08: stellar contract fetch --id CCUN4RXU5VNDHSF4S4RKV4ZJYMX2YWKOH6L4AKEKVNVDQ7HY5QIAO4UB over mainnet.sorobanrpc.com, sha256 0245bac3...d498, matching the instance executable from stellar ledger entry fetch contract-data --instance (last modified ledger 62645363); stellar contract info interface lists only evict(prev_key, vault_key) and upgrade(hash); instance CoreState.panic_mode true, VaultsInfo(USD/EUR/GBP) total_vaults 0 with lowest_key None",
+      "verifiedBy": "2026-11-08: stellar contract fetch --id <this address> over mainnet.sorobanrpc.com, sha256 0245bac3...d498, matching the instance executable from stellar ledger entry fetch contract-data --instance (last modified ledger 62645363); stellar contract info interface lists only evict(prev_key, vault_key) and upgrade(hash); instance CoreState.panic_mode true, VaultsInfo(USD/EUR/GBP) total_vaults 0 with lowest_key None; 2026-11-17: live executable hash re-read over public RPC and matched (#1008)",
       "source": "fxdao.io/docs/addresses",
-      "verifiedAt": "2026-11-08"
+      "verifiedAt": "2026-11-17"
     }
   ]
 }
