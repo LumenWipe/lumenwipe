@@ -222,15 +222,95 @@ export interface FakeAllowancesDepsOptions {
   clock?: { now: number };
   registryEntries?: ContractRegistryEntry[];
   knownTokens?: string[];
+  /** Answers StellarIndex requests by path and query; absent leaves the source off. */
+  indexer?: (path: string, query: URLSearchParams) => FakeIndexerAnswer;
+  indexerApiKey?: string | null;
+  indexerTransferTokens?: string[];
+}
+
+export type FakeIndexerAnswer =
+  { status: number; body: unknown } | { throws: string } | { hangs: true };
+
+export interface FakeIndexerCall {
+  path: string;
+  query: URLSearchParams;
+  authorization: string | null;
+}
+
+/** A decoded `invoke_host_function` the way StellarIndex lists it, with nested authorizations. */
+export function indexerInvocation(
+  contractId: string,
+  functionName: string,
+  args: string[],
+  subInvocations: unknown[] = []
+): Record<string, unknown> {
+  return {
+    kind: "invoke_contract",
+    contract_id: contractId,
+    function_name: functionName,
+    args,
+    sub_invocations: subInvocations,
+  };
+}
+
+export function indexerOperationsBody(
+  operations: Array<Record<string, unknown>>,
+  nextCursor: string | null
+): unknown {
+  return {
+    data: {
+      account: OWNER,
+      operations: operations.map((fields, i) => ({
+        ledger: 65_000_000 - i,
+        type: "invoke_host_function",
+        fields,
+      })),
+      next_cursor: nextCursor,
+      scope: "all",
+    },
+  };
 }
 
 export function fakeAllowancesDeps(options: FakeAllowancesDepsOptions): AllowancesDeps & {
   rpc: ReturnType<typeof fakeAllowanceRpc>;
+  indexerCalls: FakeIndexerCall[];
 } {
   const rpcStub = fakeAllowanceRpc(options.world);
   const clock = options.clock ?? { now: 1_700_000_000_000 };
+  const indexerCalls: FakeIndexerCall[] = [];
+  const answer = options.indexer;
   return {
     rpc: rpcStub,
+    indexerCalls,
+    indexer: answer
+      ? {
+          baseUrl: "https://indexer.test/v1",
+          apiKey: options.indexerApiKey === undefined ? "sip_test" : options.indexerApiKey,
+          fetch: (async (input: string | URL | Request, init?: RequestInit) => {
+            const url = new URL(
+              typeof input === "string" ? input : input instanceof URL ? input.href : input.url
+            );
+            const path = url.pathname.replace(/^\/v1/, "");
+            indexerCalls.push({
+              path,
+              query: url.searchParams,
+              authorization: new Headers(init?.headers).get("authorization"),
+            });
+            const reply = answer(path, url.searchParams);
+            if ("throws" in reply) throw new Error(reply.throws);
+            if ("hangs" in reply) {
+              return new Promise<Response>((_, reject) => {
+                init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+              });
+            }
+            return new Response(JSON.stringify(reply.body), {
+              status: reply.status,
+              headers: { "content-type": "application/json" },
+            });
+          }) as typeof fetch,
+        }
+      : null,
+    indexerTransferTokens: options.indexerTransferTokens ?? [],
     registryEntries: options.registryEntries ?? [],
     knownTokens: options.knownTokens ?? [],
     now: () => clock.now,

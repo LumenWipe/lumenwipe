@@ -6,6 +6,7 @@ const EXPECTED_SOURCES: AllowanceSource[] = ["events", "registry"];
 
 const LABELS: Record<AllowanceSource, string> = {
   events: "the approval event scan",
+  indexer: "the StellarIndex scan",
   registry: "the known-contract scan",
 };
 

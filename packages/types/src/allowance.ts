@@ -3,7 +3,7 @@ import type { PlanBlocker } from "./plan";
 
 /** Where an allowance candidate (token, spender) pair came from before its live amount was
  *  confirmed on the ledger. */
-export type AllowanceSource = "events" | "registry";
+export type AllowanceSource = "events" | "indexer" | "registry";
 
 /**
  * A live, non-zero SEP-41 allowance the account has granted a spender on one token
@@ -48,10 +48,11 @@ export interface AllowanceCoverage {
 /**
  * Every live allowance the account has granted, across every token it has approved anything on.
  * Soroban has no on-chain index of an account's approvals, so this is a best-effort union of
- * candidate (token, spender) pairs - recent `approve` events naming this account as `from`, and
- * the known DeFi contract registry's spenders crossed with a small curated token list - each
- * confirmed by reading `allowance(from, spender)` on the ledger. A zero allowance, live or never
- * granted, is not reported: only what is actually outstanding right now.
+ * candidate (token, spender) pairs - recent `approve` events naming this account as `from`, the
+ * approvals an indexer has seen, and the known DeFi contract registry's spenders crossed with a
+ * small curated token list - each confirmed by reading `allowance(from, spender)` on the ledger.
+ * A zero allowance, live or never granted, is not reported: only what is actually outstanding
+ * right now.
  */
 export interface AllowancesResult {
   allowances: Allowance[];

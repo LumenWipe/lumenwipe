@@ -19,7 +19,12 @@ import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { entriesForNetwork, type ContractRegistryEntry } from "@/lib/contract-registry";
 import { describeError } from "@/lib/utils/errors";
 import { mapConcurrent } from "@/lib/utils/concurrency";
-import { bundledListCandidates } from "./soroban-tokens";
+import {
+  bundledListCandidates,
+  defaultIndexerClient,
+  indexerHeaders,
+  type IndexerClient,
+} from "./soroban-tokens";
 import { getRpcServer, readLatestLedger } from "./rpc";
 
 /**
@@ -32,6 +37,10 @@ import { getRpcServer, readLatestLedger } from "./rpc";
  *  - recent `approve` events naming this account as `from`, scanned in bounded windows exactly
  *    like soroban-tokens.ts's credit-event scan, each directly naming its own token (the emitting
  *    contract) and spender (the event's own topic);
+ *  - StellarIndex, when a key is configured: `approve` calls in the account's operations, at any
+ *    depth of their authorized invocations, and `approve` rows in the per-token transfer feed for
+ *    the few tokens it follows there, which also carry the expiration. It reaches approvals older
+ *    than the event window and only ever proposes;
  *  - the known DeFi contract registry's spenders (#152's shared registry, not a second one),
  *    crossed with a small curated list of well-known Soroban tokens - this is what still finds an
  *    approval old enough that its `approve` event has aged out of the event scan's retention
@@ -73,6 +82,10 @@ export interface AllowancesDeps {
   /** A small curated list of well-known Soroban tokens, crossed with `registryEntries`' spenders
    *  to widen candidates beyond what the event scan alone can see. */
   knownTokens: string[];
+  /** StellarIndex, or null to leave it out. */
+  indexer: IndexerClient | null;
+  /** Tokens whose StellarIndex transfer feed carries `approve` rows on this network. */
+  indexerTransferTokens: string[];
 }
 
 /** Discovery never holds a request longer than this. */
@@ -90,6 +103,23 @@ export const MAX_CANDIDATES = 50;
 export const ALLOWANCE_CONCURRENCY = 8;
 export const ALLOWANCE_TIMEOUT_MS = 5_000;
 const LEDGER_READS_RESERVE_MS = 6_000;
+/** Operation pages read per request; an older approval is left to the other sources. */
+export const INDEXER_MAX_PAGES = 4;
+export const INDEXER_PAGE_LIMIT = 200;
+/** For the whole indexer source, every request included; what it read before then still counts. */
+export const INDEXER_TIMEOUT_MS = 4_000;
+/** Half the request's pairs at most, so a flood from it cannot crowd out the known-contract sweep. */
+export const INDEXER_MAX_PAIRS = 25;
+/** Authorized invocations are walked no deeper than this. */
+const INDEXER_MAX_DEPTH = 8;
+
+/** Tokens whose StellarIndex transfer feed is read for `approve` rows. Empty: the feed carries
+ *  them only for Circle's mainnet USDC, and filtered by owner it ran past the 4 s budget for 8 of
+ *  10 accounts on 2026-11-17, holding every read open for nothing. The operations cover USDC. */
+export const INDEXER_TRANSFER_TOKENS: Record<Network, string[]> = {
+  mainnet: [],
+  testnet: [],
+};
 const RPC_CALL_TIMEOUT_MS = 12_000;
 
 /** One entry per code hash: the pools listed by address share their representative's code, and
@@ -108,7 +138,7 @@ export function onePerCode(entries: ContractRegistryEntry[]): ContractRegistryEn
 
 export function defaultAllowancesDeps(
   network: Network,
-  options: { budgetMs?: number } = {}
+  options: { budgetMs?: number; useIndexer?: boolean } = {}
 ): AllowancesDeps {
   return {
     rpc: getRpcServer(network),
@@ -116,6 +146,8 @@ export function defaultAllowancesDeps(
     budgetMs: options.budgetMs ?? ALLOWANCES_BUDGET_MS,
     registryEntries: onePerCode(entriesForNetwork(network)),
     knownTokens: bundledListCandidates(network),
+    indexer: options.useIndexer === false ? null : defaultIndexerClient(network),
+    indexerTransferTokens: INDEXER_TRANSFER_TOKENS[network],
   };
 }
 
@@ -312,9 +344,159 @@ async function approveEventCandidates(
   return { pairs, scanned, stoppedEarly };
 }
 
+interface IndexerPair {
+  token: string;
+  spender: string;
+  expirationLedger: number | null;
+}
+
+interface IndexerAllowanceScan {
+  pairs: IndexerPair[];
+  /** Set when something was left unread. */
+  partial: string | null;
+}
+
+const LEDGER_NUMBER = /^\d{1,10}$/;
+
+function ledgerOrNull(value: unknown): number | null {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) return value;
+  if (typeof value === "string" && LEDGER_NUMBER.test(value)) return Number(value);
+  return null;
+}
+
+async function indexerGet(
+  indexer: IndexerClient,
+  path: string,
+  params: URLSearchParams,
+  signal: AbortSignal
+): Promise<Record<string, unknown> | null> {
+  const res = await indexer.fetch(
+    `${indexer.baseUrl.replace(/\/$/, "")}${path}?${params.toString()}`,
+    { signal, headers: indexerHeaders(indexer) }
+  );
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`indexer responded ${res.status}`);
+  const body: unknown = await res.json();
+  const data = body && typeof body === "object" ? (body as { data?: unknown }).data : undefined;
+  if (!data || typeof data !== "object") throw new Error("indexer answered without data");
+  return data as Record<string, unknown>;
+}
+
+/** Every `approve(address, spender, …)` in one decoded invocation tree, newest call first. */
+function approvesIn(node: unknown, address: string, depth: number, out: IndexerPair[]): void {
+  if (!node || typeof node !== "object" || depth > INDEXER_MAX_DEPTH) return;
+  const { contract_id, function_name, args, authorizations, sub_invocations } = node as Record<
+    string,
+    unknown
+  >;
+  if (
+    function_name === "approve" &&
+    typeof contract_id === "string" &&
+    Array.isArray(args) &&
+    args[0] === address &&
+    typeof args[1] === "string"
+  ) {
+    out.push({ token: contract_id, spender: args[1], expirationLedger: ledgerOrNull(args[3]) });
+  }
+  for (const children of [authorizations, sub_invocations]) {
+    if (Array.isArray(children)) for (const c of children) approvesIn(c, address, depth + 1, out);
+  }
+}
+
+/** StellarIndex's view of the account's approvals: `approve` calls in its operations, and
+ *  `approve` rows in the transfer feed of the tokens that have one. Newest first, so the first
+ *  sighting of a pair carries its latest expiration. */
+async function indexerAllowanceCandidates(
+  address: string,
+  indexer: IndexerClient,
+  transferTokens: string[]
+): Promise<IndexerAllowanceScan> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), INDEXER_TIMEOUT_MS);
+  timer.unref?.();
+  const found: IndexerPair[] = [];
+  const gaps: string[] = [];
+  const stopReason = (err: unknown): string =>
+    controller.signal.aborted ? "time budget" : reason(err);
+  const operations = async (): Promise<void> => {
+    let cursor: string | null = null;
+    for (let page = 0; page < INDEXER_MAX_PAGES; page++) {
+      const params = new URLSearchParams({ limit: String(INDEXER_PAGE_LIMIT) });
+      if (cursor) params.set("cursor", cursor);
+      let data: Record<string, unknown> | null;
+      try {
+        data = await indexerGet(
+          indexer,
+          `/accounts/${address}/operations`,
+          params,
+          controller.signal
+        );
+      } catch (err) {
+        if (page === 0) throw err;
+        gaps.push(`operations stopped after ${page} page(s): ${stopReason(err)}`);
+        return;
+      }
+      if (!data) return;
+      if (!Array.isArray(data.operations)) throw new Error("indexer answered without operations");
+      for (const op of data.operations) {
+        if (op && typeof op === "object")
+          approvesIn((op as { fields?: unknown }).fields, address, 0, found);
+      }
+      // A page may hold fewer rows than asked while more remain; only a missing cursor ends it.
+      cursor =
+        typeof data.next_cursor === "string" && data.next_cursor !== "" ? data.next_cursor : null;
+      if (!cursor) return;
+    }
+    gaps.push(`${INDEXER_MAX_PAGES} operation pages read; older ones were not`);
+  };
+  const transfers = async (token: string): Promise<void> => {
+    const params = new URLSearchParams({ from: address, limit: String(INDEXER_PAGE_LIMIT) });
+    let data: Record<string, unknown> | null;
+    try {
+      data = await indexerGet(indexer, `/contracts/${token}/transfers`, params, controller.signal);
+    } catch (err) {
+      gaps.push(`transfer feed not read: ${stopReason(err)}`);
+      return;
+    }
+    if (!data || !Array.isArray(data.transfers)) return;
+    if (typeof data.searched_from === "string")
+      gaps.push("transfer feed searched only recent history");
+    for (const row of data.transfers) {
+      if (!row || typeof row !== "object") continue;
+      const { event_kind, from, to, live_until_ledger } = row as Record<string, unknown>;
+      if (event_kind !== "approve" || from !== address || typeof to !== "string") continue;
+      found.push({ token, spender: to, expirationLedger: ledgerOrNull(live_until_ledger) });
+    }
+  };
+  try {
+    const [ops] = await Promise.allSettled([operations(), ...transferTokens.map(transfers)]);
+    if (ops.status === "rejected") {
+      if (found.length === 0) throw ops.reason;
+      gaps.push(`operations not read: ${stopReason(ops.reason)}`);
+    }
+  } finally {
+    clearTimeout(timer);
+  }
+  const seen = new Set<string>();
+  const pairs: IndexerPair[] = [];
+  for (const pair of found) {
+    const key = `${pair.token}:${pair.spender}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    pairs.push(pair);
+    if (pairs.length >= INDEXER_MAX_PAIRS) {
+      gaps.push(`stopped at ${INDEXER_MAX_PAIRS} candidate pairs`);
+      break;
+    }
+  }
+  return { pairs, partial: gaps.length > 0 ? gaps.join("; ") : null };
+}
+
 /** Sources in the order their candidates are kept when the cap bites: an `approve` event is
- *  ground truth for a specific pair, so it is never dropped ahead of a registry-widened guess. */
-const SOURCE_PRIORITY: AllowanceSource[] = ["events", "registry"];
+ *  ground truth for a specific pair, so it is never dropped ahead of a registry-widened guess.
+ *  The indexer's pairs are real approvals too, but from a third party, so they come after the
+ *  ledger's own events. */
+const SOURCE_PRIORITY: AllowanceSource[] = ["events", "indexer", "registry"];
 
 interface PairCandidate {
   token: string;
@@ -491,6 +673,11 @@ export async function discoverAllowances(
   const candidates = new PairCandidates();
   const registryEntries = deps.registryEntries;
 
+  const indexerScan: Promise<IndexerAllowanceScan | Error | null> = deps.indexer
+    ? indexerAllowanceCandidates(address, deps.indexer, deps.indexerTransferTokens).catch(
+        (err: unknown) => (err instanceof Error ? err : new Error(reason(err)))
+      )
+    : Promise.resolve(null);
   const eventScan = await approveEventCandidates(
     address,
     deps,
@@ -510,6 +697,28 @@ export async function discoverAllowances(
       ...(eventScan.stoppedEarly ? { detail: eventScan.stoppedEarly } : {}),
     });
     eventsScanned = eventScan.scanned;
+  }
+
+  // Added before the registry sweep, which only fills the room that real approvals leave.
+  const indexed = await indexerScan;
+  if (indexed === null) {
+    coverage.push({ source: "indexer", status: "skipped", detail: "not configured" });
+  } else if (indexed instanceof Error) {
+    coverage.push({ source: "indexer", status: "failed", detail: reason(indexed) });
+  } else {
+    for (const pair of indexed.pairs) {
+      candidates.add(
+        pair.token,
+        pair.spender,
+        "indexer",
+        candidates.has(pair.token, pair.spender) ? null : pair.expirationLedger
+      );
+    }
+    coverage.push({
+      source: "indexer",
+      status: "ok",
+      ...(indexed.partial ? { detail: indexed.partial } : {}),
+    });
   }
 
   const knownTokens = deps.knownTokens;
@@ -569,7 +778,10 @@ export async function discoverAllowances(
   // can be dropped into the middle of a sentence.
   const sourceName = (source: AllowanceSource): string =>
     source === "events" ? "approval event" : "known-contract";
+  // The indexer only adds to the other sources, so it never warns: without it the list is what
+  // it was before it existed. Its coverage entry still says how it fared.
   for (const entry of coverage) {
+    if (entry.source === "indexer") continue;
     if (entry.status === "failed") {
       warnings.push({
         code: "allowances_source_failed",

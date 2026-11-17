@@ -5,9 +5,20 @@
  */
 import { expect, test } from "bun:test";
 import { Address, StrKey, xdr } from "@stellar/stellar-sdk";
-import { discoverAllowances, onePerCode } from "@/lib/stellar/allowances";
+import {
+  INDEXER_MAX_PAGES,
+  INDEXER_MAX_PAIRS,
+  defaultAllowancesDeps,
+  discoverAllowances,
+  onePerCode,
+} from "@/lib/stellar/allowances";
 import { entriesForNetwork } from "@/lib/contract-registry";
-import { fakeAllowancesDeps, OWNER } from "./fixtures/fake-allowances";
+import {
+  fakeAllowancesDeps,
+  indexerInvocation,
+  indexerOperationsBody,
+  OWNER,
+} from "./fixtures/fake-allowances";
 import type { ContractRegistryEntry } from "@/lib/contract-registry";
 
 /** A checksum-valid `C...` contract address, deterministic per `seed` - `PairCandidates` rejects
@@ -509,4 +520,214 @@ test("an executable owner is never probed as a spender: it only names other cont
     wasmHash: "c".repeat(64),
   });
   expect(onePerCode([registryEntry(), owner])).toEqual([registryEntry()]);
+});
+
+const STRANGER = "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN";
+const NOT_FOUND = { status: 404, body: {} };
+
+test("discoverAllowances › an approve nested in an operation StellarIndex lists is found, confirmed on the ledger, and carries its expiration", async () => {
+  const deps = fakeAllowancesDeps({
+    world: { allowances: [{ token: TOKEN, spender: SPENDER, amount: 7n }] },
+    indexer: (path) =>
+      path === `/accounts/${OWNER}/operations`
+        ? {
+            status: 200,
+            body: indexerOperationsBody(
+              [
+                {
+                  ...indexerInvocation(OTHER_SPENDER, "deposit", [OWNER]),
+                  authorizations: [
+                    indexerInvocation(
+                      OTHER_SPENDER,
+                      "deposit",
+                      [OWNER],
+                      [
+                        indexerInvocation(TOKEN, "approve", [OWNER, SPENDER, "7", "1200000"]),
+                        indexerInvocation(OTHER_TOKEN, "approve", [STRANGER, SPENDER, "1", "5"]),
+                        indexerInvocation(OTHER_TOKEN, "transfer", [OWNER, SPENDER, "1"]),
+                      ]
+                    ),
+                  ],
+                },
+              ],
+              null
+            ),
+          }
+        : NOT_FOUND,
+  });
+  const result = await discoverAllowances(OWNER, "testnet", deps);
+  expect(result.allowances).toHaveLength(1);
+  expect(result.allowances[0]).toMatchObject({
+    token: TOKEN,
+    spender: SPENDER,
+    amount: "7",
+    expirationLedger: 1_200_000,
+    sources: ["indexer"],
+  });
+  expect(result.coverage).toContainEqual({ source: "indexer", status: "ok" });
+  expect(deps.indexerCalls[0]?.authorization).toBe("Bearer sip_test");
+  expect(deps.indexerCalls[0]?.query.get("limit")).toBe("200");
+});
+
+test("discoverAllowances › a StellarIndex client without a key sends no authorization header", async () => {
+  const deps = fakeAllowancesDeps({
+    world: { allowances: [] },
+    indexer: () => ({ status: 200, body: indexerOperationsBody([], null) }),
+    indexerApiKey: null,
+  });
+  await discoverAllowances(OWNER, "testnet", deps);
+  expect(deps.indexerCalls.length).toBeGreaterThan(0);
+  expect(deps.indexerCalls.every((c) => c.authorization === null)).toBe(true);
+});
+
+test("discoverAllowances › an approve row in a token's transfer feed is a candidate with its live_until_ledger", async () => {
+  const deps = fakeAllowancesDeps({
+    world: {
+      allowances: [
+        { token: TOKEN, spender: SPENDER, amount: 3n },
+        { token: TOKEN, spender: OTHER_SPENDER, amount: 0n },
+      ],
+    },
+    indexerTransferTokens: [TOKEN],
+    indexer: (path, query) => {
+      if (path === `/accounts/${OWNER}/operations`) {
+        return { status: 200, body: indexerOperationsBody([], null) };
+      }
+      if (path === `/contracts/${TOKEN}/transfers` && query.get("from") === OWNER) {
+        return {
+          status: 200,
+          body: {
+            data: {
+              transfers: [
+                { event_kind: "approve", from: OWNER, to: SPENDER, live_until_ledger: 1_300_000 },
+                { event_kind: "approve", from: OWNER, to: SPENDER, live_until_ledger: 1_000 },
+                { event_kind: "approve", from: OWNER, to: OTHER_SPENDER, live_until_ledger: 9 },
+                { event_kind: "transfer", from: OWNER, to: OTHER_SPENDER, amount: "1" },
+              ],
+            },
+          },
+        };
+      }
+      return NOT_FOUND;
+    },
+  });
+  const result = await discoverAllowances(OWNER, "testnet", deps);
+  expect(result.allowances.map((a) => [a.spender, a.expirationLedger, a.sources])).toEqual([
+    [SPENDER, 1_300_000, ["indexer"]],
+  ]);
+});
+
+test("discoverAllowances › a pair the event scan also saw keeps the event's expiration and lists both sources", async () => {
+  const deps = fakeAllowancesDeps({
+    world: {
+      allowances: [{ token: TOKEN, spender: SPENDER, amount: 5n }],
+      events: {
+        "996001-1000000": [
+          {
+            token: TOKEN,
+            spender: SPENDER,
+            ledger: 999_000,
+            amount: 5n,
+            expirationLedger: 1_100_000,
+          },
+        ],
+      },
+    },
+    indexer: () => ({
+      status: 200,
+      body: indexerOperationsBody(
+        [indexerInvocation(TOKEN, "approve", [OWNER, SPENDER, "5", "1"])],
+        null
+      ),
+    }),
+  });
+  const result = await discoverAllowances(OWNER, "testnet", deps);
+  expect(result.allowances[0]).toMatchObject({
+    expirationLedger: 1_100_000,
+    sources: ["events", "indexer"],
+  });
+});
+
+test("discoverAllowances › operations are paged by cursor, even through short pages, up to the page budget", async () => {
+  let page = 0;
+  const deps = fakeAllowancesDeps({
+    world: { allowances: [] },
+    indexer: () => ({ status: 200, body: indexerOperationsBody([], `c${page++}`) }),
+  });
+  const result = await discoverAllowances(OWNER, "testnet", deps);
+  expect(deps.indexerCalls).toHaveLength(INDEXER_MAX_PAGES);
+  expect(deps.indexerCalls[1]?.query.get("cursor")).toBe("c0");
+  expect(result.coverage).toContainEqual({
+    source: "indexer",
+    status: "ok",
+    detail: `${INDEXER_MAX_PAGES} operation pages read; older ones were not`,
+  });
+  const baseline = await discoverAllowances(
+    OWNER,
+    "testnet",
+    fakeAllowancesDeps({ world: { allowances: [] } })
+  );
+  expect(result.warnings).toEqual(baseline.warnings);
+});
+
+test("discoverAllowances › a StellarIndex failure changes only its coverage entry, never the warnings", async () => {
+  for (const reply of [{ throws: "socket hang up" }, { status: 503, body: {} }]) {
+    const withIt = fakeAllowancesDeps({
+      world: { allowances: [{ token: TOKEN, spender: SPENDER, amount: 1n }] },
+      registryEntries: [registryEntry()],
+      knownTokens: [TOKEN],
+      indexer: () => reply,
+    });
+    const without = fakeAllowancesDeps({
+      world: { allowances: [{ token: TOKEN, spender: SPENDER, amount: 1n }] },
+      registryEntries: [registryEntry()],
+      knownTokens: [TOKEN],
+    });
+    const a = await discoverAllowances(OWNER, "testnet", withIt);
+    const b = await discoverAllowances(OWNER, "testnet", without);
+    expect(a.allowances).toEqual(b.allowances);
+    expect(a.warnings).toEqual(b.warnings);
+    expect(a.coverage.find((c) => c.source === "indexer")?.status).toBe("failed");
+    expect(b.coverage.find((c) => c.source === "indexer")?.status).toBe("skipped");
+  }
+});
+
+test("discoverAllowances › StellarIndex proposes at most its share of pairs, leaving the known-contract sweep room", async () => {
+  const flood = Array.from({ length: 40 }, (_, i) =>
+    indexerInvocation(contractAddress(100 + i), "approve", [OWNER, SPENDER, "1", "1"])
+  );
+  const deps = fakeAllowancesDeps({
+    world: { allowances: [] },
+    registryEntries: [registryEntry({ address: OTHER_SPENDER })],
+    knownTokens: [OTHER_TOKEN],
+    indexer: () => ({ status: 200, body: indexerOperationsBody(flood, null) }),
+  });
+  const result = await discoverAllowances(OWNER, "testnet", deps);
+  expect(result.coverage).toContainEqual({
+    source: "indexer",
+    status: "ok",
+    detail: `stopped at ${INDEXER_MAX_PAIRS} candidate pairs`,
+  });
+  expect(result.coverage.find((c) => c.source === "registry")).toEqual({
+    source: "registry",
+    status: "ok",
+  });
+});
+
+test("defaultAllowancesDeps › StellarIndex only with a key, never when turned off, and the transfer feed off", () => {
+  const saved = process.env.STELLARINDEX_API_KEY;
+  try {
+    delete process.env.STELLARINDEX_API_KEY;
+    expect(defaultAllowancesDeps("mainnet").indexer).toBeNull();
+    process.env.STELLARINDEX_API_KEY = "sip_abc";
+    expect(defaultAllowancesDeps("mainnet").indexer?.baseUrl).toBe(
+      "https://api.stellarindex.io/v1"
+    );
+    expect(defaultAllowancesDeps("mainnet", { useIndexer: false }).indexer).toBeNull();
+    expect(defaultAllowancesDeps("mainnet").indexerTransferTokens).toEqual([]);
+    expect(defaultAllowancesDeps("testnet").indexerTransferTokens).toEqual([]);
+  } finally {
+    if (saved === undefined) delete process.env.STELLARINDEX_API_KEY;
+    else process.env.STELLARINDEX_API_KEY = saved;
+  }
 });
