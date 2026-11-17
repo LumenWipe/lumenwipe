@@ -91,7 +91,7 @@ A `503` carries a `Retry-After` header with a default of 30 seconds. For read fa
 A [blocker](/reference/glossary#blocker) means a step cannot be done safely, and LumenWipe will not skip it. The message names the entry and what would resolve it. Common ones:
 
 - An account with the `AUTH_IMMUTABLE` flag can never be merged.
-- A sequence number too far ahead (`source_sequence_too_far`) cannot be closed until the network's ledger count catches up. Retrying does not help.
+- A sequence number too far ahead (`source_sequence_too_far`) cannot be closed until the network's ledger count catches up. Retrying does not help, unless the message asks to plan again in a few seconds: then the account is only one ledger ahead, and planning again once the next ledger closes clears it.
 - A DeFi position that cannot be exited safely, such as an undercollateralized vault, has to be resolved in that protocol first.
 - A destination that does not exist yet has to be funded first.
 

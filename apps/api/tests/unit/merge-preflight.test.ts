@@ -81,12 +81,37 @@ function deps(over: Partial<MergePreflightDeps> = {}): MergePreflightDeps & {
 }
 
 const seq = (n: bigint): string => (LIMIT + n).toString();
+const FAR = seq(5n << 32n);
 
 afterEach(() => {
   mock.restore();
 });
 
 describe("sequence headroom", () => {
+  test("an account created in the newest closed ledger is not refused", async () => {
+    const created = (BigInt(LEDGER) << 32n).toString();
+    const p = await assessMergePreflight(state({ sequence: created }), DEST, "testnet", deps());
+    expect(p).toEqual([]);
+  });
+
+  test("the bound is the starting sequence of the ledger after the newest closed one", async () => {
+    const next = BigInt(LEDGER + 1) << 32n;
+    const at = await assessMergePreflight(
+      state({ sequence: (next - 1n).toString() }),
+      DEST,
+      "testnet",
+      deps()
+    );
+    expect(at.map((p) => p.code)).toEqual(["source_sequence_too_far"]);
+    const below = await assessMergePreflight(
+      state({ sequence: (next - 2n).toString() }),
+      DEST,
+      "testnet",
+      deps()
+    );
+    expect(below).toEqual([]);
+  });
+
   test("one transaction: exactly at the limit is refused, one below passes", async () => {
     const at = await assessMergePreflight(state({ sequence: seq(-1n) }), DEST, "testnet", deps());
     expect(at.map((p) => p.code)).toEqual(["source_sequence_too_far"]);
@@ -143,11 +168,29 @@ describe("sequence headroom", () => {
     expect(below).toEqual([]);
   });
 
-  test("the message explains the condition and does not tell the user to retry", async () => {
-    const [p] = await assessMergePreflight(state({ sequence: seq(0n) }), DEST, "testnet", deps());
+  test("a sequence more than one ledger ahead says retrying does not help", async () => {
+    const [p] = await assessMergePreflight(state({ sequence: FAR }), DEST, "testnet", deps());
     expect(p!.message).toContain("too far ahead");
     expect(p!.message).toContain("Retrying does not help");
     expect(p!.message.length).toBeLessThanOrEqual(240);
+  });
+
+  test("a sequence that only waits on the next ledger asks to plan again", async () => {
+    const lastOfNext = (BigInt(LEDGER + 2) << 32n) - 2n;
+    for (const sequence of [seq(-1n), lastOfNext.toString()]) {
+      const [p] = await assessMergePreflight(state({ sequence }), DEST, "testnet", deps());
+      expect(p!.code).toBe("source_sequence_too_far");
+      expect(p!.message).toContain("Plan again in a few seconds");
+      expect(p!.message).not.toContain("Retrying does not help");
+      expect(p!.message.length).toBeLessThanOrEqual(240);
+    }
+    const [beyond] = await assessMergePreflight(
+      state({ sequence: (lastOfNext + 1n).toString() }),
+      DEST,
+      "testnet",
+      deps()
+    );
+    expect(beyond!.message).toContain("Retrying does not help");
   });
 });
 
@@ -199,6 +242,29 @@ describe("the ledger the headroom is judged against", () => {
       deps({ latestLedger: async () => LEDGER + 5 })
     );
     expect(p.map((x) => x.code)).toEqual(["source_sequence_too_far"]);
+  });
+
+  test("an RPC one ledger behind the snapshot asks to plan again, and planning again passes", async () => {
+    const created = {
+      snapshotLedger: LEDGER + 1,
+      sequence: (BigInt(LEDGER + 1) << 32n).toString(),
+    };
+    const [p, ...rest] = await assessMergePreflight(
+      state(created),
+      DEST,
+      "testnet",
+      deps({ latestLedger: async () => LEDGER })
+    );
+    expect(rest).toEqual([]);
+    expect(p!.code).toBe("source_sequence_too_far");
+    expect(p!.message).toContain("Plan again in a few seconds");
+    const caughtUp = await assessMergePreflight(
+      state(created),
+      DEST,
+      "testnet",
+      deps({ latestLedger: async () => LEDGER + 1 })
+    );
+    expect(caughtUp).toEqual([]);
   });
 });
 
@@ -397,8 +463,8 @@ describe("POST close/plan", () => {
     expect(plan.blockers.some((b) => b.message.includes("does not exist"))).toBe(true);
   });
 
-  test("a sequence at the limit blocks the plan with the real explanation", async () => {
-    arrange(state({ sequence: seq(-1n) }), true);
+  test("a sequence far beyond the limit blocks the plan with the real explanation", async () => {
+    arrange(state({ sequence: FAR }), true);
     const plan = await buildAccountPlan(SOURCE, DEST, [], "testnet", ALL_ON);
     expect(plan.status).toBe("blocked");
     expect(plan.blockers.some((b) => b.message.includes("too far ahead"))).toBe(true);
