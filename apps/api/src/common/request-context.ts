@@ -65,8 +65,9 @@ function severityMethod(status: number): "log" | "warn" | "error" {
 
 /**
  * Gives every request an id before anything that can answer it, sets the headers every
- * response carries (`x-request-id`, `Cache-Control: no-store`, `Strict-Transport-Security`),
- * copies the id into any error envelope, and writes one access line when the response finishes.
+ * response carries (`x-request-id`, `Cache-Control: no-store`, `Strict-Transport-Security`,
+ * `X-Content-Type-Options: nosniff`), copies the id into any error envelope, and writes one access
+ * line when the response finishes.
  *
  * The id is always generated here: a caller-supplied one would let a client forge or inject
  * into the log line it is meant to be matched against. The access line carries the matched route
@@ -80,6 +81,7 @@ export function requestContextMiddleware(deadlineMs: number = REQUEST_DEADLINE_M
     res.setHeader(REQUEST_ID_HEADER, requestId);
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("Strict-Transport-Security", STRICT_TRANSPORT_SECURITY);
+    res.setHeader("X-Content-Type-Options", "nosniff");
     const upstreamCalls = new Map<string, number>();
 
     const json = res.json.bind(res);

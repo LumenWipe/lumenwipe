@@ -43,6 +43,8 @@ const freshIp = (): { "X-Forwarded-For": string } => ({
 
 function expectSecurityHeaders(res: request.Response, name: string): void {
   expect(res.headers["strict-transport-security"], name).toBe(HSTS);
+  expect(res.headers["x-content-type-options"], name).toBe("nosniff");
+  expect(res.headers["x-powered-by"], name).toBeUndefined();
 }
 
 const auth = { Authorization: `Bearer ${KEY}` };
