@@ -14,5 +14,13 @@
     "reason": "No patched release exists (vulnerable <= 4.0.7, the latest published). The copies are 4.0.7 under @nestjs/cli (@angular-devkit/core) and tinyglobby (typescript-eslint, eslint-config-next, tsup), and 2.3.2 under anymatch, micromatch and readdirp (tsc-alias, fast-glob in @next/eslint-plugin-next, and unstorage via the wallet kit's @walletconnect/keyvaluestorage). All are build or lint tooling except the unstorage path, which only imports anymatch from its unused drivers/fs module. None ships: the API production install (--production) has no picomatch, and next build output for web and playground contains no picomatch, anymatch or micromatch code in client or server chunks. No LumenWipe code passes a pattern to picomatch; the ReDoS needs an attacker-supplied glob.",
     "added": "2026-11-17",
     "expires": "2026-12-17"
+  },
+  {
+    "advisory": "GHSA-fc5q-39xc-vjpf",
+    "package": "picomatch",
+    "severity": "high",
+    "reason": "No patched release exists: every version up to 4.0.7, the latest, is affected, and the fix (micromatch/picomatch#254) is still an open pull request. The ReDoS needs an attacker-chosen glob, and every copy here only matches globs from repository config: 4.0.7 comes in through @nestjs/cli, typescript-eslint and tinyglobby (dev tooling, absent from the API image, which installs with --production), and 2.3.2 through anymatch in unstorage's fs driver under WalletConnect, which the web build does not bundle. Drop this entry once Renovate brings a patched release.",
+    "added": "2026-11-17",
+    "expires": "2026-12-01"
   }
 ]
