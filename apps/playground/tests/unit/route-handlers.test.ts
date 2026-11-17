@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { describe, expect, test } from "bun:test";
 import { NextRequest, NextResponse } from "next/server";
 import { Keypair, Operation, type xdr } from "@stellar/stellar-sdk";
-import { LumenWipeApiError, type AccountState } from "@lumenwipe/sdk";
+import { LumenWipeApiError } from "@lumenwipe/sdk";
 import { PlaygroundConfigError } from "@/lib/crypto";
 import {
   DEFAULT_CUSTOM_CONFIG,
@@ -49,6 +49,7 @@ import {
 } from "@/lib/session-store";
 import { fakeClock, memoryStore, newSessionData, type FakeClock } from "./session-fixtures";
 import { revokeTx } from "./revoke-fixtures";
+import { accountState } from "./account-fixtures";
 import type { AllowanceApi } from "@/lib/allowances";
 import { XLM_SAC } from "@/lib/scenarios";
 import { Networks, Transaction, TransactionBuilder } from "@stellar/stellar-sdk";
@@ -1881,7 +1882,7 @@ describe("credentials", () => {
 
 describe("state", () => {
   const api = { apiUrl: "http://localhost:3001", apiKey: "test-api-key" };
-  const account = { accountId: "GSTATE", numSubEntries: 4 } as unknown as AccountState;
+  const account = accountState("GSTATE", { numSubEntries: 4 });
 
   test("a live session returns its progress and the account read through the API", async () => {
     const store = memoryStore();

@@ -13,9 +13,10 @@ import {
   type CloseProgressEvent,
   type PendingRound,
 } from "../src/close-engine";
+import { closeTransaction } from "./support/fixtures";
 
 function tx(order: number, covers: StepType[] = ["CANCEL_OFFERS"]): CloseTransaction {
-  return { id: `tx${order}`, order, xdr: `xdr-tx${order}`, covers } as unknown as CloseTransaction;
+  return closeTransaction({ id: `tx${order}`, order, xdr: `xdr-tx${order}`, covers });
 }
 
 function resp(transactions: CloseTransaction[], requiresAnotherCall: boolean, steps = 1) {

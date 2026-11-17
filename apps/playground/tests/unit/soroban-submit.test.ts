@@ -63,7 +63,7 @@ const simulation = (
   events: [],
 });
 
-type Sent = { status: string; hash: string; errorResult?: unknown };
+type Outcome = "NOT_FOUND" | "SUCCESS" | "FAILED";
 
 interface Fake {
   deps: Partial<SorobanSubmitDeps>;
@@ -71,33 +71,71 @@ interface Fake {
   polls: number;
 }
 
+/** What the RPC answers a poll for `tx`: unknown yet, or landed with `outcome`. */
+function transactionAnswer(outcome: Outcome, tx: Transaction): rpc.Api.GetTransactionResponse {
+  const window = {
+    txHash: Buffer.from(tx.hash()).toString("hex"),
+    latestLedger: 2,
+    latestLedgerCloseTime: 0,
+    oldestLedger: 1,
+    oldestLedgerCloseTime: 0,
+  };
+  if (outcome === "NOT_FOUND") return { ...window, status: rpc.Api.GetTransactionStatus.NOT_FOUND };
+  const landed = {
+    ...window,
+    ledger: 1,
+    createdAt: 0,
+    applicationOrder: 1,
+    feeBump: false,
+    envelopeXdr: tx.toEnvelope(),
+    resultXdr: new xdr.TransactionResult({
+      feeCharged: BigInt(100),
+      result:
+        outcome === "SUCCESS"
+          ? xdr.TransactionResultResult.txSuccess([])
+          : xdr.TransactionResultResult.txFailed([]),
+      ext: xdr.TransactionResultExt.v0(),
+    }),
+    resultMetaXdr: xdr.TransactionMeta.operations([]),
+    events: { transactionEventsXdr: [], contractEventsXdr: [] },
+  };
+  return outcome === "SUCCESS"
+    ? { ...landed, status: rpc.Api.GetTransactionStatus.SUCCESS }
+    : { ...landed, status: rpc.Api.GetTransactionStatus.FAILED };
+}
+
 function fakeRpc({
   sim = simulation(),
-  sends = [{ status: "PENDING" }] as Omit<Sent, "hash">[],
-  results = ["NOT_FOUND", "SUCCESS"] as string[],
+  sends = ["PENDING"],
+  results = ["NOT_FOUND", "SUCCESS"],
   assemble,
 }: {
   sim?:
     rpc.Api.RawSimulateTransactionResponse | { error: string; id: string; latestLedger: number };
-  sends?: Omit<Sent, "hash">[];
-  results?: string[];
+  sends?: rpc.Api.SendTransactionStatus[];
+  results?: Outcome[];
   assemble?: SorobanSubmitDeps["assemble"];
 } = {}): Fake {
   let clock = 0;
   const fake: Fake = { deps: {}, sent: [], polls: 0 };
-  const server = {
-    simulateTransaction: async () => sim,
+  const server: SorobanSubmitDeps["rpc"] = {
+    simulateTransaction: async () => rpc.parseRawSimulation(sim),
     sendTransaction: async (tx: Transaction) => {
       fake.sent.push(tx);
-      const next = sends[Math.min(fake.sent.length - 1, sends.length - 1)];
-      return { ...next, hash: Buffer.from(tx.hash()).toString("hex") };
+      const status = sends[Math.min(fake.sent.length - 1, sends.length - 1)]!;
+      return {
+        status,
+        hash: Buffer.from(tx.hash()).toString("hex"),
+        latestLedger: 1,
+        latestLedgerCloseTime: 0,
+      };
     },
     getTransaction: async () => {
-      const status = results[Math.min(fake.polls, results.length - 1)];
+      const outcome = results[Math.min(fake.polls, results.length - 1)]!;
       fake.polls += 1;
-      return { status };
+      return transactionAnswer(outcome, fake.sent[fake.sent.length - 1]!);
     },
-  } as unknown as SorobanSubmitDeps["rpc"];
+  };
   fake.deps = {
     loadSequence: async () => "41",
     rpc: server,
@@ -157,11 +195,11 @@ describe("submitSoroban", () => {
   });
 
   test("TRY_AGAIN_LATER is retried a bounded number of times", async () => {
-    const recovers = fakeRpc({ sends: [{ status: "TRY_AGAIN_LATER" }, { status: "PENDING" }] });
+    const recovers = fakeRpc({ sends: ["TRY_AGAIN_LATER", "PENDING"] });
     await submitSoroban(source, contractCallOp(CALL), recovers.deps);
     expect(recovers.sent).toHaveLength(2);
 
-    const never = fakeRpc({ sends: [{ status: "TRY_AGAIN_LATER" }] });
+    const never = fakeRpc({ sends: ["TRY_AGAIN_LATER"] });
     expect(await refusal(submitSoroban(source, contractCallOp(CALL), never.deps))).toBe(
       "send_try_again_later"
     );
@@ -169,11 +207,11 @@ describe("submitSoroban", () => {
   });
 
   test("DUPLICATE is polled like PENDING, and ERROR is thrown", async () => {
-    const dup = fakeRpc({ sends: [{ status: "DUPLICATE" }] });
+    const dup = fakeRpc({ sends: ["DUPLICATE"] });
     await submitSoroban(source, contractCallOp(CALL), dup.deps);
     expect(dup.polls).toBe(2);
 
-    const rejected = fakeRpc({ sends: [{ status: "ERROR" }] });
+    const rejected = fakeRpc({ sends: ["ERROR"] });
     expect(await refusal(submitSoroban(source, contractCallOp(CALL), rejected.deps))).toStartWith(
       "send_rejected"
     );

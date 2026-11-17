@@ -17,6 +17,7 @@ import {
   type UnresolvedSubmission,
 } from "../../src/close-engine";
 import { LumenWipeApiError, LumenWipeTimeoutError } from "../../src/errors";
+import { closeTransaction, transactionsResponse } from "../support/fixtures";
 
 const HASH = "a".repeat(64);
 const OTHER = "b".repeat(64);
@@ -29,18 +30,12 @@ const SEARCHED = {
   latestLedgerCloseTime: 1000,
 };
 
-const merge = {
-  id: "merge",
-  order: 0,
-  xdr: "unsigned",
-  covers: ["MERGE"],
-} as unknown as CloseTransaction;
+const merge = closeTransaction({ id: "merge", xdr: "unsigned", covers: ["MERGE"] });
 
 const oneRound = (requiresAnotherCall = false): TransactionsResponse =>
-  ({
-    transactions: [merge],
+  transactionsResponse([merge], {
     remaining: { requiresAnotherCall, steps: requiresAnotherCall ? 1 : 0 },
-  }) as unknown as TransactionsResponse;
+  });
 
 const notFound = (hash = HASH, closeTime = 1000): TransactionLookupResponse => ({
   status: "not_found",
@@ -376,11 +371,7 @@ describe("what a run may claim about a merge", () => {
 
   test("a parsed merge counts even when the API forgot to say so", async () => {
     const { deps } = harness({
-      getTransactions: async () =>
-        ({
-          transactions: [{ ...merge, covers: [] }],
-          remaining: { requiresAnotherCall: false, steps: 0 },
-        }) as unknown as TransactionsResponse,
+      getTransactions: async () => transactionsResponse([{ ...merge, covers: [] }]),
     });
     await expect(runClose(deps)).resolves.toEqual({ mergeConfirmed: true });
   });
