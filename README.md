@@ -79,17 +79,19 @@ LumenWipe builds a **deterministic, ordered execution plan** from the account's 
 
 ![Ordered execution plan](docs/diagrams/output/06-execution-plan.svg)
 
-| Step                            | Operation                               | Details                                                                                                           |
-| ------------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| **1. Exit DeFi positions**      | Soroban `InvokeHostFunction`            | Blend, Aquarius, Soroswap, Phoenix (unbond), FxDAO (testnet only): each exit is its own transaction, run first    |
-| **2. Normalize signers**        | `SetOptions`                            | Removes extra signers, normalizes thresholds to 0/1/1 so a single key can authorize all remaining steps           |
-| **3. Revoke sponsorships**      | `RevokeSponsorship`                     | Revokes sponsorships this account provides when the owner can absorb the reserve; the rest surface as blockers    |
-| **4. Remove data entries**      | `ManageData`                            | Clears all `ManageData` entries in batches of 100                                                                 |
-| **5. Cancel DEX offers**        | `ManageSellOffer` / `ManageBuyOffer`    | Sets amount to 0 on all open order-book offers, freeing reserves                                                  |
-| **6. Claim claimable balances** | `ClaimClaimableBalance`                 | Claims balances the account can claim before conversion; adds a trustline first when the user chooses that remedy |
-| **7. Handle each asset**        | `PathPaymentStrictSend` / Soroban swaps | Each non-XLM balance is converted to XLM, transferred, or returned to its issuer, as the user chose               |
-| **8. Remove trustlines**        | `ChangeTrust` (limit 0)                 | Removes all trustlines once their balances are zero, batched by 100                                               |
-| **9. Merge account**            | `AccountMerge`                          | Direct merge, or via mediator account for exchange destinations                                                   |
+| Step                            | Operation                               | Details                                                                                                                                           |
+| ------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **1. Normalize signers first**  | `SetOptions`                            | Only when no single key can sign the close: removes the other signers in a transaction of its own, so the master key alone signs every later step |
+| **2. Exit DeFi positions**      | Soroban `InvokeHostFunction`            | Blend, Aquarius, Soroswap, Phoenix (unbond), FxDAO (testnet only): each exit is its own transaction                                               |
+| **3. Move Soroban tokens**      | Soroban `InvokeHostFunction`            | Each token is its own transaction: every transfer first, then every conversion to XLM                                                             |
+| **4. Claim claimable balances** | `ClaimClaimableBalance`                 | In a transaction before the close; adds a trustline first where a claim needs one                                                                 |
+| **5. Normalize signers**        | `SetOptions`                            | When extra signers exist and step 1 did not run: removes them and normalizes thresholds to 0/1/1                                                  |
+| **6. Revoke sponsorships**      | `RevokeSponsorship`                     | Revokes sponsorships this account provides when the owner can absorb the reserve; the rest surface as blockers                                    |
+| **7. Remove data entries**      | `ManageData`                            | Clears all `ManageData` entries in batches of 100                                                                                                 |
+| **8. Cancel DEX offers**        | `ManageSellOffer` / `ManageBuyOffer`    | Sets amount to 0 on all open order-book offers, freeing reserves                                                                                  |
+| **9. Handle each asset**        | `PathPaymentStrictSend` / Soroban swaps | Each non-XLM balance is converted to XLM, transferred, or returned to its issuer, as the user chose                                               |
+| **10. Remove trustlines**       | `ChangeTrust` (limit 0)                 | Removes all trustlines once their balances are zero, batched by 100                                                                               |
+| **11. Merge account**           | `AccountMerge`                          | Direct merge, or for an exchange destination the co-signed mediator transaction, last                                                             |
 
 Liquidity pool shares are not unwound by LumenWipe: an account that holds them is reported as a blocker, and the shares must be withdrawn elsewhere first.
 

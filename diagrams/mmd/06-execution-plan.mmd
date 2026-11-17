@@ -1,11 +1,17 @@
 flowchart TD
-    s1["1. Normalize signers<br/>(SetOptions: remove extra signers, thresholds to 0/1/1)"]
-    s2["2. Remove data entries<br/>(ManageData, batched by 100)"]
-    s3["3. Claim selected claimable balances<br/>(ClaimClaimableBalance, optional)"]
-    s4["4. Cancel DEX offers<br/>(ManageSellOffer / ManageBuyOffer, amount 0)"]
-    s5["5. Withdraw AMM and LP positions<br/>(classic LiquidityPoolWithdraw + Soroban pool withdrawals)"]
-    s6["6. Exit DeFi protocols<br/>(Blend, Phoenix, FxDAO: repay then withdraw)"]
-    s7["7. Handle assets<br/>(convert to XLM · transfer intact · return to issuer)"]
-    s8["8. Remove trustlines<br/>(ChangeTrust limit 0, batched by 100)"]
-    s9["9. Merge account<br/>(AccountMerge, direct or via mediator)"]
-    s1 --> s2 --> s3 --> s4 --> s5 --> s6 --> s7 --> s8 --> s9
+    subgraph rounds["Rounds of their own, ahead of the close"]
+        s1["1. Normalize signers first<br/>(only when no single key can sign the close; a transaction of its own)"]
+        s2["2. Exit DeFi positions<br/>(one Soroban transaction per exit)"]
+        s3["3. Move Soroban tokens<br/>(one transaction per token: transfers, then conversions)"]
+        s4["4. Claim claimable balances<br/>(trustline added first where needed, before the close)"]
+    end
+    subgraph close["The close"]
+        s5["5. Normalize signers<br/>(when extra signers exist and step 1 did not run)"]
+        s6["6. Revoke sponsorships<br/>(RevokeSponsorship, when the owner can absorb the reserve)"]
+        s7["7. Remove data entries<br/>(ManageData, batched by 100)"]
+        s8["8. Cancel DEX offers<br/>(ManageSellOffer / ManageBuyOffer, amount 0)"]
+        s9["9. Handle assets<br/>(convert to XLM · transfer intact · return to issuer)"]
+        s10["10. Remove trustlines<br/>(ChangeTrust limit 0, batched by 100)"]
+        s11["11. Merge account<br/>(AccountMerge, or the co-signed mediator transaction last)"]
+    end
+    s1 --> s2 --> s3 --> s4 --> s5 --> s6 --> s7 --> s8 --> s9 --> s10 --> s11

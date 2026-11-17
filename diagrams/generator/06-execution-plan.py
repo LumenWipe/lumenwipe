@@ -1,7 +1,7 @@
 """
-LumenWipe - 06 Ordered Demolition Execution Plan
-9-step deterministic pipeline. Order satisfies ledger constraints:
-cannot remove a trustline while it holds a balance; cannot merge with subentries remaining.
+LumenWipe - 06 Ordered Close Execution Plan
+The steps in the order buildPlan() emits them and the rounds run them: rounds of their own
+first (signers when no single key can sign, DeFi exits, Soroban tokens, claims), then the close.
 """
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
@@ -12,91 +12,102 @@ g = graphviz.Digraph("execution-plan")
 g.attr(**base_graph_attr(
     rankdir="TB",
     splines="polyline",
-    size="13,17",
+    size="13,22",
     nodesep="0.35",
-    ranksep="0.45",
+    ranksep="0.4",
     label=hl(
-        "LumenWipe - Ordered Demolition Execution Plan",
+        "LumenWipe - Ordered Close Execution Plan",
         "Same account state always produces the same plan · steps batch to 100 ops/tx · no-ops skipped",
     ),
 ))
-g.attr("node", **base_node_attr(width="7.5", margin="0.3,0.18"))
+g.attr("node", **base_node_attr(width="7.5", margin="0.3,0.16"))
 g.attr("edge", **base_edge_attr(penwidth="2"))
 
+CONDITIONAL = "filled,rounded,dashed"
+
 def step(g, nid, num, title, ops, detail, **kw):
-    label = hl(f"{num} · {title}", ops, detail)
-    g.node(nid, label, **kw)
+    g.node(nid, hl(f"{num} · {title}", ops, detail), **kw)
 
-# ── Steps ─────────────────────────────────────────────────────────────────────
-step(g, "s1", "Step 1", "Exit DeFi Positions",
-     "InvokeHostFunction  ·  one transaction per protocol exit  ·  simulated before signing",
-     "Blend: repay dToken debt (Pool.submit Repay) -> withdraw bToken (Withdraw / WithdrawCollateral)\n"
-     "FxDAO (testnet only): pay_debt stablecoin -> withdraw XLM collateral  ·  Phoenix: unbond staked position\n"
-     "Health factor checked ≥ 1.0 before any collateral withdrawal  ·  proceeds land in trustlines handled later",
-     fillcolor=F_EXTERNAL, color=B_EXTERNAL)
+# ── Rounds of their own ───────────────────────────────────────────────────────
+with g.subgraph(name="cluster_rounds") as r:
+    r.attr(label=hl("Rounds of their own, ahead of the close",
+                    "Each round is signed, submitted and confirmed before the next is built from live state"),
+           style="rounded,dashed", color=B_DEFAULT, fontcolor=T_MED,
+           fontname=FONT, fontsize="10", penwidth="1.2")
 
-step(g, "s2", "Step 2", "Normalize Signers",
-     "SetOptions  ·  weight = 0 per extra signer  ·  thresholds -> 0/1/1",
-     "Not a merge precondition, but runs early: collapses multi-sig to one key for all later steps\n"
-     "Frees 0.5 XLM per removed signer mid-flow, available to cover fees",
-     fillcolor=F_CLIENT, color=B_CLIENT)
+    step(r, "s1", "Step 1", "Normalize Signers First  (only when no single key can sign the close)",
+         "SetOptions  ·  weight = 0 per extra signer  ·  thresholds -> 0/1/1  ·  a transaction of its own",
+         "The master key signs it with enough co-signers, then signs every later round alone\n"
+         "It does not close the account, so it is emitted only while no later refusal is already known",
+         fillcolor=F_CLIENT, color=B_CLIENT, style=CONDITIONAL)
 
-step(g, "s3", "Step 3", "Revoke Sponsorships",
-     "RevokeSponsorship  ·  entries this account sponsors for other accounts",
-     "Sponsoring other accounts blocks AccountMerge  ·  revoked only when the owner can absorb the reserve\n"
-     "Claimable-balance sponsorships cannot be revoked and surface as blockers",
-     fillcolor=F_DEFAULT, color=B_DEFAULT)
+    step(r, "s2", "Step 2", "Exit DeFi Positions",
+         "InvokeHostFunction  ·  one Soroban transaction per exit  ·  simulated before signing",
+         "Blend, Aquarius, Soroswap, Phoenix (unbond), FxDAO (testnet only)  ·  debt repaid before collateral\n"
+         "Proceeds land in trustlines and tokens the steps below dispose of",
+         fillcolor=F_EXTERNAL, color=B_EXTERNAL)
 
-step(g, "s4", "Step 4", "Remove Data Entries",
-     "ManageData  ·  value = null (delete)  ·  batched ≤ 100 ops / tx",
-     "Data entries block AccountMerge  ·  common use: TOML, federation, app metadata",
-     fillcolor=F_DEFAULT, color=B_DEFAULT)
+    step(r, "s3", "Step 3", "Move Soroban Tokens",
+         "One Soroban transaction per token  ·  every transfer first, then every conversion to XLM",
+         "A token the user chose to leave is listed with nothing to sign",
+         fillcolor=F_EXTERNAL, color=B_EXTERNAL)
 
-step(g, "s5", "Step 5", "Cancel DEX Offers",
-     "ManageSellOffer / ManageBuyOffer  ·  amount = 0 (delete)  ·  batched ≤ 100 ops / tx",
-     "Removes buying liabilities, which must be zero before trustlines can be deleted\n"
-     "Passive sell offers cancelled the same way  ·  each freed offer returns 0.5 XLM reserve",
-     fillcolor=F_DEFAULT, color=B_DEFAULT)
+    step(r, "s4", "Step 4", "Claim Claimable Balances",
+         "ChangeTrust (add, where a claim needs a trustline)  ->  ClaimClaimableBalance",
+         "In a transaction before the close, so the proceeds reach the asset steps instead of being lost\n"
+         "A balance the user forfeits is left behind with a warning, never silently",
+         fillcolor=F_DEFAULT, color=B_DEFAULT)
 
-step(g, "s6", "Step 6", "Claim Claimable Balances",
-     "ClaimClaimableBalance  ·  optional - user-selected",
-     "Sponsoring a claimable balance blocks the merge  ·  claimed proceeds flow into the asset step\n"
-     "A trustline is added first when the user chooses that remedy",
-     fillcolor=F_DEFAULT, color=B_DEFAULT)
+# ── The close ─────────────────────────────────────────────────────────────────
+with g.subgraph(name="cluster_close") as c:
+    c.attr(label=hl("The close",
+                    "Steps 5-10 and a direct merge share one transaction\n"
+                    "when they fit in 100 operations",
+                    "A Soroswap aggregator swap is its own transaction"),
+           style="rounded", color=B_CLIENT, fontcolor=B_CLIENT,
+           fontname=FONT, fontsize="10", penwidth="2")
 
-step(g, "s7", "Step 7", "Handle Assets",
-     "Per asset: PathPaymentStrictSend / swap  ·  Payment to a trustline holder  ·  Payment to the issuer",
-     "Three peer dispositions, chosen per asset: convert to XLM, transfer intact, or return to the issuer\n"
-     "Soroswap API primary (Soroban + classic, client verifies XDR)  ·  SDEX strict-send fallback\n"
-     "min_received = quote × (1 − slippage)  ·  no route -> the user resolves it, never a silent default",
-     fillcolor=F_DECISION, color=B_DECISION)
+    step(c, "s5", "Step 5", "Normalize Signers  (when extra signers exist and step 1 did not run)",
+         "SetOptions  ·  weight = 0 per extra signer  ·  thresholds -> 0/1/1",
+         "Not a merge precondition: collapses multisig to one key and frees 0.5 XLM per removed signer",
+         fillcolor=F_CLIENT, color=B_CLIENT, style=CONDITIONAL)
 
-step(g, "s8", "Step 8", "Remove Trustlines",
-     "ChangeTrust  ·  limit = 0  ·  batched ≤ 100 ops / tx",
-     "Requires: balance = 0  ·  buying liabilities = 0 (guaranteed by step 5)\n"
-     "Each removed trustline frees 0.5 XLM reserve  ·  liquidity pool shares are a blocker, not unwound",
-     fillcolor=F_DEFAULT, color=B_DEFAULT)
+    step(c, "s6", "Step 6", "Revoke Sponsorships",
+         "RevokeSponsorship  ·  entries this account sponsors on other accounts",
+         "Revoked only when the owner can absorb the reserve  ·  the rest, and claimable-balance\n"
+         "sponsorships, surface as blockers",
+         fillcolor=F_DEFAULT, color=B_DEFAULT)
 
-step(g, "s9", "Step 9", "Merge Account",
-     "AccountMerge  ·  direct or via mediator (exchange destinations)",
-     "Transfers entire XLM balance to destination · deletes source account from ledger\n"
-     "Destination verified on-chain first  ·  memo required and validated for known exchanges",
-     fillcolor=F_SUCCESS, color=B_SUCCESS, penwidth="2.5")
+    step(c, "s7", "Step 7", "Remove Data Entries",
+         "ManageData  ·  value = null (delete)",
+         "Data entries block AccountMerge",
+         fillcolor=F_DEFAULT, color=B_DEFAULT)
 
-# ── Minimal-transactions note ─────────────────────────────────────────────────
-g.node("fastpath",
-       hl("Minimal set of transactions",
-          "Most accounts close in 1–2 signed transactions",
-          "Classic steps 2-9 are applied atomically in one transaction  ·  each DeFi exit is its own Soroban transaction\n"
-          "Exchange destination: cleanup transaction, then co-signed mediator transfer (2 signatures total)"),
-       fillcolor=F_ACCENT, color=B_ACCENT, style="filled,rounded,dashed",
-       width="7.5", margin="0.3,0.18")
+    step(c, "s8", "Step 8", "Cancel Offers",
+         "ManageSellOffer / ManageBuyOffer  ·  amount = 0 (delete)",
+         "Clears the liabilities that must be zero before a trustline can be removed",
+         fillcolor=F_DEFAULT, color=B_DEFAULT)
+
+    step(c, "s9", "Step 9", "Handle Each Asset",
+         "PathPaymentStrictSend / swap  ·  Payment to an account the user named  ·  Payment to the issuer",
+         "Convert to XLM, transfer intact, or return to the issuer, as the user chose per asset\n"
+         "Routes re-quoted at build time  ·  a lost route refuses the build, never a silent default",
+         fillcolor=F_DECISION, color=B_DECISION)
+
+    step(c, "s10", "Step 10", "Remove Trustlines",
+         "ChangeTrust  ·  limit = 0",
+         "Requires balance = 0 and no liabilities  ·  liquidity pool shares are a blocker, not unwound",
+         fillcolor=F_DEFAULT, color=B_DEFAULT)
+
+    step(c, "s11", "Step 11", "Merge Account",
+         "AccountMerge to the destination  ·  exchange destination: the co-signed mediator transaction, last",
+         "Direct: the merge is the last operation of the close  ·  Exchange: the close removes everything but\n"
+         "the merge, then AccountMerge into the mediator and the forward Payment run in one transaction of their own",
+         fillcolor=F_SUCCESS, color=B_SUCCESS, penwidth="2.5")
 
 # ── Pipeline edges ────────────────────────────────────────────────────────────
-for a, b in [("s1","s2"),("s2","s3"),("s3","s4"),("s4","s5"),
-             ("s5","s6"),("s6","s7"),("s7","s8"),("s8","s9")]:
+order = ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "s10", "s11"]
+for a, b in zip(order, order[1:]):
     g.edge(a, b)
-
-g.edge("s9", "fastpath", style="dashed", label="see note", color=B_ACCENT)
 
 render(g, "06-execution-plan")
