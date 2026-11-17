@@ -58,8 +58,8 @@ export function configureApp(
   app.useLogger(logger);
 
   // First, ahead of the rate limiter, body parsing and authentication, so the limiter's own 429,
-  // a 401 and a body error all carry x-request-id. Also sets Cache-Control: no-store: every
-  // response is dynamic and non-cacheable (account state, plans, unsigned XDR, mediator
+  // a 401 and a body error all carry x-request-id and HSTS. Also sets Cache-Control: no-store:
+  // every response is dynamic and non-cacheable (account state, plans, unsigned XDR, mediator
   // co-signatures), success or error. Order: request context, legacy aliases, discovery links,
   // rate limiter, filters, body parser, body-error mapping, body normalization, secret
   // registration.

@@ -9,6 +9,9 @@ import { createDeadline, type Deadline } from "./deadline";
 
 export const REQUEST_ID_HEADER = "x-request-id";
 
+/** Two years, covering subdomains, the web's value. Not preloaded: preload is slow to undo. */
+export const STRICT_TRANSPORT_SECURITY = "max-age=63072000; includeSubDomains";
+
 interface RequestContext {
   requestId: string;
   sensitive: Set<string>;
@@ -62,8 +65,8 @@ function severityMethod(status: number): "log" | "warn" | "error" {
 
 /**
  * Gives every request an id before anything that can answer it, sets the headers every
- * response carries (`x-request-id`, `Cache-Control: no-store`), copies the id into any error
- * envelope, and writes one access line when the response finishes.
+ * response carries (`x-request-id`, `Cache-Control: no-store`, `Strict-Transport-Security`),
+ * copies the id into any error envelope, and writes one access line when the response finishes.
  *
  * The id is always generated here: a caller-supplied one would let a client forge or inject
  * into the log line it is meant to be matched against. The access line carries the matched route
@@ -76,6 +79,7 @@ export function requestContextMiddleware(deadlineMs: number = REQUEST_DEADLINE_M
     const startedAt = process.hrtime.bigint();
     res.setHeader(REQUEST_ID_HEADER, requestId);
     res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Strict-Transport-Security", STRICT_TRANSPORT_SECURITY);
     const upstreamCalls = new Map<string, number>();
 
     const json = res.json.bind(res);
