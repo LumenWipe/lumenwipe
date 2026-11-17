@@ -4,7 +4,7 @@ import { OP_BATCH_LIMIT } from "@/config/constants";
 import { lookupExchange } from "@/lib/exchange-registry";
 import { readTrustlinesOnly } from "@/lib/stellar/account-state";
 import { getFeeAccountKeypair } from "@/lib/stellar/fee-account";
-import { getRpcServer } from "@/lib/stellar/rpc";
+import { getRpcServer, readLatestLedger } from "@/lib/stellar/rpc";
 
 export type MergePreflightProblemCode =
   | "destination_is_source"
@@ -51,7 +51,7 @@ export interface MergePreflightDeps {
 
 export const defaultMergePreflightDeps = (): MergePreflightDeps => ({
   accountExists: async (address, network) => (await readTrustlinesOnly(address, network)) !== null,
-  latestLedger: async (network) => (await getRpcServer(network).getLatestLedger()).sequence,
+  latestLedger: async (network) => (await readLatestLedger(getRpcServer(network))).sequence,
   mediator: getMediatorPublicKey,
   feeAccount: (network) => getFeeAccountKeypair(network)?.publicKey() ?? null,
 });

@@ -21,7 +21,7 @@ import { NETWORK_PASSPHRASES } from "@/config/networks";
 import bundledLists from "@/config/soroban-token-lists.json";
 import { mapConcurrent } from "@/lib/utils/concurrency";
 import { describeError } from "@/lib/utils/errors";
-import { getRpcServer } from "./rpc";
+import { getRpcServer, readLatestLedger } from "./rpc";
 
 /**
  * Soroban (SEP-41) token balances an account holds directly - the tokens the close must decide
@@ -50,6 +50,7 @@ export interface SorobanTokenRpc {
   getLedgerEntries: stellarRpc.Server["getLedgerEntries"];
   simulateTransaction: stellarRpc.Server["simulateTransaction"];
   getEvents: stellarRpc.Server["getEvents"];
+  getHealth: stellarRpc.Server["getHealth"];
   getLatestLedger: stellarRpc.Server["getLatestLedger"];
 }
 
@@ -220,9 +221,9 @@ async function eventCandidates(
 ): Promise<EventScan> {
   const latest = (
     await withTimeout(
-      deps.rpc.getLatestLedger(),
+      readLatestLedger(deps.rpc),
       Math.max(1, Math.min(deadline - deps.now(), RPC_CALL_TIMEOUT_MS)),
-      "getLatestLedger"
+      "latest ledger"
     )
   ).sequence;
   const filters: stellarRpc.Api.EventFilter[] = [

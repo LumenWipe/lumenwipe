@@ -20,7 +20,7 @@ import { entriesForNetwork, type ContractRegistryEntry } from "@/lib/contract-re
 import { describeError } from "@/lib/utils/errors";
 import { mapConcurrent } from "@/lib/utils/concurrency";
 import { bundledListCandidates } from "./soroban-tokens";
-import { getRpcServer } from "./rpc";
+import { getRpcServer, readLatestLedger } from "./rpc";
 
 /**
  * The allowance inspector's read side (architecture.md §12, #162): every live, non-zero SEP-41
@@ -57,6 +57,7 @@ import { getRpcServer } from "./rpc";
 export interface AllowanceRpc {
   simulateTransaction: stellarRpc.Server["simulateTransaction"];
   getEvents: stellarRpc.Server["getEvents"];
+  getHealth: stellarRpc.Server["getHealth"];
   getLatestLedger: stellarRpc.Server["getLatestLedger"];
 }
 
@@ -224,9 +225,9 @@ async function approveEventCandidates(
 ): Promise<ApproveEventScan> {
   const latest = (
     await withTimeout(
-      deps.rpc.getLatestLedger(),
+      readLatestLedger(deps.rpc),
       Math.max(1, Math.min(deadline - deps.now(), RPC_CALL_TIMEOUT_MS)),
-      "getLatestLedger"
+      "latest ledger"
     )
   ).sequence;
   const filters: stellarRpc.Api.EventFilter[] = [

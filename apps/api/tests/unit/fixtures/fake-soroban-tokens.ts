@@ -18,7 +18,7 @@ import type { AccountReadOptions } from "@/lib/stellar/account-state";
 import type { SorobanTokenRpc, SorobanTokensDeps } from "@/lib/stellar/soroban-tokens";
 import { contractSimulation } from "./fake-exit-adapter";
 import { archivedAnswer, type EntryArchival } from "./entry-archival";
-import { eventsPage, latestLedger } from "../../support/rpc-fixtures";
+import { eventsPage, healthAnswer, latestLedger } from "../../support/rpc-fixtures";
 
 export interface FakeToken {
   contract: string;
@@ -110,6 +110,9 @@ export function fakeSorobanRpc(world: FakeSorobanWorld): SorobanTokenRpc & {
   const never = new Promise<never>(() => {});
   return {
     eventRequests,
+    async getHealth() {
+      return healthAnswer(world.latestLedger ?? 1_000_000);
+    },
     async getLatestLedger() {
       return latestLedger(world.latestLedger ?? 1_000_000);
     },

@@ -4,6 +4,7 @@ import { rpc } from "@stellar/stellar-sdk";
 import { inRequestContext } from "../support/request-context";
 import {
   failedTransaction,
+  healthAnswer,
   latestLedger as parsedLatestLedger,
   missingTransaction,
   successfulTransaction,
@@ -16,6 +17,7 @@ import {
   nextRpcServer,
   pinnedRpcProvider,
   pinRpcProvider,
+  readLatestLedger,
   rpcReferenceLedger,
 } from "@/lib/stellar/rpc";
 import { providerFailoverCount, resetProviderFailoverCount } from "@/lib/stellar/provider-failover";
@@ -71,10 +73,24 @@ const dead: Handler = () => {
   throw new Error("connection refused");
 };
 
+function health(sequence: number, ageSeconds = 1) {
+  return {
+    status: "healthy",
+    latestLedger: sequence,
+    latestLedgerCloseTime: String(Math.floor(Date.now() / 1000) - ageSeconds),
+  };
+}
+
+const NETWORK = { passphrase: "Test SDF Network ; September 2015", protocolVersion: 23 };
+
+/** Fresh on the probe; `getNetwork` stands in for any other read. */
 const alive =
   (sequence: number, ageSeconds = 1): Handler =>
-  (method) =>
-    method === "getLatestLedger" ? latestLedger(sequence, ageSeconds) : { status: "healthy" };
+  (method) => {
+    if (method === "getHealth") return health(sequence, ageSeconds);
+    if (method === "getLatestLedger") return latestLedger(sequence, ageSeconds);
+    return NETWORK;
+  };
 
 const realFetch = globalThis.fetch;
 const realPrimary = RPC_URLS.testnet;
@@ -99,15 +115,15 @@ const hostsOf = (calls: Call[], method: string): string[] =>
 
 test("with the first URL failing, a read succeeds against the second", async () => {
   const calls = fakeRpc({ [A]: dead, [B]: alive(100) });
-  const health = await inRequestContext(() => getRpcServer("testnet").getHealth());
-  expect(health.status).toBe("healthy");
-  expect(hostsOf(calls, "getHealth")).toEqual([B]);
+  const network = await inRequestContext(() => getRpcServer("testnet").getNetwork());
+  expect(network.passphrase).toBe(NETWORK.passphrase);
+  expect(hostsOf(calls, "getNetwork")).toEqual([B]);
   expect(providerFailoverCount()).toBe(1);
 });
 
 test("with every URL failing, the caller gets the typed unavailable", async () => {
   fakeRpc({ [A]: dead, [B]: dead });
-  const failure = await inRequestContext(() => getRpcServer("testnet").getHealth()).catch(
+  const failure = await inRequestContext(() => getRpcServer("testnet").getNetwork()).catch(
     (e: unknown) => e
   );
   expect(failure).toBeInstanceOf(UpstreamError);
@@ -118,12 +134,15 @@ test("a provider whose newest ledger is old is passed over; a recent one is pinn
   const calls = fakeRpc({ [A]: alive(90, 45), [B]: alive(100, 25) });
   const pin = await inRequestContext(() => pinRpcProvider("testnet"));
   expect(pin).toMatchObject({ endpoint: { url: B }, ledger: 100 });
-  expect(hostsOf(calls, "getLatestLedger")).toEqual([A, B]);
+  expect(hostsOf(calls, "getHealth")).toEqual([A, B]);
 });
 
 test("a ledger with no readable close time cannot prove a provider is fresh", async () => {
   fakeRpc({
-    [A]: (method) => ({ ...latestLedger(90), closeTime: "not-a-time", method }),
+    [A]: (method) =>
+      method === "getHealth"
+        ? { ...health(90), latestLedgerCloseTime: "not-a-time" }
+        : { ...latestLedger(90), closeTime: "not-a-time" },
     [B]: alive(100),
   });
   expect((await inRequestContext(() => pinRpcProvider("testnet"))).endpoint.url).toBe(B);
@@ -138,27 +157,44 @@ test("the pin holds for the whole request: a primary dying mid-request is not fa
   const calls = fakeRpc({ [A]: primary, [B]: alive(100) });
   await inRequestContext(async () => {
     const server = getRpcServer("testnet");
-    await Promise.all([server.getHealth(), server.getHealth()]);
+    await Promise.all([server.getNetwork(), server.getNetwork()]);
     primaryDead = true;
-    await expect(server.getHealth()).rejects.toBeDefined();
+    await expect(server.getNetwork()).rejects.toBeDefined();
   });
-  expect(hostsOf(calls, "getLatestLedger")).toEqual([A]);
-  expect(hostsOf(calls, "getHealth")).toEqual([A, A, A]);
+  expect(hostsOf(calls, "getHealth")).toEqual([A]);
+  expect(hostsOf(calls, "getNetwork")).toEqual([A, A, A]);
+});
+
+test("a pinned round reads its latest ledger and everything else from the pinned provider", async () => {
+  const withoutCloseTime: Handler = (method) =>
+    method === "getHealth" ? { status: "healthy", latestLedger: 101 } : alive(101)(method);
+  for (const pinned of [alive(100), withoutCloseTime]) {
+    const calls = fakeRpc({ [A]: alive(90, 45), [B]: pinned });
+    const latest = await inRequestContext(async () => {
+      const server = getRpcServer("testnet");
+      await pinRpcProvider("testnet");
+      const [ledger] = await Promise.all([readLatestLedger(server), server.getNetwork()]);
+      return ledger;
+    });
+    expect(latest.sequence).toBe(pinned === withoutCloseTime ? 101 : 100);
+    expect(calls.filter((c) => c.host === A).map((c) => c.method)).toEqual(["getHealth"]);
+    expect(hostsOf(calls, "getNetwork")).toEqual([B]);
+  }
 });
 
 test("each request settles its own provider", async () => {
   const calls = fakeRpc({ [A]: alive(100), [B]: alive(100) });
-  await inRequestContext(() => getRpcServer("testnet").getHealth());
-  await inRequestContext(() => getRpcServer("testnet").getHealth());
-  expect(hostsOf(calls, "getLatestLedger")).toEqual([A, A]);
+  await inRequestContext(() => getRpcServer("testnet").getNetwork());
+  await inRequestContext(() => getRpcServer("testnet").getNetwork());
+  expect(hostsOf(calls, "getHealth")).toEqual([A, A]);
 });
 
 test("outside a request the primary is used, with no probe", async () => {
   const calls = fakeRpc({ [A]: alive(100), [B]: alive(100) });
   expect(await pinRpcProvider("testnet")).toMatchObject({ endpoint: { url: A }, ledger: null });
-  await getRpcServer("testnet").getHealth();
-  expect(hostsOf(calls, "getLatestLedger")).toEqual([]);
-  expect(hostsOf(calls, "getHealth")).toEqual([A]);
+  await getRpcServer("testnet").getNetwork();
+  expect(hostsOf(calls, "getHealth")).toEqual([]);
+  expect(hostsOf(calls, "getNetwork")).toEqual([A]);
 });
 
 test("a one-entry list probes nothing and keeps its singleton", async () => {
@@ -191,7 +227,7 @@ test("each provider gets its own headers and no other's", async () => {
   RPC_HEADERS.testnet = { "x-primary-key": "synthetic-a" };
   RPC_FALLBACKS.testnet = [{ url: B, headers: { "x-fallback-key": "synthetic-b" } }];
   const calls = fakeRpc({ [A]: dead, [B]: alive(100) });
-  await inRequestContext(() => getRpcServer("testnet").getHealth());
+  await inRequestContext(() => getRpcServer("testnet").getNetwork());
   const onA = calls.filter((c) => c.host === A);
   const onB = calls.filter((c) => c.host === B);
   expect(onA.length).toBeGreaterThan(0);
@@ -219,16 +255,22 @@ test("the Blend SDK sees the pinned URL with that provider's headers once the pi
 test("the reference ledger is the pin's, or a read on a lone provider", async () => {
   const calls = fakeRpc({ [A]: dead, [B]: alive(100) });
   expect(await inRequestContext(() => rpcReferenceLedger("testnet"))).toBe(100);
-  expect(hostsOf(calls, "getLatestLedger")).toEqual([A, B]);
+  expect(hostsOf(calls, "getHealth")).toEqual([A, B]);
+  expect(hostsOf(calls, "getLatestLedger")).toEqual([]);
 
   RPC_FALLBACKS.testnet = [];
+  const health = spyOn(rpc.Server.prototype, "getHealth");
   const latest = spyOn(rpc.Server.prototype, "getLatestLedger");
   try {
-    latest.mockResolvedValueOnce(parsedLatestLedger(55));
+    health.mockResolvedValueOnce(healthAnswer(55));
     expect(await rpcReferenceLedger("testnet")).toBe(55);
-    latest.mockRejectedValueOnce(new Error("down"));
+    health.mockResolvedValueOnce(Object.assign(healthAnswer(56), { latestLedgerCloseTime: "" }));
+    latest.mockResolvedValueOnce(parsedLatestLedger(56));
+    expect(await rpcReferenceLedger("testnet")).toBe(56);
+    health.mockRejectedValueOnce(new Error("down"));
     await expect(rpcReferenceLedger("testnet")).rejects.toBeInstanceOf(UpstreamError);
   } finally {
+    health.mockRestore();
     latest.mockRestore();
   }
 });

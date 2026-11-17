@@ -477,8 +477,8 @@ describe("Soroban token discovery", () => {
       budgetMs: 1_000,
       clock,
     });
-    const latest = deps.rpc.getLatestLedger.bind(deps.rpc);
-    deps.rpc.getLatestLedger = async () => {
+    const latest = deps.rpc.getHealth.bind(deps.rpc);
+    deps.rpc.getHealth = async () => {
       clock.now += 2_000; // the event scan alone overran the budget
       return latest();
     };

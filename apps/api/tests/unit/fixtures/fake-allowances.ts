@@ -7,7 +7,7 @@ import { Address, Contract, nativeToScVal, rpc, xdr, type Transaction } from "@s
 import type { ContractRegistryEntry } from "@/lib/contract-registry";
 import type { AllowanceRpc, AllowancesDeps } from "@/lib/stellar/allowances";
 import { contractSimulation } from "./fake-exit-adapter";
-import { eventsPage, latestLedger } from "../../support/rpc-fixtures";
+import { eventsPage, healthAnswer, latestLedger } from "../../support/rpc-fixtures";
 
 export const OWNER = "GBUYBKHUCCAKG4LM76DONHABFRZSZEHK7ARNEEXBZ3CMVIYKZXPLPVRG";
 
@@ -126,6 +126,9 @@ export function fakeAllowanceRpc(world: FakeAllowancesWorld): AllowanceRpc & {
 
   return {
     eventRequests,
+    async getHealth() {
+      return healthAnswer(world.latestLedger ?? 1_000_000);
+    },
     async getLatestLedger() {
       return latestLedger(world.latestLedger ?? 1_000_000);
     },

@@ -96,12 +96,50 @@ function withinMs<T>(call: Promise<T>, ms: number): Promise<T> {
   });
 }
 
+export interface LatestLedger {
+  sequence: number;
+  /** Unix seconds, as the provider sent it. */
+  closeTime: string;
+}
+
+export type LatestLedgerRpc = Pick<rpc.Server, "getHealth" | "getLatestLedger">;
+
+/** What `getHealth` sends, wider than the SDK's type: the close time and other statuses. */
+interface HealthAnswer {
+  status?: unknown;
+  latestLedger?: unknown;
+  latestLedgerCloseTime?: unknown;
+}
+
+/**
+ * The provider's newest ledger, from `getHealth`: a few hundred bytes, where `getLatestLedger`
+ * carries the ledger's header and close meta (megabytes on mainnet). A health answer without the
+ * ledger or its close time is asked again the long way. A status other than healthy is a failed
+ * read, never a ledger to trust.
+ */
+export async function readLatestLedger(server: LatestLedgerRpc): Promise<LatestLedger> {
+  const health = (await server.getHealth()) as HealthAnswer;
+  if (health.status !== "healthy") throw new UpstreamError("unavailable", "rpc");
+  const { latestLedger: sequence, latestLedgerCloseTime: closeTime } = health;
+  if (
+    typeof sequence === "number" &&
+    Number.isSafeInteger(sequence) &&
+    sequence > 0 &&
+    typeof closeTime === "string" &&
+    parseLedgerCloseTime(closeTime) !== null
+  ) {
+    return { sequence, closeTime };
+  }
+  const latest = await server.getLatestLedger();
+  return { sequence: latest.sequence, closeTime: latest.closeTime };
+}
+
 async function latestFreshLedger(
   network: Network,
   provider: ProviderEndpoint,
   capMs: number
 ): Promise<number> {
-  const latest = await withinMs(serversFor(network, provider).reads.getLatestLedger(), capMs);
+  const latest = await withinMs(readLatestLedger(serversFor(network, provider).reads), capMs);
   const closeTime = parseLedgerCloseTime(latest.closeTime);
   if (closeTime === null || Date.now() / 1000 - closeTime > RPC_MAX_LEDGER_AGE_SECONDS) {
     throw new UpstreamError("unavailable", "rpc");
@@ -191,7 +229,7 @@ export async function rpcReferenceLedger(network: Network): Promise<number> {
   const { ledger } = await pinRpcProvider(network);
   if (ledger !== null) return ledger;
   try {
-    return (await getRpcServer(network).getLatestLedger()).sequence;
+    return (await readLatestLedger(getRpcServer(network))).sequence;
   } catch {
     throw new UpstreamError("unavailable", "rpc");
   }
@@ -297,7 +335,11 @@ function typedRead(network: Network, provider: ProviderEndpoint, call: unknown):
 }
 
 // Idempotent reads only: never a submit, and never a simulation, whose cost a retry would double.
-const RETRIED_ON_RATE_LIMIT = new Set<PropertyKey>(["getLedgerEntries", "getLatestLedger"]);
+const RETRIED_ON_RATE_LIMIT = new Set<PropertyKey>([
+  "getHealth",
+  "getLedgerEntries",
+  "getLatestLedger",
+]);
 const RPC_MAX_RETRY_AFTER_MS = 5_000;
 
 function retryAfterMsOf(error: unknown): number | null {
