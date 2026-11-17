@@ -42,6 +42,15 @@ function availableButNotLive(content: string): string[] {
     .filter((line) => notLive.some((name) => line.toLowerCase().includes(name)));
 }
 
+/** The sentences and table rows in `content` that tie signers to op_has_sub_entries without saying
+ *  they are left out of it. */
+function signerSubEntryClaims(content: string): string[] {
+  return content
+    .split(/(?<=[.!?])\s+|\n/)
+    .filter((part) => /has_sub_entries/i.test(part) && /\bsigners?\b/i.test(part))
+    .filter((part) => !/\b(not|other than|except)\b/i.test(part));
+}
+
 describe("blog content", () => {
   test("flags a row marking a testnet-only feature as available", () => {
     expect(availableButNotLive("| Sponsored fees (fee-bump) | ✓ Available |")).toHaveLength(1);
@@ -97,6 +106,31 @@ describe("blog content", () => {
         copied: false,
       });
     }
+  });
+
+  test("flags a sentence or table row that blames signers for op_has_sub_entries", () => {
+    expect(
+      signerSubEntryClaims(
+        "| `ACCOUNT_MERGE_HAS_SUB_ENTRIES` | Trustlines, offers, data entries, or signers still exist |"
+      )
+    ).toHaveLength(1);
+    expect(
+      signerSubEntryClaims(
+        "The merge fails with a result code such as `op_has_sub_entries` that says nothing about signers."
+      )
+    ).toHaveLength(1);
+    expect(
+      signerSubEntryClaims(
+        "`op_has_sub_entries` means something other than a signer is still on the account."
+      )
+    ).toEqual([]);
+  });
+
+  test("no post blames signers for op_has_sub_entries, which the merge does not count them toward", () => {
+    const found = posts.flatMap((p) =>
+      signerSubEntryClaims(p.content).map((claim) => `${p.slug}: ${claim}`)
+    );
+    expect(found).toEqual([]);
   });
 
   test("no planned article is already published", () => {

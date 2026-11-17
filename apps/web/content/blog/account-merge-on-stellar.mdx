@@ -2,7 +2,7 @@
 title: "Account Merge on Stellar: A Complete Technical Reference"
 description: "A technical reference for the AccountMerge operation on Stellar: prerequisites, reserve recovery math, XDR structure, result codes, and how automated wind-down tools handle the full flow."
 publishedAt: "2026-06-02"
-updatedAt: "2026-11-15"
+updatedAt: "2026-11-17"
 category: "Technical"
 tags: ["stellar", "account-merge", "xlm", "reserves", "trustlines", "protocol", "xdr"]
 ---
@@ -50,9 +50,9 @@ Open DEX offers, whether buy orders or sell orders, are sub-entries on the accou
 
 Named data entries created via `ManageData` must be removed before merging. These are key-value pairs stored on the account. They appear in some application and DEX flows and are easy to overlook.
 
-### No additional signers
+### Enough signing weight
 
-Extra signers added via `SetOptions` must be removed. The account's master key is unaffected, but any additional signatories need to be cleared.
+Extra signers added via `SetOptions` do not have to be removed first. The merge check counts every subentry except signers, and a successful merge deletes the account's signers along with the account. What signers do affect is authorization: `AccountMerge` needs the account's high threshold, so on a multisig account the merge must carry enough signatures for their weights to reach it. Otherwise it fails with `op_bad_auth` or `tx_bad_auth`.
 
 ### No sponsored entries
 
@@ -121,16 +121,16 @@ No additional `body` fields are required beyond the destination address.
 
 ## Common failure codes
 
-| Result code                     | Meaning                                                  |
-| ------------------------------- | -------------------------------------------------------- |
-| `ACCOUNT_MERGE_SUCCESS`         | Operation completed successfully                         |
-| `ACCOUNT_MERGE_MALFORMED`       | Source and destination are the same account              |
-| `ACCOUNT_MERGE_NO_ACCOUNT`      | Destination does not exist on the ledger                 |
-| `ACCOUNT_MERGE_IMMUTABLE_SET`   | Source account has `AUTH_IMMUTABLE` flag set             |
-| `ACCOUNT_MERGE_HAS_SUB_ENTRIES` | Trustlines, offers, data entries, or signers still exist |
-| `ACCOUNT_MERGE_SEQNUM_TOO_FAR`  | Sequence number exceeds the allowed range                |
-| `ACCOUNT_MERGE_DEST_FULL`       | Destination XLM balance would overflow `INT64_MAX`       |
-| `ACCOUNT_MERGE_IS_SPONSOR`      | Account is sponsoring entries that have not been revoked |
+| Result code                     | Meaning                                                                   |
+| ------------------------------- | ------------------------------------------------------------------------- |
+| `ACCOUNT_MERGE_SUCCESS`         | Operation completed successfully                                          |
+| `ACCOUNT_MERGE_MALFORMED`       | Source and destination are the same account                               |
+| `ACCOUNT_MERGE_NO_ACCOUNT`      | Destination does not exist on the ledger                                  |
+| `ACCOUNT_MERGE_IMMUTABLE_SET`   | Source account has `AUTH_IMMUTABLE` flag set                              |
+| `ACCOUNT_MERGE_HAS_SUB_ENTRIES` | Trustlines, offers, or data entries still exist (signers are not counted) |
+| `ACCOUNT_MERGE_SEQNUM_TOO_FAR`  | Sequence number exceeds the allowed range                                 |
+| `ACCOUNT_MERGE_DEST_FULL`       | Destination XLM balance would overflow `INT64_MAX`                        |
+| `ACCOUNT_MERGE_IS_SPONSOR`      | Account is sponsoring entries that have not been revoked                  |
 
 `ACCOUNT_MERGE_HAS_SUB_ENTRIES` is the most common failure. It is the core reason automated wind-down tooling exists: identifying which sub-entries remain and constructing the correct removal transactions requires querying the ledger state and handling each entry type correctly.
 
