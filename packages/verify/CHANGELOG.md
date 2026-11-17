@@ -31,6 +31,11 @@ release is cut.
   it was last verified (`verifiedAt`). Testnet contracts LumenWipe deployed itself are marked
   `ownDeployment`. No address, hash, version or `verifiedLive` value changed, and the contracts a
   close may call, `validUntil` and verification are unchanged.
+- The bundled contract registry (version `2026-11-17`) re-pins the mainnet xBull router
+  (`CCKXBE5GKJOCE7IKL64HLYKW3IJSUPVOLC4CS77GQT5QQHDZLDYV3DFT`) to the code it runs since its
+  upstream upgrade on 2026-11-16. The previous code is no longer recognized. The router's address,
+  its `strict_send` interface and the contracts a close may call are unchanged, and so is
+  verification.
 
 ## [0.4.0] - 2026-11-10
 
