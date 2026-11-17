@@ -1,15 +1,17 @@
-import { timingSafeEqual } from "crypto";
+import { createHash, timingSafeEqual } from "crypto";
 import { CanActivate, ExecutionContext, Injectable } from "@nestjs/common";
 import type { Request } from "express";
 import { fail } from "@/common/fail";
 
+function digest(value: string): Buffer {
+  return createHash("sha256").update(value).digest();
+}
+
 /** Constant-time string comparison - a plain `===` on a secret leaks its length/prefix through
- *  timing, and nothing else in this codebase compares a secret against user input directly. */
+ *  timing. Both sides are hashed first so `timingSafeEqual` always sees equal-length digests and
+ *  neither the token's length nor a matching prefix leaks. */
 function safeEqual(a: string, b: string): boolean {
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  if (bufA.length !== bufB.length) return false;
-  return timingSafeEqual(bufA, bufB);
+  return timingSafeEqual(digest(a), digest(b));
 }
 
 /**
@@ -24,7 +26,7 @@ function safeEqual(a: string, b: string): boolean {
 @Injectable()
 export class AdminGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
-    const token = process.env.ADMIN_API_TOKEN;
+    const token = process.env.ADMIN_API_TOKEN?.trim();
     const firestoreConfigured = Boolean(process.env.FIRESTORE_PROJECT_ID);
     if (!token || !firestoreConfigured) {
       fail(
