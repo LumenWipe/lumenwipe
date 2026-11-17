@@ -3,13 +3,13 @@ import { CanActivate, ExecutionContext, Injectable } from "@nestjs/common";
 import type { Request } from "express";
 import { fail } from "@/common/fail";
 
-/** Constant-time string comparison - a plain `===` on a secret leaks its length/prefix through
- *  timing, and nothing else in this codebase compares a secret against user input directly. */
-function safeEqual(a: string, b: string): boolean {
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  if (bufA.length !== bufB.length) return false;
-  return timingSafeEqual(bufA, bufB);
+/** Constant-time comparison: on a length mismatch the caller's buffer is compared with itself, so
+ *  time depends only on what was sent and leaks neither the configured length nor a prefix. */
+function safeEqual(provided: string, configured: string): boolean {
+  const a = Buffer.from(provided);
+  const b = Buffer.from(configured);
+  const sameLength = a.length === b.length;
+  return timingSafeEqual(a, sameLength ? b : a) && sameLength;
 }
 
 /**
@@ -24,7 +24,7 @@ function safeEqual(a: string, b: string): boolean {
 @Injectable()
 export class AdminGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
-    const token = process.env.ADMIN_API_TOKEN;
+    const token = process.env.ADMIN_API_TOKEN?.trim();
     const firestoreConfigured = Boolean(process.env.FIRESTORE_PROJECT_ID);
     if (!token || !firestoreConfigured) {
       fail(
