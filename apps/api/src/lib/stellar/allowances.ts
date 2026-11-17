@@ -109,8 +109,13 @@ export const MAX_CANDIDATES = 50;
 export const ALLOWANCE_CONCURRENCY = 8;
 export const ALLOWANCE_TIMEOUT_MS = 5_000;
 const LEDGER_READS_RESERVE_MS = 6_000;
-/** Operation pages read per request; an older approval is missed, and the coverage says so. */
+/** Operation pages read one after another when the history cannot be split into windows. */
 export const INDEXER_MAX_PAGES = 4;
+/** Once the first page shows more history, the rest is split into this many ledger ranges, read in
+ *  parallel: StellarIndex takes about 2 s a page and each page's cursor names the next. */
+export const INDEXER_WINDOWS = 8;
+/** Pages read per window; a window that needs more is reported as not read to the end. */
+export const INDEXER_WINDOW_PAGES = 4;
 export const INDEXER_PAGE_LIMIT = 200;
 /** For the whole indexer source, every request included; what it read before then still counts. */
 export const INDEXER_TIMEOUT_MS = 8_000;
@@ -361,6 +366,20 @@ interface IndexerAllowanceScan {
 }
 
 const LEDGER_NUMBER = /^\d{1,10}$/;
+/** StellarIndex's `/operations` keyset cursor, `ledger.tx.op`. Documented as opaque, so a window
+ *  that finds it not honored is a failed window, never trusted. */
+const OPERATIONS_CURSOR = /^(\d{1,10})\.\d{1,10}\.\d{1,10}$/;
+const SEQUENCE_NUMBER = /^\d{1,20}$/;
+
+/** The ledger an account's history starts at: a new account's sequence is its creation ledger
+ *  shifted left 32 bits. A `bump_sequence` moves it later, which the tail check catches. */
+function sequenceStartLedger(account: Record<string, unknown> | null): number | null {
+  const seq = account?.seq_num;
+  const text = typeof seq === "number" ? String(seq) : seq;
+  if (typeof text !== "string" || !SEQUENCE_NUMBER.test(text)) return null;
+  const ledger = Number(BigInt(text) >> 32n);
+  return Number.isSafeInteger(ledger) && ledger > 0 ? ledger : null;
+}
 
 function ledgerOrNull(value: unknown): number | null {
   if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) return value;
@@ -422,36 +441,122 @@ async function indexerAllowanceCandidates(
   const gaps: string[] = [];
   const stopReason = (err: unknown): string =>
     controller.signal.aborted ? "time budget" : reason(err);
-  const operations = async (): Promise<void> => {
-    let cursor: string | null = null;
-    for (let page = 0; page < INDEXER_MAX_PAGES; page++) {
-      const params = new URLSearchParams({ limit: String(INDEXER_PAGE_LIMIT) });
-      if (cursor) params.set("cursor", cursor);
+  const operationsPage = async (cursor: string | null): Promise<Record<string, unknown> | null> => {
+    const params = new URLSearchParams({ limit: String(INDEXER_PAGE_LIMIT) });
+    if (cursor) params.set("cursor", cursor);
+    return indexerGet(indexer, `/accounts/${address}/operations`, params, controller.signal);
+  };
+  const rowsOf = (data: Record<string, unknown>): unknown[] => {
+    if (!Array.isArray(data.operations)) throw new Error("indexer answered without operations");
+    return data.operations;
+  };
+  // A page may hold fewer rows than asked while more remain; only a missing cursor ends it.
+  const nextOf = (data: Record<string, unknown>): string | null =>
+    typeof data.next_cursor === "string" && data.next_cursor !== "" ? data.next_cursor : null;
+  const collect = (row: unknown, into: IndexerPair[]): void => {
+    if (row && typeof row === "object")
+      approvesIn((row as { fields?: unknown }).fields, address, 0, into);
+  };
+
+  const sequential = async (cursor: string, into: IndexerPair[]): Promise<void> => {
+    for (let page = 1; page < INDEXER_MAX_PAGES; page++) {
       let data: Record<string, unknown> | null;
       try {
-        data = await indexerGet(
-          indexer,
-          `/accounts/${address}/operations`,
-          params,
-          controller.signal
-        );
+        data = await operationsPage(cursor);
       } catch (err) {
-        if (page === 0) throw err;
         gaps.push(`operations stopped after ${page} page(s): ${stopReason(err)}`);
         return;
       }
       if (!data) return;
-      if (!Array.isArray(data.operations)) throw new Error("indexer answered without operations");
-      for (const op of data.operations) {
-        if (op && typeof op === "object")
-          approvesIn((op as { fields?: unknown }).fields, address, 0, found);
-      }
-      // A page may hold fewer rows than asked while more remain; only a missing cursor ends it.
-      cursor =
-        typeof data.next_cursor === "string" && data.next_cursor !== "" ? data.next_cursor : null;
-      if (!cursor) return;
+      for (const row of rowsOf(data)) collect(row, into);
+      const next = nextOf(data);
+      if (!next) return;
+      cursor = next;
     }
     gaps.push(`${INDEXER_MAX_PAGES} operation pages read; older ones were not`);
+  };
+
+  /** Ledgers [low, top] from `cursor`: false when it needed more than its page budget. */
+  const window = async (
+    low: number,
+    top: number,
+    cursor: string,
+    into: IndexerPair[]
+  ): Promise<boolean> => {
+    for (let page = 0; page < INDEXER_WINDOW_PAGES; page++) {
+      const data = await operationsPage(cursor);
+      if (!data) return true;
+      let crossed = false;
+      for (const row of rowsOf(data)) {
+        const ledger = ledgerOrNull((row as { ledger?: unknown } | null)?.ledger);
+        if (ledger === null) continue;
+        if (ledger > top) throw new Error("the operations cursor was not honored");
+        if (ledger < low) {
+          crossed = true;
+          continue;
+        }
+        collect(row, into);
+      }
+      const next = nextOf(data);
+      if (!next || crossed) return true;
+      cursor = next;
+    }
+    return false;
+  };
+
+  const operations = async (): Promise<void> => {
+    const [first, account] = await Promise.all([
+      operationsPage(null),
+      indexerGet(indexer, `/accounts/${address}`, new URLSearchParams(), controller.signal).catch(
+        () => null
+      ),
+    ]);
+    if (!first) return;
+    const newest: IndexerPair[] = [];
+    for (const row of rowsOf(first)) collect(row, newest);
+    found.push(...newest);
+    const next = nextOf(first);
+    if (!next) return;
+
+    const high = Number(OPERATIONS_CURSOR.exec(next)?.[1] ?? NaN);
+    const start = sequenceStartLedger(account);
+    if (!Number.isSafeInteger(high) || start === null || start >= high) {
+      const older: IndexerPair[] = [];
+      await sequential(next, older);
+      found.push(...older);
+      return;
+    }
+
+    const size = Math.ceil((high - start) / INDEXER_WINDOWS);
+    const ranges: Array<{ low: number; top: number; cursor: string }> = [];
+    for (let i = 0; i < INDEXER_WINDOWS; i++) {
+      const top = high - i * size;
+      if (top < start) break;
+      ranges.push({
+        low: Math.max(start, top - size + 1),
+        top,
+        cursor: i === 0 ? next : `${top + 1}.0.0`,
+      });
+    }
+    const pairs = ranges.map((): IndexerPair[] => []);
+    const [reads, before] = await Promise.all([
+      Promise.allSettled(ranges.map((r, i) => window(r.low, r.top, r.cursor, pairs[i]!))),
+      operationsPage(`${start}.0.0`).then(
+        (data) => (data ? rowsOf(data).length > 0 : false),
+        () => false
+      ),
+    ]);
+    for (const list of pairs) found.push(...list);
+
+    const unfinished = reads.filter((r) => r.status === "fulfilled" && !r.value).length;
+    const failed = reads.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+    if (unfinished > 0)
+      gaps.push(`${unfinished} of ${ranges.length} history windows were not read to the end`);
+    if (failed.length > 0)
+      gaps.push(
+        `${failed.length} of ${ranges.length} history windows failed: ${stopReason(failed[0]!.reason)}`
+      );
+    if (before) gaps.push(`operations before ledger ${start} were not read`);
   };
   const transfers = async (token: string): Promise<void> => {
     const params = new URLSearchParams({ from: address, limit: String(INDEXER_PAGE_LIMIT) });

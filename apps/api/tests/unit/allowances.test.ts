@@ -7,6 +7,7 @@ import { expect, test } from "bun:test";
 import { Address, StrKey, xdr } from "@stellar/stellar-sdk";
 import {
   INDEXER_MAX_PAGES,
+  INDEXER_WINDOWS,
   MAX_CANDIDATES,
   defaultAllowancesDeps,
   discoverAllowances,
@@ -18,6 +19,7 @@ import {
   indexerInvocation,
   indexerOperationsBody,
   OWNER,
+  type FakeIndexerAnswer,
 } from "./fixtures/fake-allowances";
 import type { ContractRegistryEntry } from "@/lib/contract-registry";
 
@@ -695,21 +697,155 @@ test("discoverAllowances › a pair whose newest approve expired before the curr
   ]);
 });
 
-test("discoverAllowances › operations are paged by cursor, even through short pages, up to the page budget", async () => {
+test("discoverAllowances › without a history start or a ledger cursor, operations are paged one after another up to the page budget", async () => {
   let page = 0;
   const deps = fakeAllowancesDeps({
     world: { allowances: [] },
-    indexer: () => ({ status: 200, body: indexerOperationsBody([], `c${page++}`) }),
+    indexer: (path) =>
+      path === `/accounts/${OWNER}`
+        ? NOT_FOUND
+        : { status: 200, body: indexerOperationsBody([], `c${page++}`) },
   });
   const result = await discoverAllowances(OWNER, "testnet", deps);
-  expect(deps.indexerCalls).toHaveLength(INDEXER_MAX_PAGES);
-  expect(deps.indexerCalls[1]?.query.get("cursor")).toBe("c0");
+  const pages = deps.indexerCalls.filter((c) => c.path.endsWith("/operations"));
+  expect(pages).toHaveLength(INDEXER_MAX_PAGES);
+  expect(pages[1]?.query.get("cursor")).toBe("c0");
   expect(result.coverage).toContainEqual({
     source: "indexer",
     status: "ok",
     detail: `${INDEXER_MAX_PAGES} operation pages read; older ones were not`,
   });
   expect(result.warnings.map((w) => w.code)).toEqual(["allowances_scan_incomplete"]);
+});
+
+const HISTORY_START = 1_000;
+const HISTORY_FIRST_CURSOR = "1990.4.0";
+
+/** An account created at ledger 1,000 whose first page ends at ledger 1,990; `window` answers every
+ *  later cursor, keyed by the ledger it names. */
+function windowedIndexer(
+  window: (cursorLedger: number, cursor: string) => FakeIndexerAnswer
+): (path: string, query: URLSearchParams) => FakeIndexerAnswer {
+  return (path, query) => {
+    if (path === `/accounts/${OWNER}`)
+      return { status: 200, body: { data: { seq_num: String(BigInt(HISTORY_START) << 32n) } } };
+    if (path !== `/accounts/${OWNER}/operations`) return NOT_FOUND;
+    const cursor = query.get("cursor");
+    if (cursor === null)
+      return {
+        status: 200,
+        body: operationsAt(
+          [[1_995, indexerInvocation(TOKEN, "approve", [OWNER, SPENDER, "5", "5000000"])]],
+          HISTORY_FIRST_CURSOR
+        ),
+      };
+    return window(Number(cursor.split(".")[0]), cursor);
+  };
+}
+
+function operationsAt(
+  rows: Array<[number, Record<string, unknown>]>,
+  nextCursor: string | null
+): unknown {
+  return {
+    data: {
+      account: OWNER,
+      operations: rows.map(([ledger, fields]) => ({
+        ledger,
+        type: "invoke_host_function",
+        fields,
+      })),
+      next_cursor: nextCursor,
+    },
+  };
+}
+
+test("discoverAllowances › past the first page, the rest of the history is read as parallel ledger windows down to the account's start", async () => {
+  const deps = fakeAllowancesDeps({
+    world: {
+      allowances: [
+        { token: TOKEN, spender: SPENDER, amount: 5n },
+        { token: OTHER_TOKEN, spender: OTHER_SPENDER, amount: 9n },
+      ],
+    },
+    indexer: windowedIndexer((ledger, cursor) => {
+      if (cursor === `${HISTORY_START}.0.0`) return { status: 200, body: operationsAt([], null) };
+      if (cursor === HISTORY_FIRST_CURSOR)
+        return { status: 200, body: operationsAt([[1_990, {}]], null) };
+      const top = ledger - 1;
+      const rows: Array<[number, Record<string, unknown>]> = [[top, {}]];
+      if (top < 1_150)
+        rows.push([
+          HISTORY_START,
+          indexerInvocation(OTHER_TOKEN, "approve", [OWNER, OTHER_SPENDER, "9", "5000000"]),
+        ]);
+      return { status: 200, body: operationsAt(rows, null) };
+    }),
+  });
+  const result = await discoverAllowances(OWNER, "testnet", deps);
+  expect(result.allowances.map((a) => [a.token, a.spender])).toEqual(
+    [
+      [TOKEN, SPENDER],
+      [OTHER_TOKEN, OTHER_SPENDER],
+    ].sort((a, b) => a[0]!.localeCompare(b[0]!) || a[1]!.localeCompare(b[1]!))
+  );
+  expect(result.coverage).toContainEqual({ source: "indexer", status: "ok" });
+  const cursors = deps.indexerCalls
+    .filter((c) => c.path.endsWith("/operations"))
+    .map((c) => c.query.get("cursor"));
+  expect(cursors).toHaveLength(1 + INDEXER_WINDOWS + 1);
+  expect(cursors).toContain(HISTORY_FIRST_CURSOR);
+  expect(cursors).toContain(`${HISTORY_START}.0.0`);
+});
+
+test("discoverAllowances › a window stops once its rows reach the next window's ledgers", async () => {
+  const deps = fakeAllowancesDeps({
+    world: { allowances: [] },
+    indexer: windowedIndexer((ledger, cursor) =>
+      cursor === `${HISTORY_START}.0.0`
+        ? { status: 200, body: operationsAt([], null) }
+        : { status: 200, body: operationsAt([[ledger - 200, {}]], `${ledger - 200}.1.0`) }
+    ),
+  });
+  const result = await discoverAllowances(OWNER, "testnet", deps);
+  expect(deps.indexerCalls.filter((c) => c.path.endsWith("/operations"))).toHaveLength(
+    1 + INDEXER_WINDOWS + 1
+  );
+  expect(result.coverage).toContainEqual({ source: "indexer", status: "ok" });
+});
+
+test("discoverAllowances › a history window whose cursor is not honored is a gap, never trusted", async () => {
+  const deps = fakeAllowancesDeps({
+    world: { allowances: [{ token: TOKEN, spender: SPENDER, amount: 5n }] },
+    indexer: windowedIndexer((ledger, cursor) =>
+      cursor === HISTORY_FIRST_CURSOR || cursor === `${HISTORY_START}.0.0`
+        ? { status: 200, body: operationsAt([], null) }
+        : { status: 200, body: operationsAt([[ledger + 500, {}]], null) }
+    ),
+  });
+  const result = await discoverAllowances(OWNER, "testnet", deps);
+  expect(result.coverage.find((c) => c.source === "indexer")?.detail).toBe(
+    `${INDEXER_WINDOWS - 1} of ${INDEXER_WINDOWS} history windows failed: the operations cursor was not honored`
+  );
+  expect(result.warnings.map((w) => w.code)).toEqual(["allowances_scan_incomplete"]);
+});
+
+test("discoverAllowances › a window that needs more than its page budget, and history before the account's start, are both reported", async () => {
+  const deps = fakeAllowancesDeps({
+    world: { allowances: [] },
+    indexer: windowedIndexer((ledger, cursor) => {
+      if (cursor === `${HISTORY_START}.0.0`)
+        return { status: 200, body: operationsAt([[HISTORY_START - 1, {}]], null) };
+      if (cursor === HISTORY_FIRST_CURSOR || cursor === "1900.1.0")
+        return { status: 200, body: operationsAt([[1_900, {}]], "1900.1.0") };
+      return { status: 200, body: operationsAt([], null) };
+    }),
+  });
+  const result = await discoverAllowances(OWNER, "testnet", deps);
+  expect(result.coverage.find((c) => c.source === "indexer")?.detail).toBe(
+    `1 of ${INDEXER_WINDOWS} history windows were not read to the end; ` +
+      `operations before ledger ${HISTORY_START} were not read`
+  );
 });
 
 test("discoverAllowances › a StellarIndex failure falls back to the event scan and registry sweep, with the same result as without it", async () => {
