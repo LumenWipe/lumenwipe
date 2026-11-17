@@ -160,3 +160,44 @@ describe("wallet kit imports", () => {
     ]);
   });
 });
+
+describe("pollar imports", () => {
+  const LAZY = /Load the Google and GitHub sign-in through components\/api-keys\/pollar-loader\.ts/;
+  const pollarCode = [
+    `import { usePollar } from "@pollar/react";\nexport const b = usePollar;\n`,
+    `import { PollarClient } from "@pollar/core";\nexport const b = PollarClient;\n`,
+    `import PollarSignIn from "./PollarSignIn";\nexport const b = PollarSignIn;\n`,
+    `import PollarSignIn from "@/components/api-keys/PollarSignIn";\nexport const b = PollarSignIn;\n`,
+  ];
+
+  test("a static import of Pollar or its sign-in fails lint in every shipped folder", async () => {
+    for (const code of pollarCode) {
+      for (const file of [
+        "app/zz-fixture.tsx",
+        "lib/zz-fixture.ts",
+        "hooks/zz-fixture.ts",
+        "components/api-keys/zz-fixture.tsx",
+        "lib/wallet-kit/modules.ts",
+      ]) {
+        expect({ code, file, errors: await errors(code, file) }).toMatchObject({
+          errors: [expect.stringMatching(LAZY)],
+        });
+      }
+    }
+  });
+
+  test("their types, the lazy import, and tests are allowed", async () => {
+    const allowed = `import type { PollarClient } from "@pollar/core";\nimport type { PollarSignInProps } from "./PollarSignIn";\nexport type P = PollarSignInProps & { c?: PollarClient };\nexport const load = () => import("./PollarSignIn");\n`;
+    expect(await errors(allowed, "components/api-keys/zz-fixture.ts")).toEqual([]);
+    expect(await errors(pollarCode[0]!, "tests/unit/zz-fixture.test.ts")).toEqual([]);
+  });
+
+  test("the sign-in may import Pollar and still loads no wallet kit statically", async () => {
+    const file = "components/api-keys/PollarSignIn.tsx";
+    expect(await errors(pollarCode[0]!, file)).toEqual([]);
+    const kit = `import { StellarWalletsKit } from "@creit-tech/stellar-wallets-kit/sdk";\nexport const b = StellarWalletsKit;\n`;
+    expect(await errors(kit, file)).toEqual([
+      expect.stringMatching(/Load the wallet kit through lib\/wallet-kit\/loader\.ts/),
+    ]);
+  });
+});

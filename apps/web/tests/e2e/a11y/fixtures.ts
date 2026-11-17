@@ -491,6 +491,43 @@ export function watchKit(page: Page): KitWatch {
   return watch;
 }
 
+// Pollar's hosts, and text only its code carries (its client's log prefix and its React hook).
+const POLLAR_SITE = "pollar.xyz";
+const POLLAR_MARKERS = ["[PollarClient", "usePollar"];
+
+function isPollarHost(url: URL): boolean {
+  return url.hostname === POLLAR_SITE || url.hostname.endsWith(`.${POLLAR_SITE}`);
+}
+
+export interface PollarWatch {
+  /** Every request the page made to a Pollar host; the fixtures abort each one. */
+  requests: string[];
+  /** Every script the page loaded that holds Pollar's code, once each is read. */
+  scripts(): Promise<string[]>;
+}
+
+/** Records every script the page loads that holds Pollar's code, and every call to its hosts. */
+export function watchPollar(page: Page): PollarWatch {
+  const requests: string[] = [];
+  const found: string[] = [];
+  const reads: Promise<void>[] = [];
+  page.on("request", (request) => {
+    const url = request.url();
+    if (isPollarHost(new URL(url))) requests.push(url);
+    if (request.resourceType() !== "script") return;
+    reads.push(
+      request
+        .response()
+        .then((response) => response?.text() ?? "")
+        .catch(() => "")
+        .then((body) => {
+          if (POLLAR_MARKERS.some((marker) => body.includes(marker))) found.push(url);
+        })
+    );
+  });
+  return { requests, scripts: () => Promise.all(reads).then(() => [...found]) };
+}
+
 /** The landing page's recovery estimate: a range, one blocker and the assumptions that apply. */
 export const ESTIMATE: RecoveryEstimate = {
   readAt: "2026-11-07T12:34:00.000Z",
@@ -512,6 +549,8 @@ export async function installApiFixtures(page: Page): Promise<{ expectAllAnswere
 
   await page.route(WALLET_CONNECT_HOSTS, (route) => route.abort());
   await page.routeWebSocket(WALLET_CONNECT_HOSTS, (socket) => socket.close());
+  await page.route(isPollarHost, (route) => route.abort());
+  await page.routeWebSocket(isPollarHost, (socket) => socket.close());
 
   await page.route("**/api/**", async (route) => {
     const request = route.request();

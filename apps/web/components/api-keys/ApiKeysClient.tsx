@@ -1,10 +1,9 @@
 "use client";
 
-import { PollarProvider } from "@pollar/react";
 import ApiKeysPanel, { API_DOCS_URL, QUICKSTART_URL } from "./ApiKeysPanel";
-import PollarSignIn from "./PollarSignIn";
+import PollarOption from "./PollarOption";
 
-const POLLAR_PUBLISHABLE_KEY = process.env.NEXT_PUBLIC_POLLAR_PUBLISHABLE_KEY;
+const POLLAR_CONFIGURED = !!process.env.NEXT_PUBLIC_POLLAR_PUBLISHABLE_KEY;
 
 export default function ApiKeysClient() {
   return (
@@ -29,13 +28,7 @@ export default function ApiKeysClient() {
       </p>
 
       <div className="mt-8">
-        {POLLAR_PUBLISHABLE_KEY ? (
-          <PollarProvider client={{ apiKey: POLLAR_PUBLISHABLE_KEY }}>
-            <ApiKeysPanel pollar={PollarSignIn} />
-          </PollarProvider>
-        ) : (
-          <ApiKeysPanel />
-        )}
+        <ApiKeysPanel pollar={POLLAR_CONFIGURED ? PollarOption : undefined} />
       </div>
     </div>
   );

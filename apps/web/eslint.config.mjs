@@ -195,6 +195,16 @@ const walletKitImports = {
     "Load the wallet kit through lib/wallet-kit/loader.ts. Wallet ids are in lib/wallet-kit/wallet-ids.ts.",
 };
 
+// Pollar's code loads only through components/api-keys/pollar-loader.ts, once the visitor chooses
+// the Google or GitHub sign-in or Pollar kept a session to restore.
+const POLLAR_SIGN_IN = "components/api-keys/PollarSignIn.tsx";
+const POLLAR_LOADER =
+  "Load the Google and GitHub sign-in through components/api-keys/pollar-loader.ts.";
+const pollarImports = [
+  { regex: "^@pollar/", allowTypeImports: true, message: POLLAR_LOADER },
+  { regex: "(?:^|/)PollarSignIn(?:\\.tsx?)?$", allowTypeImports: true, message: POLLAR_LOADER },
+];
+
 const restrictedImports = (...patterns) => ({
   "@typescript-eslint/no-restricted-imports": ["error", { patterns }],
 });
@@ -265,10 +275,14 @@ const config = [
   },
   {
     files: ["**/*.{ts,tsx}"],
-    ignores: [...NOT_SHIPPED, WALLET_KIT_MODULES],
-    rules: restrictedImports(operationBuilders, walletKitImports),
+    ignores: [...NOT_SHIPPED, WALLET_KIT_MODULES, POLLAR_SIGN_IN],
+    rules: restrictedImports(operationBuilders, walletKitImports, ...pollarImports),
   },
-  { files: [WALLET_KIT_MODULES], rules: restrictedImports(operationBuilders) },
+  {
+    files: [WALLET_KIT_MODULES],
+    rules: restrictedImports(operationBuilders, ...pollarImports),
+  },
+  { files: [POLLAR_SIGN_IN], rules: restrictedImports(operationBuilders, walletKitImports) },
   // Re-wraps the transaction body the user reviewed with the cosigners' signatures: signing only.
   {
     files: ["lib/cosign/merge.ts"],
