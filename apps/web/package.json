@@ -13,7 +13,7 @@
     "coverage:gate": "bun ../../scripts/coverage-gate.ts",
     "test:watch": "bun test --watch tests/unit",
     "test:e2e": "playwright test",
-    "test:a11y": "NEXT_PUBLIC_STELLAR_WALLET_CONNECT_PROJECT_ID=00000000000000000000000000000000 bun run build && playwright test -c playwright.a11y.config.ts",
+    "test:a11y": "NEXT_PUBLIC_STELLAR_WALLET_CONNECT_PROJECT_ID=00000000000000000000000000000000 NEXT_PUBLIC_POLLAR_PUBLISHABLE_KEY=a11y-placeholder-not-a-key bun run build && playwright test -c playwright.a11y.config.ts",
     "test:all": "bun test tests/unit && playwright test",
     "brand:assets": "bun scripts/brand-assets.tsx",
     "check:env": "bun scripts/check-env-template.ts",

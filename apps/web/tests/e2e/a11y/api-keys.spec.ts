@@ -2,7 +2,7 @@ import { expect, test, type Page, type Route } from "@playwright/test";
 import { Keypair } from "@stellar/stellar-sdk";
 import { installWalletStub } from "../helpers/wallet-stub";
 import { expectNoAxeViolations } from "./axe";
-import { installApiFixtures, watchKit } from "./fixtures";
+import { installApiFixtures, watchKit, watchPollar } from "./fixtures";
 
 const CONTRACT = "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA";
 const NEW_KEY = "lw_test_placeholder_not_a_real_key";
@@ -117,6 +117,7 @@ test("a plain wallet signs in, sees key management and the limits, and stays sig
   });
   const integrator = await installIntegratorFixtures(page);
   const seen = watchKit(page);
+  const pollar = watchPollar(page);
 
   await page.goto("/api-keys");
   await expect(page).toHaveTitle(/API keys/);
@@ -126,6 +127,7 @@ test("a plain wallet signs in, sees key management and the limits, and stays sig
   await expectNoAxeViolations(page, "api keys, signed out");
   await page.waitForLoadState("networkidle");
   expect(seen.kitScripts).toEqual([]);
+  expect(await pollar.scripts()).toEqual([]);
 
   await signInWithStubWallet(page);
   await expect(page.getByText(`Signed in as ${owner.publicKey()}`)).toBeVisible({
@@ -134,6 +136,8 @@ test("a plain wallet signs in, sees key management and the limits, and stays sig
   await expect(page.getByRole("button", { name: "Create key" })).toBeVisible();
   expect(integrator.signatures).toHaveLength(1);
   expect(seen.kitScripts.length).toBeGreaterThan(0);
+  expect(await pollar.scripts()).toEqual([]);
+  expect(pollar.requests).toEqual([]);
   await expectNoAxeViolations(page, "api keys, signed in");
 
   await page.reload();
@@ -156,15 +160,35 @@ test("a contract account sees why it cannot sign in and what to do instead", asy
   await expectNoAxeViolations(page, "api keys, contract account");
 });
 
-test("without Google and GitHub sign-in the page names the wallet as the next step", async ({
+test("Google and GitHub sign-in loads only once it is chosen, and every Pollar call stays local", async ({
   page,
 }) => {
   await installIntegratorFixtures(page);
+  const pollar = watchPollar(page);
   await page.goto("/api-keys");
-  await expect(page.getByText(/Google and GitHub sign-in are not set up here/)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Sign in with a Stellar wallet" })).toBeEnabled();
-  await expect(page.getByRole("link", { name: "SDK quickstart" }).first()).toBeVisible();
-  await expectNoAxeViolations(page, "api keys, no account sign-in");
+  const choice = page.getByRole("button", { name: "Continue with Google or GitHub" });
+  await expect(choice).toBeEnabled();
+  await page.waitForLoadState("networkidle");
+  expect(await pollar.scripts()).toEqual([]);
+  expect(pollar.requests).toEqual([]);
+
+  await choice.click();
+  await expect(page.getByRole("button", { name: "Continue with Google" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue with GitHub" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Or continue with an account" })).toBeFocused();
+  expect((await pollar.scripts()).length).toBeGreaterThan(0);
+  await expect.poll(() => pollar.requests.length).toBeGreaterThan(0);
+  await expectNoAxeViolations(page, "api keys, account sign-in loaded");
+});
+
+test("a session Pollar kept in this browser loads its sign-in with the page", async ({ page }) => {
+  await installIntegratorFixtures(page);
+  await page.addInitScript(() => localStorage.setItem("pollar:a11y:session", "{}"));
+  const pollar = watchPollar(page);
+  await page.goto("/api-keys");
+  await expect(page.getByRole("button", { name: "Continue with Google" })).toBeVisible();
+  expect((await pollar.scripts()).length).toBeGreaterThan(0);
+  await expect(page.getByRole("button", { name: "Continue with Google or GitHub" })).toHaveCount(0);
 });
 
 async function signInAs(page: Page, options: IntegratorOptions) {

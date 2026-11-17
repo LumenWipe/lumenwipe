@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, type ReactElement } from "react";
-import { usePollar } from "@pollar/react";
+import { PollarProvider, usePollar } from "@pollar/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
 
@@ -21,17 +21,31 @@ export interface PollarSignInProps {
   onAccount: (account: PollarAccount) => void;
   /** Receives Pollar's logout while an account is signed in there, and null otherwise. */
   onLogoutChange: (logout: (() => Promise<void> | void) | null) => void;
+  /** Moves focus to the card's heading once it shows, after the visitor asked for this sign-in. */
+  focusHeading?: boolean;
 }
 
-/** Google and GitHub sign-in through Pollar. Rendered only inside a configured PollarProvider. */
-export default function PollarSignIn({
+const POLLAR_CLIENT = { apiKey: process.env.NEXT_PUBLIC_POLLAR_PUBLISHABLE_KEY ?? "" };
+
+/** Google and GitHub sign-in through Pollar, loaded only through pollar-loader.ts. */
+export default function PollarSignIn(props: PollarSignInProps): ReactElement {
+  return (
+    <PollarProvider client={POLLAR_CLIENT}>
+      <PollarSignInCard {...props} />
+    </PollarProvider>
+  );
+}
+
+function PollarSignInCard({
   signedIn,
   disabled,
   onAccount,
   onLogoutChange,
+  focusHeading,
 }: PollarSignInProps): ReactElement | null {
   const { isAuthenticated, wallet, login, logout, getClient, configStatus } = usePollar();
   const handled = useRef<string | null>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
   const address = wallet?.address ?? null;
   const smart = wallet?.custody === "smart";
 
@@ -57,12 +71,18 @@ export default function PollarSignIn({
     onAccount({ address, smart, sign });
   }, [isAuthenticated, address, signedIn, smart, sign, onAccount]);
 
+  useEffect(() => {
+    if (focusHeading) heading.current?.focus();
+  }, [focusHeading]);
+
   if (signedIn) return null;
 
   return (
     <Card>
       <CardBody className="space-y-3">
-        <h2 className="text-base font-semibold text-white">Or continue with an account</h2>
+        <h2 ref={heading} tabIndex={-1} className="text-base font-semibold text-white">
+          Or continue with an account
+        </h2>
         {isAuthenticated && address ? (
           <div className="flex flex-wrap gap-3">
             <Button
