@@ -30,7 +30,7 @@ These Mermaid files are not regenerated and not consumed by anything - they exis
 | 3   | state-machine            | Demolish flow state machine (Idle → Analyzing → Executing → Complete)                                                |
 | 4   | signing-flow             | API-built envelope, verify(), wallet or secret key, submit via API, poll                                             |
 | 5   | defi-adapter-fallback    | DeFi position adapter: OctoPos, freshness gate, degraded mode                                                        |
-| 6   | execution-plan           | Ordered 9-step demolish execution plan                                                                               |
+| 6   | execution-plan           | Ordered close execution plan, in the order the API's `buildPlan` emits the steps                                     |
 | 7   | blend-unwind             | Blend unwind: repay debt, withdraw supply, backstop Q4W                                                              |
 | 8   | asset-conversion-routing | Soroswap Aggregator with SDEX fallback                                                                               |
 | 9   | mediator-flow            | Mediator account flow for exchange destinations (no ACCOUNT_MERGE support)                                           |
