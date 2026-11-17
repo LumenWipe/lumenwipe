@@ -21,7 +21,8 @@ import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import type { AccountState } from "@/types/account";
 import type { PlannedStep } from "@/types/plan";
-import { freshAccount, freshPlan, stubUnchangedRefresh } from "./fixtures/fresh-plan";
+import { freshPlan, stubUnchangedRefresh } from "./fixtures/fresh-plan";
+import { freshAccount } from "./fixtures/account";
 import { fakeRouter } from "./fixtures/navigation";
 
 const SOURCE = Keypair.random().publicKey();

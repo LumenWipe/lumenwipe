@@ -1,7 +1,7 @@
 import type { AccountState } from "@/types/account";
 import { sorobanTokensOf } from "./soroban-tokens";
 import { emptyDefiPositionsResult } from "./defi-positions";
-import { freshAccount } from "./fresh-plan";
+import { freshAccount } from "./account";
 
 export interface RealExitEnvelope {
   name: string;

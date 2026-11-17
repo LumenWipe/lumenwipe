@@ -8,7 +8,8 @@ import { POST } from "@/app/api/[network]/estimate/route";
 import { PROXY_LIMIT_PER_DAY, rateLimitProxy } from "@/lib/api/rate-limit";
 import * as serverClient from "@/lib/api/server-client";
 import * as redis from "@/lib/upstash-redis";
-import { freshAccount, freshPlan, planEstimate } from "./fixtures/fresh-plan";
+import { freshPlan, planEstimate } from "./fixtures/fresh-plan";
+import { freshAccount } from "./fixtures/account";
 import { apiClient } from "./fixtures/api-client";
 
 const ADDRESS = Keypair.random().publicKey();

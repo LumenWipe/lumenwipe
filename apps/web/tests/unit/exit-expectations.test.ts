@@ -10,7 +10,7 @@ import {
   registryContractsFor,
 } from "@/lib/contract-registry";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
-import { freshAccount } from "./fixtures/fresh-plan";
+import { freshAccount } from "./fixtures/account";
 import { authorizationOf } from "./fixtures/trustline";
 
 const ACCOUNT = "GBUYBKHUCCAKG4LM76DONHABFRZSZEHK7ARNEEXBZ3CMVIYKZXPLPVRG";

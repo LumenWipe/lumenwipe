@@ -6,7 +6,8 @@ import AnalyzePage from "@/app/(app)/[network]/analyze/page";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import { fakeFetch } from "./fixtures/fetch";
-import { freshAccount, freshPlan } from "./fixtures/fresh-plan";
+import { freshPlan } from "./fixtures/fresh-plan";
+import { freshAccount } from "./fixtures/account";
 import { fakeRouter, searchParams } from "./fixtures/navigation";
 
 const SOURCE = Keypair.random().publicKey();

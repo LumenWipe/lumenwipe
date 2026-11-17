@@ -34,7 +34,7 @@ import type { AccountState } from "@/types/account";
 import type { BlendBorrowPosition, BlendSupplyPosition, DefiPosition } from "@lumenwipe/types";
 import { sorobanTokensOf } from "./fixtures/soroban-tokens";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
-import { freshAccount } from "./fixtures/fresh-plan";
+import { freshAccount } from "./fixtures/account";
 import { REAL_EXIT_ENVELOPES, type RealExitEnvelope } from "./fixtures/real-exit-envelopes";
 import { authorizationOf } from "./fixtures/trustline";
 

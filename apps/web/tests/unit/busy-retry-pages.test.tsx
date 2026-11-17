@@ -15,7 +15,8 @@ import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import type { PlannedStep } from "@/types/plan";
 import { fakeFetch } from "./fixtures/fetch";
-import { freshAccount, freshPlan } from "./fixtures/fresh-plan";
+import { freshPlan } from "./fixtures/fresh-plan";
+import { freshAccount } from "./fixtures/account";
 import { installIndexedDb, removeIndexedDb } from "./fixtures/indexed-db";
 
 const SOURCE = Keypair.random().publicKey();

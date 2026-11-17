@@ -11,7 +11,7 @@ import { restoreAssetDecisions, snapshotOf } from "@/lib/session/restore-decisio
 import { isValidGAddress, isValidSecretKey } from "@/lib/utils/validation";
 import { useDemolishStore } from "@/store/demolish";
 import type { AccountState, Trustline } from "@/types/account";
-import { freshAccount } from "./fixtures/fresh-plan";
+import { freshAccount } from "./fixtures/account";
 import { authorizationOf } from "./fixtures/trustline";
 
 const SOURCE = Keypair.random().publicKey();

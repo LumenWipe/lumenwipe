@@ -4,7 +4,8 @@ import { classicFloorFromQuote } from "@/lib/api/close-decisions";
 import { recoveryRange } from "@/lib/plan/expected-receive";
 import { BASE_FEE_STROOPS } from "@/config/constants";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
-import { freshAccount, planEstimate } from "./fixtures/fresh-plan";
+import { planEstimate } from "./fixtures/fresh-plan";
+import { freshAccount } from "./fixtures/account";
 
 const SOURCE = "GSOURCE0000000000000000000000000000000000000000000000000";
 const TOKEN = "CTOKEN00000000000000000000000000000000000000000000000000";

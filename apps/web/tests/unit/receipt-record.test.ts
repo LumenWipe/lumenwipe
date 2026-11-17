@@ -9,7 +9,7 @@ import {
 import type { AccountState, Trustline } from "@/types/account";
 import type { PlannedStep, StepStatus, StepType } from "@/types/plan";
 import { RECORD_VERSION } from "@/types/session";
-import { freshAccount } from "./fixtures/fresh-plan";
+import { freshAccount } from "./fixtures/account";
 
 const SOURCE = "GSOURCE00000000000000000000000000000000000000000000000000";
 const DEST = "GDESTINATION000000000000000000000000000000000000000000000";

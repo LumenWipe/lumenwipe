@@ -15,7 +15,8 @@ import type { AccountState } from "@/types/account";
 import type { AssetDisposition, PlannedStep } from "@/types/plan";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { fakeFetch } from "./fixtures/fetch";
-import { freshAccount, freshPlan } from "./fixtures/fresh-plan";
+import { freshPlan } from "./fixtures/fresh-plan";
+import { freshAccount } from "./fixtures/account";
 import { expectFocused } from "./fixtures/focus";
 
 // The review refuses a swap with no minimum ("A swap in this plan has no minimum amount

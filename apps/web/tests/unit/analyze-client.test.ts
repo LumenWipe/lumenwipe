@@ -3,7 +3,8 @@ import type { PlanResponse } from "@lumenwipe/sdk";
 import type { AccountState } from "@/types/account";
 import type { ClaimAnswers } from "@/lib/api/analyze-client";
 import { loadAnalysis } from "@/lib/api/analyze-client";
-import { freshAccount, freshPlan } from "./fixtures/fresh-plan";
+import { freshPlan } from "./fixtures/fresh-plan";
+import { freshAccount } from "./fixtures/account";
 
 const BALANCE_A = "00000000a1";
 

@@ -14,7 +14,8 @@ import {
 } from "@/lib/plan/plan-freshness";
 import type { ExpectedReceive } from "@/lib/plan/expected-receive";
 import type { PlannedStep } from "@/types/plan";
-import { freshAccount, freshPlan } from "./fixtures/fresh-plan";
+import { freshPlan } from "./fixtures/fresh-plan";
+import { freshAccount } from "./fixtures/account";
 
 const SOURCE = Keypair.random().publicKey();
 const USDC = `USDC:${Keypair.random().publicKey()}`;

@@ -6,7 +6,7 @@ import ReviewView from "@/components/review/ReviewView";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import type { PlannedStep } from "@/types/plan";
-import { freshAccount } from "./fixtures/fresh-plan";
+import { freshAccount } from "./fixtures/account";
 import { fakeRouter } from "./fixtures/navigation";
 
 const SOURCE = Keypair.random().publicKey();

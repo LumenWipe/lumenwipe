@@ -23,7 +23,7 @@ import type { IntentOperation, TxIntent } from "@/types/close-api";
 import { assertCloseIntent, type CloseExpectation } from "@/lib/stellar/verify";
 import embeddedRegistry from "@registry/contract-registry.json";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
-import { freshAccount } from "./fixtures/fresh-plan";
+import { freshAccount } from "./fixtures/account";
 import { sorobanTokensOf } from "./fixtures/soroban-tokens";
 import { authorizationOf } from "./fixtures/trustline";
 import { exitExpectations } from "@/lib/stellar/exit-expectations";
