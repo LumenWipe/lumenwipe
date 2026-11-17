@@ -6,5 +6,13 @@
     "reason": "The only affected copies left are zod 3.22.4 under @reown/appkit-wallet and 3.25.76 under @coinbase/cdp-sdk, pinned by the wallet kit. No 3.x release is patched, and forcing 4.x onto them risks the signing flow for a dependency that does not ship: next build output contains no zod 3.x in the client or server chunks (the only zod it bundles is 4.6.7, server-side, for the blog front matter check), and the API does not depend on either copy.",
     "added": "2026-10-30",
     "expires": "2027-01-28"
+  },
+  {
+    "advisory": "GHSA-fc5q-39xc-vjpf",
+    "package": "picomatch",
+    "severity": "high",
+    "reason": "No patched release exists (vulnerable <= 4.0.7, the latest published). The copies are 4.0.7 under @nestjs/cli (@angular-devkit/core) and tinyglobby (typescript-eslint, eslint-config-next, tsup), and 2.3.2 under anymatch, micromatch and readdirp (tsc-alias, fast-glob in @next/eslint-plugin-next, and unstorage via the wallet kit's @walletconnect/keyvaluestorage). All are build or lint tooling except the unstorage path, which only imports anymatch from its unused drivers/fs module. None ships: the API production install (--production) has no picomatch, and next build output for web and playground contains no picomatch, anymatch or micromatch code in client or server chunks. No LumenWipe code passes a pattern to picomatch; the ReDoS needs an attacker-supplied glob.",
+    "added": "2026-11-17",
+    "expires": "2026-12-17"
   }
 ]
