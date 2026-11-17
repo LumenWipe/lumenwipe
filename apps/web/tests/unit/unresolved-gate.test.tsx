@@ -12,16 +12,15 @@ import * as sessionStore from "@/lib/session/store";
 import * as submitViaApi from "@/lib/stellar/submit-via-api";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
-import type { SessionRecord } from "@/types/session";
+import { sessionRecord } from "./fixtures/session";
 
 const SOURCE = Keypair.random().publicKey();
 const HASH = "a".repeat(64);
-const HELD = {
+const HELD = sessionRecord({
   id: "s",
-  network: "testnet",
   sourceAddress: SOURCE,
   unconfirmed: { hash: HASH, covers: ["MERGE"], validUntil: 1000 },
-} as unknown as SessionRecord;
+});
 
 let push: ReturnType<typeof mock>;
 

@@ -16,7 +16,10 @@ import * as analyzeClient from "@/lib/api/analyze-client";
 import type { AccountState } from "@/types/account";
 import type { PlannedStep, StepStatus, StepType } from "@/types/plan";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { fakeFetch } from "./fixtures/fetch";
 import { expectFocused } from "./fixtures/focus";
+import { freshPlan } from "./fixtures/fresh-plan";
+import { fakeRouter, searchParams } from "./fixtures/navigation";
 
 const VALID_ADDRESS = Keypair.random().publicKey();
 const ADDRESS = "GSOURCE0000000000000000000000000000000000000000000000000";
@@ -68,14 +71,10 @@ function settled<T>(value: T): Promise<T> {
 
 // Stable identities: the analyze page re-fetches whenever its router changes.
 function stubNavigation(search = ""): void {
-  const router = { push: () => {}, replace: () => {} };
-  const params = new URLSearchParams(search);
-  spyOn(navigation, "useRouter").mockImplementation(
-    () => router as unknown as ReturnType<typeof navigation.useRouter>
-  );
-  spyOn(navigation, "useSearchParams").mockImplementation(
-    () => params as unknown as ReturnType<typeof navigation.useSearchParams>
-  );
+  const router = fakeRouter();
+  const params = searchParams(search);
+  spyOn(navigation, "useRouter").mockImplementation(() => router);
+  spyOn(navigation, "useSearchParams").mockImplementation(() => params);
 }
 
 function expectValidOutline(): void {
@@ -168,10 +167,7 @@ function stubAnalysis(): void {
   spyOn(analyzeClient, "loadAnalysis").mockImplementation(async (deps) => {
     const acct = account();
     deps.applyAccount(acct);
-    return {
-      account: acct,
-      plan: { blockers: [], decisionPoints: [] },
-    } as unknown as analyzeClient.Analysis;
+    return { account: acct, plan: freshPlan([]) };
   });
 }
 
@@ -197,7 +193,7 @@ test("the analyze loading view is a status region", async () => {
 test("allowances keeps one h1, announces lookups and marks results busy", async () => {
   let resolveFetch: (r: Response) => void = () => {};
   spyOn(globalThis, "fetch").mockImplementation(
-    (() => new Promise<Response>((resolve) => (resolveFetch = resolve))) as unknown as typeof fetch
+    fakeFetch(() => new Promise<Response>((resolve) => (resolveFetch = resolve)))
   );
   await renderPage(<AllowancesPage params={settled({ network: "testnet" as const })} />);
   expectValidOutline();
@@ -237,9 +233,11 @@ test("allowances keeps one h1, announces lookups and marks results busy", async 
 });
 
 test("an allowance lookup failure is announced as an alert", async () => {
-  spyOn(globalThis, "fetch").mockImplementation((async () => {
-    throw new Error("boom");
-  }) as unknown as typeof fetch);
+  spyOn(globalThis, "fetch").mockImplementation(
+    fakeFetch(async () => {
+      throw new Error("boom");
+    })
+  );
   await renderPage(<AllowancesPage params={settled({ network: "testnet" as const })} />);
   fireEvent.change(screen.getByPlaceholderText(/G\.\.\./), { target: { value: VALID_ADDRESS } });
   await act(async () => {

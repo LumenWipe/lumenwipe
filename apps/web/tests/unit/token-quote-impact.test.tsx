@@ -22,6 +22,7 @@ import { expectedReceive } from "@/lib/plan/expected-receive";
 import type { PlanResponse } from "@lumenwipe/sdk";
 import type { AccountState } from "@/types/account";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { freshPlan } from "./fixtures/fresh-plan";
 
 afterEach(cleanup);
 
@@ -81,7 +82,7 @@ function renderCard(
 }
 
 function planWith(subject: Record<string, unknown>): PlanResponse {
-  return {
+  return freshPlan([], {
     decisionPoints: [
       {
         id: `token:${CONTRACT}`,
@@ -101,7 +102,7 @@ function planWith(subject: Record<string, unknown>): PlanResponse {
         required: true,
       },
     ],
-  } as unknown as PlanResponse;
+  });
 }
 
 test("the adapter reads the impact, the flags, the runner-up and the reason", () => {

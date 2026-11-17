@@ -8,6 +8,7 @@ import { saveHistory } from "@/lib/session/history";
 import type { ReceiptRecord } from "@/types/history";
 import { RECORD_VERSION } from "@/types/session";
 import { installIndexedDb, removeIndexedDb } from "./fixtures/indexed-db";
+import { fakeRouter } from "./fixtures/navigation";
 
 const WEB = join(import.meta.dir, "..", "..");
 const DEST = "GDESTINATION000000000000000000000000000000000000000000000";
@@ -16,10 +17,8 @@ const HASHES = ["a".repeat(64), "b".repeat(64)];
 
 beforeEach(() => {
   installIndexedDb();
-  const router = { push: () => {}, replace: () => {} };
-  spyOn(navigation, "useRouter").mockImplementation(
-    () => router as unknown as ReturnType<typeof navigation.useRouter>
-  );
+  const router = fakeRouter();
+  spyOn(navigation, "useRouter").mockImplementation(() => router);
 });
 
 afterEach(() => {

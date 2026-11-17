@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { renderHook, act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import * as navigation from "next/navigation";
+import type {
+  DecisionAnswer,
+  TransactionLookupResponse,
+  TransactionsResponse,
+} from "@lumenwipe/sdk";
 import {
   Account,
   Asset,
@@ -61,27 +66,25 @@ import * as signingPromptModule from "@/lib/execution/signing-prompt";
 import { freshAccount, freshPlan, stubUnchangedRefresh } from "./fixtures/fresh-plan";
 import { VARIAL_ID } from "@creit-tech/stellar-wallets-kit/modules/varial";
 import { installIndexedDb, removeIndexedDb } from "./fixtures/indexed-db";
+import { closeTransaction } from "./fixtures/close-transactions";
 
-/** The stand-ins return only what the hook reads, so they are typed loosely on purpose. */
-function stubFetchCloseTransactions(impl: () => Promise<unknown>): void {
-  spyOn(closeClient, "fetchCloseTransactions").mockImplementation(
-    impl as unknown as typeof closeClient.fetchCloseTransactions
-  );
+type SourceSigners = NonNullable<TransactionsResponse["sourceAccount"]>;
+
+function stubFetchCloseTransactions(impl: () => Promise<TransactionsResponse>): void {
+  spyOn(closeClient, "fetchCloseTransactions").mockImplementation(impl);
 }
 /** Answers with the hash of what was actually sent, unless a test names `wrongHash`. */
 function stubSubmitViaApi(impl: (...args: unknown[]) => Promise<unknown>): void {
-  spyOn(submitViaApiModule, "submitViaApi").mockImplementation((async (...args: unknown[]) => {
-    const answer = (await impl(...args)) as { wrongHash?: string; ledger?: number };
+  spyOn(submitViaApiModule, "submitViaApi").mockImplementation(async (signedXdr, network) => {
+    const answer = (await impl(signedXdr, network)) as { wrongHash?: string; ledger?: number };
     return {
       ledger: answer?.ledger ?? 0,
-      txHash: answer?.wrongHash ?? submissionHash(args[0] as string, Networks.TESTNET),
+      txHash: answer?.wrongHash ?? submissionHash(signedXdr, Networks.TESTNET),
     };
-  }) as unknown as typeof submitViaApiModule.submitViaApi);
+  });
 }
-function stubFeeBumpSponsor(impl: (...args: unknown[]) => Promise<unknown>): void {
-  spyOn(feeBumpSponsorModule, "requestFeeBumpSponsorship").mockImplementation(
-    impl as unknown as typeof feeBumpSponsorModule.requestFeeBumpSponsorship
-  );
+function stubFeeBumpSponsor(impl: (signedXdr: string) => Promise<string>): void {
+  spyOn(feeBumpSponsorModule, "requestFeeBumpSponsorship").mockImplementation(impl);
 }
 
 // The two modules that make real network calls are patched with spyOn on the real module
@@ -238,7 +241,7 @@ test("useCloseExecution › a second signer completes the close by resuming, not
     return {
       planHash: "h",
       status: "ready",
-      transactions: [{ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
+      transactions: [closeTransaction({ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] })],
       remaining: { steps: 0, requiresAnotherCall: false },
     };
   });
@@ -340,7 +343,7 @@ test("useCloseExecution › a signer that returns a body-tampered envelope on re
     return {
       planHash: "h",
       status: "ready",
-      transactions: [{ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
+      transactions: [closeTransaction({ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] })],
       remaining: { steps: 0, requiresAnotherCall: false },
     };
   });
@@ -411,7 +414,7 @@ test("useCloseExecution › a hash(x) signer's preimage completes the close by r
     return {
       planHash: "h",
       status: "ready",
-      transactions: [{ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
+      transactions: [closeTransaction({ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] })],
       remaining: { steps: 0, requiresAnotherCall: false },
     };
   });
@@ -480,7 +483,7 @@ test("useCloseExecution › a guard failure while paused clears signatureStatus 
   stubFetchCloseTransactions(async () => ({
     planHash: "h",
     status: "ready",
-    transactions: [{ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
+    transactions: [closeTransaction({ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] })],
     remaining: { steps: 0, requiresAnotherCall: false },
   }));
 
@@ -543,7 +546,7 @@ test("useCloseExecution › resigning with an already-contributed key on resume 
     return {
       planHash: "h",
       status: "ready",
-      transactions: [{ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
+      transactions: [closeTransaction({ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] })],
       remaining: { steps: 0, requiresAnotherCall: false },
     };
   });
@@ -728,7 +731,13 @@ test("useCloseExecution › a transaction flagged needsSponsoredFee is wrapped a
     planHash: "h",
     status: "ready",
     transactions: [
-      { id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"], needsSponsoredFee: true },
+      closeTransaction({
+        id: "t0",
+        order: 0,
+        xdr: mergeXdr,
+        covers: ["MERGE"],
+        needsSponsoredFee: true,
+      }),
     ],
     remaining: { steps: 0, requiresAnotherCall: false },
   }));
@@ -799,7 +808,13 @@ test("useCloseExecution › a fee-bump wrapping a different inner transaction is
     planHash: "h",
     status: "ready",
     transactions: [
-      { id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"], needsSponsoredFee: true },
+      closeTransaction({
+        id: "t0",
+        order: 0,
+        xdr: mergeXdr,
+        covers: ["MERGE"],
+        needsSponsoredFee: true,
+      }),
     ],
     remaining: { steps: 0, requiresAnotherCall: false },
   }));
@@ -846,7 +861,13 @@ test("useCloseExecution › a sponsor response that isn't a fee-bump transaction
     planHash: "h",
     status: "ready",
     transactions: [
-      { id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"], needsSponsoredFee: true },
+      closeTransaction({
+        id: "t0",
+        order: 0,
+        xdr: mergeXdr,
+        covers: ["MERGE"],
+        needsSponsoredFee: true,
+      }),
     ],
     remaining: { steps: 0, requiresAnotherCall: false },
   }));
@@ -1001,7 +1022,7 @@ test("useCloseExecution › a round is judged against the signers and thresholds
   stubFetchCloseTransactions(async () => ({
     planHash: "h",
     status: "ready",
-    transactions: [{ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
+    transactions: [closeTransaction({ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] })],
     remaining: { steps: 0, requiresAnotherCall: false },
     sourceAccount: {
       signers: [{ key: source, weight: 1, type: "ed25519_public_key" }],
@@ -1040,7 +1061,7 @@ test("useCloseExecution › a later transaction in the round is signed against t
     builder.addOperation(Operation.accountMerge({ destination }));
     return builder.build().toXdr();
   })();
-  const roundSigners = {
+  const roundSigners: SourceSigners = {
     signers: [
       { key: source, weight: 1, type: "ed25519_public_key" },
       { key: cosigner, weight: 1, type: "ed25519_public_key" },
@@ -1065,8 +1086,8 @@ test("useCloseExecution › a later transaction in the round is signed against t
       planHash: "h",
       status: "ready",
       transactions: [
-        { id: "t0", order: 0, xdr: normalizeXdr, covers: ["NORMALIZE_SIGNERS"] },
-        { id: "t1", order: 1, xdr: mergeXdr, covers: ["MERGE"] },
+        closeTransaction({ id: "t0", order: 0, xdr: normalizeXdr, covers: ["NORMALIZE_SIGNERS"] }),
+        closeTransaction({ id: "t1", order: 1, xdr: mergeXdr, covers: ["MERGE"] }),
       ],
       remaining: { steps: 0, requiresAnotherCall: false },
       sourceAccount: roundSigners,
@@ -1111,7 +1132,7 @@ async function twoRoundClose(roundTwoReportsSigners: boolean): Promise<void> {
   const source = sourceKeypair.publicKey();
   const cosigner = cosignerKeypair.publicKey();
   const destination = Keypair.random().publicKey();
-  const multisig = {
+  const multisig: SourceSigners = {
     signers: [
       { key: source, weight: 1, type: "ed25519_public_key" },
       { key: cosigner, weight: 1, type: "ed25519_public_key" },
@@ -1141,12 +1162,12 @@ async function twoRoundClose(roundTwoReportsSigners: boolean): Promise<void> {
           planHash: "h",
           status: "ready",
           transactions: [
-            {
+            closeTransaction({
               id: "t0",
               order: 0,
               xdr: unsignedNormalizeXdr(sourceKeypair, [cosigner], "100"),
               covers: ["NORMALIZE_SIGNERS"],
-            },
+            }),
           ],
           remaining: { steps: 1, requiresAnotherCall: true },
           sourceAccount: multisig,
@@ -1155,12 +1176,12 @@ async function twoRoundClose(roundTwoReportsSigners: boolean): Promise<void> {
           planHash: "h",
           status: "ready",
           transactions: [
-            {
+            closeTransaction({
               id: "t1",
               order: 0,
               xdr: unsignedMergeXdr(sourceKeypair, destination),
               covers: ["MERGE"],
-            },
+            }),
           ],
           remaining: { steps: 0, requiresAnotherCall: false },
           ...(roundTwoReportsSigners ? { sourceAccount: masterOnly } : {}),
@@ -1233,7 +1254,12 @@ test("useCloseExecution › a key the round no longer lists pauses for a current
     planHash: "h",
     status: "ready",
     transactions: [
-      { id: "t0", order: 0, xdr: unsignedMergeXdr(sourceKeypair, destination), covers: ["MERGE"] },
+      closeTransaction({
+        id: "t0",
+        order: 0,
+        xdr: unsignedMergeXdr(sourceKeypair, destination),
+        covers: ["MERGE"],
+      }),
     ],
     remaining: { steps: 0, requiresAnotherCall: false },
     sourceAccount: { signers: masterOnly, thresholds: { low: 0, med: 0, high: 0 } },
@@ -1287,13 +1313,11 @@ async function buildRequestDecisions(
       thresholds: { low: 1, med: 1, high: 1 },
     } as never,
   } as never);
-  let sent: { id: string; choice: string }[] | null = null;
-  spyOn(closeClient, "fetchCloseTransactions").mockImplementation((async (req: {
-    decisions: { id: string; choice: string }[];
-  }) => {
+  let sent: DecisionAnswer[] | undefined;
+  spyOn(closeClient, "fetchCloseTransactions").mockImplementation(async (req) => {
     sent = req.decisions;
     throw new Error("stop after the request");
-  }) as unknown as typeof closeClient.fetchCloseTransactions);
+  });
 
   const { result } = renderHook(() => useCloseExecution());
   await act(async () => {
@@ -1353,7 +1377,7 @@ function twoRoundSetup(plan: unknown[]): { sourceKeypair: Keypair; rounds: () =>
   const sourceKeypair = Keypair.random();
   const source = sourceKeypair.publicKey();
   const destination = Keypair.random().publicKey();
-  const account = {
+  const account: SourceSigners = {
     signers: [{ key: source, weight: 1, type: "ed25519_public_key" }],
     thresholds: { low: 0, med: 1, high: 1 },
   };
@@ -1380,12 +1404,12 @@ function twoRoundSetup(plan: unknown[]): { sourceKeypair: Keypair; rounds: () =>
           planHash: "h",
           status: "ready",
           transactions: [
-            {
+            closeTransaction({
               id: "t1",
               order: 0,
               xdr: unsignedMergeXdr(sourceKeypair, destination),
               covers: ["MERGE"],
-            },
+            }),
           ],
           remaining: { steps: 0, requiresAnotherCall: false },
           sourceAccount: account,
@@ -1394,12 +1418,12 @@ function twoRoundSetup(plan: unknown[]): { sourceKeypair: Keypair; rounds: () =>
           planHash: "h",
           status: "ready",
           transactions: [
-            {
+            closeTransaction({
               id: "t0",
               order: 0,
               xdr: unsignedNormalizeXdr(sourceKeypair, [], "100"),
               covers: ["NORMALIZE_SIGNERS"],
-            },
+            }),
           ],
           remaining: { steps: 1, requiresAnotherCall: true },
           sourceAccount: account,
@@ -1446,7 +1470,7 @@ function mergeSetup(): { sourceKeypair: Keypair; mergeXdr: string } {
   const source = sourceKeypair.publicKey();
   const destination = Keypair.random().publicKey();
   const mergeXdr = unsignedMergeXdr(sourceKeypair, destination);
-  const account = {
+  const account: SourceSigners = {
     signers: [{ key: source, weight: 1, type: "ed25519_public_key" }],
     thresholds: { low: 0, med: 1, high: 1 },
   };
@@ -1464,7 +1488,7 @@ function mergeSetup(): { sourceKeypair: Keypair; mergeXdr: string } {
   stubFetchCloseTransactions(async () => ({
     planHash: "h",
     status: "ready",
-    transactions: [{ id: "t", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
+    transactions: [closeTransaction({ id: "t", order: 0, xdr: mergeXdr, covers: ["MERGE"] })],
     remaining: { steps: 0, requiresAnotherCall: false },
     sourceAccount: account,
   }));
@@ -1478,10 +1502,8 @@ function skipResendWaits(): void {
     real(fn, ms === SUBMIT_RESEND_DELAY_MS ? 0 : ms)) as unknown as typeof setTimeout);
 }
 
-function stubLookup(impl: (hash: string) => Promise<unknown>): void {
-  spyOn(submitViaApiModule, "lookupViaApi").mockImplementation(
-    impl as unknown as typeof submitViaApiModule.lookupViaApi
-  );
+function stubLookup(impl: (hash: string) => Promise<TransactionLookupResponse>): void {
+  spyOn(submitViaApiModule, "lookupViaApi").mockImplementation(impl);
 }
 
 const SEARCHED = {
@@ -1588,7 +1610,9 @@ test("useCloseExecution › a refused transaction that carried a preimage never 
     .toXdr();
   spyOn(verifyModule, "verifyCloseTransaction").mockImplementation(() => undefined as never);
   stubFetchCloseTransactions(async () => ({
-    transactions: [{ id: "t", order: 1, xdr, covers: ["MERGE"] }],
+    planHash: "h",
+    status: "ready",
+    transactions: [closeTransaction({ id: "t", order: 1, xdr, covers: ["MERGE"] })],
     remaining: { requiresAnotherCall: false, steps: 0 },
   }));
   stubSubmitViaApi(async () => {
@@ -1663,7 +1687,7 @@ test("useCloseExecution › covers claiming a merge on a transaction with none n
   stubFetchCloseTransactions(async () => ({
     planHash: "h",
     status: "ready",
-    transactions: [{ id: "t", order: 0, xdr: removal, covers: ["MERGE"] }],
+    transactions: [closeTransaction({ id: "t", order: 0, xdr: removal, covers: ["MERGE"] })],
     remaining: { steps: 0, requiresAnotherCall: false },
   }));
   spyOn(verifyModule, "verifyCloseTransaction").mockImplementation(() => undefined as never);
@@ -1722,7 +1746,7 @@ test("useCloseExecution › an envelope with no upper time bound is never sent",
   stubFetchCloseTransactions(async () => ({
     planHash: "h",
     status: "ready",
-    transactions: [{ id: "t", order: 0, xdr: unbounded, covers: ["MERGE"] }],
+    transactions: [closeTransaction({ id: "t", order: 0, xdr: unbounded, covers: ["MERGE"] })],
     remaining: { steps: 0, requiresAnotherCall: false },
   }));
   let sent = 0;
@@ -1967,7 +1991,7 @@ test("useCloseExecution › leaving from the confirm while a round is fetched si
     return {
       planHash: "h",
       status: "ready",
-      transactions: [{ id: "t", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
+      transactions: [closeTransaction({ id: "t", order: 0, xdr: mergeXdr, covers: ["MERGE"] })],
       remaining: { steps: 0, requiresAnotherCall: false },
       sourceAccount: {
         signers: [{ key: sourceKeypair.publicKey(), weight: 1, type: "ed25519_public_key" }],
@@ -2010,7 +2034,7 @@ test("useCloseExecution › a page remounted during a live run cannot start a se
     return {
       planHash: "h",
       status: "ready",
-      transactions: [{ id: "t", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
+      transactions: [closeTransaction({ id: "t", order: 0, xdr: mergeXdr, covers: ["MERGE"] })],
       remaining: { steps: 0, requiresAnotherCall: false },
       sourceAccount: {
         signers: [{ key: sourceKeypair.publicKey(), weight: 1, type: "ed25519_public_key" }],
@@ -2251,7 +2275,7 @@ test("useCloseExecution › another account arriving while a round is fetched st
     return {
       planHash: "h",
       status: "ready",
-      transactions: [{ id: "t", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
+      transactions: [closeTransaction({ id: "t", order: 0, xdr: mergeXdr, covers: ["MERGE"] })],
       remaining: { steps: 0, requiresAnotherCall: false },
     };
   });
@@ -2451,27 +2475,25 @@ test("useCloseExecution › the reviewed plan hash is sent until a transaction c
 
   const sent: Array<string | undefined> = [];
   const rounds = [true, false];
-  spyOn(closeClient, "fetchCloseTransactions").mockImplementation((async (req: {
-    planHash?: string;
-  }) => {
+  spyOn(closeClient, "fetchCloseTransactions").mockImplementation(async (req) => {
     sent.push(req.planHash);
     const more = rounds.shift()!;
     return {
       planHash: "h",
       status: "ready",
       transactions: [
-        {
+        closeTransaction({
           id: `tx-${sent.length}`,
           order: 0,
           dependsOn: [],
           xdr: unsignedMergeXdr(sourceKeypair, destination),
           networkPassphrase: Networks.TESTNET,
           covers: ["MERGE"],
-        },
+        }),
       ],
       remaining: { steps: more ? 1 : 0, requiresAnotherCall: more },
     };
-  }) as unknown as typeof closeClient.fetchCloseTransactions);
+  });
   stubSubmitViaApi(async () => "hash");
 
   const { result } = renderHook(() => useCloseExecution());
@@ -2535,26 +2557,24 @@ test("useCloseExecution › the build sends the hash of the plan the review's co
   expect(useDemolishStore.getState().phase).toBe("STEP_EXECUTING");
 
   const sent: Array<string | undefined> = [];
-  spyOn(closeClient, "fetchCloseTransactions").mockImplementation((async (req: {
-    planHash?: string;
-  }) => {
+  spyOn(closeClient, "fetchCloseTransactions").mockImplementation(async (req) => {
     sent.push(req.planHash);
     return {
       planHash: freshHash,
       status: "ready",
       transactions: [
-        {
+        closeTransaction({
           id: "tx-1",
           order: 0,
           dependsOn: [],
           xdr: unsignedMergeXdr(sourceKeypair, destination),
           networkPassphrase: Networks.TESTNET,
           covers: ["MERGE"],
-        },
+        }),
       ],
       remaining: { steps: 0, requiresAnotherCall: false },
     };
-  }) as unknown as typeof closeClient.fetchCloseTransactions);
+  });
   stubSubmitViaApi(async () => "hash");
 
   const { result } = renderHook(() => useCloseExecution());
@@ -2608,7 +2628,14 @@ test("useCloseExecution › aborts before submit when the mediator co-sign retur
     stubFetchCloseTransactions(async () => ({
       planHash: "h",
       status: "ready",
-      transactions: [{ id: "t", order: 0, xdr: mediatedMergeAt("100").toXdr(), covers: ["MERGE"] }],
+      transactions: [
+        closeTransaction({
+          id: "t",
+          order: 0,
+          xdr: mediatedMergeAt("100").toXdr(),
+          covers: ["MERGE"],
+        }),
+      ],
       remaining: { steps: 0, requiresAnotherCall: false },
     }));
     let submitCalls = 0;
@@ -2681,7 +2708,9 @@ test("useCloseExecution › co-signs and submits a mediated close from the regis
     stubFetchCloseTransactions(async () => ({
       planHash: "h",
       status: "ready",
-      transactions: [{ id: "t", order: 0, xdr: mediatedMerge.toXdr(), covers: ["MERGE"] }],
+      transactions: [
+        closeTransaction({ id: "t", order: 0, xdr: mediatedMerge.toXdr(), covers: ["MERGE"] }),
+      ],
       remaining: { steps: 0, requiresAnotherCall: false },
     }));
     const submitted: string[] = [];
@@ -2741,7 +2770,9 @@ test("useCloseExecution › aborts before submit when a wallet returns a changed
   stubFetchCloseTransactions(async () => ({
     planHash: "h",
     status: "ready",
-    transactions: [{ id: "t", order: 0, xdr: mergeAt("100").toXdr(), covers: ["MERGE"] }],
+    transactions: [
+      closeTransaction({ id: "t", order: 0, xdr: mergeAt("100").toXdr(), covers: ["MERGE"] }),
+    ],
     remaining: { steps: 0, requiresAnotherCall: false },
   }));
   let submitCalls = 0;
@@ -2798,10 +2829,10 @@ test.each([
       } as never,
     } as never);
     const bodies: unknown[] = [];
-    spyOn(closeClient, "fetchCloseTransactions").mockImplementation((async (body: unknown) => {
+    spyOn(closeClient, "fetchCloseTransactions").mockImplementation(async (body) => {
       bodies.push(body);
       throw new Error("stop after the request");
-    }) as unknown as typeof closeClient.fetchCloseTransactions);
+    });
 
     const { result } = renderHook(() => useCloseExecution());
     await act(async () => {
@@ -2856,12 +2887,12 @@ test.each([
         planHash: "h",
         status: "ready",
         transactions: [
-          {
+          closeTransaction({
             id: "t0",
             order: 0,
             xdr: unsignedMergeWithMemoXdr(source, destination, built),
             covers: ["MERGE"],
-          },
+          }),
         ],
         remaining: { steps: 0, requiresAnotherCall: false },
       };
@@ -2991,7 +3022,9 @@ describe("useCloseExecution › a transfer destination the registry lists", () =
       return {
         planHash: "h",
         status: "ready",
-        transactions: [{ id: "t0", order: 0, xdr: round, covers: ["REMOVE_DATA_ENTRIES"] }],
+        transactions: [
+          closeTransaction({ id: "t0", order: 0, xdr: round, covers: ["REMOVE_DATA_ENTRIES"] }),
+        ],
         remaining: { steps: 1, requiresAnotherCall: true },
       };
     });
@@ -3167,7 +3200,7 @@ test("useCloseExecution › a round paused for another signer puts its steps bac
   stubFetchCloseTransactions(async () => ({
     planHash: "h",
     status: "ready",
-    transactions: [{ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
+    transactions: [closeTransaction({ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] })],
     remaining: { steps: 0, requiresAnotherCall: false },
   }));
   const statuses = recordStatuses();
@@ -3199,7 +3232,7 @@ function leftOverSetup(): { sourceKeypair: Keypair } {
 
 test("useCloseExecution › a left-over found failed at the start marks its steps failed, not sent", async () => {
   const { sourceKeypair } = leftOverSetup();
-  stubLookup(async (hash) => ({ status: "failed", hash, message: "tx_bad_seq" }));
+  stubLookup(async (hash) => ({ status: "failed", hash, ledger: 1, message: "tx_bad_seq" }));
   const { result } = renderHook(() => useCloseExecution());
   await act(async () => {
     await result.current.run(realSigner(sourceKeypair));
@@ -3347,7 +3380,7 @@ test("useCloseExecution › a wallet that signs with another key and reports not
   stubFetchCloseTransactions(async () => ({
     planHash: "h",
     status: "ready",
-    transactions: [{ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
+    transactions: [closeTransaction({ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] })],
     remaining: { steps: 0, requiresAnotherCall: false },
   }));
   const submitted: unknown[] = [];
@@ -3394,7 +3427,7 @@ describe("useCloseExecution › the named signer's own signature after signing",
     stubFetchCloseTransactions(async () => ({
       planHash: "h",
       status: "ready",
-      transactions: [{ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] }],
+      transactions: [closeTransaction({ id: "t0", order: 0, xdr: mergeXdr, covers: ["MERGE"] })],
       remaining: { steps: 0, requiresAnotherCall: false },
     }));
     const submitted: string[] = [];
@@ -3580,7 +3613,7 @@ test("useCloseExecution › a wallet on another network by the second transactio
     .addOperation(Operation.accountMerge({ destination }))
     .build()
     .toXdr();
-  const roundSigners = {
+  const roundSigners: SourceSigners = {
     signers: [
       { key: source, weight: 1, type: "ed25519_public_key" },
       { key: cosigner, weight: 1, type: "ed25519_public_key" },
@@ -3600,8 +3633,8 @@ test("useCloseExecution › a wallet on another network by the second transactio
     planHash: "h",
     status: "ready",
     transactions: [
-      { id: "t0", order: 0, xdr: normalizeXdr, covers: ["NORMALIZE_SIGNERS"] },
-      { id: "t1", order: 1, xdr: mergeXdr, covers: ["MERGE"] },
+      closeTransaction({ id: "t0", order: 0, xdr: normalizeXdr, covers: ["NORMALIZE_SIGNERS"] }),
+      closeTransaction({ id: "t1", order: 1, xdr: mergeXdr, covers: ["MERGE"] }),
     ],
     remaining: { steps: 0, requiresAnotherCall: false },
     sourceAccount: roundSigners,
@@ -3665,12 +3698,12 @@ test("useCloseExecution › a run with no signer pauses with a status and submit
       planHash: "h",
       status: "ready",
       transactions: [
-        {
+        closeTransaction({
           id: "t0",
           order: 0,
           xdr: unsignedMergeXdr(sourceKeypair, destination),
           covers: ["MERGE"],
-        },
+        }),
       ],
       remaining: { steps: 0, requiresAnotherCall: false },
     };
@@ -3732,12 +3765,12 @@ async function pausedWithPreAuthSigner(preAuthSequence: string) {
       planHash: "h",
       status: "ready",
       transactions: [
-        {
+        closeTransaction({
           id: "t0",
           order: 0,
           xdr: unsignedMergeXdr(sourceKeypair, destination),
           covers: ["MERGE"],
-        },
+        }),
       ],
       remaining: { steps: 0, requiresAnotherCall: false },
     };

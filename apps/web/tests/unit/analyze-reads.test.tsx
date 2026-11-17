@@ -13,10 +13,11 @@ import * as submitViaApi from "@/lib/stellar/submit-via-api";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import type { AccountState } from "@/types/account";
-import type { SessionRecord } from "@/types/session";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { fakeFetch } from "./fixtures/fetch";
 import { expectFocusedNow, expectSameElement } from "./fixtures/focus";
 import { installIndexedDb, removeIndexedDb } from "./fixtures/indexed-db";
+import { sessionRecord } from "./fixtures/session";
 
 const SOURCE = Keypair.random().publicKey();
 const BALANCE = "00000000b1";
@@ -89,18 +90,19 @@ function stubFetch(
   } = {}
 ): Requests {
   const seen: Requests = { account: 0, plan: [] };
-  spyOn(globalThis, "fetch").mockImplementation((async (input: unknown, init?: RequestInit) => {
-    const url = String(input);
-    if (url.includes("/close/plan")) {
-      seen.plan.push(String(init?.body));
-      return answers.plan ? answers.plan() : Response.json(planBody);
-    }
-    if (url.includes("/account/")) {
-      seen.account++;
-      return answers.account ? answers.account() : Response.json(account());
-    }
-    return Response.json({});
-  }) as unknown as typeof fetch);
+  spyOn(globalThis, "fetch").mockImplementation(
+    fakeFetch(async (url, init) => {
+      if (url.includes("/close/plan")) {
+        seen.plan.push(String(init?.body));
+        return answers.plan ? answers.plan() : Response.json(planBody);
+      }
+      if (url.includes("/account/")) {
+        seen.account++;
+        return answers.account ? answers.account() : Response.json(account());
+      }
+      return Response.json({});
+    })
+  );
   return seen;
 }
 
@@ -302,12 +304,11 @@ test("the entry form reads no account and persists nothing for a mistyped addres
   expect(saved).not.toHaveBeenCalled();
 });
 
-const HELD = {
+const HELD = sessionRecord({
   id: "s",
-  network: "testnet",
   sourceAddress: SOURCE,
   unconfirmed: { hash: "a".repeat(64), covers: ["MERGE"], validUntil: 1000 },
-} as unknown as SessionRecord;
+});
 
 async function mountGated(): Promise<void> {
   await act(async () => {

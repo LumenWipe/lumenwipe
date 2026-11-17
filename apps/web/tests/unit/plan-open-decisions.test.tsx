@@ -12,7 +12,7 @@ import { expectFocused } from "./fixtures/focus";
 const SOURCE = Keypair.random().publicKey();
 const WALLET = Keypair.random().publicKey();
 
-const account = {
+const account: AccountState = {
   address: SOURCE,
   network: "testnet",
   sequence: "1",
@@ -33,7 +33,7 @@ const account = {
   subEntryMismatch: false,
   defiPositions: emptyDefiPositionsResult(SOURCE),
   defiPositionsWarnings: [],
-} as unknown as AccountState;
+};
 
 const NO_ROUTE: AssetConvertibility = {
   asset: "NORT:aaaaaaaa",

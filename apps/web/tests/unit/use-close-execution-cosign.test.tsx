@@ -15,6 +15,7 @@ import { ApiRequestError } from "@/lib/utils/user-error";
 import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import type { AccountSigner, AccountState } from "@/types/account";
+import { closeTransaction } from "./fixtures/close-transactions";
 import { installIndexedDb, removeIndexedDb } from "./fixtures/indexed-db";
 
 // A 3-of-3 account: no key reaches the thresholds alone, so normalization is its own transaction
@@ -83,16 +84,18 @@ beforeEach(() => {
   spyOn(verifyModule, "verifyCloseTransaction").mockImplementation(() => {});
   spyOn(sessionStore, "saveUnconfirmed").mockImplementation(async () => true);
   spyOn(sessionStore, "loadSession").mockImplementation(async () => ({ id: "session" }) as never);
-  spyOn(closeClient, "fetchCloseTransactions").mockImplementation((async () => ({
+  spyOn(closeClient, "fetchCloseTransactions").mockImplementation(async () => ({
     planHash: "h",
     status: "ready",
-    transactions: [{ id: "t0", order: 0, xdr: UNSIGNED, covers: ["NORMALIZE_SIGNERS"] }],
+    transactions: [
+      closeTransaction({ id: "t0", order: 0, xdr: UNSIGNED, covers: ["NORMALIZE_SIGNERS"] }),
+    ],
     remaining: { steps: 0, requiresAnotherCall: false },
-  })) as unknown as typeof closeClient.fetchCloseTransactions);
-  spyOn(submitViaApiModule, "submitViaApi").mockImplementation((async (xdr: string) => {
+  }));
+  spyOn(submitViaApiModule, "submitViaApi").mockImplementation(async (xdr) => {
     submitted.push(xdr);
     return { txHash: toHex(TransactionBuilder.fromXdr(xdr, PASSPHRASE).hash()), ledger: 1 };
-  }) as unknown as typeof submitViaApiModule.submitViaApi);
+  });
   readLive = spyOn(analyzeClient, "readAccount").mockImplementation(async () => liveAccount());
   useDemolishStore.getState().reset();
   useNetworkStore.setState({ network: "testnet" });
@@ -224,11 +227,16 @@ test("a refused cosigned round not found by its inner hash is reported as failed
   spyOn(submitViaApiModule, "submitViaApi").mockImplementation(async () => {
     throw new ApiRequestError(400, "tx_bad_seq");
   });
-  spyOn(submitViaApiModule, "lookupViaApi").mockImplementation((async (hash: string) => ({
+  spyOn(submitViaApiModule, "lookupViaApi").mockImplementation(async (hash) => ({
     status: "not_found",
     hash,
-    searched: { latestLedger: 1, latestLedgerCloseTime: 0 },
-  })) as unknown as typeof submitViaApiModule.lookupViaApi);
+    searched: {
+      oldestLedger: 1,
+      oldestLedgerCloseTime: 0,
+      latestLedger: 1,
+      latestLedgerCloseTime: 0,
+    },
+  }));
 
   await resumeCosigned(hook);
 
@@ -300,11 +308,16 @@ test("a merged round refused by the live read and not found by its hash says the
     hook.current.importCosignResponse(responseFrom(request, c));
   });
   readLive.mockImplementation(async () => liveAccount(SIGNERS, "101"));
-  spyOn(submitViaApiModule, "lookupViaApi").mockImplementation((async (hash: string) => ({
+  spyOn(submitViaApiModule, "lookupViaApi").mockImplementation(async (hash) => ({
     status: "not_found",
     hash,
-    searched: { latestLedger: 1, latestLedgerCloseTime: 0 },
-  })) as unknown as typeof submitViaApiModule.lookupViaApi);
+    searched: {
+      oldestLedger: 1,
+      oldestLedgerCloseTime: 0,
+      latestLedger: 1,
+      latestLedgerCloseTime: 0,
+    },
+  }));
 
   await resumeCosigned(hook);
 

@@ -8,6 +8,7 @@ import { routeForPhase, type CloseRoute } from "@/lib/journey/route-for-phase";
 import * as sessionStore from "@/lib/session/store";
 import { useDemolishStore } from "@/store/demolish";
 import type { DemolishPhase, PlannedStep } from "@/types/plan";
+import { fakeRouter } from "./fixtures/navigation";
 
 const SOURCE = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -51,12 +52,8 @@ let writes: ReturnType<typeof spyOn>[];
 
 beforeEach(() => {
   replaced = [];
-  spyOn(navigation, "useRouter").mockImplementation(
-    () =>
-      ({
-        push: () => {},
-        replace: (path: string) => replaced.push(path),
-      }) as unknown as ReturnType<typeof navigation.useRouter>
+  spyOn(navigation, "useRouter").mockImplementation(() =>
+    fakeRouter({ replace: (path) => replaced.push(path) })
   );
   writes = [
     spyOn(sessionStore, "saveSession").mockImplementation(async () => {}),

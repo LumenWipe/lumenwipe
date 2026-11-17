@@ -1,11 +1,11 @@
 import { afterEach, expect, mock, test } from "bun:test";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import type { PlanResponse } from "@lumenwipe/sdk";
 import LeavePositionAcknowledgement from "@/components/plan/LeavePositionAcknowledgement";
 import { positionsLeftBehindToDecisions } from "@/lib/api/close-decisions";
 import { decisionPointsToLeavablePositions, type LeavablePosition } from "@/lib/api/plan-adapters";
 import { proceedError } from "@/lib/plan/resolvable-blockers";
 import { useDemolishStore } from "@/store/demolish";
+import { freshPlan } from "./fixtures/fresh-plan";
 
 afterEach(() => {
   cleanup();
@@ -65,7 +65,7 @@ test("only answers naming the account being closed are sent", () => {
 });
 
 test("the plan's leave decisions become cards; anything malformed is dropped", () => {
-  const plan = {
+  const plan = freshPlan([], {
     decisionPoints: [
       {
         id: ID,
@@ -99,7 +99,7 @@ test("the plan's leave decisions become cards; anything malformed is dropped", (
         required: true,
       },
     ],
-  } as unknown as PlanResponse;
+  });
   expect(decisionPointsToLeavablePositions(plan)).toEqual([position]);
 });
 

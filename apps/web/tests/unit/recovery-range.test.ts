@@ -4,7 +4,7 @@ import { classicFloorFromQuote } from "@/lib/api/close-decisions";
 import { recoveryRange } from "@/lib/plan/expected-receive";
 import { BASE_FEE_STROOPS } from "@/config/constants";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
-import { freshAccount } from "./fixtures/fresh-plan";
+import { freshAccount, planEstimate } from "./fixtures/fresh-plan";
 
 const SOURCE = "GSOURCE0000000000000000000000000000000000000000000000000";
 const TOKEN = "CTOKEN00000000000000000000000000000000000000000000000000";
@@ -22,31 +22,29 @@ function plan(over: Partial<PlanResponse> = {}): PlanResponse {
     steps: [],
     decisionPoints: [],
     blockers: [],
-    estimate: { feeStroops: PLAN_FEE.toString(), freedReserveXlm: "3" },
+    estimate: planEstimate(PLAN_FEE.toString(), "3"),
     execution: { estimatedTransactionCount: null, transactions: [] },
     ...over,
-  } as PlanResponse;
+  };
 }
 
-const classic = (asset: string, quote?: Record<string, string>): DecisionPoint =>
-  ({
-    id: `asset:${asset}`,
-    type: "asset_disposition",
-    subject: { kind: "classic_asset", asset, balance: "5", ...(quote ? { quote } : {}) },
-    options: [{ id: "convert_to_xlm" }, { id: "transfer" }],
-    default: "",
-    required: true,
-  }) as unknown as DecisionPoint;
+const classic = (asset: string, quote?: Record<string, string>): DecisionPoint => ({
+  id: `asset:${asset}`,
+  type: "asset_disposition",
+  subject: { kind: "classic_asset", asset, balance: "5", ...(quote ? { quote } : {}) },
+  options: [{ id: "convert_to_xlm" }, { id: "transfer" }],
+  default: "",
+  required: true,
+});
 
-const noRoute = (asset: string): DecisionPoint =>
-  ({
-    id: `asset:${asset}`,
-    type: "asset_disposition",
-    subject: { kind: "classic_asset", asset, balance: "5" },
-    options: [{ id: "transfer" }],
-    default: "",
-    required: true,
-  }) as unknown as DecisionPoint;
+const noRoute = (asset: string): DecisionPoint => ({
+  id: `asset:${asset}`,
+  type: "asset_disposition",
+  subject: { kind: "classic_asset", asset, balance: "5" },
+  options: [{ id: "transfer" }],
+  default: "",
+  required: true,
+});
 
 const token: DecisionPoint = {
   id: `asset:${TOKEN}`,
@@ -62,29 +60,28 @@ const token: DecisionPoint = {
   options: [{ id: "convert_to_xlm" }, { id: "transfer" }],
   default: "",
   required: true,
-} as unknown as DecisionPoint;
+};
 
 const claim = (
   balanceId: string,
   options: string[],
   currentlyClaimable = true,
   amount = "5.0000000"
-): DecisionPoint =>
-  ({
-    id: `claim:${balanceId}`,
-    type: "claimable_balance",
-    subject: {
-      kind: "claimable_balance",
-      balanceId,
-      asset: "native",
-      amount,
-      currentlyClaimable,
-      predicate: { type: "unconditional" },
-    },
-    options: options.map((id) => ({ id })),
-    default: "",
-    required: true,
-  }) as unknown as DecisionPoint;
+): DecisionPoint => ({
+  id: `claim:${balanceId}`,
+  type: "claimable_balance",
+  subject: {
+    kind: "claimable_balance",
+    balanceId,
+    asset: "native",
+    amount,
+    currentlyClaimable,
+    predicate: { type: "unconditional" },
+  },
+  options: options.map((id) => ({ id })),
+  default: "",
+  required: true,
+});
 
 const account = freshAccount(SOURCE);
 

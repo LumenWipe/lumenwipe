@@ -10,20 +10,29 @@ import BlogPage from "@/app/(marketing)/blog/page";
 import * as blog from "@/lib/blog";
 import { expectSameElement } from "./fixtures/focus";
 
-let desktop: { matches: boolean; listeners: Set<(e: { matches: boolean }) => void> };
+class MediaQuery extends EventTarget implements MediaQueryList {
+  onchange = null;
+  constructor(readonly media: string) {
+    super();
+  }
+  get matches(): boolean {
+    return desktop.matches;
+  }
+  addListener(): void {}
+  removeListener(): void {}
+}
+
+let desktop: { matches: boolean; queries: MediaQuery[] };
 const realMatchMedia = window.matchMedia;
 
 beforeEach(() => {
   spyOn(navigation, "usePathname").mockReturnValue("/");
-  desktop = { matches: false, listeners: new Set() };
-  window.matchMedia = ((query: string) => ({
-    matches: desktop.matches,
-    media: query,
-    addEventListener: (_: string, fn: (e: { matches: boolean }) => void) =>
-      desktop.listeners.add(fn),
-    removeEventListener: (_: string, fn: (e: { matches: boolean }) => void) =>
-      desktop.listeners.delete(fn),
-  })) as unknown as typeof window.matchMedia;
+  desktop = { matches: false, queries: [] };
+  window.matchMedia = (query) => {
+    const list = new MediaQuery(query);
+    desktop.queries.push(list);
+    return list;
+  };
 });
 
 afterEach(() => {
@@ -91,7 +100,10 @@ describe("mobile menu", () => {
     render(<MarketingNav />);
     const { sheet } = openMenu();
     act(() => {
-      for (const fn of desktop.listeners) fn({ matches: true });
+      desktop.matches = true;
+      for (const list of desktop.queries) {
+        list.dispatchEvent(new MediaQueryListEvent("change", { matches: true, media: list.media }));
+      }
     });
     expect(sheet.hidden).toBe(true);
     expect(document.body.style.overflow).toBe("");

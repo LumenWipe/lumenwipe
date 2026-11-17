@@ -17,6 +17,7 @@ import {
 import type { PlannedStep } from "@/types/plan";
 import type { SessionRecord, UnconfirmedRecord } from "@/types/session";
 import { stubUnchangedRefresh } from "./fixtures/fresh-plan";
+import { fakeRouter } from "./fixtures/navigation";
 
 const SOURCE = Keypair.random().publicKey();
 const OLD_DEST = Keypair.random().publicKey();
@@ -84,12 +85,11 @@ function fakeDb(seed: SessionRecord[]) {
 
 function stubRouter() {
   const calls: string[] = [];
-  spyOn(navigation, "useRouter").mockImplementation(
-    () =>
-      ({
-        push: (path: string) => calls.push(`push ${path}`),
-        replace: (path: string) => calls.push(`replace ${path}`),
-      }) as unknown as ReturnType<typeof navigation.useRouter>
+  spyOn(navigation, "useRouter").mockImplementation(() =>
+    fakeRouter({
+      push: (path) => void calls.push(`push ${path}`),
+      replace: (path) => void calls.push(`replace ${path}`),
+    })
   );
   return calls;
 }

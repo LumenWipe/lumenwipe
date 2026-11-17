@@ -14,6 +14,7 @@ import { useNetworkStore } from "@/store/network";
 import type { AccountState } from "@/types/account";
 import type { AssetDisposition, PlannedStep } from "@/types/plan";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { fakeFetch } from "./fixtures/fetch";
 import { freshAccount, freshPlan } from "./fixtures/fresh-plan";
 import { expectFocused } from "./fixtures/focus";
 
@@ -54,10 +55,11 @@ function account(): AccountState {
         issuer: ISSUER,
         balance: "5.0000000",
         limit: "1000",
-        buyingLiabilities: "0",
-        sellingLiabilities: "0",
+        authorized: true,
+        authorization: "authorized",
+        clawbackEnabled: false,
       },
-    ] as unknown as AccountState["trustlines"],
+    ],
     defiPositions: emptyDefiPositionsResult(SOURCE),
   });
 }
@@ -227,12 +229,13 @@ describe("analyze, review, confirm", () => {
   let plan = unquotedPlan();
 
   function stubFetch(): void {
-    spyOn(globalThis, "fetch").mockImplementation((async (input: unknown) => {
-      const url = String(input);
-      if (url.includes("/close/plan")) return Response.json(plan);
-      if (url.includes("/account/")) return Response.json(account());
-      return Response.json({});
-    }) as unknown as typeof fetch);
+    spyOn(globalThis, "fetch").mockImplementation(
+      fakeFetch(async (url) => {
+        if (url.includes("/close/plan")) return Response.json(plan);
+        if (url.includes("/account/")) return Response.json(account());
+        return Response.json({});
+      })
+    );
   }
 
   async function analyzed(): Promise<void> {

@@ -9,6 +9,7 @@ import { ApiRequestError } from "@/lib/utils/user-error";
 import { useDemolishStore } from "@/store/demolish";
 import type { AccountState } from "@/types/account";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { fakeFetch } from "./fixtures/fetch";
 
 const SOURCE = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -54,23 +55,26 @@ const PASSING_ANSWERS = [
   },
 ];
 
-function answering(answer: unknown): void {
-  spyOn(globalThis, "fetch").mockImplementation((async (input: unknown) =>
-    String(input).includes("/mediator/check/")
-      ? Response.json(answer)
-      : Response.json({
-          status: "ready",
-          blockers: [],
-          steps: [],
-          decisionPoints: [],
-          planHash: "h",
-        })) as unknown as typeof fetch);
+function answering(answer: unknown) {
+  return spyOn(globalThis, "fetch").mockImplementation(
+    fakeFetch(async (url) =>
+      url.includes("/mediator/check/")
+        ? Response.json(answer)
+        : Response.json({
+            status: "ready",
+            blockers: [],
+            steps: [],
+            decisionPoints: [],
+            planHash: "h",
+          })
+    )
+  );
 }
 
 /** What the close would carry into signing after the check, and what it asked the API for. */
 async function proceedWith(answer: unknown): Promise<{ store: string; planBody: unknown }> {
   useDemolishStore.getState().reset();
-  answering(answer);
+  const fetched = answering(answer);
   useDemolishStore.setState({ destinationAddress: DEST, destinationAcknowledgedFor: DEST });
   await act(async () => {
     render(
@@ -89,10 +93,8 @@ async function proceedWith(answer: unknown): Promise<{ store: string; planBody: 
   fireEvent.click(screen.getByRole("button", { name: /review the full plan/i }));
   await waitFor(() => expect(useDemolishStore.getState().phase).toBe("PREFLIGHT_COMPLETE"));
 
-  const planCall = (globalThis.fetch as unknown as ReturnType<typeof spyOn>).mock.calls.find(
-    ([url]: unknown[]) => String(url).includes("/close/plan")
-  ) as [string, RequestInit];
-  const planBody = JSON.parse(String(planCall[1].body));
+  const planCall = fetched.mock.calls.find(([url]) => String(url).includes("/close/plan"));
+  const planBody = JSON.parse(String(planCall?.[1]?.body));
   // The reset count and the time the plan was prepared differ by construction: each run here
   // starts from its own reset, a moment after the last.
   const { closeEpoch: _epoch, planPreparedAt: _at, ...state } = useDemolishStore.getState();
@@ -145,11 +147,13 @@ test("a destination that needs a memo is refused without one and passes with one
 
 test("a failed check throws the API's answer, so the caller can say what went wrong", async () => {
   spyOn(globalThis, "fetch").mockImplementation(
-    (async () =>
-      new Response("", {
-        status: 503,
-        headers: { "Retry-After": "30" },
-      })) as unknown as typeof fetch
+    fakeFetch(
+      async () =>
+        new Response("", {
+          status: 503,
+          headers: { "Retry-After": "30" },
+        })
+    )
   );
   const err = await destinationRefusal("testnet", DEST, "").catch((e: unknown) => e);
   expect(err).toBeInstanceOf(ApiRequestError);

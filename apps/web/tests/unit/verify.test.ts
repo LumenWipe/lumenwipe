@@ -31,7 +31,12 @@ import { activeRegistry, bundledRegistry, setRegistry } from "@/lib/exchange-reg
 import { confirmedMemo } from "@/lib/plan/memo-field";
 import { exitExpectations } from "@/lib/stellar/exit-expectations";
 import type { AccountState } from "@/types/account";
+import type { BlendBorrowPosition, BlendSupplyPosition, DefiPosition } from "@lumenwipe/types";
+import { sorobanTokensOf } from "./fixtures/soroban-tokens";
+import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { freshAccount } from "./fixtures/fresh-plan";
 import { REAL_EXIT_ENVELOPES, type RealExitEnvelope } from "./fixtures/real-exit-envelopes";
+import { authorizationOf } from "./fixtures/trustline";
 
 /** Every code a test below saw thrown; the last test checks it is the whole registry. */
 const refusalCodesSeen = new Set<VerificationErrorCode>();
@@ -3421,16 +3426,25 @@ function accountNaming(
     Record<string, unknown>;
   return {
     ...fixture.account,
-    trustlines: [{ asset: `USDC:${HELD_ISSUER}`, code: "USDC", issuer: HELD_ISSUER, balance: "5" }],
+    trustlines: [
+      {
+        asset: `USDC:${HELD_ISSUER}`,
+        code: "USDC",
+        issuer: HELD_ISSUER,
+        balance: "5",
+        ...authorizationOf(true),
+      },
+    ],
     defiPositions: {
+      ...fixture.account.defiPositions,
       positions: [
         { ...rest, ...(token ? { [ownTokenField(fixture)]: token } : {}) } as RealPosition,
       ],
     },
-    sorobanTokens: {
-      tokens: tokens.map((t) => ({ ...t, symbol: null, decimals: 7, sources: ["positions"] })),
-    },
-  } as unknown as AccountState;
+    sorobanTokens: sorobanTokensOf(
+      tokens.map((t) => ({ ...t, symbol: null, decimals: 7, sources: ["positions"] }))
+    ),
+  };
 }
 
 /** The real envelope with its one token call moved onto `token`, the rest as built. */
@@ -3681,9 +3695,8 @@ describe("a Blend exit as the decoder reads it", () => {
   const USDC_ISSUER = Keypair.random().publicKey();
   const USDC_SAC = new Asset("USDC", USDC_ISSUER).contractId(Networks.TESTNET);
   const PARTY = new Address(ACCOUNT).toScVal();
-  const accountRead = (positions: object[]): AccountState =>
-    ({
-      address: ACCOUNT,
+  const accountRead = (positions: DefiPosition[]): AccountState =>
+    freshAccount(ACCOUNT, {
       nativeBalanceLumens: "100.0000000",
       signers: [{ key: ACCOUNT, weight: 1, type: "ed25519_public_key" }],
       thresholds: { low: 0, med: 0, high: 0 },
@@ -3693,19 +3706,26 @@ describe("a Blend exit as the decoder reads it", () => {
           code: "USDC",
           issuer: USDC_ISSUER,
           balance: "5",
-          isAuthorized: true,
-          isAuthorizedToMaintainLiabilities: false,
+          ...authorizationOf(true),
         },
       ],
-      defiPositions: {
-        positions: positions.map((p) => ({ protocol: "blend", contractAddress: POOL, ...p })),
-      },
-    }) as unknown as AccountState;
-  const supply = { positionType: "supply", assetAddress: TESTNET_XLM, bTokenAmount: "1" };
-  const borrow = (asset: string) => ({
+      defiPositions: { ...emptyDefiPositionsResult(ACCOUNT), positions },
+    });
+  const supply: BlendSupplyPosition = {
+    protocol: "blend",
+    contractAddress: POOL,
+    positionType: "supply",
+    assetAddress: TESTNET_XLM,
+    bTokenAmount: "1",
+    usdValue: null,
+  };
+  const borrow = (asset: string): BlendBorrowPosition => ({
+    protocol: "blend",
+    contractAddress: POOL,
     positionType: "borrow",
     assetAddress: asset,
     dTokenAmount: "1",
+    usdValue: null,
   });
 
   const field = (key: string, val: xdr.ScVal): xdr.ScMapEntry =>
@@ -3975,19 +3995,23 @@ describe("a Blend exit as the decoder reads it", () => {
     const PAIR = "CDH4NEG6TAII2AXGJY52WSMMOGCPMFIQBBH245ATW2TIZ7MBYM23YOAR";
     const OUTSIDE = StrKey.encodeContract(Buffer.alloc(32, 23));
     const read = accountRead([]);
-    for (const [protocol, contractAddress, tokens] of [
-      ["soroswap", PAIR, [TESTNET_XLM, USDC_SAC]],
-      ["soroswap", OUTSIDE, []],
-    ] as const) {
-      read.defiPositions.positions.push({
-        protocol,
+    read.defiPositions.positions.push(
+      {
+        protocol: "soroswap",
         positionType: "lp",
-        contractAddress,
+        contractAddress: PAIR,
         shareAmount: "1",
-        tokens: [...tokens],
+        tokens: [TESTNET_XLM, USDC_SAC],
         usdValue: null,
-      } as unknown as AccountState["defiPositions"]["positions"][number]);
-    }
+      },
+      {
+        protocol: "soroswap",
+        positionType: "lp",
+        contractAddress: OUTSIDE,
+        shareAmount: "1",
+        usdValue: null,
+      }
+    );
     const i128 = (value: number): xdr.ScVal => nativeToScVal(BigInt(value), { type: "i128" });
     const argsFor = (to: xdr.ScVal, liquidity = 1000): xdr.ScVal[] => [
       new Address(TESTNET_XLM).toScVal(),

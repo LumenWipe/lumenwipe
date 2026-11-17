@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, expect, spyOn, test, type Mock } from "bun:test";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import NetworkError from "@/app/(app)/[network]/error";
 import { useDemolishStore } from "@/store/demolish";
@@ -23,9 +23,13 @@ function step(index: number, type: StepType, status: StepStatus): PlannedStep {
 const CONFIRMED_PLAN = [step(0, "CANCEL_OFFERS", "confirmed"), step(1, "MERGE", "failed")];
 const PENDING_PLAN = [step(0, "MERGE", "pending")];
 
+let useParams: Mock<typeof navigation.useParams>;
+
 function stubNetwork(network: string): void {
   const stub: () => unknown = () => ({ network });
-  spyOn(navigation, "useParams").mockImplementation(stub as typeof navigation.useParams);
+  useParams = spyOn(navigation, "useParams").mockImplementation(
+    stub as typeof navigation.useParams
+  );
 }
 
 function renderBoundary(digest?: string): void {
@@ -40,7 +44,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  (navigation.useParams as unknown as { mockRestore: () => void }).mockRestore();
+  useParams.mockRestore();
 });
 
 test("a failed step after a confirmed one never claims that nothing was submitted", () => {
@@ -122,7 +126,7 @@ test("the explorer link is omitted when the store has been wiped", () => {
 });
 
 test.each(["mainnet", "testnet"])("Go home keeps the %s network", (network) => {
-  (navigation.useParams as unknown as { mockRestore: () => void }).mockRestore();
+  useParams.mockRestore();
   stubNetwork(network);
   renderBoundary();
 

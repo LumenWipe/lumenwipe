@@ -1,5 +1,5 @@
 import { spyOn } from "bun:test";
-import type { PlanResponse } from "@lumenwipe/sdk";
+import type { PlanEstimate, PlanResponse } from "@lumenwipe/sdk";
 import * as analyzeClient from "@/lib/api/analyze-client";
 import * as closeClient from "@/lib/api/close-client";
 import { signatureOf } from "@/lib/plan/plan-freshness";
@@ -53,10 +53,23 @@ export function freshPlan(
     })),
     decisionPoints: [],
     blockers: [],
-    estimate: { feeStroops: "100", freedReserveXlm: "1.0000000" },
+    estimate: planEstimate("100"),
     execution: { estimatedTransactionCount: steps.length, transactions: [] },
     ...overrides,
-  } as unknown as PlanResponse;
+  };
+}
+
+/** A plan estimate whose whole fee is classic base fees. */
+export function planEstimate(feeStroops: string, freedReserveXlm = "1.0000000"): PlanEstimate {
+  return {
+    feeStroops,
+    freedReserveXlm,
+    feeParts: {
+      classicStroops: feeStroops,
+      sorobanSimulatedStroops: "0",
+      sorobanBoundStroops: "0",
+    },
+  };
 }
 
 /**

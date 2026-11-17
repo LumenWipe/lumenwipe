@@ -43,8 +43,11 @@ import { useNetworkStore } from "@/store/network";
 import type { PlannedStep, StepStatus, StepType } from "@/types/plan";
 import type { SessionRecord } from "@/types/session";
 import type { ResumedClose } from "@/store/demolish";
+import { closeExecution as closeExecutionState } from "./fixtures/close-execution";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { fakeFetch } from "./fixtures/fetch";
 import { stubUnchangedRefresh } from "./fixtures/fresh-plan";
+import { walletConnection } from "./fixtures/wallet-connection";
 import { VARIAL_ID } from "@creit-tech/stellar-wallets-kit/modules/varial";
 
 // Every reassurance or success sentence the app can show, rendered on every screen that shows it
@@ -147,33 +150,11 @@ function storeJourney(): Journey {
 let retrySafe: boolean | null = null;
 
 function stubExecution(): void {
-  spyOn(closeExecution, "useCloseExecution").mockImplementation(
-    () =>
-      ({
-        run: async () => {},
-        progress: null,
-        signatureStatus: null,
-        submitPreAuthTransaction: async () => {},
-        checkUnconfirmed: async () => {},
-        retrySafe,
-        stillUnconfirmed: false,
-      }) as unknown as ReturnType<typeof closeExecution.useCloseExecution>
+  spyOn(closeExecution, "useCloseExecution").mockImplementation(() =>
+    closeExecutionState({ retrySafe })
   );
-  spyOn(walletKit, "useWalletKitConnection").mockImplementation(
-    () =>
-      ({
-        address: null,
-        connecting: false,
-        error: null,
-        status: "connected",
-        checking: false,
-        network: "yes",
-        networkConfirmed: false,
-        confirmNetwork: () => {},
-        verified: true,
-        connect: async () => {},
-        disconnect: async () => {},
-      }) as unknown as ReturnType<typeof walletKit.useWalletKitConnection>
+  spyOn(walletKit, "useWalletKitConnection").mockImplementation(() =>
+    walletConnection({ status: "connected", network: "yes", verified: true })
   );
 }
 
@@ -465,20 +446,21 @@ function analyzePage(store: Store, required: ClaimKey[], gone = false): Cell {
     show: async () => {
       seed({ ...STORE.unknown, ...store });
       spyOn(recovery, "clearRecordsOfGoneAccount").mockResolvedValue(1);
-      spyOn(globalThis, "fetch").mockImplementation((async (input: unknown) => {
-        const url = String(input);
-        if (gone && url.includes("/account/")) {
-          return Response.json(
-            { error: { code: "account_not_found", message: "raw" } },
-            { status: 404 }
-          );
-        }
-        if (url.includes("/account/")) return Response.json(analyzedAccount());
-        if (url.includes("/close/plan")) {
-          return Response.json({ status: "ready", blockers: [], steps: [], decisionPoints: [] });
-        }
-        return Response.json({});
-      }) as unknown as typeof fetch);
+      spyOn(globalThis, "fetch").mockImplementation(
+        fakeFetch(async (url) => {
+          if (gone && url.includes("/account/")) {
+            return Response.json(
+              { error: { code: "account_not_found", message: "raw" } },
+              { status: 404 }
+            );
+          }
+          if (url.includes("/account/")) return Response.json(analyzedAccount());
+          if (url.includes("/close/plan")) {
+            return Response.json({ status: "ready", blockers: [], steps: [], decisionPoints: [] });
+          }
+          return Response.json({});
+        })
+      );
       const journey = storeJourney();
       const params = Object.assign(Promise.resolve({ network: "testnet" as const }), {
         status: "fulfilled",

@@ -7,12 +7,11 @@ import * as sessionRecovery from "@/hooks/useSessionRecovery";
 import * as sessionStore from "@/lib/session/store";
 import * as submitViaApi from "@/lib/stellar/submit-via-api";
 import { CLOSE_FINISHED_NOTICE, STILL_UNCONFIRMED_NOTICE } from "@/lib/utils/user-error";
-import type { SessionRecord } from "@/types/session";
+import { sessionRecord } from "./fixtures/session";
 
 const HASH = "a".repeat(64);
-const SESSION = {
+const SESSION = sessionRecord({
   id: "s",
-  network: "testnet",
   sourceAddress: "GAAAAAAAAAAAAAAAA",
   destinationAddress: "GBBBBBBBBBBBBBBBB",
   memo: null,
@@ -22,7 +21,7 @@ const SESSION = {
   stepBase: 0,
   createdAt: "2026-10-01T00:00:00.000Z",
   unconfirmed: { hash: HASH, covers: ["MERGE"], validUntil: 1000 },
-} as unknown as SessionRecord;
+});
 
 let submit: ReturnType<typeof spyOn>;
 let clearSession: ReturnType<typeof mock>;

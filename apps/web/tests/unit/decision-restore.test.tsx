@@ -26,9 +26,10 @@ import { useNetworkStore } from "@/store/network";
 import { activeRegistry, setRegistry } from "@/lib/exchange-registry";
 import { assetResolved } from "@/lib/plan/asset-resolution";
 import { transferDestinationError } from "@/lib/plan/transfer-destination";
-import type { AccountState } from "@/types/account";
+import type { AccountState, Trustline } from "@/types/account";
 import type { PlannedStep } from "@/types/plan";
 import type { SessionRecord } from "@/types/session";
+import { fakeFetch } from "./fixtures/fetch";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { stubUnchangedRefresh } from "./fixtures/fresh-plan";
 
@@ -47,8 +48,18 @@ const params = Object.assign(Promise.resolve({ network: "testnet" as const }), {
   value: { network: "testnet" as const },
 });
 
-function trustline(asset: string, balance: string) {
-  return { asset, balance, limit: "1000", buyingLiabilities: "0", sellingLiabilities: "0" };
+function trustline(asset: string, balance: string): Trustline {
+  const [code = "", issuer = ""] = asset.split(":");
+  return {
+    asset,
+    code,
+    issuer,
+    balance,
+    limit: "1000",
+    authorized: true,
+    authorization: "authorized",
+    clawbackEnabled: false,
+  };
 }
 
 function account(usdc = "5.0000000"): AccountState {
@@ -75,7 +86,7 @@ function account(usdc = "5.0000000"): AccountState {
     subEntryMismatch: false,
     defiPositions: emptyDefiPositionsResult(SOURCE),
     defiPositionsWarnings: [],
-  } as unknown as AccountState;
+  };
 }
 
 const planBody = { status: "ready", blockers: [], steps: [], decisionPoints: [] };
@@ -103,12 +114,13 @@ let fresh: ReturnType<typeof useDemolishStore.getState>;
 let restoreStorage: () => unknown = () => {};
 
 function stubFetch(): void {
-  spyOn(globalThis, "fetch").mockImplementation((async (input: unknown) => {
-    const url = String(input);
-    if (url.includes("/close/plan")) return Response.json(planBody);
-    if (url.includes("/account/")) return accountRead();
-    return Response.json({});
-  }) as unknown as typeof fetch);
+  spyOn(globalThis, "fetch").mockImplementation(
+    fakeFetch(async (url) => {
+      if (url.includes("/close/plan")) return Response.json(planBody);
+      if (url.includes("/account/")) return accountRead();
+      return Response.json({});
+    })
+  );
 }
 
 /** What a reload leaves: a store as the page first builds it, and this tab's storage. */

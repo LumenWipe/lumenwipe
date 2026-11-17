@@ -5,6 +5,7 @@ import { GET } from "@/app/api/v1/[network]/close/delivered/route";
 import { deliveredLookupResponse, parseDeliveredQuery } from "@/lib/api/delivered-query";
 import * as rateLimit from "@/lib/api/rate-limit";
 import * as serverClient from "@/lib/api/server-client";
+import { apiClient } from "./fixtures/api-client";
 
 // The account with the all-zero key: a valid G address with its checksum.
 const DEST = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
@@ -89,9 +90,7 @@ let closeDelivered: ReturnType<typeof mock>;
 beforeEach(() => {
   closeDelivered = mock(async () => ({ destination: DEST, entries: [] }));
   spyOn(rateLimit, "rateLimitProxy").mockImplementation((async () => null) as never);
-  spyOn(serverClient, "getApiClient").mockImplementation(
-    () => ({ closeDelivered }) as unknown as ReturnType<typeof serverClient.getApiClient>
-  );
+  spyOn(serverClient, "getApiClient").mockImplementation(() => apiClient({ closeDelivered }));
 });
 
 afterEach(() => mock.restore());

@@ -9,6 +9,7 @@ import ApiKeysPanel, {
   SESSION_ENDED,
   SIGNED_OUT,
 } from "@/components/api-keys/ApiKeysPanel";
+import { fakeFetch } from "./fixtures/fetch";
 import { expectFocused } from "./fixtures/focus";
 
 const owner = Keypair.random();
@@ -63,15 +64,15 @@ beforeEach(() => {
   requests = [];
   bodies = {};
   routes = {};
-  globalThis.fetch = mock(async (url: string, init: RequestInit) => {
-    const key = `${init.method ?? "GET"} ${url.replace("/api/integrator/", "")}`;
+  globalThis.fetch = fakeFetch(async (url, init) => {
+    const key = `${init?.method ?? "GET"} ${url.replace("/api/integrator/", "")}`;
     requests.push(key);
-    if (typeof init.body === "string") (bodies[key] ??= []).push(JSON.parse(init.body));
+    if (typeof init?.body === "string") (bodies[key] ??= []).push(JSON.parse(init.body));
     const route = routes[key];
     const reply = typeof route === "function" ? route() : (route ?? { status: 500 });
     if (reply.status === 204) return new Response(null, { status: 204 });
     return Response.json(reply.body ?? {}, { status: reply.status });
-  }) as unknown as typeof fetch;
+  });
 
   kit = {
     address: owner.publicKey(),

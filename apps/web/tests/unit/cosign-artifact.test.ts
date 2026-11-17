@@ -106,13 +106,12 @@ describe("parseCosignArtifact", () => {
 
   test("refuses a file over the cap without reading it", async () => {
     let read = false;
-    const file = {
-      size: COSIGN_ARTIFACT_MAX_BYTES + 1,
+    const file = Object.assign(new Blob([new Uint8Array(COSIGN_ARTIFACT_MAX_BYTES + 1)]), {
       text: async () => {
         read = true;
         return "";
       },
-    } as unknown as Blob;
+    });
     await expect(readCosignFile(file)).rejects.toThrow(CosignArtifactError);
     expect(read).toBe(false);
   });

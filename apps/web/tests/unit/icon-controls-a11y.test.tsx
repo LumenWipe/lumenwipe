@@ -14,9 +14,12 @@ import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import type { AccountState } from "@/types/account";
 import type { PlannedStep } from "@/types/plan";
-import type { SessionRecord } from "@/types/session";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
+import { fakeFetch } from "./fixtures/fetch";
 import { expectFocused } from "./fixtures/focus";
+import { freshPlan } from "./fixtures/fresh-plan";
+import { fakeRouter, searchParams } from "./fixtures/navigation";
+import { sessionRecord } from "./fixtures/session";
 
 const ADDRESS = Keypair.random().publicKey();
 
@@ -67,14 +70,10 @@ function mergeStep(): PlannedStep {
 }
 
 function stubNavigation(search = ""): void {
-  const router = { push: () => {}, replace: () => {} };
-  const query = new URLSearchParams(search);
-  spyOn(navigation, "useRouter").mockImplementation(
-    () => router as unknown as ReturnType<typeof navigation.useRouter>
-  );
-  spyOn(navigation, "useSearchParams").mockImplementation(
-    () => query as unknown as ReturnType<typeof navigation.useSearchParams>
-  );
+  const router = fakeRouter();
+  const query = searchParams(search);
+  spyOn(navigation, "useRouter").mockImplementation(() => router);
+  spyOn(navigation, "useSearchParams").mockImplementation(() => query);
 }
 
 async function renderPage(ui: ReactElement): Promise<void> {
@@ -98,9 +97,7 @@ beforeEach(() => {
   useDemolishStore.getState().reset();
   useNetworkStore.setState({ network: "testnet" });
   stubNavigation();
-  spyOn(globalThis, "fetch").mockImplementation(
-    (() => new Promise<Response>(() => {})) as unknown as typeof fetch
-  );
+  spyOn(globalThis, "fetch").mockImplementation(fakeFetch(() => new Promise<Response>(() => {})));
 });
 
 afterEach(() => mock.restore());
@@ -110,10 +107,7 @@ test("the analyze back link is named after where it goes", async () => {
   spyOn(analyzeClient, "loadAnalysis").mockImplementation(async (deps) => {
     const acct = account();
     deps.applyAccount(acct);
-    return {
-      account: acct,
-      plan: { blockers: [], decisionPoints: [] },
-    } as unknown as analyzeClient.Analysis;
+    return { account: acct, plan: freshPlan([]) };
   });
   await renderPage(<AnalyzePage params={params} />);
   const back = await screen.findByRole("link", { name: "Back to account entry" });
@@ -126,10 +120,7 @@ test("the plan refresh button is named and reachable", async () => {
   spyOn(analyzeClient, "loadAnalysis").mockImplementation(async (deps) => {
     const acct = account();
     deps.applyAccount(acct);
-    return {
-      account: acct,
-      plan: { blockers: [], decisionPoints: [] },
-    } as unknown as analyzeClient.Analysis;
+    return { account: acct, plan: freshPlan([]) };
   });
   await renderPage(<AnalyzePage params={params} />);
   const refresh = await screen.findByRole("button", { name: "Refresh the plan" });
@@ -171,18 +162,13 @@ test("the review back button keeps its name and gains a 24px target", async () =
 
 test("the resume banner's buttons say what they do", async () => {
   spyOn(sessionRecovery, "useSessionRecovery").mockImplementation(() => ({
-    session: {
+    session: sessionRecord({
       id: "s",
-      network: "testnet",
       sourceAddress: ADDRESS,
       destinationAddress: ADDRESS,
-      memo: null,
-      completedSteps: [],
-      currentStepIndex: 0,
       stepCount: 2,
-      stepBase: 0,
       createdAt: "2026-10-01T00:00:00.000Z",
-    } as unknown as SessionRecord,
+    }),
     checked: true,
     clearSession: () => {},
     reload: async () => {},

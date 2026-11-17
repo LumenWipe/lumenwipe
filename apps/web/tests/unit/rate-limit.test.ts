@@ -4,6 +4,7 @@ import { NextRequest } from "next/server";
 import { rateLimitProxy } from "@/lib/api/rate-limit";
 import * as limiter from "@/lib/upstash-redis";
 import { checkNamespacedRateLimit, MIN_HASH_KEY_LENGTH } from "@/lib/upstash-redis";
+import { fakeFetch } from "./fixtures/fetch";
 
 const LIMITER = "https://limiter.invalid";
 const IP = "203.0.113.42";
@@ -84,8 +85,7 @@ beforeEach(() => {
   saved = Object.fromEntries(VARS.map((name) => [name, process.env[name]]));
   configure(UPSTASH);
   reply = counted(1);
-  fetchSpy = spyOn(globalThis, "fetch").mockImplementation((async () =>
-    reply()) as unknown as typeof globalThis.fetch);
+  fetchSpy = spyOn(globalThis, "fetch").mockImplementation(fakeFetch(() => reply()));
   errorSpy = spyOn(console, "error").mockImplementation(() => {});
   warnSpy = spyOn(console, "warn").mockImplementation(() => {});
 });

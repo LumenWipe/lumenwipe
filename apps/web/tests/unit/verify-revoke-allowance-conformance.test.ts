@@ -6,13 +6,13 @@
  * them with `bun run --filter '@lumenwipe/verify' vectors`.
  */
 import { expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { VerificationError } from "@/lib/stellar/verification-error";
 import {
   RevokeAllowanceVerificationError,
   verifyRevokeAllowanceTransaction,
   type RevokeAllowanceExpectation,
 } from "@/lib/stellar/verify-revoke-allowance";
-import vectorFile from "../../../../packages/verify/vectors/revoke-allowance-v1.json";
 
 interface Vector {
   name: string;
@@ -26,7 +26,13 @@ interface Vector {
   };
 }
 
-const { schema, vectors } = vectorFile as unknown as { schema: number; vectors: Vector[] };
+const VECTOR_FILE = new URL(
+  "../../../../packages/verify/vectors/revoke-allowance-v1.json",
+  import.meta.url
+);
+const { schema, vectors }: { schema: number; vectors: Vector[] } = JSON.parse(
+  readFileSync(VECTOR_FILE, "utf8")
+);
 const CLASSES = { RevokeAllowanceVerificationError, VerificationError };
 
 test("the revocation vector file is schema 1 and not empty", () => {

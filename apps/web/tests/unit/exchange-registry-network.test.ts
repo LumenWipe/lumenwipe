@@ -27,6 +27,7 @@ import { destinationKind, relayRoute } from "@/lib/plan/destination-kind";
 import { confirmedMemo, memoField } from "@/lib/plan/memo-field";
 import { isUsableTransferDestination } from "@/lib/plan/transfer-destination";
 import { verifyCloseTransaction, VerificationError } from "@/lib/stellar/verify";
+import { fakeFetch } from "./fixtures/fetch";
 
 const scoped = (embedded.entries as Record<string, unknown>[]).filter((e) => "network" in e);
 const STAND_IN = scoped[0]?.address as string;
@@ -258,12 +259,15 @@ describe("the page reads the stand-in by network", () => {
   test("the destination check holds the API's relay answer to the network", async () => {
     const fetchSpy = spyOn(globalThis, "fetch");
     const answer = (requiresMediator: boolean): void => {
-      fetchSpy.mockImplementation((async () =>
-        Response.json({
-          requiresMediator,
-          requiresMemo: requiresMediator,
-          available: true,
-        })) as unknown as typeof fetch);
+      fetchSpy.mockImplementation(
+        fakeFetch(() =>
+          Response.json({
+            requiresMediator,
+            requiresMemo: requiresMediator,
+            available: true,
+          })
+        )
+      );
     };
     try {
       answer(false);

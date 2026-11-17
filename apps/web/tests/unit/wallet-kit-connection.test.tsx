@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, expect, mock, spyOn, test, type Mock } from "bun:test";
 import { act, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { Keypair, Networks } from "@stellar/stellar-sdk";
 import { KitEventType, LocalStorageKeys } from "@creit-tech/stellar-wallets-kit/types";
@@ -30,7 +30,7 @@ let kit: {
   disconnect: ReturnType<typeof mock>;
 };
 let silentAnswer: string | null | "unsupported";
-let lookups: ReturnType<typeof mock>;
+let lookups: Mock<typeof walletKitClient.silentWalletAddress>;
 let ensure: ReturnType<typeof spyOn>;
 
 function installKit(): void {
@@ -76,9 +76,7 @@ function installKit(): void {
   spyOn(walletKitClient, "selectedWalletId").mockImplementation(() => VARIAL_ID);
   silentAnswer = saved;
   lookups = mock(async () => silentAnswer);
-  spyOn(walletKitClient, "silentWalletAddress").mockImplementation(
-    lookups as unknown as typeof walletKitClient.silentWalletAddress
-  );
+  spyOn(walletKitClient, "silentWalletAddress").mockImplementation(lookups);
 }
 
 function emitState(address: string | undefined): void {
@@ -254,9 +252,7 @@ test("wallet connection › a check still running holds the session as checking 
         answer = resolve;
       })
   );
-  spyOn(walletKitClient, "silentWalletAddress").mockImplementation(
-    lookups as unknown as typeof walletKitClient.silentWalletAddress
-  );
+  spyOn(walletKitClient, "silentWalletAddress").mockImplementation(lookups);
   const { result } = renderHook(() => useWalletKitConnection("testnet"));
   await waitFor(() => expect(result.current.checking).toBe(true));
   expect(result.current.verified).toBe(false);
@@ -439,7 +435,10 @@ async function connectWithNetworkReadInFlight(): Promise<{
     screen.getByRole("button", { name: "Connect wallet" }).click();
   });
   await screen.findByText(/Connected:/);
-  const connection = (): WalletKitConnection => latest as unknown as WalletKitConnection;
+  const connection = (): WalletKitConnection => {
+    if (latest === null) throw new Error("the panel has not rendered");
+    return latest;
+  };
   await waitFor(() => expect(connection().checking).toBe(true));
   return {
     connection,

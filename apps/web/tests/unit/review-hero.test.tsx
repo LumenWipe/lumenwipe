@@ -9,6 +9,7 @@ import { useDemolishStore } from "@/store/demolish";
 import { useNetworkStore } from "@/store/network";
 import type { PlannedStep } from "@/types/plan";
 import { expectSameElement } from "./fixtures/focus";
+import { fakeRouter } from "./fixtures/navigation";
 
 const SOURCE = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -28,10 +29,7 @@ const MERGE: PlannedStep = {
 };
 
 beforeEach(() => {
-  spyOn(navigation, "useRouter").mockImplementation(
-    () =>
-      ({ push: () => {}, replace: () => {} }) as unknown as ReturnType<typeof navigation.useRouter>
-  );
+  spyOn(navigation, "useRouter").mockImplementation(() => fakeRouter());
   useNetworkStore.setState({ network: "testnet" });
   useDemolishStore.getState().reset();
   useDemolishStore.getState().setPlan([MERGE]);

@@ -6,7 +6,7 @@ import * as walletConnection from "@/hooks/useWalletKitConnection";
 import { serializeCosignArtifact } from "@/lib/cosign/artifact";
 import { fingerprintOf } from "@/lib/cosign/station-checks";
 import { toHex } from "@/lib/stellar/hex";
-import type { WalletKitSigner } from "@/lib/stellar/signer";
+import { WalletKitSigner } from "@/lib/stellar/signer";
 import * as walletClient from "@/lib/wallet-kit/client";
 
 const master = Keypair.random();
@@ -70,7 +70,11 @@ beforeEach(() => {
       }) as never
   );
   spyOn(walletClient, "walletKitSigner").mockImplementation(
-    () => ({ publicKey: cosigner.publicKey(), sign }) as unknown as WalletKitSigner
+    () =>
+      new WalletKitSigner(cosigner.publicKey(), async (xdr, { networkPassphrase }) => ({
+        signedTxXdr: await sign(xdr, networkPassphrase),
+        signerAddress: cosigner.publicKey(),
+      }))
   );
 });
 
@@ -193,10 +197,9 @@ test("never shows a request checked for an account the cosigner has since change
   fireEvent.change(accountField, { target: { value: ACCOUNT } });
   const fileInput = (await screen.findByLabelText("Request file")) as HTMLInputElement;
   let release: (text: string) => void = () => {};
-  const file = {
-    size: 1,
+  const file = Object.assign(new File(["{"], "request.json"), {
     text: () => new Promise<string>((resolve) => (release = resolve)),
-  } as unknown as File;
+  });
   fireEvent.change(fileInput, { target: { files: [file] } });
   fireEvent.change(accountField, { target: { value: Keypair.random().publicKey() } });
   await act(async () => {
