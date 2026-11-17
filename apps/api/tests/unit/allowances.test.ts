@@ -569,6 +569,17 @@ test("discoverAllowances › an approve nested in an operation StellarIndex list
   expect(deps.indexerCalls[0]?.query.get("limit")).toBe("200");
 });
 
+test("discoverAllowances › a StellarIndex client without a key sends no authorization header", async () => {
+  const deps = fakeAllowancesDeps({
+    world: { allowances: [] },
+    indexer: () => ({ status: 200, body: indexerOperationsBody([], null) }),
+    indexerApiKey: null,
+  });
+  await discoverAllowances(OWNER, "testnet", deps);
+  expect(deps.indexerCalls.length).toBeGreaterThan(0);
+  expect(deps.indexerCalls.every((c) => c.authorization === null)).toBe(true);
+});
+
 test("discoverAllowances › an approve row in a token's transfer feed is a candidate with its live_until_ledger", async () => {
   const deps = fakeAllowancesDeps({
     world: {

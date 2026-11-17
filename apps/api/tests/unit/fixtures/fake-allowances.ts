@@ -224,6 +224,7 @@ export interface FakeAllowancesDepsOptions {
   knownTokens?: string[];
   /** Answers StellarIndex requests by path and query; absent leaves the source off. */
   indexer?: (path: string, query: URLSearchParams) => FakeIndexerAnswer;
+  indexerApiKey?: string | null;
   indexerTransferTokens?: string[];
 }
 
@@ -284,7 +285,7 @@ export function fakeAllowancesDeps(options: FakeAllowancesDepsOptions): Allowanc
     indexer: answer
       ? {
           baseUrl: "https://indexer.test/v1",
-          apiKey: "sip_test",
+          apiKey: options.indexerApiKey === undefined ? "sip_test" : options.indexerApiKey,
           fetch: (async (input: string | URL | Request, init?: RequestInit) => {
             const url = new URL(
               typeof input === "string" ? input : input instanceof URL ? input.href : input.url

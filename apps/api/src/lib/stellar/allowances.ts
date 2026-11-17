@@ -19,7 +19,12 @@ import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { entriesForNetwork, type ContractRegistryEntry } from "@/lib/contract-registry";
 import { describeError } from "@/lib/utils/errors";
 import { mapConcurrent } from "@/lib/utils/concurrency";
-import { bundledListCandidates, defaultIndexerClient, type IndexerClient } from "./soroban-tokens";
+import {
+  bundledListCandidates,
+  defaultIndexerClient,
+  indexerHeaders,
+  type IndexerClient,
+} from "./soroban-tokens";
 import { getRpcServer, readLatestLedger } from "./rpc";
 
 /**
@@ -367,7 +372,7 @@ async function indexerGet(
 ): Promise<Record<string, unknown> | null> {
   const res = await indexer.fetch(
     `${indexer.baseUrl.replace(/\/$/, "")}${path}?${params.toString()}`,
-    { signal, headers: { accept: "application/json", authorization: `Bearer ${indexer.apiKey}` } }
+    { signal, headers: indexerHeaders(indexer) }
   );
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`indexer responded ${res.status}`);
