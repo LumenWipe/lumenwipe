@@ -110,6 +110,7 @@ describeExitAdapterInvariants("fxdao vault", {
     liveCeiling: { [STABLE_ASSET]: TOTAL_DEBT.toString(), [VAULT]: "0" },
   },
   simulationFails: { position, rpc: rpc({ simulation: "error" }), registry: KNOWN },
+  archived: (archival) => ({ position, rpc: rpc({ archival }), registry: KNOWN }),
   simulationNeedsRestore: { position, rpc: rpc({ simulation: "restore" }), registry: KNOWN },
   blocked: [
     {

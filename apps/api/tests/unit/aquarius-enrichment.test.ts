@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { AquariusLpPosition } from "@lumenwipe/types";
-import { Address, Contract, nativeToScVal, xdr } from "@stellar/stellar-sdk";
+import {
+  Address,
+  Contract,
+  nativeToScVal,
+  xdr,
+  type rpc as stellarRpc,
+} from "@stellar/stellar-sdk";
 import {
   aquariusPositionEnricher,
   readAquariusPool,
@@ -8,6 +14,7 @@ import {
   type AquariusPoolView,
 } from "@/lib/defi-positions/enrich/aquarius";
 import { positionKey, type EnrichContext } from "@/lib/defi-positions/enrich";
+import { ARCHIVED, withArchivedEntries } from "./fixtures/entry-archival";
 
 const ACCOUNT = "GBUYBKHUCCAKG4LM76DONHABFRZSZEHK7ARNEEXBZ3CMVIYKZXPLPVRG";
 const POOL = "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI";
@@ -111,6 +118,45 @@ describe("aquarius enricher", () => {
     const display = (await aquariusPositionEnricher(d)([stable], ctx)).get(positionKey(stable));
     expect(display?.pool).toBeNull();
     expect(display?.detail).toBe("worth 10 XLM + 200000 base units of CAZR…6LF5");
+  });
+
+  test("an archived share balance is read as the shares it holds, evicted or expired", async () => {
+    const shareToken = "CAN7DMIQH7FGKNYCUQMWECJJ74EKN5JATVVUOVTXOWLQGZCWAFWANG5P";
+    const balanceKey = xdr.LedgerKey.contractData(
+      new xdr.LedgerKeyContractData({
+        contract: new Address(shareToken).toScAddress(),
+        key: xdr.ScVal.scvVec([xdr.ScVal.scvSymbol("Balance"), new Address(ACCOUNT).toScVal()]),
+        durability: xdr.ContractDataDurability.persistent,
+      })
+    );
+    const balance = xdr.LedgerEntryData.contractData(
+      new xdr.ContractDataEntry({
+        ext: xdr.ExtensionPoint.v0(),
+        contract: new Address(shareToken).toScAddress(),
+        key: balanceKey.contractData.key,
+        durability: xdr.ContractDataDurability.persistent,
+        val: nativeToScVal(100_000_000n, { type: "i128" }),
+      })
+    );
+    const served = new Map([
+      [new Contract(POOL).getFootprint().toXdr("base64"), poolInstance()],
+      [balanceKey.toXdr("base64"), balance],
+    ]);
+    const rpc: Pick<stellarRpc.Server, "getLedgerEntries"> = {
+      getLedgerEntries: async (...keys: xdr.LedgerKey[]) => ({
+        latestLedger: 1,
+        entries: keys.flatMap((key) => {
+          const val = served.get(key.toXdr("base64"));
+          return val ? [{ key, val, lastModifiedLedgerSeq: 1, liveUntilLedgerSeq: 100 }] : [];
+        }),
+      }),
+    };
+    const live = await readAquariusPool(rpc, POOL, ACCOUNT, null);
+    expect(live?.shares).toBe(100_000_000n);
+    for (const archival of ARCHIVED) {
+      const archived = withArchivedEntries(rpc, archival);
+      expect(await readAquariusPool(archived, POOL, ACCOUNT, null)).toEqual(live);
+    }
   });
 
   test("a share balance absent from the ledger leaves the position undescribed rather than at zero", async () => {

@@ -72,9 +72,9 @@ function tagEntryHash(data: xdr.LedgerEntryData | undefined): string | null {
 
 /**
  * Follows every external reference to the hash its tag names, in one batched read of the
- * deduplicated owner/tag entries. An entry the ledger does not return (never written, or evicted
- * to the archive) or that does not hold a 32-byte hash leaves that reference unresolved (null),
- * the same "no code" reading an instance the ledger does not return gets. Nothing is cached.
+ * deduplicated owner/tag entries. An entry the ledger does not hold (an archived one is still
+ * returned) or that does not hold a 32-byte hash leaves that reference unresolved (null), the
+ * same "no code" reading an instance the ledger does not return gets. Nothing is cached.
  */
 export async function resolveCodeRefs(
   read: LedgerBatchReader,

@@ -17,6 +17,8 @@ import {
 import type { ExitRpc } from "@/lib/defi-exits";
 import { v1Transaction } from "../../support/v1-transaction";
 import { simulation as parsedSimulation } from "../../support/rpc-fixtures";
+import { archivedAnswer, autoRestoring, type EntryArchival } from "./entry-archival";
+import type { SimulationMode } from "./fake-exit-adapter";
 
 export const AQ_CONSTANT_HASH = "70476939e1ce8b4f7d6898d7a1403bd0752ba0535ad6c4aea3c4b500ad4715e0";
 export const AQ_STABLE_HASH = "278f6f02d18ea4fcee8ecb208a5e2ea5ad8e81ff2a1015574161d44c6f325558";
@@ -66,7 +68,9 @@ export interface FakeAquariusOptions {
   /** The owner's tag entry is absent from the ledger. */
   poolTagMissing?: boolean;
   poolMissing?: boolean;
-  simulation?: "ok" | "error" | "restore";
+  /** How the ledger serves the entries it holds. */
+  archival?: EntryArchival;
+  simulation?: SimulationMode;
   /** Reward gauges whose `UserRewardData(account)` the simulation records as read-only. */
   rewardGauges?: string[];
 }
@@ -240,14 +244,15 @@ function rewardsInfo(options: FakeAquariusOptions): xdr.ScVal {
 }
 
 function simulation(
-  mode: "ok" | "error" | "restore",
+  mode: SimulationMode,
   retval: xdr.ScVal,
   footprint?: { readOnly: xdr.LedgerKey[]; readWrite: xdr.LedgerKey[] },
   auth: string[] = []
 ): rpc.Api.SimulateTransactionResponse {
   const builder = new SorobanDataBuilder().setResourceFee(12_345n).setResources(1_000, 2_000, 300);
   if (footprint) builder.setFootprint(footprint.readOnly, footprint.readWrite);
-  const transactionData = builder.build().toXdr("base64");
+  const built = builder.build();
+  const transactionData = (mode === "autoRestore" ? autoRestoring(built) : built).toXdr("base64");
   const base = { events: [] };
   const body =
     mode === "error"
@@ -335,12 +340,15 @@ export function fakeAquariusRpc(
       const wanted = new Set(keys.map((k) => k.toXdr("base64")));
       // Stellar RPC rejects a request that names the same key twice; so does this stand-in.
       if (wanted.size !== keys.length) throw new Error("duplicate ledger keys in one request");
-      return {
-        latestLedger: 1,
-        entries: entries
-          .filter((e) => wanted.has(e.key.toXdr("base64")))
-          .map((e) => ({ ...e, lastModifiedLedgerSeq: 1, liveUntilLedgerSeq: 100 })),
-      };
+      return archivedAnswer(
+        {
+          latestLedger: 1,
+          entries: entries
+            .filter((e) => wanted.has(e.key.toXdr("base64")))
+            .map((e) => ({ ...e, lastModifiedLedgerSeq: 1, liveUntilLedgerSeq: 100 })),
+        },
+        options.archival ?? "live"
+      );
     },
     async simulateTransaction(tx: Transaction) {
       const fn = calledFunction(tx);

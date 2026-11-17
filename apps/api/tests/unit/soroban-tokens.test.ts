@@ -20,6 +20,7 @@ import {
   discoverSorobanTokens,
 } from "@/lib/stellar/soroban-tokens";
 import { ACCOUNT, fakeSorobanDeps, type FakeToken } from "./fixtures/fake-soroban-tokens";
+import { ARCHIVED } from "./fixtures/entry-archival";
 
 const token = (n: number): string => Address.contract(Buffer.alloc(32, n)).toString();
 const NATIVE_A = token(1);
@@ -343,6 +344,22 @@ describe("Soroban token discovery", () => {
       decimals: null,
       sources: ["list"],
     });
+  });
+
+  test("a token whose entries are archived is held like a live one; one the ledger does not hold is not", async () => {
+    const discover = (world: Parameters<typeof fakeSorobanDeps>[0]["world"]) =>
+      discoverSorobanTokens(
+        ACCOUNT,
+        "testnet",
+        fakeSorobanDeps({ world, listCandidates: [NATIVE_A] })
+      );
+    const live = await discover({ tokens: [held(NATIVE_A, 11n)] });
+    expect(live.tokens.map((t) => t.balance)).toEqual(["11"]);
+    for (const archival of ARCHIVED) {
+      expect(await discover({ tokens: [held(NATIVE_A, 11n)], archival })).toEqual(live);
+    }
+    const absent = await discover({ tokens: [{ ...held(NATIVE_A, 11n), exists: false }] });
+    expect(absent.tokens).toEqual([]);
   });
 
   test("the candidate cap keeps the user's own contracts first and says how many were left unchecked", async () => {

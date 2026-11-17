@@ -40,6 +40,7 @@ import {
   type FakeAquariusOptions,
 } from "./fixtures/fake-aquarius-pool";
 import { invokeContractArgs, v1TransactionFromXdr } from "../support/v1-transaction";
+import { restoredIndexes } from "./fixtures/entry-archival";
 
 const ACCOUNT = randomAccount();
 const SHARES = 100_000_000n; // 10% of the 1_000_000_000 total: 10% of each reserve
@@ -123,6 +124,7 @@ describeExitAdapterInvariants("aquarius constant-product pool", {
     liveCeiling: { [POOL]: SHARES.toString() },
   },
   simulationFails: { position, rpc: rpc({ simulation: "error" }), registry: KNOWN },
+  archived: (archival) => ({ position, rpc: rpc({ archival }), registry: KNOWN }),
   simulationNeedsRestore: { position, rpc: rpc({ simulation: "restore" }), registry: KNOWN },
   blocked: [
     {
@@ -480,6 +482,18 @@ describe("aquarius exit adapter", () => {
       expect(promoteRewardKeys(tx, ACCOUNT)).toBe(tx);
       const claimed = footprintOf(result.next!.simulation.txXdr);
       expect(claimed.readOnly).toEqual([]);
+    });
+
+    test("an automatic restore of the share balance survives the promotion: its index still names that entry", async () => {
+      const result = await run({ rewardGauges: GAUGES, simulation: "autoRestore" });
+      expect(result.blockers).toEqual([]);
+      const txXdr = result.next!.simulation.txXdr;
+      expect(restoredIndexes(txXdr)).toEqual([0]);
+      const offered = footprintOf(txXdr);
+      expect(offered.readWrite[0]).toBe(
+        sameperiodFootprint(ACCOUNT, GAUGES).readWrite[0]!.toXdr("base64")
+      );
+      expect(offered.readWrite).toHaveLength(3);
     });
 
     test("the hardened transaction still passes the runner's intent, auth, and fee checks - the call itself is unchanged", async () => {
