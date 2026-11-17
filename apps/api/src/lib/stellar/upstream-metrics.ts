@@ -5,7 +5,7 @@
  * written to the durable store by `UpstreamMetricsService`.
  */
 
-import { currentUpstreamCalls } from "@/common/request-context";
+import { currentUpstreamCalls, currentUpstreamMs } from "@/common/request-context";
 import type { Network } from "@/config/networks";
 
 export type Upstream = "rpc" | "horizon" | "defi" | "paths";
@@ -43,6 +43,45 @@ export function recordUpstream(
   calls?.set(upstream, (calls.get(upstream) ?? 0) + 1);
 }
 
+// The JSON-RPC methods timed under their own name. Any other is timed as `rpc.other`, so a key is
+// always one of a fixed set and never text taken from a request.
+const TIMED_RPC_METHODS = [
+  "getEvents",
+  "getFeeStats",
+  "getHealth",
+  "getLatestLedger",
+  "getLedgerEntries",
+  "getLedgers",
+  "getNetwork",
+  "getTransaction",
+  "getTransactions",
+  "getVersionInfo",
+  "sendTransaction",
+  "simulateTransaction",
+] as const;
+
+type TimedRpcMethod = (typeof TIMED_RPC_METHODS)[number];
+
+export type UpstreamTimingKey = Exclude<Upstream, "rpc"> | `rpc.${TimedRpcMethod}` | "rpc.other";
+
+const isTimedRpcMethod = (method: unknown): method is TimedRpcMethod =>
+  (TIMED_RPC_METHODS as readonly unknown[]).includes(method);
+
+export function rpcTimingKey(method: unknown): UpstreamTimingKey {
+  return isTimedRpcMethod(method) ? `rpc.${method}` : "rpc.other";
+}
+
+/**
+ * Starts timing one upstream call for the current request's access line; the returned function
+ * stops it. Times add up per key, so concurrent calls can sum to more than the request took.
+ */
+export function startUpstreamTimer(key: UpstreamTimingKey): () => void {
+  const times = currentUpstreamMs();
+  if (!times) return () => undefined;
+  const started = performance.now();
+  return () => times.set(key, (times.get(key) ?? 0) + performance.now() - started);
+}
+
 /** Empties the buffer: the caller owns the returned counts until they are written. */
 export function drainUpstreamCounts(): UpstreamDelta[] {
   const deltas = [...pending.values()];
@@ -54,9 +93,12 @@ export function restoreUpstreamCounts(deltas: readonly UpstreamDelta[]): void {
   deltas.forEach(add);
 }
 
-/** Wraps a fetch so every attempt is counted, whichever client or retry policy sits above it. */
+/**
+ * Wraps a fetch so every attempt is counted, and timed until its response headers arrive, whichever
+ * client or retry policy sits above it.
+ */
 export function countedFetch(
-  upstream: Upstream,
+  upstream: Exclude<Upstream, "rpc">,
   network: MetricNetwork,
   doFetch: typeof globalThis.fetch
 ): typeof globalThis.fetch {
@@ -65,6 +107,7 @@ export function countedFetch(
     init?: RequestInit
   ): Promise<Response> => {
     recordUpstream(network, upstream, "requests");
+    const stopTimer = startUpstreamTimer(upstream);
     try {
       const res = await doFetch(input, init);
       if (res.status === 429) recordUpstream(network, upstream, "rate_limited");
@@ -73,6 +116,8 @@ export function countedFetch(
     } catch (error) {
       if (init?.signal?.aborted) recordUpstream(network, upstream, "timeouts");
       throw error;
+    } finally {
+      stopTimer();
     }
   };
   return counted as typeof globalThis.fetch;

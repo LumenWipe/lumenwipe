@@ -3,7 +3,11 @@ import { Firestore } from "@google-cloud/firestore";
 import { Keypair } from "@stellar/stellar-sdk";
 import { Logger, type CallHandler, type ExecutionContext } from "@nestjs/common";
 import { firstValueFrom, of, throwError } from "rxjs";
-import { currentUpstreamCalls, requestContextMiddleware } from "@/common/request-context";
+import {
+  currentUpstreamCalls,
+  currentUpstreamMs,
+  requestContextMiddleware,
+} from "@/common/request-context";
 import { inRequestContext, requestPair } from "../support/request-context";
 import { sampleTransaction } from "../support/rpc-fixtures";
 import { HORIZON_FALLBACKS, PATH_ROUTING_API_URLS, type Network } from "@/config/networks";
@@ -21,6 +25,7 @@ import {
   countedFetch,
   drainUpstreamCounts,
   recordUpstream,
+  rpcTimingKey,
   type UpstreamDelta,
 } from "@/lib/stellar/upstream-metrics";
 import { KeyActivityService } from "@/metering/key-activity.service";
@@ -360,6 +365,68 @@ describe("calls per request", () => {
       requestContextMiddleware()(quiet.req, quiet.res, () => undefined);
       quiet.res.emit("finish");
       expect(logged[1]).not.toHaveProperty("upstreamCalls");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+describe("time per upstream", () => {
+  const realFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+
+  test("an RPC method outside the timed set is timed as rpc.other, never under its own name", () => {
+    expect(rpcTimingKey("getLedgerEntries")).toBe("rpc.getLedgerEntries");
+    const address = Keypair.random().publicKey();
+    for (const method of [address, `getLedgerEntries ${address}`, "toString", "", 7, undefined]) {
+      expect(rpcTimingKey(method)).toBe("rpc.other");
+    }
+  });
+
+  test("RPC and Horizon reads add their time under method and upstream names only", async () => {
+    const address = Keypair.random().publicKey();
+    globalThis.fetch = fakeFetch(async (_input: string | URL | Request, init?: RequestInit) => {
+      const { method } = JSON.parse(String(init?.body)) as { method: string };
+      const result =
+        method === "getHealth" ? { status: "healthy" } : { entries: [], latestLedger: 7 };
+      return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }), { status: 200 });
+    });
+    const horizon = countedFetch(
+      "horizon",
+      "testnet",
+      fakeFetch(async () => new Response("{}", { status: 200 }))
+    );
+    const times = await inRequestContext(async () => {
+      const server = buildRpcServer("testnet", { timeout: 1000 });
+      await server.getHealth();
+      await server.getAccount(address).catch(() => undefined);
+      await horizon(`${BASE}/accounts/${address}`);
+      return Object.fromEntries(currentUpstreamMs() ?? []);
+    });
+    expect(Object.keys(times).sort()).toEqual(["horizon", "rpc.getHealth", "rpc.getLedgerEntries"]);
+    for (const ms of Object.values(times)) expect(ms).toBeGreaterThanOrEqual(0);
+  });
+
+  test("the access line carries rounded times and leaves them out for a request with none", () => {
+    const logged: unknown[] = [];
+    const spy = spyOn(Logger.prototype, "log").mockImplementation((line: unknown) => {
+      logged.push(line);
+    });
+    try {
+      const timed = requestPair();
+      requestContextMiddleware()(timed.req, timed.res, () => {
+        currentUpstreamMs()?.set("rpc.getEvents", 1234.6);
+        currentUpstreamMs()?.set("horizon", 0.2);
+      });
+      timed.res.emit("finish");
+      expect(logged[0]).toMatchObject({ upstreamMs: { "rpc.getEvents": 1235, horizon: 0 } });
+
+      const quiet = requestPair();
+      requestContextMiddleware()(quiet.req, quiet.res, () => undefined);
+      quiet.res.emit("finish");
+      expect(logged[1]).not.toHaveProperty("upstreamMs");
     } finally {
       spy.mockRestore();
     }

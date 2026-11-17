@@ -18,6 +18,7 @@ interface RequestContext {
   deadline: Deadline;
   providerPins: Map<string, unknown>;
   upstreamCalls: Map<string, number>;
+  upstreamMs: Map<string, number>;
 }
 
 const storage = new AsyncLocalStorage<RequestContext>();
@@ -43,6 +44,11 @@ export function currentProviderPins(): Map<string, unknown> | undefined {
 /** Upstream attempts this request has made, by upstream; absent outside a request. */
 export function currentUpstreamCalls(): Map<string, number> | undefined {
   return storage.getStore()?.upstreamCalls;
+}
+
+/** Wall-clock time this request spent waiting on each upstream key; absent outside a request. */
+export function currentUpstreamMs(): Map<string, number> | undefined {
+  return storage.getStore()?.upstreamMs;
 }
 
 /** Marks a value the current request carried (a deposit memo) as never to be logged. */
@@ -83,6 +89,7 @@ export function requestContextMiddleware(deadlineMs: number = REQUEST_DEADLINE_M
     res.setHeader("Strict-Transport-Security", STRICT_TRANSPORT_SECURITY);
     res.setHeader("X-Content-Type-Options", "nosniff");
     const upstreamCalls = new Map<string, number>();
+    const upstreamMs = new Map<string, number>();
 
     const json = res.json.bind(res);
     res.json = ((body?: unknown) =>
@@ -100,6 +107,9 @@ export function requestContextMiddleware(deadlineMs: number = REQUEST_DEADLINE_M
         network: params?.network,
         ...(res.locals?.deprecatedAlias === true && { deprecatedAlias: true }),
         ...(upstreamCalls.size > 0 && { upstreamCalls: Object.fromEntries(upstreamCalls) }),
+        ...(upstreamMs.size > 0 && {
+          upstreamMs: Object.fromEntries([...upstreamMs].map(([k, ms]) => [k, Math.round(ms)])),
+        }),
       });
     });
 
@@ -110,6 +120,7 @@ export function requestContextMiddleware(deadlineMs: number = REQUEST_DEADLINE_M
         deadline: createDeadline(deadlineMs),
         providerPins: new Map(),
         upstreamCalls,
+        upstreamMs,
       },
       next
     );

@@ -11,7 +11,7 @@ import { currentDeadline, currentProviderPins } from "@/common/request-context";
 import { parseLedgerCloseTime } from "./claim-predicates";
 import { recordProviderFailover } from "./provider-failover";
 import { parseRetryAfter, UpstreamError, type UpstreamErrorKind } from "./upstream-client";
-import { recordUpstream } from "./upstream-metrics";
+import { recordUpstream, rpcTimingKey, startUpstreamTimer } from "./upstream-metrics";
 
 // Memoized per-network singletons. A switch rather than a map keyed by the caller's string, so a
 // value that is not one of the two networks can never name a property.
@@ -451,8 +451,13 @@ function countRequests(network: Network, server: rpc.Server): rpc.Server {
   const post = client.post.bind(client) as (...args: unknown[]) => Promise<unknown>;
   client.post = ((...args: unknown[]) => {
     recordUpstream(network, "rpc", "requests");
+    const body = args[1];
+    const stopTimer = startUpstreamTimer(rpcTimingKey(isRecord(body) ? body.method : undefined));
     const response = post(...args);
-    void response.then(undefined, (error: unknown) => recordRpcFailure(network, error));
+    void response.then(stopTimer, (error: unknown) => {
+      stopTimer();
+      recordRpcFailure(network, error);
+    });
     return response;
   }) as typeof client.post;
   return server;
