@@ -1,11 +1,20 @@
 import { describe, expect, test } from "bun:test";
 import type { SoroswapLpPosition } from "@lumenwipe/types";
+import { Address, xdr } from "@stellar/stellar-sdk";
 import {
+  readSoroswapPair,
   soroswapPositionEnricher,
   type SoroswapEnrichDeps,
   type SoroswapPairView,
 } from "@/lib/defi-positions/enrich/soroswap";
 import { positionKey, type EnrichContext } from "@/lib/defi-positions/enrich";
+import { ARCHIVED, withArchivedEntries } from "./fixtures/entry-archival";
+import {
+  contractDataEntry,
+  contractInstanceEntry,
+  i128Val,
+  mockRpc,
+} from "./fixtures/testnet-direct-read-helpers";
 
 const ACCOUNT = "GBUYBKHUCCAKG4LM76DONHABFRZSZEHK7ARNEEXBZ3CMVIYKZXPLPVRG";
 const PAIR = "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4";
@@ -94,5 +103,33 @@ describe("soroswap enricher", () => {
       })
     )([position], ctx);
     expect(throwing.size).toBe(0);
+  });
+});
+
+describe("readSoroswapPair", () => {
+  const instance = contractInstanceEntry(PAIR, "84".repeat(32), [
+    [xdr.ScVal.scvU32(0), new Address(XLM_SAC).toScVal()],
+    [xdr.ScVal.scvU32(1), new Address(OTHER).toScVal()],
+    [xdr.ScVal.scvU32(2), i128Val(1_000_000_000n)],
+    [xdr.ScVal.scvU32(3), i128Val(2_000_000n)],
+    [xdr.ScVal.scvVec([xdr.ScVal.scvSymbol("TotalSupply")]), i128Val(1_000_000_000n)],
+  ]);
+  const balance = contractDataEntry(
+    PAIR,
+    xdr.ScVal.scvVec([xdr.ScVal.scvSymbol("Balance"), new Address(ACCOUNT).toScVal()]),
+    i128Val(100_000_000n)
+  );
+
+  test("an archived share balance is read as the shares it holds, evicted or expired", async () => {
+    const live = await readSoroswapPair(mockRpc([instance, balance]), PAIR, ACCOUNT);
+    expect(live?.shares).toBe(100_000_000n);
+    for (const archival of ARCHIVED) {
+      const rpc = withArchivedEntries(mockRpc([instance, balance]), archival);
+      expect(await readSoroswapPair(rpc, PAIR, ACCOUNT)).toEqual(live);
+    }
+  });
+
+  test("an absent share balance still reads as no shares", async () => {
+    expect((await readSoroswapPair(mockRpc([instance]), PAIR, ACCOUNT))?.shares).toBe(0n);
   });
 });

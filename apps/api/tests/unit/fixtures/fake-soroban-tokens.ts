@@ -17,6 +17,7 @@ import type { DefiPosition } from "@lumenwipe/types";
 import type { AccountReadOptions } from "@/lib/stellar/account-state";
 import type { SorobanTokenRpc, SorobanTokensDeps } from "@/lib/stellar/soroban-tokens";
 import { contractSimulation } from "./fake-exit-adapter";
+import { archivedAnswer, type EntryArchival } from "./entry-archival";
 import { eventsPage, latestLedger } from "../../support/rpc-fixtures";
 
 export interface FakeToken {
@@ -42,6 +43,9 @@ export interface FakeEventWindow {
 
 export interface FakeSorobanWorld {
   tokens: FakeToken[];
+  /** How the ledger serves the token entries it holds; archived ones simulate with an automatic
+   *  restore, as the RPC does since Protocol 23. */
+  archival?: EntryArchival;
   latestLedger?: number;
   /** Per requested window `${startLedger}-${endLedger}`; a window listed with `error` rejects. */
   events?: Record<string, FakeEventWindow | { error: string }>;
@@ -84,8 +88,11 @@ function calledFunction(tx: Transaction): { contract: string; fn: string } | nul
   };
 }
 
-function simulationWith(retval: xdr.ScVal): rpc.Api.SimulateTransactionResponse {
-  return contractSimulation("ok", [], "1000", retval);
+function simulationWith(
+  retval: xdr.ScVal,
+  archival: EntryArchival = "live"
+): rpc.Api.SimulateTransactionResponse {
+  return contractSimulation(archival === "live" ? "ok" : "autoRestore", [], "1000", retval);
 }
 
 export interface FakeEventRequest {
@@ -115,7 +122,7 @@ export function fakeSorobanRpc(world: FakeSorobanWorld): SorobanTokenRpc & {
         if (!token || token.exists === false) continue;
         entries.push(instanceEntry(contract, token.isStellarAsset ?? false));
       }
-      return { latestLedger: 1, entries };
+      return archivedAnswer({ latestLedger: 1, entries }, world.archival ?? "live");
     },
     // Pages like the real RPC: `limit` events per page, a cursor that is never empty, and a
     // cursor request that knows no end ledger - so a window's `spill` shows up on the page after
@@ -177,15 +184,18 @@ export function fakeSorobanRpc(world: FakeSorobanWorld): SorobanTokenRpc & {
       if (call.fn === "balance") {
         if (token.hangs) return never as never;
         if (token.balance === null) return contractSimulation("error", [], "0");
-        return simulationWith(nativeToScVal(token.balance, { type: "i128" }));
+        return simulationWith(nativeToScVal(token.balance, { type: "i128" }), world.archival);
       }
       if (call.fn === "symbol") {
         if (token.symbol === null) return contractSimulation("error", [], "0");
-        return simulationWith(nativeToScVal(token.symbol ?? "TKN", { type: "string" }));
+        return simulationWith(
+          nativeToScVal(token.symbol ?? "TKN", { type: "string" }),
+          world.archival
+        );
       }
       if (call.fn === "decimals") {
         if (token.decimals === null) return contractSimulation("error", [], "0");
-        return simulationWith(nativeToScVal(token.decimals ?? 7, { type: "u32" }));
+        return simulationWith(nativeToScVal(token.decimals ?? 7, { type: "u32" }), world.archival);
       }
       return contractSimulation("error", [], "0");
     },

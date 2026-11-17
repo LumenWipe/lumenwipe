@@ -1,4 +1,4 @@
-import { test, expect } from "bun:test";
+import { describe, test, expect } from "bun:test";
 import { UserBalance } from "@blend-capital/blend-sdk";
 import { Address, Keypair, StrKey, nativeToScVal, xdr } from "@stellar/stellar-sdk";
 import {
@@ -25,6 +25,7 @@ import {
   u32MapVal,
 } from "./fixtures/testnet-direct-read-helpers";
 import { fakeRpcServer } from "../support/rpc-server";
+import { ARCHIVED, withArchivedEntries } from "./fixtures/entry-archival";
 
 const USER = Keypair.random().publicKey();
 const ASSET_A = Keypair.random().publicKey();
@@ -1738,4 +1739,96 @@ test("enumerateAquariusPools bounds its own concurrency when handed a raw reader
   expect(flags).toEqual(["pool-unreadable"]);
   expect(maxInFlight()).toBeGreaterThanOrEqual(2);
   expect(maxInFlight()).toBeLessThanOrEqual(LEDGER_READ_CONCURRENCY);
+});
+
+describe("archived position entries are read as held; only an absent one is no position", () => {
+  const fxdaoInstance = () =>
+    contractInstanceEntry(
+      FXDAO_TESTNET_VAULT,
+      FXDAO_WASM_HASH,
+      fxdaoDenominationStorage(symbolVal("usd"))
+    );
+  const cases = [
+    {
+      name: "Blend pool Positions",
+      registry: () => [registryEntry()],
+      held: () => [
+        contractInstanceEntry(BLEND_POOL, BLEND_WASM_HASH),
+        contractDataEntry(BLEND_POOL, symbolVal("ResList"), addressListVal([ASSET_A, ASSET_B])),
+        contractDataEntry(
+          BLEND_POOL,
+          variantVal("Positions", addressVal(USER)),
+          structVal({
+            supply: u32MapVal([[0, 500_0000000n]]),
+            collateral: u32MapVal([]),
+            liabilities: u32MapVal([[1, 250_0000000n]]),
+          })
+        ),
+      ],
+      absent: () => [
+        contractInstanceEntry(BLEND_POOL, BLEND_WASM_HASH),
+        contractDataEntry(BLEND_POOL, symbolVal("ResList"), addressListVal([ASSET_A, ASSET_B])),
+      ],
+    },
+    {
+      name: "Blend backstop UserBalance",
+      registry: blendEntries,
+      held: () => [
+        contractInstanceEntry(BLEND_POOL, BLEND_WASM_HASH),
+        backstopInstance(),
+        backstopBalanceEntry(5_0000000n, []),
+      ],
+      absent: () => [contractInstanceEntry(BLEND_POOL, BLEND_WASM_HASH), backstopInstance()],
+    },
+    {
+      name: "Soroswap pair Balance",
+      registry: SOROSWAP_REGISTRY,
+      held: () => [...factoryEntries([PAIR_B]), ...pairEntries(PAIR_B, 4_200n)],
+      absent: () => [...factoryEntries([PAIR_B]), pairEntries(PAIR_B, 4_200n)[0]!],
+    },
+    {
+      name: "Aquarius share-token Balance",
+      registry: aquariusRegistry,
+      held: () => [
+        ...aquariusRouterEntries([{ tokens: [AQ_TOKEN_A, AQ_TOKEN_B], pools: [AQ_POOL_CONSTANT] }]),
+        ...constantPool(AQ_POOL_CONSTANT, AQ_SHARE_CONSTANT, 700n),
+      ],
+      absent: () => [
+        ...aquariusRouterEntries([{ tokens: [AQ_TOKEN_A, AQ_TOKEN_B], pools: [AQ_POOL_CONSTANT] }]),
+        ...constantPool(AQ_POOL_CONSTANT, AQ_SHARE_CONSTANT, null),
+      ],
+    },
+    {
+      name: "Phoenix share Balance and BondingInfo",
+      registry: () => phoenixStakeRegistry(),
+      held: () => phoenixLedger(phoenixShares(5n), bondingEntry([[7n, 9n]])),
+      absent: () => phoenixLedger(),
+    },
+    {
+      name: "FxDAO Vault",
+      registry: () => fxdaoEntries(FXDAO_TESTNET_VAULT),
+      held: () => [
+        fxdaoInstance(),
+        fxdaoVault(FXDAO_TESTNET_VAULT, "usd", 1000_0000000n, 400_0000000n),
+      ],
+      absent: () => [fxdaoInstance()],
+    },
+  ];
+
+  for (const c of cases) {
+    test(`${c.name}: evicted and expired read like live; absent is no position`, async () => {
+      const read = (rpc: ReturnType<typeof mockRpc>) =>
+        detectDefiPositionsViaDirectRead(USER, "testnet", { rpc, registryEntries: c.registry() });
+      const live = await read(mockRpc(c.held()));
+      expect(live.positions.length).toBeGreaterThan(0);
+      for (const archival of ARCHIVED) {
+        const archived = await read(withArchivedEntries(mockRpc(c.held()), archival));
+        expect(archived.positions).toEqual(live.positions);
+        expect(archived.unrecognizedPositions).toEqual(live.unrecognizedPositions);
+      }
+      const absent = await read(mockRpc(c.absent()));
+      expect(absent.positions).toEqual([]);
+      expect(absent.unrecognizedPositions).toEqual([]);
+    });
+  }
 });

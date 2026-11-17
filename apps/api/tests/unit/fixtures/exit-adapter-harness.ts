@@ -32,6 +32,7 @@ import {
   type ContractRegistryLookup,
 } from "@/lib/contract-registry";
 import { v1TransactionFromXdr } from "../../support/v1-transaction";
+import { ARCHIVED, restoredIndexes, type EntryArchival } from "./entry-archival";
 
 /** The live ceiling for every withdrawal, or one per asset (keyed by contract address) when a
  *  plan takes several assets out of one position. */
@@ -62,6 +63,11 @@ export interface ExitAdapterHarnessInput<P extends DefiPosition, L> {
   simulationFails: HarnessScenario<P>;
   /** The healthy position, against an rpc whose simulation needs archived entries restored. */
   simulationNeedsRestore?: HarnessScenario<P>;
+  /** The healthy position, against an rpc that serves every entry it holds in `archival`. */
+  archived?: (archival: Exclude<EntryArchival, "live">) => HarnessScenario<P>;
+  /** The healthy position, against an rpc whose simulation restores archived entries in the
+   *  exit itself (CAP-66), as the RPC answers since Protocol 23. */
+  simulationAutoRestores?: HarnessScenario<P>;
   /** A position with debt: its plan must repay before it withdraws, and exit cleanly. */
   indebted?: HarnessScenario<P>;
   /** Positions that must be refused, each with the blocker codes a refusal must carry. */
@@ -302,6 +308,28 @@ export function describeExitAdapterInvariants<P extends DefiPosition, L>(
         const result = await run(adapter, input.simulationNeedsRestore!, ctx);
         expect(result.next).toBeNull();
         expect(codes(result)).toEqual(["exit_needs_restore"]);
+      });
+    }
+
+    if (input.archived) {
+      for (const archival of ARCHIVED) {
+        test(`reads entries archived (${archival}) as held: the same plan as live, and a built step`, async () => {
+          const live = await run(adapter, healthy, ctx);
+          const result = await run(adapter, input.archived!(archival), ctx);
+          expect(result.blockers).toEqual([]);
+          expect(result.plan).toEqual(live.plan);
+          expect(result.next?.step).toEqual(live.next!.step);
+        });
+      }
+    }
+
+    if (input.simulationAutoRestores) {
+      test("a simulation that restores archived entries in the exit itself is offered with that restore kept", async () => {
+        const result = await run(adapter, input.simulationAutoRestores!, ctx);
+        expect(result.blockers).toEqual([]);
+        if (!result.next) throw new Error("expected a built first step");
+        expectBuiltInvariants(result.next, ctx);
+        expect(restoredIndexes(result.next.simulation.txXdr)).toEqual([0]);
       });
     }
 

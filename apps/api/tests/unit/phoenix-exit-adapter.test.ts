@@ -29,6 +29,7 @@ import {
   type FakePhoenixOptions,
 } from "./fixtures/fake-phoenix-pool";
 import { invokeContractArgs, v1TransactionFromXdr } from "../support/v1-transaction";
+import { ARCHIVED } from "./fixtures/entry-archival";
 
 const ACCOUNT = randomAccount();
 const SHARES = 100_000_000n; // 10% of the 1_000_000_000 total: 10% of each reserve
@@ -107,6 +108,7 @@ describeExitAdapterInvariants("phoenix pool", {
     liveCeiling: { [POOL]: SHARES.toString() },
   },
   simulationFails: { position: lpPosition, rpc: rpc({ simulation: "error" }), registry: KNOWN },
+  archived: (archival) => ({ position: lpPosition, rpc: rpc({ archival }), registry: KNOWN }),
   simulationNeedsRestore: {
     position: lpPosition,
     rpc: rpc({ simulation: "restore" }),
@@ -235,6 +237,17 @@ describe("phoenix exit adapter", () => {
     expect(args[1]!.type).toBe("scvI128");
     expect(args[2]!.type).toBe("scvU64");
     expect(scValToNative(args[2]!)).toBe(100n);
+  });
+
+  test("an archived bonding entry is read as the stakes it holds: the same unbond plan as live", async () => {
+    const stakes = [{ amount: 3_000_000n, timestamp: 100n }];
+    const live = await run({ shares: 0n, stakes });
+    for (const archival of ARCHIVED) {
+      const result = await run({ shares: 0n, stakes, archival });
+      expect(result.blockers).toEqual([]);
+      expect(result.plan).toEqual(live.plan);
+      expect(result.next?.step).toEqual(live.next!.step);
+    }
   });
 
   test("a fully unstaked position with no shares left is reported as already gone", async () => {

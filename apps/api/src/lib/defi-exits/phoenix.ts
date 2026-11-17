@@ -250,9 +250,9 @@ export function phoenixExitAdapter(): ExitAdapter<PhoenixPosition, PhoenixLive> 
         if (reserveA === null || reserveB === null) return { status: "unreadable" };
 
         // The share token writes a zero balance on a full withdrawal and keeps the entry (SEP-41
-        // convention); a present-but-empty stake entry behaves the same way. So an absent entry is
-        // ambiguous between "never held" and "archived while still holding" - safe to treat as
-        // empty only when detection did not claim this specific sub-resource exists here.
+        // convention); a present-but-empty stake entry behaves the same way. An archived entry is
+        // still returned with its value, so an absent one means the ledger holds no such entry -
+        // safe to treat as empty only when detection did not claim this sub-resource exists here.
         const shareEntry = second.get(shareBalanceKey.toXdr("base64"));
         if (!shareEntry && position.positionType === "lp") return { status: "shares_unreadable" };
         const shares = shareEntry ? asUnsigned(contractDataEntry(shareEntry).val) : 0n;
@@ -306,17 +306,17 @@ export function phoenixExitAdapter(): ExitAdapter<PhoenixPosition, PhoenixLive> 
       if (live.status === "shares_unreadable") {
         return manualReview(
           "phoenix_shares_unreadable",
-          `This account's share balance in Phoenix pool ${pool} is not on the ledger right now - ` +
-            "most likely archived after a long idle period. No exit was built so the shares are not " +
-            "left behind; restore the entry or withdraw through Phoenix before continuing."
+          `This account's share balance in Phoenix pool ${pool} is not on the ledger, although the ` +
+            "position was detected there. No exit was built so the shares are not left behind; " +
+            "retry the analysis, and if it persists withdraw through Phoenix before continuing."
         );
       }
       if (live.status === "stakes_unreadable") {
         return manualReview(
           "phoenix_stakes_unreadable",
-          `This account's staked position in Phoenix pool ${pool} is not on the ledger right now - ` +
-            "most likely archived after a long idle period. No exit was built so the stake is not " +
-            "left behind; restore the entry or unbond through Phoenix before continuing."
+          `This account's staked position in Phoenix pool ${pool} is not on the ledger, although ` +
+            "the stake was detected there. No exit was built so the stake is not left behind; " +
+            "retry the analysis, and if it persists unbond through Phoenix before continuing."
         );
       }
       if (live.status === "unreadable") {

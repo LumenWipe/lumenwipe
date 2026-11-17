@@ -380,9 +380,10 @@ export function aquariusExitAdapter(): ExitAdapter<AquariusLpPosition, AquariusL
         const tokenKeys = distinctTokens.map((t) => new Contract(t).getFootprint());
         const second = await readEntries(rpc, [shareKey, ...tokenKeys]);
         // The share token writes a zero balance on a full burn and keeps the entry, so an entry
-        // that is present with 0 means "already withdrawn" and an ABSENT entry means the ledger is
-        // not telling us the balance. Absent must never read as zero: the round would take "gone"
-        // as done and merge the account with its shares still in the pool.
+        // that is present with 0 means "already withdrawn". An archived entry is still returned
+        // with its value, so an ABSENT one means the ledger holds no balance at all, which
+        // contradicts detection. Absent must never read as zero: the round would take "gone" as
+        // done and merge the account with its shares possibly still in the pool.
         const shareVal = second.get(shareKey.toXdr("base64"));
         if (!shareVal) return { status: "shares_unreadable" };
         const shares = asUnsigned(contractDataEntry(shareVal).val);
@@ -448,9 +449,9 @@ export function aquariusExitAdapter(): ExitAdapter<AquariusLpPosition, AquariusL
       if (live.status === "shares_unreadable") {
         return manualReview(
           "aquarius_shares_unreadable",
-          `This account's share balance in Aquarius pool ${pool} is not on the ledger right now - ` +
-            "most likely archived after a long idle period. No exit was built so the shares are not " +
-            "left behind; restore the entry or withdraw through Aquarius before continuing."
+          `This account's share balance in Aquarius pool ${pool} is not on the ledger, although the ` +
+            "position was detected there. No exit was built so the shares are not left behind; " +
+            "retry the analysis, and if it persists withdraw through Aquarius before continuing."
         );
       }
       if (live.status === "reward_unreadable") {

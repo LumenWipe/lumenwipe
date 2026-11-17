@@ -36,6 +36,7 @@ import { contractDataEntry } from "@/lib/stellar/contract-data";
 import { contractDataKey, symbolVal } from "@/lib/defi-positions/testnet-direct-read";
 import { v1Transaction } from "../../support/v1-transaction";
 import { simulation } from "../../support/rpc-fixtures";
+import { archivedAnswer, autoRestoring, type EntryArchival } from "./entry-archival";
 
 export const POSITION_CONTRACT = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
 export const OTHER_CONTRACT = "CAIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRCEIRDB3V";
@@ -296,6 +297,9 @@ export function fakeExitAdapter(
 
 // ─── Fake RPC ────────────────────────────────────────────────────────────────
 
+/** "restore" is the pre-CAP-66 answer; "autoRestore" is what the RPC returns since Protocol 23. */
+export type SimulationMode = "ok" | "error" | "restore" | "autoRestore";
+
 export interface FakeRpcOptions {
   /** What a contract instance reports as its code hash; null means "contract not found". */
   liveWasmHash: string | null;
@@ -303,7 +307,9 @@ export interface FakeRpcOptions {
   hashesByContract?: Record<string, string | null>;
   /** Live balance the fake adapter reads, base units. */
   liveBalance: string;
-  simulation?: "ok" | "error" | "restore";
+  /** How the ledger serves the entries it holds. */
+  archival?: EntryArchival;
+  simulation?: SimulationMode;
   /** Authorization entries the simulation "discovers" (base64 SorobanAuthorizationEntry). */
   simulatedAuth?: string[];
   /** The resource fee the simulation prices, stroops. */
@@ -339,19 +345,20 @@ function balanceEntry(contract: string, balance: string): xdr.LedgerEntryData {
   );
 }
 
-const BALANCE_KEY_XDR = symbolVal("Balance").toXdr("base64");
+const BALANCE_KEY = symbolVal("Balance");
+const BALANCE_KEY_XDR = BALANCE_KEY.toXdr("base64");
 
 /** A contract-call simulation answer, parsed as `rpc.Server.simulateTransaction` returns it. */
 export function contractSimulation(
-  mode: "ok" | "error" | "restore",
+  mode: SimulationMode,
   auth: string[],
   minResourceFee: string,
   retval: xdr.ScVal = xdr.ScVal.scvVoid()
 ): rpc.Api.SimulateTransactionResponse {
-  const transactionData = new SorobanDataBuilder()
-    .setResourceFee(BigInt(minResourceFee))
-    .build()
-    .toXdr("base64");
+  const data = new SorobanDataBuilder().setResourceFee(BigInt(minResourceFee));
+  if (mode === "autoRestore") data.setFootprint([], [contractDataKey(OTHER_CONTRACT, BALANCE_KEY)]);
+  const built = data.build();
+  const transactionData = (mode === "autoRestore" ? autoRestoring(built) : built).toXdr("base64");
   const base = { events: [] };
   const body =
     mode === "error"
@@ -397,7 +404,7 @@ export function fakeExitRpc(options: FakeRpcOptions): ExitRpc & {
         }
         return val ? [{ key, val, lastModifiedLedgerSeq: 1, liveUntilLedgerSeq: 100 }] : [];
       });
-      return { latestLedger: 1, entries };
+      return archivedAnswer({ latestLedger: 1, entries }, options.archival ?? "live");
     },
     async simulateTransaction(
       tx: Transaction,

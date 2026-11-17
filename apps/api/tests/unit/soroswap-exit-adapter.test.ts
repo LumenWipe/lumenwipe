@@ -112,6 +112,7 @@ describeExitAdapterInvariants("soroswap pair", {
     liveCeiling: { [PAIR]: SHARES.toString() },
   },
   simulationFails: { position, rpc: rpc({ simulation: "error" }), registry: KNOWN },
+  archived: (archival) => ({ position, rpc: rpc({ archival }), registry: KNOWN }),
   simulationNeedsRestore: { position, rpc: rpc({ simulation: "restore" }), registry: KNOWN },
   blocked: [
     {

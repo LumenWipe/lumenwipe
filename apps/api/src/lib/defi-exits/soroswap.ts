@@ -221,10 +221,10 @@ export function soroswapExitAdapter(
         const kLast = asI128(storage.get(KEY_K_LAST)) ?? 0n;
 
         // The pair writes a zero balance on a full withdrawal and never deletes the entry, so an
-        // entry that is present with 0 means "already withdrawn" and an ABSENT entry means the
-        // ledger is not telling us the balance - archived, most likely, for a dormant position.
-        // Absent must not read as zero: the round would take "gone" as done and merge the
-        // account with its shares still in the pair.
+        // entry that is present with 0 means "already withdrawn". An archived entry is still
+        // returned with its value, so an ABSENT one means the ledger holds no balance at all,
+        // which contradicts detection. Absent must not read as zero: the round would take "gone"
+        // as done and merge the account with its shares possibly still in the pair.
         const balanceVal = first.get(balanceKey.toXdr("base64"));
         if (!balanceVal) return { status: "shares_unreadable" };
         const shares = asI128(contractDataEntry(balanceVal).val);
@@ -302,9 +302,9 @@ export function soroswapExitAdapter(
       if (live.status === "shares_unreadable") {
         return manualReview(
           "soroswap_shares_unreadable",
-          `This account's share balance in Soroswap pair ${pair} is not on the ledger right now - ` +
-            "most likely archived after a long idle period. No exit was built so the shares are not " +
-            "left behind; restore the entry or withdraw through Soroswap before continuing."
+          `This account's share balance in Soroswap pair ${pair} is not on the ledger, although the ` +
+            "position was detected there. No exit was built so the shares are not left behind; " +
+            "retry the analysis, and if it persists withdraw through Soroswap before continuing."
         );
       }
       if (live.status === "unreadable") {

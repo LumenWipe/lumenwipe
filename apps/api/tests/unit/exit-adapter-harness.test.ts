@@ -42,6 +42,8 @@ describeExitAdapterInvariants("reference adapter", {
   healthy: { ...scenario(), detectedAmount: DETECTED, liveCeiling: LIVE_BALANCE },
   simulationFails: scenario(liveRpc({ simulation: "error" })),
   simulationNeedsRestore: scenario(liveRpc({ simulation: "restore" })),
+  archived: (archival) => scenario(liveRpc({ archival })),
+  simulationAutoRestores: scenario(liveRpc({ simulation: "autoRestore" })),
   ctx,
 });
 
@@ -122,6 +124,15 @@ describe("runExitAdapter checks what the simulation added before offering the by
 
   test("a resource fee priced far above any real exit refuses the build", async () => {
     const result = await runWith({}, liveRpc({ simulatedResourceFee: "50000000" }));
+    expect(result.next).toBeNull();
+    expect(result.blockers.map((b) => b.code)).toEqual(["exit_fee_excessive"]);
+  });
+
+  test("an automatic restore priced above the exit fee cap refuses the build the same way", async () => {
+    const result = await runWith(
+      {},
+      liveRpc({ simulation: "autoRestore", simulatedResourceFee: "50000000" })
+    );
     expect(result.next).toBeNull();
     expect(result.blockers.map((b) => b.code)).toEqual(["exit_fee_excessive"]);
   });

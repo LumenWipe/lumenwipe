@@ -565,9 +565,9 @@ async function readSoroswapFactoryPairs(
     if (pair) pairs.add(pair);
   }
   if (pairs.size !== count) {
-    // An index the factory counts but the ledger does not return (archived, or a partial
-    // response) could hide a pair the account holds; say so instead of pretending the sweep
-    // was complete, and still report what did resolve.
+    // An index the factory counts but the ledger does not return (an entry it does not hold,
+    // or a partial response) could hide a pair the account holds; say so instead of pretending
+    // the sweep was complete, and still report what did resolve.
     flag(
       "factory-index-gap",
       `Soroswap factory ${factory.address} lists ${count} pairs but only ${pairs.size} resolved to a distinct address`

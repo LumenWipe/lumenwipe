@@ -14,6 +14,7 @@ import {
 } from "@stellar/stellar-sdk";
 import type { ExitRpc } from "@/lib/defi-exits";
 import { contractSimulation } from "./fake-exit-adapter";
+import { archivedAnswer, type EntryArchival } from "./entry-archival";
 
 export const SOROSWAP_PAIR_HASH =
   "8447525edd62f72ffaf52136358034657ea0511a8fec1cd0ebde649f86cca464";
@@ -54,6 +55,8 @@ export interface FakePairOptions {
   routerHash?: string;
   /** Leave the pair's instance out entirely. */
   pairMissing?: boolean;
+  /** How the ledger serves the entries it holds. */
+  archival?: EntryArchival;
   simulation?: "ok" | "error" | "restore";
 }
 
@@ -166,12 +169,15 @@ export function fakeSoroswapRpc(
     simulateCalls,
     async getLedgerEntries(...keys: xdr.LedgerKey[]) {
       const wanted = new Set(keys.map((k) => k.toXdr("base64")));
-      return {
-        latestLedger: 1,
-        entries: entries
-          .filter((e) => wanted.has(e.key.toXdr("base64")))
-          .map((e) => ({ ...e, lastModifiedLedgerSeq: 1, liveUntilLedgerSeq: 100 })),
-      };
+      return archivedAnswer(
+        {
+          latestLedger: 1,
+          entries: entries
+            .filter((e) => wanted.has(e.key.toXdr("base64")))
+            .map((e) => ({ ...e, lastModifiedLedgerSeq: 1, liveUntilLedgerSeq: 100 })),
+        },
+        options.archival ?? "live"
+      );
     },
     async simulateTransaction(tx: Transaction) {
       simulateCalls.push(tx);
