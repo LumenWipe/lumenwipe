@@ -21,7 +21,7 @@ import { NETWORK_PASSPHRASES } from "@/config/networks";
 import bundledLists from "@/config/soroban-token-lists.json";
 import { mapConcurrent } from "@/lib/utils/concurrency";
 import { describeError } from "@/lib/utils/errors";
-import { getRpcServer } from "./rpc";
+import { getRpcServer, readLatestLedger } from "./rpc";
 
 /**
  * Soroban (SEP-41) token balances an account holds directly - the tokens the close must decide
@@ -50,6 +50,7 @@ export interface SorobanTokenRpc {
   getLedgerEntries: stellarRpc.Server["getLedgerEntries"];
   simulateTransaction: stellarRpc.Server["simulateTransaction"];
   getEvents: stellarRpc.Server["getEvents"];
+  getHealth: stellarRpc.Server["getHealth"];
   getLatestLedger: stellarRpc.Server["getLatestLedger"];
 }
 
@@ -212,17 +213,20 @@ interface ScanPlan {
   maxChunks: number;
 }
 
+/** What the event scan reads with: no positions, no lists. */
+export type TokenEventScanDeps = Pick<SorobanTokensDeps, "rpc" | "now" | "budgetMs" | "scanEvents">;
+
 async function eventCandidates(
   address: string,
-  deps: SorobanTokensDeps,
+  deps: TokenEventScanDeps,
   deadline: number,
   plan: ScanPlan = { chunkLedgers: EVENTS_CHUNK_LEDGERS, maxChunks: EVENTS_MAX_CHUNKS }
 ): Promise<EventScan> {
   const latest = (
     await withTimeout(
-      deps.rpc.getLatestLedger(),
+      readLatestLedger(deps.rpc),
       Math.max(1, Math.min(deadline - deps.now(), RPC_CALL_TIMEOUT_MS)),
-      "getLatestLedger"
+      "latest ledger"
     )
   ).sequence;
   const filters: stellarRpc.Api.EventFilter[] = [
@@ -439,18 +443,75 @@ function shortContract(contract: string): string {
   return `${contract.slice(0, 4)}…${contract.slice(-4)}`;
 }
 
+export interface TokenEventScan {
+  contracts: string[];
+  scanned: EventScan["scanned"];
+  coverage: SorobanTokenCoverage;
+}
+
+/**
+ * The recent-events source on its own, the only one that can find a token no list and no detected
+ * position names. It needs neither the positions nor the lists, so the account read starts it
+ * alongside DeFi detection instead of after it. Its window closes `LEDGER_READS_RESERVE_MS` before
+ * the budget counted from here, leaving room for the ledger reads. Never rejects: a scan that fails
+ * is a `failed` coverage entry.
+ *
+ * One window, not the six this used to walk. Six cost ~17s and, on an account where there is
+ * nothing to find, that is paid by every analysis for no gain; one 4,000-ledger window costs
+ * ~2.8s and covers the last ~5.5 hours, which is the case that actually happens: someone
+ * received a token and came here to close the account. A token received before that window is
+ * what the manual "add a contract address" path is for - the API already accepts it.
+ */
+export function startTokenEventScan(
+  address: string,
+  deps: TokenEventScanDeps
+): Promise<TokenEventScan> {
+  if (deps.scanEvents === false) {
+    return Promise.resolve({
+      contracts: [],
+      scanned: null,
+      coverage: { source: "events", status: "skipped", detail: "not requested" },
+    });
+  }
+  const deadline = deps.now() + deps.budgetMs - LEDGER_READS_RESERVE_MS;
+  return eventCandidates(address, deps, deadline, {
+    chunkLedgers: EVENTS_CHUNK_LEDGERS,
+    maxChunks: 1,
+  }).then(
+    (scan): TokenEventScan => ({
+      contracts: scan.contracts,
+      scanned: scan.scanned,
+      coverage: {
+        source: "events",
+        status: scan.scanned ? "ok" : "failed",
+        ...(scan.stoppedEarly ? { detail: scan.stoppedEarly } : {}),
+      },
+    }),
+    (err: unknown): TokenEventScan => ({
+      contracts: [],
+      scanned: null,
+      coverage: { source: "events", status: "failed", detail: reason(err) },
+    })
+  );
+}
+
 /**
  * The account's Soroban token balances, best effort, with what was and was not consulted. Never
  * throws: a source that fails is reported in `coverage` and as a warning, and the ledger reads
  * that did succeed still count.
+ *
+ * `eventScan` is a scan the caller started earlier; without one the scan starts here. Either way the
+ * ledger reads get the whole budget counted from this call.
  */
 export async function discoverSorobanTokens(
   address: string,
   network: Network,
-  deps: SorobanTokensDeps
+  deps: SorobanTokensDeps,
+  eventScan?: Promise<TokenEventScan>
 ): Promise<SorobanTokensResult> {
   const started = deps.now();
   const deadline = started + deps.budgetMs;
+  const scan = eventScan ?? startTokenEventScan(address, deps);
   const coverage: SorobanTokenCoverage[] = [];
   const warnings: PlanBlocker[] = [];
 
@@ -481,39 +542,10 @@ export async function discoverSorobanTokens(
   coverage.push({ source: "positions", status: "ok" });
   coverage.push({ source: "list", status: deps.listCandidates.length > 0 ? "ok" : "skipped" });
 
-  // Leave room for the ledger reads: the scan may use most of the budget, not all of it.
-  // The event scan is the only source that can find a token no list and no detected position
-  // names.
-  //
-  // One window, not the six this used to walk. Six cost ~17s and, on an account where there is
-  // nothing to find, that is paid by every analysis for no gain; one 4,000-ledger window costs
-  // ~2.8s and covers the last ~5.5 hours, which is the case that actually happens: someone
-  // received a token and came here to close the account. A token received before that window is
-  // what the manual "add a contract address" path is for - the API already accepts it.
-  const events: Promise<EventScan["scanned"]> =
-    deps.scanEvents === false
-      ? Promise.resolve(
-          coverage.push({ source: "events", status: "skipped", detail: "not requested" })
-        ).then(() => null)
-      : eventCandidates(address, deps, deadline - LEDGER_READS_RESERVE_MS, {
-          chunkLedgers: EVENTS_CHUNK_LEDGERS,
-          maxChunks: 1,
-        }).then(
-          (scan) => {
-            for (const c of scan.contracts) candidates.add(c, "events");
-            coverage.push({
-              source: "events",
-              status: scan.scanned ? "ok" : "failed",
-              ...(scan.stoppedEarly ? { detail: scan.stoppedEarly } : {}),
-            });
-            return scan.scanned;
-          },
-          (err: unknown) => {
-            coverage.push({ source: "events", status: "failed", detail: reason(err) });
-            return null;
-          }
-        );
-  const eventsScanned = await events;
+  const events = await scan;
+  for (const c of events.contracts) candidates.add(c, "events");
+  coverage.push(events.coverage);
+  const eventsScanned = events.scanned;
 
   const ordered = candidates.ordered();
   const kept = ordered.slice(0, MAX_CANDIDATES);

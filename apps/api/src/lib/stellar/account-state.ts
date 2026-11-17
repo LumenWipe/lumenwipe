@@ -19,7 +19,9 @@ import { UpstreamError } from "./upstream-client";
 import {
   defaultSorobanTokensDeps,
   discoverSorobanTokens,
+  startTokenEventScan,
   type SorobanTokensDeps,
+  type TokenEventScan,
 } from "./soroban-tokens";
 import {
   resolveDefiPositions,
@@ -28,7 +30,7 @@ import {
 import { enrichDefiPositions, knownTokensFor } from "@/lib/defi-positions/enrich";
 import { assessDefiPositionsGate } from "@/lib/defi-positions/positions-gate";
 import { parseLedgerCloseTime } from "./claim-predicates";
-import { getRpcServer, pinRpcProvider, rpcReferenceLedger } from "./rpc";
+import { getRpcServer, pinRpcProvider, readLatestLedger, rpcReferenceLedger } from "./rpc";
 import { MEMO_REQUIRED_DATA_NAME } from "./memo-required";
 import { Logger } from "@nestjs/common";
 
@@ -40,7 +42,6 @@ import type {
   AccountSigner,
   ClaimableBalance,
   DataEntry,
-  DefiPosition,
   OpenOffer,
   Trustline,
   TrustlineAuthorization,
@@ -232,8 +233,9 @@ export interface AccountReadOptions {
   sorobanTokensBudgetMs?: number;
   /** Whether discovery scans recent events (the slow, find-new-tokens source). Default true. */
   scanTokenEvents?: boolean;
-  /** Injectable for tests; defaults to the live sources for the network. */
-  sorobanTokensDeps?: (positions: DefiPosition[]) => SorobanTokensDeps;
+  /** Injectable for tests; defaults to the live sources for the network. The read fills in the
+   *  detected positions. */
+  sorobanTokensDeps?: () => SorobanTokensDeps;
   /** Close time of the latest ledger in epoch seconds, null when it cannot be read. */
   ledgerCloseTime?: () => Promise<number | null>;
   /** Further providers, in order. With any, a snapshot must also keep up with `referenceLedger`. */
@@ -244,7 +246,7 @@ export interface AccountReadOptions {
 
 export async function readLedgerCloseTime(network: Network): Promise<number | null> {
   try {
-    return parseLedgerCloseTime((await getRpcServer(network).getLatestLedger()).closeTime);
+    return parseLedgerCloseTime((await readLatestLedger(getRpcServer(network))).closeTime);
   } catch {
     return null;
   }
@@ -370,14 +372,31 @@ export async function readAccountStateFrom(
   // Not Horizon reads, so a restart must not repeat them; resolving twice is a no-op. Joined with
   // the read in one Promise.all so a rejection on either side always has a handler.
   let startDetection!: () => void;
-  const detection = new Promise<void>((resolve) => {
+  const detectionStarted = new Promise<void>((resolve) => {
     startDetection = resolve;
-  }).then(() =>
+  });
+  const detection = detectionStarted.then(() =>
     Promise.all([
       resolveDefiPositions(address, network, defiDeps),
       (options.ledgerCloseTime ?? (() => readLedgerCloseTime(network)))(),
     ])
   );
+  // The event scan needs no positions, so it runs alongside detection; only the candidate set
+  // waits for them. Settled into a value here, so a read that fails while the scan is in flight
+  // leaves no rejection behind.
+  const tokenScan: Promise<
+    { deps: SorobanTokensDeps; events: Promise<TokenEventScan> } | { failure: unknown }
+  > = detectionStarted
+    .then(() => {
+      const tokenDeps =
+        options.sorobanTokensDeps?.() ??
+        defaultSorobanTokensDeps(network, [], options.manualTokenCandidates ?? [], {
+          budgetMs: options.sorobanTokensBudgetMs,
+          scanEvents: options.scanTokenEvents,
+        });
+      return { deps: tokenDeps, events: startTokenEventScan(address, tokenDeps) };
+    })
+    .catch((failure: unknown) => ({ failure }));
   const [snapshot, [detectedPositions, ledgerCloseTime]] = await Promise.all([
     withHorizonFailover(network, deps, fallbacks, (attempt) =>
       readSnapshot(address, attempt, reference, startDetection)
@@ -419,15 +438,6 @@ export async function readAccountStateFrom(
   // Presentation for what detection found (pool name, symbol, underlying amount, yield). Never
   // changes positions or blockers. The Soroban token read runs alongside: it needs the positions
   // (their payout tokens are candidates, their share tokens are not) and nothing else here.
-  const sorobanDeps = (): SorobanTokensDeps =>
-    options.sorobanTokensDeps
-      ? options.sorobanTokensDeps(detectedPositions.positions)
-      : defaultSorobanTokensDeps(
-          network,
-          detectedPositions.positions,
-          options.manualTokenCandidates ?? [],
-          { budgetMs: options.sorobanTokensBudgetMs, scanEvents: options.scanTokenEvents }
-        );
   // The enrichers read the provider's URL synchronously, so the pin has to have settled. A pin that
   // failed leaves them on the primary: they are presentation, and never fail the read.
   await pinRpcProvider(network).catch(() => undefined);
@@ -437,8 +447,12 @@ export async function readAccountStateFrom(
       account: address,
       knownTokens: knownTokensFor(trustlines, network),
     }),
-    Promise.resolve()
-      .then(() => discoverSorobanTokens(address, network, sorobanDeps()))
+    tokenScan
+      .then((scan) => {
+        if ("failure" in scan) throw scan.failure;
+        const tokenDeps = { ...scan.deps, positions: detectedPositions.positions };
+        return discoverSorobanTokens(address, network, tokenDeps, scan.events);
+      })
       .catch((err: unknown): SorobanTokensResult => ({
         // The discovery module never throws by design; this is the belt to its braces.
         tokens: [],

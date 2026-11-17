@@ -12,7 +12,7 @@ import { inRequestContext } from "../support/request-context";
 import { REQUEST_DEADLINE_MS, SERVICE_UNAVAILABLE_RETRY_AFTER_SECONDS } from "@/config/constants";
 import { RPC_FALLBACKS, RPC_HEADERS, RPC_URLS } from "@/config/networks";
 import { mapDomainError, PLAN_ERRORS, UPSTREAM_ERRORS } from "@/lib/close-api/domain-errors";
-import { getRpcServer, resetRpcCooldowns } from "@/lib/stellar/rpc";
+import { getRpcServer, readLatestLedger, resetRpcCooldowns } from "@/lib/stellar/rpc";
 import { providerFailoverCount, resetProviderFailoverCount } from "@/lib/stellar/provider-failover";
 import { submitAndWait } from "@/lib/stellar/submit";
 import { UpstreamError } from "@/lib/stellar/upstream-client";
@@ -78,11 +78,19 @@ function latestLedger(sequence: number) {
   };
 }
 
+function health(sequence: number) {
+  return {
+    status: "healthy",
+    latestLedger: sequence,
+    latestLedgerCloseTime: String(Math.floor(Date.now() / 1000) - 1),
+  };
+}
+
 /** Fresh on the probe; `entries` answers every other method. */
 const provider =
   (entries: Reply): Handler =>
   (method) =>
-    method === "getLatestLedger" ? { result: latestLedger(100) } : entries;
+    method === "getHealth" ? { result: health(100) } : entries;
 
 const EMPTY_ENTRIES: Reply = { result: { entries: [], latestLedger: 100 } };
 const RATE_LIMITED: Reply = { status: 429 };
@@ -187,7 +195,7 @@ test("a JSON-RPC error and a 4xx are the provider's answer: passed through, no c
   useProviders(A, B);
   const calls = fakeRpc({ [A]: provider(EMPTY_ENTRIES), [B]: provider(EMPTY_ENTRIES) });
   await readEntries();
-  expect(hostsOf(calls, "getLatestLedger")).toEqual([A]);
+  expect(hostsOf(calls, "getHealth")).toEqual([A]);
   expect(providerFailoverCount()).toBe(0);
 });
 
@@ -209,7 +217,7 @@ test("a cooling provider is still probed after every ready one fails", async () 
   await readEntries();
   const calls = fakeRpc({ [A]: provider(EMPTY_ENTRIES), [B]: () => ({ status: 503 }) });
   expect(await readEntries()).toMatchObject({ entries: [] });
-  expect(hostsOf(calls, "getLatestLedger")).toEqual([B, A]);
+  expect(hostsOf(calls, "getHealth")).toEqual([B, A]);
 });
 
 test("a rate-limited provider answers this request with a 503 and is skipped by the next", async () => {
@@ -231,7 +239,7 @@ test("with every provider cooling down, the probe walks the whole list from the 
   await readEntries();
   const calls = fakeRpc({ [A]: provider(EMPTY_ENTRIES), [B]: provider(EMPTY_ENTRIES) });
   expect(await readEntries()).toMatchObject({ entries: [] });
-  expect(hostsOf(calls, "getLatestLedger")).toEqual([A]);
+  expect(hostsOf(calls, "getHealth")).toEqual([A]);
 });
 
 test("a cooldown outlasts a Retry-After counted from the end of the deadline, then ends", async () => {
@@ -245,12 +253,12 @@ test("a cooldown outlasts a Retry-After counted from the end of the deadline, th
   setSystemTime(retryAt - 1);
   let calls = fakeRpc({ [A]: provider(EMPTY_ENTRIES), [B]: provider(EMPTY_ENTRIES) });
   await readEntries();
-  expect(hostsOf(calls, "getLatestLedger")).toEqual([B]);
+  expect(hostsOf(calls, "getHealth")).toEqual([B]);
 
   setSystemTime(retryAt);
   calls = fakeRpc({ [A]: provider(EMPTY_ENTRIES), [B]: provider(EMPTY_ENTRIES) });
   await readEntries();
-  expect(hostsOf(calls, "getLatestLedger")).toEqual([A]);
+  expect(hostsOf(calls, "getHealth")).toEqual([A]);
 });
 
 test("a timeout is typed but starts no cooldown", async () => {
@@ -260,7 +268,7 @@ test("a timeout is typed but starts no cooldown", async () => {
   expect(await readEntries()).toMatchObject({ kind: "timeout" });
   const calls = fakeRpc({ [A]: provider(EMPTY_ENTRIES), [B]: provider(EMPTY_ENTRIES) });
   await readEntries();
-  expect(hostsOf(calls, "getLatestLedger")).toEqual([A]);
+  expect(hostsOf(calls, "getHealth")).toEqual([A]);
 });
 
 test("an answer with no JSON-RPC envelope is a typed unavailable, never the SDK's TypeError", async () => {
@@ -292,11 +300,11 @@ test("a provider that answered with no envelope ends this request and is skipped
 test("a probe answered with no envelope fails over within the request", async () => {
   useProviders(A, B);
   const calls = fakeRpc({
-    [A]: (method) => (method === "getLatestLedger" ? CUT_OFF : EMPTY_ENTRIES),
+    [A]: (method) => (method === "getHealth" ? CUT_OFF : EMPTY_ENTRIES),
     [B]: provider(EMPTY_ENTRIES),
   });
   expect(await readEntries()).toMatchObject({ entries: [] });
-  expect(hostsOf(calls, "getLatestLedger")).toEqual([A, B]);
+  expect(hostsOf(calls, "getHealth")).toEqual([A, B]);
   expect(hostsOf(calls, "getLedgerEntries")).toEqual([B]);
 });
 
@@ -311,7 +319,7 @@ test("an enveloped answer the SDK cannot parse stays untyped and cools nothing",
   expect(failure).not.toBeInstanceOf(UpstreamError);
   const calls = fakeRpc({ [A]: provider(EMPTY_ENTRIES), [B]: provider(EMPTY_ENTRIES) });
   await readEntries();
-  expect(hostsOf(calls, "getLatestLedger")).toEqual([A]);
+  expect(hostsOf(calls, "getHealth")).toEqual([A]);
 });
 
 const SOURCE = Keypair.random();
@@ -338,7 +346,7 @@ test("a rate-limited send keeps its untyped error and starts no cooldown", async
   expect(failure).not.toBeInstanceOf(UpstreamError);
   const calls = fakeRpc({ [A]: provider(EMPTY_ENTRIES), [B]: provider(EMPTY_ENTRIES) });
   await readEntries();
-  expect(hostsOf(calls, "getLatestLedger")).toEqual([A]);
+  expect(hostsOf(calls, "getHealth")).toEqual([A]);
 });
 
 test("a send answered with no envelope stays untyped, says nothing raw and starts no cooldown", async () => {
@@ -355,7 +363,7 @@ test("a send answered with no envelope stays untyped, says nothing raw and start
   expect((failure as Error).message).toBe("The data provider sent an incomplete answer.");
   const calls = fakeRpc({ [A]: provider(EMPTY_ENTRIES), [B]: provider(EMPTY_ENTRIES) });
   await readEntries();
-  expect(hostsOf(calls, "getLatestLedger")).toEqual([A]);
+  expect(hostsOf(calls, "getHealth")).toEqual([A]);
 });
 
 test("a rate-limited by-hash check before a submit sends nothing", async () => {
@@ -403,6 +411,27 @@ test("a latest-ledger read refused with a short Retry-After is answered by its o
   expect(hostsOf(calls, "getLatestLedger")).toEqual([lone, lone]);
 });
 
+test("a health read refused with a short Retry-After is answered by its one retry", async () => {
+  const lone = useLoneProvider();
+  const calls = fakeRpc({
+    [lone]: scripted("getHealth", ASKS_SHORT_WAIT, { result: health(100) }),
+  });
+  const latest = await inRequestContext(() => readLatestLedger(getRpcServer("testnet")));
+  expect(latest.sequence).toBe(100);
+  expect(hostsOf(calls, "getHealth")).toEqual([lone, lone]);
+});
+
+test("a probe refused with a short Retry-After is not retried before the next provider", async () => {
+  useProviders(A, B);
+  const calls = fakeRpc({
+    [A]: scripted("getHealth", ASKS_SHORT_WAIT, { result: health(100) }),
+    [B]: provider(EMPTY_ENTRIES),
+  });
+  expect(await readEntries()).toMatchObject({ entries: [] });
+  expect(hostsOf(calls, "getHealth")).toEqual([A, B]);
+  expect(hostsOf(calls, "getLedgerEntries")).toEqual([B]);
+});
+
 test("with several providers the retry stays on the pinned one and cools nothing", async () => {
   useProviders(A, B);
   let calls = fakeRpc({
@@ -413,7 +442,7 @@ test("with several providers the retry stays on the pinned one and cools nothing
   expect(hostsOf(calls, "getLedgerEntries")).toEqual([A, A]);
   calls = fakeRpc({ [A]: provider(EMPTY_ENTRIES), [B]: provider(EMPTY_ENTRIES) });
   await readEntries();
-  expect(hostsOf(calls, "getLatestLedger")).toEqual([A]);
+  expect(hostsOf(calls, "getHealth")).toEqual([A]);
 });
 
 test("a second refusal is not retried again", async () => {

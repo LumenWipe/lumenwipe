@@ -362,7 +362,7 @@ test("a detected Phoenix position's share token is never offered as its own toke
   };
   const state = await readAccountStateFrom(ADDRESS, "testnet", deps, defiDeps, {
     ...OFFLINE_SOROBAN_TOKENS,
-    sorobanTokensDeps: (positions) =>
+    sorobanTokensDeps: () =>
       fakeSorobanDeps({
         world: {
           tokens: [{ contract: PHOENIX_SHARE, balance: 42_0000000n, symbol: "PHO", decimals: 7 }],
@@ -373,7 +373,6 @@ test("a detected Phoenix position's share token is never offered as its own toke
         },
         listCandidates: [PHOENIX_SHARE],
         manualCandidates: [PHOENIX_SHARE],
-        positions,
       }),
   });
   expect(state.defiPositions.positions.map((p) => p.contractAddress)).toEqual([PHOENIX_POOL]);
@@ -417,17 +416,15 @@ test("the account read carries the Soroban token balances discovery confirmed, a
   const TOKEN = "CBI7UCH5KGSVQRO5H4SUCZUTZABCITZLRHQQZTWL2TK4RZ72TAR6IHRV";
   const state = await readAccountStateFrom(ADDRESS, "testnet", deps, NO_DEFI, {
     ...OFFLINE_SOROBAN_TOKENS,
-    sorobanTokensDeps: (positions) => {
-      expect(positions).toEqual([]);
-      return fakeSorobanDeps({
+    sorobanTokensDeps: () =>
+      fakeSorobanDeps({
         world: {
           tokens: [{ contract: TOKEN, balance: 100_000_000n, symbol: "deJTRSY", decimals: 7 }],
           latestLedger: 1_000_000,
           events: { [`${1_000_001 - EVENTS_CHUNK_LEDGERS}-1000000`]: { error: "down" } },
         },
         listCandidates: [TOKEN],
-      });
-    },
+      }),
   });
   expect(state.sorobanTokens?.tokens).toEqual([
     { contract: TOKEN, balance: "100000000", symbol: "deJTRSY", decimals: 7, sources: ["list"] },

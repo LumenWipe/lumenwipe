@@ -61,6 +61,20 @@ export function latestLedger(sequence: number, closeTime = 0): rpc.Api.GetLatest
   };
 }
 
+/** A getHealth answer at `sequence`, closed at `closeTime` (unix seconds), as RPC sends it. */
+export function healthAnswer(
+  sequence: number,
+  closeTime = 1_700_000_000
+): rpc.Api.GetHealthResponse & { latestLedgerCloseTime: string } {
+  return {
+    status: "healthy",
+    latestLedger: sequence,
+    latestLedgerCloseTime: String(closeTime),
+    oldestLedger: Math.max(1, sequence - 120_960),
+    ledgerRetentionWindow: 120_960,
+  };
+}
+
 /** A getEvents page holding `events`, continued from `cursor`. */
 export function eventsPage(
   events: rpc.Api.EventResponse[],

@@ -39,7 +39,7 @@ import {
   parseLedgerCloseTime,
 } from "@/lib/stellar/claim-predicates";
 import { stroopsToFixedXlm, xlmToStroops } from "@/lib/utils/amounts";
-import { getRpcServer, pinRpcProvider } from "@/lib/stellar/rpc";
+import { getRpcServer, pinRpcProvider, readLatestLedger } from "@/lib/stellar/rpc";
 import {
   assessDefiPositionsGate,
   isNonTrappingDefiBlocker,
@@ -348,7 +348,7 @@ export async function buildCloseTransactions(
   );
   const [sequence, latest, issuance, sponsorshipAffordability] = await Promise.all([
     confirmLedgerState(accountState, server, rpcProviders(network).length > 1),
-    server.getLatestLedger(),
+    readLatestLedger(server),
     assessIssuance(accountState.address, network, issuer.deps),
     accountState.sponsorshipEnumerationIncomplete
       ? Promise.resolve({ revocable: [], unverifiedOwners: [], unaffordableOwners: new Map() })

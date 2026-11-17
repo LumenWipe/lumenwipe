@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:
 import { Asset, Keypair, LiquidityPoolId, rpc, type xdr } from "@stellar/stellar-sdk";
 import type { AccountState } from "@lumenwipe/types";
 import { inRequestContext } from "../support/request-context";
-import { latestLedger } from "../support/rpc-fixtures";
+import { healthAnswer, latestLedger } from "../support/rpc-fixtures";
 import * as rpcModule from "@/lib/stellar/rpc";
 import { pinnedRpcProvider } from "@/lib/stellar/rpc";
 import { pinHorizonSource } from "@/lib/stellar/provider-failover";
@@ -390,11 +390,11 @@ describe("an RPC behind the snapshot, with more than one provider configured", (
   });
 
   test("the round settles its provider before building, so the Blend SDK can read it", async () => {
-    const latest = spyOn(rpc.Server.prototype, "getLatestLedger").mockImplementation(function (
+    const latest = spyOn(rpc.Server.prototype, "getHealth").mockImplementation(function (
       this: rpc.Server
     ) {
       if (this.serverURL.toString().includes("rpc-a")) return Promise.reject(new Error("down"));
-      return Promise.resolve(latestLedger(1000, Math.floor(Date.now() / 1000)));
+      return Promise.resolve(healthAnswer(1000, Math.floor(Date.now() / 1000)));
     });
     useLedger(agreeing);
     const pinned = await inRequestContext(async () => {
@@ -412,8 +412,8 @@ describe("an RPC behind the snapshot, with more than one provider configured", (
       hosts.push(new URL(String(input)).hostname);
       return new Response(JSON.stringify({ _embedded: { records: [] } }), { status: 200 });
     });
-    spyOn(rpc.Server.prototype, "getLatestLedger").mockResolvedValue(
-      latestLedger(1000, Math.floor(Date.now() / 1000))
+    spyOn(rpc.Server.prototype, "getHealth").mockResolvedValue(
+      healthAnswer(1000, Math.floor(Date.now() / 1000))
     );
     useLedger(agreeing);
     await inRequestContext(async () => {

@@ -7,6 +7,9 @@ class FakeRpcServer extends rpc.Server {
       if (name === "constructor") continue;
       Reflect.set(this, name, () => Promise.reject(new Error(`rpc.Server.${name} is not stubbed`)));
     }
+    // Healthy with no ledger fields, as some providers answer: a ledger read then goes to the
+    // stubbed `getLatestLedger`.
+    Reflect.set(this, "getHealth", () => Promise.resolve({ status: "healthy" }));
     Object.assign(this, methods);
   }
 }

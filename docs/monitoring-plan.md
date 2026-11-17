@@ -212,7 +212,10 @@ balance. Do not point a startup or liveness probe at it: `/health` stays depende
 the cheap RPC check.
 
 Every access log line carries `upstreamCalls`, the attempts that request made per upstream, so the cost of an
-analyze and of each build round can be read from the logs.
+analyze and of each build round can be read from the logs. It also carries `upstreamMs`, the milliseconds the
+request waited on each of `horizon`, `paths`, `defi` and `rpc.<method>` (a fixed list of JSON-RPC methods, any
+other as `rpc.other`). Each value is the summed wall-clock time of that key's calls, so concurrent calls can add up
+to more than the request's `latencyMs`.
 
 ## 5. What happens when an alert fires?
 
