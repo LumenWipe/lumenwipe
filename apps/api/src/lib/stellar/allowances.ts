@@ -108,10 +108,11 @@ export const INDEXER_MAX_PAIRS = 25;
 /** Authorized invocations are walked no deeper than this. */
 const INDEXER_MAX_DEPTH = 8;
 
-/** The tokens StellarIndex follows in its transfer feed, with `approve` rows: Circle's USDC on
- *  mainnet, as measured on 2026-11-16. Testnet's feed was empty. */
+/** Tokens whose StellarIndex transfer feed is read for `approve` rows. Empty: the feed carries
+ *  them only for Circle's mainnet USDC, and filtered by owner it ran past the 4 s budget for 8 of
+ *  10 accounts on 2026-11-17, holding every read open for nothing. The operations cover USDC. */
 export const INDEXER_TRANSFER_TOKENS: Record<Network, string[]> = {
-  mainnet: ["CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75"],
+  mainnet: [],
   testnet: [],
 };
 const RPC_CALL_TIMEOUT_MS = 12_000;

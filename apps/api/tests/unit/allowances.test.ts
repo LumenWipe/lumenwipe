@@ -8,7 +8,6 @@ import { Address, StrKey, xdr } from "@stellar/stellar-sdk";
 import {
   INDEXER_MAX_PAGES,
   INDEXER_MAX_PAIRS,
-  INDEXER_TRANSFER_TOKENS,
   defaultAllowancesDeps,
   discoverAllowances,
   onePerCode,
@@ -704,7 +703,7 @@ test("discoverAllowances › StellarIndex proposes at most its share of pairs, l
   });
 });
 
-test("defaultAllowancesDeps › StellarIndex only with a key, never when turned off, and the transfer feed only where it has approvals", () => {
+test("defaultAllowancesDeps › StellarIndex only with a key, never when turned off, and the transfer feed off", () => {
   const saved = process.env.STELLARINDEX_API_KEY;
   try {
     delete process.env.STELLARINDEX_API_KEY;
@@ -714,9 +713,7 @@ test("defaultAllowancesDeps › StellarIndex only with a key, never when turned 
       "https://api.stellarindex.io/v1"
     );
     expect(defaultAllowancesDeps("mainnet", { useIndexer: false }).indexer).toBeNull();
-    expect(defaultAllowancesDeps("mainnet").indexerTransferTokens).toEqual(
-      INDEXER_TRANSFER_TOKENS.mainnet
-    );
+    expect(defaultAllowancesDeps("mainnet").indexerTransferTokens).toEqual([]);
     expect(defaultAllowancesDeps("testnet").indexerTransferTokens).toEqual([]);
   } finally {
     if (saved === undefined) delete process.env.STELLARINDEX_API_KEY;
