@@ -1,19 +1,15 @@
-import { createHmac, randomBytes, timingSafeEqual } from "crypto";
+import { timingSafeEqual } from "crypto";
 import { CanActivate, ExecutionContext, Injectable } from "@nestjs/common";
 import type { Request } from "express";
 import { fail } from "@/common/fail";
 
-const COMPARE_KEY = randomBytes(32);
-
-function digest(value: string): Buffer {
-  return createHmac("sha256", COMPARE_KEY).update(value).digest();
-}
-
-/** Constant-time string comparison - a plain `===` on a secret leaks its length/prefix through
- *  timing. Both sides are HMACed under a per-process random key, so `timingSafeEqual` always sees
- *  equal-length digests nobody can precompute, and neither the length nor a matching prefix leaks. */
-function safeEqual(a: string, b: string): boolean {
-  return timingSafeEqual(digest(a), digest(b));
+/** Constant-time comparison: on a length mismatch the caller's buffer is compared with itself, so
+ *  time depends only on what was sent and leaks neither the configured length nor a prefix. */
+function safeEqual(provided: string, configured: string): boolean {
+  const a = Buffer.from(provided);
+  const b = Buffer.from(configured);
+  const sameLength = a.length === b.length;
+  return timingSafeEqual(a, sameLength ? b : a) && sameLength;
 }
 
 /**

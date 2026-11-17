@@ -121,21 +121,20 @@ test("401s without throwing on a sent token shorter or longer than the configure
   }
 });
 
-test("compares equal-length digests when the lengths differ, so no length check short-circuits", () => {
+test("on a length mismatch compares only the sent token's own length, and still 401s", () => {
   const token = newToken();
   process.env.ADMIN_API_TOKEN = token;
   process.env.FIRESTORE_PROJECT_ID = "test-project";
-  const compare = spyOn(crypto, "timingSafeEqual");
-  try {
-    expect(rejection(`Bearer ${token}${newToken()}`)).toEqual({
-      status: 401,
-      code: "unauthorized",
-    });
-    expect(compare).toHaveBeenCalledTimes(1);
-    const [a, b] = compare.mock.calls[0] as [Buffer, Buffer];
-    expect(a.length).toBe(32);
-    expect(b.length).toBe(32);
-  } finally {
-    compare.mockRestore();
+  for (const sent of [token.slice(0, 8), `${token}${newToken()}`]) {
+    const compare = spyOn(crypto, "timingSafeEqual");
+    try {
+      expect(rejection(`Bearer ${sent}`)).toEqual({ status: 401, code: "unauthorized" });
+      expect(compare).toHaveBeenCalledTimes(1);
+      const [a, b] = compare.mock.calls[0] as [Buffer, Buffer];
+      expect(a.length).toBe(sent.length);
+      expect(b.length).toBe(sent.length);
+    } finally {
+      compare.mockRestore();
+    }
   }
 });
