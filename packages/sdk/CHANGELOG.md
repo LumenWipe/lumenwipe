@@ -11,6 +11,8 @@ version number before 0.4.0. Neither has a git tag.
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-17
+
 ### Added
 
 - `PhoenixStakePosition` gains optional `shareToken`, the pool's LP share token.
@@ -441,7 +443,8 @@ fee-bump/allowance endpoints above weren't added until after this tag.
 - Configurable timeout and custom `fetch` injection, for non-browser/non-Node environments and
   testing.
 
-[Unreleased]: https://github.com/LumenWipe/lumenwipe/compare/sdk-v0.11.0...HEAD
+[Unreleased]: https://github.com/LumenWipe/lumenwipe/compare/sdk-v0.12.0...HEAD
+[0.12.0]: https://github.com/LumenWipe/lumenwipe/compare/sdk-v0.11.0...sdk-v0.12.0
 [0.11.0]: https://github.com/LumenWipe/lumenwipe/compare/sdk-v0.10.2...sdk-v0.11.0
 [0.10.2]: https://github.com/LumenWipe/lumenwipe/compare/sdk-v0.10.1...sdk-v0.10.2
 [0.10.1]: https://github.com/LumenWipe/lumenwipe/compare/sdk-v0.10.0...sdk-v0.10.1

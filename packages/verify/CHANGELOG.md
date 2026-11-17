@@ -7,6 +7,8 @@ release is cut.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-17
+
 ### Added
 
 - The bundled contract registry module gains `exitCapableProtocols(network)`, which names the
@@ -132,7 +134,8 @@ The bundled exchange and contract registries are unchanged.
   is optional, and a rejection may mutate the snapshot instead of, or with, the transaction.
 - The package ships its `LICENSE` and this `CHANGELOG.md`.
 
-[Unreleased]: https://github.com/LumenWipe/lumenwipe/compare/verify-v0.4.0...HEAD
+[Unreleased]: https://github.com/LumenWipe/lumenwipe/compare/verify-v0.5.0...HEAD
+[0.5.0]: https://github.com/LumenWipe/lumenwipe/compare/verify-v0.4.0...verify-v0.5.0
 [0.4.0]: https://github.com/LumenWipe/lumenwipe/compare/verify-v0.3.0...verify-v0.4.0
 [0.3.0]: https://github.com/LumenWipe/lumenwipe/compare/verify-v0.2.0...verify-v0.3.0
 [0.2.0]: https://github.com/LumenWipe/lumenwipe/compare/verify-v0.1.0...verify-v0.2.0
