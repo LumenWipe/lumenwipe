@@ -67,7 +67,7 @@ export default function HeroAccountInput() {
           error={error}
           placeholder={T.placeholder}
           groupClassName="flex-col items-stretch sm:flex-row sm:items-center rounded-2xl border border-line-strong bg-white/[0.04] p-2 transition-colors has-[input[aria-invalid=true]]:border-danger has-[input:focus-visible]:outline has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-focus"
-          inputClassName="border-0 bg-transparent px-2 sm:px-0 sm:pr-2 text-label text-white focus-visible:outline-none"
+          inputClassName="border-0 bg-transparent px-2 sm:px-0 sm:pr-2 text-body-sm text-white focus-visible:outline-none"
           leading={
             <Search
               aria-hidden
