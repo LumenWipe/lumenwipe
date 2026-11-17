@@ -40,6 +40,9 @@ interface Behaviour {
   deepMovesTrafficTo?: string;
   serviceFails?: boolean;
   healthFails?: boolean;
+  analyzeStatus?: number;
+  analyzeAddress?: string;
+  analyzeDelayMs?: number;
 }
 
 const STUB = String.raw`
@@ -118,7 +121,7 @@ let authHeaders: string[];
 const statePath = () => join(dir, "sim.json");
 const readSim = (): Sim => JSON.parse(readFileSync(statePath(), "utf8"));
 
-function respond(rev: Revision | undefined, path: string, req: Request, viaService: boolean) {
+async function respond(rev: Revision | undefined, path: string, req: Request, viaService: boolean) {
   const b = (rev && behaviours[rev.image]) ?? {};
   if (!rev || (viaService && b.serviceFails)) return new Response("down", { status: 500 });
   if (path === "/health")
@@ -142,7 +145,9 @@ function respond(rev: Revision | undefined, path: string, req: Request, viaServi
     authHeaders.push(req.headers.get("authorization") ?? "");
     if (req.headers.get("authorization") !== "Bearer smoke-key")
       return new Response("no", { status: 401 });
-    return Response.json({ address: account[1] });
+    if (b.analyzeDelayMs) await Bun.sleep(b.analyzeDelayMs);
+    if (b.analyzeStatus) return new Response("error", { status: b.analyzeStatus });
+    return Response.json({ address: b.analyzeAddress ?? account[1] });
   }
   return new Response("not found", { status: 404 });
 }
@@ -574,10 +579,57 @@ describe("deploy", () => {
     const r = await run("deploy", { API_SMOKE_KEY: "smoke-key" });
     expect(r.code).toBe(0);
     expect(authHeaders).toEqual(["Bearer smoke-key"]);
-    expect(r.summary).toContain("| analyze | pass |");
+    expect(r.summary).toMatch(/\| analyze \| pass \(\d+\.\d s\) \|/);
     expect(r.stdout).not.toContain("smoke-key");
     expect(r.summary).not.toContain("smoke-key");
     expect(readFileSync(join(dir, "calls.log"), "utf8")).not.toContain("smoke-key");
+  });
+
+  for (const [name, behaviour] of [
+    ["a 500", { analyzeStatus: 500 }],
+    ["a 401", { analyzeStatus: 401 }],
+    ["an address that does not match", { analyzeAddress: "GOTHER" }],
+  ] as const) {
+    test(`an analyze answering ${name} fails the smoke test and never moves traffic`, async () => {
+      behaviours[IMAGE] = { gitSha: SHA, ...behaviour };
+      const r = await run("deploy", { API_SMOKE_KEY: "smoke-key" });
+      expect(r.code).toBe(1);
+      expect(authHeaders).toEqual(["Bearer smoke-key", "Bearer smoke-key"]);
+      expect(r.summary).toMatch(/\| analyze \| \*\*fail\*\* \(\d+\.\d s\) \|/);
+      expect(r.everServed.has(CAND)).toBe(false);
+      expect(r.sim.traffic).toEqual([
+        { latestRevision: true, percent: 100, revisionName: RESTORED },
+      ]);
+    });
+  }
+
+  test("an analyze slower than ANALYZE_TIMEOUT fails the smoke test", async () => {
+    behaviours[IMAGE] = { gitSha: SHA, analyzeDelayMs: 2000 };
+    const r = await run("deploy", {
+      API_SMOKE_KEY: "smoke-key",
+      ANALYZE_TIMEOUT: "1",
+      SMOKE_TRIES: "1",
+    });
+    expect(r.code).toBe(1);
+    expect(r.summary).toMatch(/\| analyze \| \*\*fail\*\* \(\d+\.\d s\) \|/);
+    expect(r.everServed.has(CAND)).toBe(false);
+  });
+
+  test("the analyze timeout outlasts the API's own request deadline", () => {
+    const read = (path: string, pattern: RegExp) => {
+      const match = pattern.exec(readFileSync(join(import.meta.dir, "..", path), "utf8"));
+      if (!match?.[1]) throw new Error(`Could not read ${pattern} from ${path}`);
+      return Number(match[1].replace(/_/g, ""));
+    };
+    const deadlineMs = read(
+      "apps/api/src/config/constants.ts",
+      /^export const REQUEST_DEADLINE_MS = ([\d_]+);/m
+    );
+    const timeoutS = read(
+      "scripts/deploy-api.sh",
+      /^ANALYZE_TIMEOUT="\$\{ANALYZE_TIMEOUT:-(\d+)\}"$/m
+    );
+    expect(timeoutS).toBeGreaterThan(deadlineMs / 1000);
   });
 });
 
