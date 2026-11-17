@@ -89,7 +89,7 @@ export interface AllowanceCoverage {
 }
 
 // @public
-export type AllowanceSource = "events" | "registry";
+export type AllowanceSource = "events" | "indexer" | "registry";
 
 // @public
 export interface AllowancesResult {

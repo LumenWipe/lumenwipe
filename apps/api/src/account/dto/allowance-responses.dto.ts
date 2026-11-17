@@ -11,7 +11,7 @@ import { PlanBlockerDto } from "@/common/dto/plan-blocker.dto";
 
 // Documentation-only (see close/dto/close-requests.dto.ts's header comment for why).
 
-const ALLOWANCE_SOURCES: AllowanceSource[] = ["events", "registry"];
+const ALLOWANCE_SOURCES: AllowanceSource[] = ["events", "indexer", "registry"];
 const DEFI_PROTOCOLS: DefiProtocol[] = ["blend", "aquarius", "soroswap", "phoenix", "fxdao"];
 
 export class AllowanceDto implements Allowance {

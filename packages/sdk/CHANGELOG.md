@@ -13,6 +13,9 @@ version number before 0.4.0. Neither has a git tag.
 
 ### Added
 
+- `AllowanceSource` gains `"indexer"`: an approval the API found through StellarIndex, in the
+  account's operations or a token's transfer feed. Its amount is read from the ledger like every
+  other source's.
 - `SorobanTokenSource` gains `"indexer"`: a token the API found in the account's received
   movements on StellarIndex. Its balance is read from the ledger like every other source's.
 

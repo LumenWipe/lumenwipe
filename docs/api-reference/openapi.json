@@ -11404,6 +11404,7 @@
               "type": "string",
               "enum": [
                 "events",
+                "indexer",
                 "registry"
               ]
             }
@@ -11427,6 +11428,7 @@
             "type": "string",
             "enum": [
               "events",
+              "indexer",
               "registry"
             ]
           },
