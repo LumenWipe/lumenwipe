@@ -40,11 +40,27 @@
     "expires": "2027-02-14"
   },
   {
+    "advisory": "CVE-2026-107493",
+    "package": "libssl3t64",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie and trixie-security openssl 3.5.7-1~deb13u3: vulnerable, no fixed version. Use after free when an application passes an existing stack to PEM_X509_INFO_read_bio_ex() and keeps using it after a failed read; OpenSSL itself never does this. From the distroless base image, which ships libssl3t64 3.5.7-1~deb13u3; nothing in the image loads the system libssl or libcrypto: a DT_NEEDED scan of every ELF in the pinned amd64 image (285 files, layers fetched by digest) finds libcrypto.so.3 only in libssl3t64's own libssl.so.3 and engines-3, node links neither (it bundles OpenSSL 3.5.9), and the API's production node_modules hold no ELF file. The API reads no PEM certificate bundle.",
+    "added": "2026-11-18",
+    "expires": "2026-12-17"
+  },
+  {
     "advisory": "CVE-2026-107496",
     "package": "libssl3t64",
     "severity": "high",
     "reason": "Debian security tracker, trixie and trixie-security openssl 3.5.7-1~deb13u3: vulnerable, no fixed version. CMS_encrypt() loops forever on an EC recipient certificate of group order 1. From the distroless base image, which ships libssl3t64 3.5.7-1~deb13u3; nothing in the image loads the system libssl or libcrypto: a DT_NEEDED scan of every ELF in the pinned amd64 image (285 files, layers fetched by digest) finds libcrypto.so.3 only in libssl3t64's own libssl.so.3 and engines-3, node links neither (it bundles OpenSSL 3.5.9), and the API's production node_modules hold no ELF file. The API performs no CMS encryption.",
     "added": "2026-11-17",
+    "expires": "2026-12-17"
+  },
+  {
+    "advisory": "CVE-2026-124709",
+    "package": "libssl3t64",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie and trixie-security openssl 3.5.7-1~deb13u3: vulnerable, no fixed version. A QUIC server keeps the state of a rejected stream the peer reset first, so a client can grow server memory without bound. From the distroless base image, which ships libssl3t64 3.5.7-1~deb13u3; nothing in the image loads the system libssl or libcrypto: a DT_NEEDED scan of every ELF in the pinned amd64 image (285 files, layers fetched by digest) finds libcrypto.so.3 only in libssl3t64's own libssl.so.3 and engines-3, node links neither (it bundles OpenSSL 3.5.9), and the API's production node_modules hold no ELF file. The API runs no QUIC server.",
+    "added": "2026-11-18",
     "expires": "2026-12-17"
   },
   {
