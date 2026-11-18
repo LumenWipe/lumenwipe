@@ -37,12 +37,22 @@ describe("presets", () => {
     expect(
       presetSelection(
         "protocol",
-        off("soroswap-lp", "aquarius-lp", "blend-supply", "phoenix-lp", "allowances")
+        off(
+          "soroswap-lp",
+          "aquarius-lp",
+          "blend-supply",
+          "phoenix-lp",
+          "allowances",
+          "soroban-token"
+        )
       )
     ).toBeNull();
     expect(
       ids(
-        presetSelection("protocol", off("soroswap-lp", "blend-supply", "phoenix-lp", "allowances"))!
+        presetSelection(
+          "protocol",
+          off("soroswap-lp", "blend-supply", "phoenix-lp", "allowances", "soroban-token")
+        )!
       )
     ).toEqual(["aquarius-lp"]);
   });

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { YAML } from "bun";
 
@@ -20,6 +20,9 @@ const ciText = readFileSync(join(WORKFLOWS, "ci.yml"), "utf8");
 const ci = YAML.parse(ciText) as Workflow;
 const reviewText = readFileSync(join(WORKFLOWS, "integration-funded-review.yml"), "utf8");
 const review = YAML.parse(reviewText) as Workflow;
+const nightlyText = readFileSync(join(WORKFLOWS, "e2e-nightly.yml"), "utf8");
+const nightly = YAML.parse(nightlyText) as Workflow;
+const PLAYGROUND_TOKEN_SECRET = "PLAYGROUND_TOKEN_ADMIN_SECRET_TESTNET";
 
 function jobLines(text: string, job: string): [number, number] {
   const lines = text.split("\n");
@@ -137,5 +140,25 @@ describe("integration-funded-review.yml", () => {
     expect(checkout.run).toContain('"+refs/pull/$PR/head:refs/remotes/pr/head"');
     expect(checkout.run).toContain('if [ "$fetched" != "$SHA" ]; then');
     expect(checkout.run).toContain('git checkout -q --detach "$SHA"');
+  });
+});
+
+describe("e2e-nightly.yml", () => {
+  test("runs on its schedule or by hand, never for a pull request", () => {
+    expect(Object.keys(nightly.on).sort()).toEqual(["schedule", "workflow_dispatch"]);
+  });
+
+  test("only the playground job, in the testnet-funded environment, names the token admin's key", () => {
+    expect(nightly.jobs.playground.environment).toBe("testnet-funded");
+    const [start, end] = jobLines(nightlyText, "playground");
+    const lines = linesNaming(nightlyText, PLAYGROUND_TOKEN_SECRET);
+    expect(lines.length).toBeGreaterThan(0);
+    for (const line of lines) {
+      expect(line).toBeGreaterThanOrEqual(start);
+      expect(line).toBeLessThan(end);
+    }
+    for (const file of readdirSync(WORKFLOWS).filter((f) => f !== "e2e-nightly.yml")) {
+      expect(readFileSync(join(WORKFLOWS, file), "utf8")).not.toContain(PLAYGROUND_TOKEN_SECRET);
+    }
   });
 });

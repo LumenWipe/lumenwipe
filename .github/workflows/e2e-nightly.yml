@@ -88,12 +88,15 @@ jobs:
 
   # The playground's suite (apps/playground/tests/e2e): the standard recipe end to end through the
   # real API, and the plain-language error copy. Its own job so a playground failure never reads
-  # as the close path breaking. No secret: tests/e2e/serve.ts creates the playground's issuer and
-  # market maker per run through Friendbot, with a fresh encryption key, and the API key below is
-  # scoped to this run. The hosted playground's accounts are never used.
+  # as the close path breaking. tests/e2e/serve.ts creates the playground's issuer and market maker
+  # per run through Friendbot, with a fresh encryption key, and the API key below is scoped to this
+  # run. The one standing key is the playground token's testnet admin, which mints the token the
+  # Soroban token scenario seeds: it comes from the testnet-funded environment, which deploys from
+  # main only, so no pull request's run can read it.
   playground:
     name: playground against testnet
     runs-on: ubuntu-latest
+    environment: testnet-funded
     outputs:
       suite: ${{ steps.suite.outcome }}
     # Run 42844639885 (23 tests) ran into Playwright's globalTimeout (80 minutes in CI) at 1.3 h:
@@ -133,6 +136,7 @@ jobs:
           API_KEYS: playground=${{ github.run_id }}-playground
           LUMENWIPE_API_URL: http://localhost:3001
           LUMENWIPE_API_KEY: ${{ github.run_id }}-playground
+          PLAYGROUND_TOKEN_ADMIN_SECRET_TESTNET: ${{ secrets.PLAYGROUND_TOKEN_ADMIN_SECRET_TESTNET }}
         run: bun run --filter '@lumenwipe/playground' test:e2e
 
       # Always, for the same reason as the web suite's report. No spec reads the credentials

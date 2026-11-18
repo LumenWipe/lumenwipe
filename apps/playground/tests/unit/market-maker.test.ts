@@ -227,6 +227,7 @@ describe("setup step", () => {
       recordClaimableBalances: async () => {},
       allowances: [],
       recordAllowance: async () => {},
+      tokenAdmin: null,
     };
     let posted: Transaction | null = null;
     const reads: string[] = [];

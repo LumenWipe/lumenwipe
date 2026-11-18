@@ -616,6 +616,10 @@ export const ENVIRONMENT: Record<EnvApp, Record<string, EnvironmentFacts>> = {
       default: NONE,
       purpose: "Testnet market maker that funds each demo",
     },
+    PLAYGROUND_TOKEN_ADMIN_SECRET_TESTNET: optional(
+      "Testnet admin of the playground token: mints it and signs `bun run token:deploy`; without it the Soroban token scenario is unavailable",
+      true
+    ),
     PLAYGROUND_DISABLED_SCENARIOS: optional("Comma-separated scenario ids to switch off"),
     CRON_SECRET: {
       required: "Yes",

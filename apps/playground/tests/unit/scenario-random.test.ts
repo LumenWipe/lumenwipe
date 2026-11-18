@@ -208,6 +208,7 @@ test("v1 draws from the six scenarios it shipped with, so a later scenario never
     "blend-supply",
     "phoenix-lp",
     "allowances",
+    "soroban-token",
     "fee-bump",
     "exchange-close",
   ]);

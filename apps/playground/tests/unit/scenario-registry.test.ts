@@ -9,8 +9,10 @@ import {
   SCENE_NODE_KINDS,
   SUB_ENTRY_NODE_KINDS,
   withPinnedBalances,
+  type MessStepDef,
   type ScenarioBuild,
   type ScenarioDefinition,
+  type TokenDisposition,
 } from "@/lib/scenarios";
 import {
   CLOSE_GROUP_SECONDS,
@@ -89,6 +91,9 @@ function builds(def: ScenarioDefinition): ScenarioBuild[] {
   });
 }
 
+const isMint = (step: MessStepDef, disposition: TokenDisposition): boolean =>
+  step.action.kind === "mint_token" && step.action.disposition === disposition;
+
 /** The exchange deposit changes only where the close goes: it adds no entry and no mess step,
  *  and costs the demo nothing but the close round of its own its relay merge takes. */
 const DESTINATION_ONLY: readonly string[] = ["exchange-close"];
@@ -126,6 +131,11 @@ describe.each(SCENARIOS.map((def) => [def.id, def] as const))("%s", (_id, def) =
       if (DESTINATION_ONLY.includes(def.id)) {
         expect(cost.xlm).toBe(0);
         expect(cost.subEntries).toBe(0);
+        continue;
+      }
+      // The token's admin pays for its mint, so a token the close leaves costs the demo nothing.
+      if (build.steps.every(({ step }) => isMint(step, "residue"))) {
+        expect(cost.xlm).toBe(0);
         continue;
       }
       expect(cost.xlm).toBeGreaterThan(0);
@@ -167,6 +177,15 @@ describe.each(SCENARIOS.map((def) => [def.id, def] as const))("%s", (_id, def) =
         expect(kinds.every((k) => k === "allowance")).toBe(true);
         expect(expectation.closeOperations).toBe(0);
         expect(expectation.operationTypes).toEqual([]);
+        continue;
+      }
+      // The token needs no trustline, and its transfer back, when the session chose one, is a
+      // contract call of its own; a token left with the closed address adds nothing at all.
+      if (kinds.includes("token")) {
+        expect(kinds).toEqual(["token"]);
+        expect(expectation.closeOperations).toBe(0);
+        const sendsBack = build.steps.some(({ step }) => isMint(step, "transfer"));
+        expect(expectation.operationTypes).toEqual(sendsBack ? ["invokeHostFunction"] : []);
         continue;
       }
       const positions = kinds.filter((k) => k === "position");
@@ -220,8 +239,9 @@ describe.each(SCENARIOS.map((def) => [def.id, def] as const))("%s", (_id, def) =
           actions("phoenix_provide")
       );
       if (count("position") > 0) expect(expectation.operationTypes).toContain("invokeHostFunction");
-      // One allowance per approve, each a contract call of its own.
+      // One allowance per approve, each a contract call of its own, and one token per mint.
       expect(count("allowance")).toBe(actions("approve_allowance"));
+      expect(count("token")).toBe(actions("mint_token"));
       // Only the account's own entries hold a reserve; a position lives in a contract.
       const subEntries = nodes.filter((n) => SUB_ENTRY_NODE_KINDS.includes(n.kind)).length;
       expect(build.cost.subEntries).toBe(subEntries);

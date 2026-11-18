@@ -1,8 +1,10 @@
 // Testnet contracts and assets the protocol scenarios use, restated rather than imported (the
 // playground never imports apps/api) and checked live on 2026-11-10. They are existing public
-// testnet instances, never ones a session or an operator creates: the e2e server runs with a fresh
-// issuer and market maker each night, a pair created per session would grow the factory toward
-// the API's enumeration cap, and lib/soroban-submit.ts refuses to create a contract by design.
+// testnet instances, never ones a session creates: the e2e server runs with a fresh issuer and
+// market maker each night, a pair created per session would grow the factory toward the API's
+// enumeration cap, and lib/soroban-submit.ts refuses to create a contract by design. The one
+// exception is the playground token below, which an operator creates once, at an address its
+// admin and salt fix in advance.
 //
 // Isomorphic like the rest of lib/scenarios: plain strings, no Stellar SDK. The verifier and the
 // executors both read them from here; tests/unit/pinned-contracts.test.ts derives each asset
@@ -182,6 +184,28 @@ export const ALLOWANCE_SEED = {
  * own ceiling is `MAX_SOROBAN_FEE_STROOPS` (1 XLM).
  */
 export const ALLOWANCE_FEE_ESTIMATE_XLM = 0.2;
+
+/**
+ * The playground's own SEP-41 token, with no trustline and no classic asset behind it: an instance
+ * of the token code LWPHX runs (`f55016ce…`, read live on 2026-11-18), created by `admin` with
+ * `salt` and initialized with the name, symbol and decimals below (scripts/deploy-token.ts).
+ * `contract` follows from the admin, the salt and the network alone, so it is pinned before the
+ * contract exists; tests/unit/playground-token.test.ts derives it. Only `admin` can mint, and it is
+ * where a transfer of the token goes back to.
+ */
+export const PLAYGROUND_TOKEN = {
+  contract: "CDRNNF3OGJ3O3JH3BDGFZGXBZWMNQJYFWKVRLQVKSZ7ORHDZHVCUDO5C",
+  admin: "GCPQLFOJ7O7BB54723MXFEJYEE3MGGZ34DMH2BZ2IUUKNPBHPE6EGLHU",
+  /** sha256("lumenwipe/playground-token/v1"). */
+  salt: "7210829e1a669c37edaa195e201e688c70303bfb6e1ce4f041483c5aa2c83dee",
+  wasmHash: "f55016cec9190712a7e5e58e09087bcc899393eb0d99353a5fece47bb790a7fb",
+  name: "LumenWipe Playground Token",
+  symbol: "LWTKN",
+  decimals: 7,
+} as const;
+
+/** What the token scenario's admin mints to the demo, in whole tokens. */
+export const PLAYGROUND_TOKEN_SEED = { amount: "100" } as const;
 
 /** Protocol scenarios testnet cannot run, each with the reason, shown beside the ones it can. */
 export const TESTNET_UNAVAILABLE: readonly {

@@ -91,6 +91,7 @@ async function messStep(
       mm: () => mm,
       encrypt,
       decrypt,
+      tokenAdmin: () => null,
       executeMessStep: (planned, ctx: MessContext) =>
         executeMessStep(
           planned,

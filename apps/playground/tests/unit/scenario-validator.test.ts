@@ -37,9 +37,9 @@ const subsets = (count: number, from: number, size: number): number[][] =>
 
 /** Largest selections (eight scenarios at their maximum) that fit every rule and cap, and those
  *  the XLM cap and the contract-transaction cap refuse. Pinned so a cost change shows up here. */
-const FITTED_AT_MAX = 2382;
-const OVER_XLM_AT_MAX = 3830;
-const OVER_SOROBAN_AT_MAX = 718;
+const FITTED_AT_MAX = 5653;
+const OVER_XLM_AT_MAX = 6263;
+const OVER_SOROBAN_AT_MAX = 1669;
 
 function messageOf(selection: ScenarioSelection, registry?: readonly ScenarioDefinition[]): string {
   const result = validateSelection(selection, { registry });
@@ -168,7 +168,8 @@ describe("the safety caps", () => {
     // beside anything but data entries and a forgotten signer, and never beside the exchange
     // deposit, which adds no entry and no cost, so it fits beside any other selection. The XLM cap is reached only with a
     // protocol scenario beside the costliest classic ones, and the contract-transaction cap only
-    // with the bonded Phoenix position beside three allowances and another protocol scenario.
+    // with three allowances beside the bonded Phoenix position and another protocol scenario, or
+    // beside the token's mint and other protocol scenarios.
     let fitted = 0;
     let overXlm = 0;
     let overSoroban = 0;
@@ -186,7 +187,7 @@ describe("the safety caps", () => {
         expect(result.message).toEndWith(`a demo can use at most ${MAX_SESSION_XLM}.`);
       } else if (result.message.startsWith("This selection needs ")) {
         overSoroban++;
-        expect(chosen.some((c) => c.id === "phoenix-lp")).toBe(true);
+        expect(chosen.some((c) => c.id === "phoenix-lp" || c.id === "soroban-token")).toBe(true);
         expect(chosen.some((c) => c.id === "allowances")).toBe(true);
         expect(result.message).toEndWith(`the limit is ${MAX_SOROBAN_TRANSACTIONS}.`);
       } else if (result.message.startsWith("Sponsored fee ")) {

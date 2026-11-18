@@ -10,12 +10,17 @@ import {
   MEDIATOR_UNAVAILABLE_REASON,
   REGISTRY_STALE_REASON,
   SWITCHED_OFF_REASON,
+  TOKEN_ADMIN_MISSING_REASON,
+  TOKEN_CHECK_FAILED_REASON,
+  TOKEN_NOT_DEPLOYED_REASON,
   exchangeUnavailableReason,
   parseDisabledScenarios,
   unavailableFrom,
   unavailableScenarios,
   withMediatorCheck,
+  withTokenCheck,
 } from "@/lib/scenario-availability";
+import { TOKEN_ADMIN_SECRET_ENV, tokenAdminKeypair } from "@/lib/token-deploy";
 import { EXCHANGE_STAND_IN, parseUnavailable, validateSelection } from "@/lib/scenarios";
 import { expectedFeeAccount } from "@/lib/verify-feebump";
 import { expectedMediator } from "@/lib/verify-mediator";
@@ -54,6 +59,8 @@ test("the client reads the route's list and skips anything malformed", () => {
 const FEE_ENV = "PLAYGROUND_EXPECTED_FEE_ACCOUNT_TESTNET";
 const MEDIATOR_ENV = "PLAYGROUND_EXPECTED_MEDIATOR_TESTNET";
 const NO_API = { LUMENWIPE_API_URL: undefined, LUMENWIPE_API_KEY: undefined };
+/** No token admin key, so no test reads the ledger. */
+const NO_TOKEN_ADMIN = { [TOKEN_ADMIN_SECRET_ENV]: undefined };
 /** A configured mediator key, so the fee tests see only the fee account's effect. */
 const mediatorKey = Keypair.random().publicKey();
 
@@ -80,12 +87,24 @@ async function withEnv(
 test("the reason is plain language, and the list is read from the environment on each call", async () => {
   expect(SWITCHED_OFF_REASON).toBe("Switched off on this deployment for now.");
   const feeAccount = Keypair.random().publicKey();
-  const base = { ...NO_API, [FEE_ENV]: feeAccount, [MEDIATOR_ENV]: mediatorKey };
+  const base = {
+    ...NO_API,
+    ...NO_TOKEN_ADMIN,
+    [FEE_ENV]: feeAccount,
+    [MEDIATOR_ENV]: mediatorKey,
+  };
   await withEnv({ ...base, PLAYGROUND_DISABLED_SCENARIOS: "data-entries" }, async () => {
-    expect([...(await unavailableScenarios()).keys()]).toEqual(["data-entries", "exchange-close"]);
+    expect([...(await unavailableScenarios()).keys()]).toEqual([
+      "data-entries",
+      "soroban-token",
+      "exchange-close",
+    ]);
   });
   await withEnv({ ...base, PLAYGROUND_DISABLED_SCENARIOS: "exchange-close" }, async () => {
-    expect([...(await unavailableScenarios())]).toEqual([["exchange-close", SWITCHED_OFF_REASON]]);
+    expect([...(await unavailableScenarios())]).toEqual([
+      ["exchange-close", SWITCHED_OFF_REASON],
+      ["soroban-token", TOKEN_ADMIN_MISSING_REASON],
+    ]);
   });
 });
 
@@ -233,10 +252,11 @@ describe("the exchange close", () => {
       PLAYGROUND_DISABLED_SCENARIOS: undefined,
       [FEE_ENV]: Keypair.random().publicKey(),
       [MEDIATOR_ENV]: mediatorKey,
+      ...NO_TOKEN_ADMIN,
     };
     await withEnv(env, async () => {
       globalThis.fetch = answer(READY);
-      expect((await unavailableScenarios()).size).toBe(0);
+      expect([...(await unavailableScenarios()).keys()]).toEqual(["soroban-token"]);
       globalThis.fetch = answer({ ...READY, available: false });
       expect((await unavailableScenarios()).get("exchange-close")).toBe(
         MEDIATOR_UNAVAILABLE_REASON
@@ -262,5 +282,57 @@ describe("the exchange close", () => {
       ok: false,
       message: `Exchange deposit is not available here: ${MEDIATOR_KEY_MISSING_REASON}`,
     });
+  });
+});
+
+describe("the Soroban token", () => {
+  const reads = (deployed: boolean | Error) => {
+    const log = { count: 0 };
+    const read = async (): Promise<boolean> => {
+      log.count++;
+      if (deployed instanceof Error) throw deployed;
+      return deployed;
+    };
+    return { log, read };
+  };
+
+  test("is unavailable without its admin's key, and the ledger is not read", async () => {
+    const { log, read } = reads(true);
+    expect([...(await withTokenCheck(new Map(), false, read))]).toEqual([
+      ["soroban-token", TOKEN_ADMIN_MISSING_REASON],
+    ]);
+    expect(log.count).toBe(0);
+  });
+
+  test("with its admin's key, it runs once the token is on testnet", async () => {
+    const { log, read } = reads(true);
+    expect((await withTokenCheck(new Map(), true, read)).size).toBe(0);
+    expect(log.count).toBe(1);
+  });
+
+  test("before the operator deploys the token, or when the read fails, it is unavailable", async () => {
+    expect([...(await withTokenCheck(new Map(), true, reads(false).read))]).toEqual([
+      ["soroban-token", TOKEN_NOT_DEPLOYED_REASON],
+    ]);
+    expect([...(await withTokenCheck(new Map(), true, reads(new Error("rpc down")).read))]).toEqual(
+      [["soroban-token", TOKEN_CHECK_FAILED_REASON]]
+    );
+  });
+
+  test("a deployment that switched it off keeps its own reason, and the ledger is not read", async () => {
+    const { log, read } = reads(true);
+    const off = parseDisabledScenarios("soroban-token");
+    expect([...(await withTokenCheck(off, true, read))]).toEqual([
+      ["soroban-token", SWITCHED_OFF_REASON],
+    ]);
+    expect(log.count).toBe(0);
+  });
+
+  test("no key but the pinned admin's counts as its key", () => {
+    expect(tokenAdminKeypair(undefined)).toBeNull();
+    expect(tokenAdminKeypair("")).toBeNull();
+    expect(tokenAdminKeypair("not a secret key")).toBeNull();
+    expect(tokenAdminKeypair(Keypair.random().publicKey())).toBeNull();
+    expect(tokenAdminKeypair(Keypair.random().secret())).toBeNull();
   });
 });

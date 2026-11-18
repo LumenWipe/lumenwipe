@@ -714,6 +714,7 @@ describe("mess step", () => {
       mm: () => mm,
       encrypt,
       decrypt,
+      tokenAdmin: () => null,
       executeMessStep: async (planned: MessStepDef, ctx: MessContext) => {
         executed.push([planned, ctx]);
         return "a".repeat(64);
@@ -765,6 +766,20 @@ describe("mess step", () => {
     expect(ctx.persistentIssuer.publicKey()).toBe(issuer.publicKey());
     expect(ctx.mmPublic).toBe(mm.publicKey());
     expect((await store.loadSession(seeded.id))?.completedMessSteps).toEqual([...before, "OFFERS"]);
+  });
+
+  test("a step's context carries the token admin this deployment configures, or none", async () => {
+    const store = memoryStore();
+    const tokenAdmin = Keypair.random();
+    for (const configured of [tokenAdmin, null]) {
+      const seeded = await seed(store);
+      const executed: [MessStepDef, MessContext][] = [];
+      const deps = { ...messDeps(store, executed), tokenAdmin: () => configured };
+      expect((await step(seeded.id, { stepId: "SETUP" }, deps)).status).toBe(200);
+      expect(executed[0]?.[1].tokenAdmin?.publicKey() ?? null).toBe(
+        configured?.publicKey() ?? null
+      );
+    }
   });
 
   test("a light session refuses a step its plan does not contain, and nothing runs", async () => {

@@ -49,6 +49,7 @@ import {
   PHOENIX,
   PHOENIX_SEED,
   PINNED_ASSETS,
+  PLAYGROUND_TOKEN,
   SOROSWAP,
   ALLOWANCE_SEED,
   XLM_SAC,
@@ -97,6 +98,8 @@ export interface MessContext {
   /** Records spender `index`'s allowance (from 1) before its `approve` is sent, replacing what an
    *  earlier attempt of the same step recorded for it. */
   recordAllowance: (index: number, allowance: RecordedAllowance) => Promise<void>;
+  /** The playground token's admin, from configuration; null when this deployment has none. */
+  tokenAdmin: Keypair | null;
 }
 
 /**
@@ -518,6 +521,23 @@ export function approveAllowanceCall(
   };
 }
 
+/** `mint(to, amount)` on the playground token, which only its admin may call. */
+export function mintTokenCall(demoPublic: string, amount: string): ContractCall {
+  return {
+    contract: PLAYGROUND_TOKEN.contract,
+    function: "mint",
+    args: [scAddress(demoPublic), scI128(networkStroops(amount))],
+  };
+}
+
+/** Sends of the mint before a sequence another session's mint took first is final. */
+const MINT_ATTEMPTS = 3;
+const MINT_RETRY_MS = 2_000;
+
+/** The mint was refused as sent with a stale sequence: nothing applied, so it can be sent again. */
+const isBadSequence = (err: unknown): boolean =>
+  err instanceof Error && err.message === "send_rejected: txBadSeq";
+
 /**
  * The ledger an allowance lives until: the farthest the network accepts, the latest ledger plus
  * its maximum entry TTL less one (the asset contract refuses anything later), or
@@ -804,6 +824,23 @@ export const MESS_EXECUTORS: { [K in StepActionKind]: Executor<K> } = {
       liveUntilLedger
     );
     return (await contractCall(ctx.demo, call)).txHash;
+  },
+  // Signed by the token's admin (lib/accounts.ts loads only the pinned one), never the demo. Every
+  // session's mint shares that key, so a mint whose sequence another one took is sent again.
+  mint_token: async (action, ctx, _submit, deps) => {
+    const admin = ctx.tokenAdmin;
+    if (!admin) throw new Error("The playground token's admin key is not configured");
+    const contractCall = deps.contractCall ?? seedContractCall;
+    const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+    const call = mintTokenCall(ctx.demo.publicKey(), action.amount);
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return (await contractCall(admin, call)).txHash;
+      } catch (err) {
+        if (attempt >= MINT_ATTEMPTS || !isBadSequence(err)) throw err;
+        await sleep(MINT_RETRY_MS * attempt);
+      }
+    }
   },
   // Read live just before it is sent: every earlier step has changed the balance and the entries.
   drain_to_fee_floor: async (_action, ctx, _submit, deps) => {

@@ -45,6 +45,7 @@ const ctx = (): MessContext => ({
   recordClaimableBalances: async () => {},
   allowances: [],
   recordAllowance: async () => {},
+  tokenAdmin: null,
 });
 
 const selectionOf = (variant: 0 | 1) => ({

@@ -46,6 +46,7 @@ const ctx = (): MessContext => ({
   recordClaimableBalances: async () => {},
   allowances: [],
   recordAllowance: async () => {},
+  tokenAdmin: null,
 });
 
 const planOf = (...ids: ScenarioId[]) =>
