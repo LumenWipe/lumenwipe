@@ -4,23 +4,28 @@ import {
   DEFAULT_HISTORY_HOURS,
   accountsFor,
   addressVariable,
+  anyDebitIsPayout,
   balanceFinding,
+  checkStatus,
   formatFinding,
-  forwardFinding,
+  forwardFindings,
   historyWindowHours,
-  incompleteHistoryFinding,
+  incompleteRead,
   keysFindings,
   loadServiceAccounts,
   nativeBalanceStroops,
   operationsInWindow,
   plannedAccounts,
   operatorVariable,
-  readsOwnEffects,
+  removalOperations,
   retiredVariable,
+  sequenceFinding,
   sourcedFinding,
   sponsorDebitFindings,
   effectsInWindow,
+  transactionOf,
   transactionsInWindow,
+  wholeTransactions,
   type HorizonAccountEffect,
   type HorizonEffect,
   type HorizonOperation,
@@ -459,9 +464,53 @@ describe("transactionsInWindow", () => {
     const { get, paths } = horizon(history);
     const result = await transactionsInWindow(get, MEDIATOR, new Date(0), 2);
     expect(result.complete).toBe(false);
+    expect(result.stopped).toBe("the 2-page cap was reached; lower MONITOR_HISTORY_HOURS");
     expect(result.transactions).toHaveLength(400);
     expect(paths).toHaveLength(2);
-    expect(incompleteHistoryFinding(mediator, 168).message).toContain("in the last 168 h");
+    const unread = incompleteRead(mediator, 168, "transactions", {
+      count: result.transactions.length,
+      stopped: result.stopped,
+    });
+    expect(unread.message).toContain(
+      "only the newest 400 transactions of the last 168 h were read"
+    );
+    expect(unread.message).toContain("lower MONITOR_HISTORY_HOURS");
+  });
+
+  test("a request that fails keeps the pages read before it and says why it stopped", async () => {
+    const { get } = horizon(history);
+    let calls = 0;
+    const failing = async (path: string) => {
+      if (++calls === 2) throw new Error("Horizon testnet returned 503 for /accounts");
+      return get(path);
+    };
+    const result = await transactionsInWindow(failing, MEDIATOR, new Date(0));
+    expect(result).toEqual({
+      transactions: history.slice(0, 200),
+      complete: false,
+      stopped: "Horizon testnet returned 503 for /accounts",
+    });
+  });
+
+  test("a first request that fails is an incomplete read of nothing, never an empty window", async () => {
+    const result = await transactionsInWindow(
+      async () => {
+        throw new Error("the check's 300 s time budget ran out");
+      },
+      MEDIATOR,
+      new Date(0)
+    );
+    expect(result).toEqual({
+      transactions: [],
+      complete: false,
+      stopped: "the check's 300 s time budget ran out",
+    });
+    expect(
+      incompleteRead(mediator, 168, "transactions", { count: 0, stopped: result.stopped }).message
+    ).toBe(
+      "none of the transactions of the last 168 h were read before the read stopped: " +
+        "the check's 300 s time budget ran out. The rest were not checked."
+    );
   });
 });
 
@@ -503,217 +552,283 @@ describe("balanceFinding", () => {
   });
 });
 
-describe("forwardFinding", () => {
+// The account's own effects list, as the forward check reads it: every effect of one transaction
+// carries its time and an `<operation id>-<index>` paging token inside that transaction.
+const FORWARD_TX = 24829588190277632n;
+const inTransaction = (
+  effects: HorizonEffect[],
+  base = FORWARD_TX,
+  createdAt = tx.created_at
+): HorizonAccountEffect[] =>
+  effects.map((effect, i) => ({
+    asset_type: "native",
+    created_at: createdAt,
+    paging_token: `${base + 1n}-${i + 1}`,
+    ...effect,
+  }));
+
+describe("forwardFindings", () => {
   const merge = (amount: string) => ({ type: "account_credited", account: MEDIATOR, amount });
   const forward = (amount: string) => ({ type: "account_debited", account: MEDIATOR, amount });
 
   test("a forward equal to the merge is the legitimate shape", () => {
-    const effects = [
+    const effects = inTransaction([
       { type: "account_removed", account: USER },
       merge("9999.9999800"),
       forward("9999.9999800"),
       { type: "account_credited", account: "GEXCHANGE", amount: "9999.9999800" },
-    ];
-    expect(forwardFinding(mediator, tx, effects)).toBeNull();
+    ]);
+    expect(forwardFindings(mediator, effects, [])).toEqual([]);
   });
 
   test("a forward one stroop above the merge fires", () => {
-    const finding = forwardFinding(mediator, tx, [merge("100.0000000"), forward("100.0000001")]);
+    const effects = inTransaction([merge("100.0000000"), forward("100.0000001")]);
+    const [finding] = forwardFindings(mediator, effects, []);
     expect(finding?.message).toContain("paid out 100.0000001 XLM but the merge delivered 100 XLM");
-    expect(finding?.message).toContain(tx.hash);
+    expect(finding?.message).toContain(`operations ${FORWARD_TX + 1n} (${tx.created_at})`);
   });
 
   test("a forward with no merge at all fires", () => {
-    expect(forwardFinding(mediator, tx, [forward("5")])).not.toBeNull();
+    expect(forwardFindings(mediator, inTransaction([forward("5")]), [])).toHaveLength(1);
   });
 
   test("an operator top-up is only a credit and stays quiet", () => {
-    expect(forwardFinding(mediator, tx, [merge("50")])).toBeNull();
+    expect(forwardFindings(mediator, inTransaction([merge("50")]), [])).toEqual([]);
   });
 
   test("effects on other accounts do not count", () => {
-    const effects = [
+    const effects = inTransaction([
       merge("10"),
       forward("10"),
       { type: "account_debited", account: USER, amount: "1000" },
+    ]);
+    expect(forwardFindings(mediator, effects, [])).toEqual([]);
+  });
+
+  test("a merge in one transaction does not cover a forward in another", () => {
+    const effects = [
+      ...inTransaction([forward("10")], FORWARD_TX),
+      ...inTransaction([merge("10")], FORWARD_TX - 4096n),
     ];
-    expect(forwardFinding(mediator, tx, effects)).toBeNull();
+    expect(forwardFindings(mediator, effects, [])).toHaveLength(1);
+  });
+
+  test("a credit of another asset does not cover an XLM debit", () => {
+    const effects = inTransaction([
+      { ...merge("100"), asset_type: "credit_alphanum4", asset_code: "USDC" },
+      forward("100"),
+    ]);
+    const [finding] = forwardFindings(mediator, effects, []);
+    expect(finding?.message).toContain("paid out 100 XLM but the merge delivered 0 XLM");
+  });
+
+  test("a debit of another asset is not counted as XLM paid out", () => {
+    const effects = inTransaction([
+      merge("10"),
+      forward("10"),
+      { ...forward("5"), asset_type: "credit_alphanum4", asset_code: "USDC" },
+    ]);
+    expect(forwardFindings(mediator, effects, [])).toEqual([]);
+  });
+
+  test("a credit-only flood is quiet however long", () => {
+    const flood = Array.from({ length: 300 }, (_, i) =>
+      inTransaction([merge("0.0000001")], FORWARD_TX - BigInt(i) * 4096n)
+    ).flat();
+    expect(forwardFindings(mediator, flood, [])).toEqual([]);
   });
 });
 
-describe("forwardFinding on a rotation's drain", () => {
-  // The relay drain of the 2026-11-17 testnet rotation, 1b2ea80a…f282, with the effects Horizon
-  // returns for it: the operator sources the transaction, the retired relay merges into it.
+describe("transactionOf", () => {
+  test("groups the operations of one transaction by their TOID", () => {
+    const [merge, payment] = inTransaction([
+      { type: "account_credited", account: MEDIATOR, amount: "1" },
+      { type: "account_debited", account: MEDIATOR, amount: "1" },
+    ]).map((effect, i) => ({ ...effect, paging_token: `${FORWARD_TX + BigInt(i + 1)}-2` }));
+    expect(transactionOf(merge)).toBe(String(FORWARD_TX));
+    expect(transactionOf(payment)).toBe(String(FORWARD_TX));
+    expect(transactionOf({ ...merge, paging_token: `${FORWARD_TX + 4097n}-1` })).toBe(
+      String(FORWARD_TX + 4096n)
+    );
+  });
+
+  test("an effect with no operation id stands alone", () => {
+    const [bare] = inTransaction([{ type: "account_debited", account: MEDIATOR, amount: "1" }]);
+    expect(transactionOf({ ...bare, paging_token: "x" })).toBe("x");
+  });
+});
+
+describe("forwardFindings on a rotation's drain", () => {
+  // The relay drain of the 2026-11-17 testnet rotation, 1b2ea80a…f282: the operator sources the
+  // transaction, the retired relay merges into it. Its own effects carry the debit and the
+  // removal; the merge's record, read by its operation id, carries the destination and source.
   const DRAIN_OP = "24829931787669506";
-  const drainTx: HorizonTransaction = {
-    hash: "1b2ea80a70265944e6335ce3173bc244dee9627ae44db0c3f35f851bdec5f282",
-    created_at: "2026-11-17T15:31:31Z",
-    source_account: OPERATOR,
-    paging_token: "24829931787669504",
-  };
-  const drain = (into: string, op = DRAIN_OP): HorizonEffect[] => [
+  const DRAIN_HASH = "1b2ea80a70265944e6335ce3173bc244dee9627ae44db0c3f35f851bdec5f282";
+  const CREATED = "2026-11-17T15:31:31Z";
+  const drain = (op = DRAIN_OP): HorizonAccountEffect[] => [
     {
       type: "account_debited",
       account: RETIRED_RELAY,
       amount: "10000.0000000",
+      asset_type: "native",
+      created_at: CREATED,
       paging_token: `${op}-1`,
     },
-    { type: "account_credited", account: into, amount: "10000.0000000", paging_token: `${op}-2` },
-    { type: "account_removed", account: RETIRED_RELAY, paging_token: `${op}-3` },
+    {
+      type: "account_removed",
+      account: RETIRED_RELAY,
+      created_at: CREATED,
+      paging_token: `${op}-3`,
+    },
   ];
-  const retiredRelay: ServiceAccount = {
-    role: "mediator",
-    network: "testnet",
-    address: RETIRED_RELAY,
-    floorXlm: "1",
-    retired: true,
-    drainTo: OPERATOR,
-  };
+  const mergeRecord = (
+    into: string,
+    txSource = OPERATOR,
+    op = DRAIN_OP,
+    source = RETIRED_RELAY
+  ): HorizonOperation => ({
+    type: "account_merge",
+    source_account: source,
+    into,
+    transaction_hash: DRAIN_HASH,
+    created_at: CREATED,
+    paging_token: op,
+    transaction: { source_account: txSource },
+  });
+
+  test("names each operation that removed the account, for a retired account only", () => {
+    expect(removalOperations(retiredRelay, drain())).toEqual([DRAIN_OP]);
+    expect(removalOperations({ ...retiredRelay, retired: undefined }, drain())).toEqual([]);
+    expect(removalOperations({ ...retiredRelay, drainTo: undefined }, drain())).toEqual([]);
+  });
 
   test("the runbook's drain into the operator is quiet", () => {
-    expect(forwardFinding(retiredRelay, drainTx, drain(OPERATOR))).toBeNull();
+    expect(forwardFindings(retiredRelay, drain(), [mergeRecord(OPERATOR)])).toEqual([]);
   });
 
   test("the same merge into another address fires", () => {
-    const finding = forwardFinding(retiredRelay, drainTx, drain(OTHER));
+    const [finding] = forwardFindings(retiredRelay, drain(), [mergeRecord(OTHER)]);
     expect(finding?.message).toContain("paid out 10000 XLM but the merge delivered 0 XLM");
   });
 
   test("a merge into the operator from a transaction it did not source fires", () => {
-    const foreign = { ...drainTx, source_account: OTHER };
-    expect(forwardFinding(retiredRelay, foreign, drain(OPERATOR))).not.toBeNull();
+    expect(forwardFindings(retiredRelay, drain(), [mergeRecord(OPERATOR, OTHER)])).toHaveLength(1);
   });
 
   test("a merge of the current relay into the operator fires", () => {
     const current = { ...retiredRelay, retired: undefined };
-    expect(forwardFinding(current, drainTx, drain(OPERATOR))).not.toBeNull();
+    expect(forwardFindings(current, drain(), [mergeRecord(OPERATOR)])).toHaveLength(1);
   });
 
   test("a retired relay with no drain destination fires", () => {
     const unset = { ...retiredRelay, drainTo: undefined };
-    expect(forwardFinding(unset, drainTx, drain(OPERATOR))).not.toBeNull();
+    expect(forwardFindings(unset, drain(), [mergeRecord(OPERATOR)])).toHaveLength(1);
   });
 
   test("a payment out next to the drain fires, in another operation", () => {
-    const payout: HorizonEffect[] = [
-      { type: "account_debited", account: RETIRED_RELAY, amount: "5", paging_token: "77-1" },
-      { type: "account_credited", account: OTHER, amount: "5", paging_token: "77-2" },
-      ...drain(OPERATOR),
+    const payout: HorizonAccountEffect[] = [
+      {
+        type: "account_debited",
+        account: RETIRED_RELAY,
+        amount: "5",
+        asset_type: "native",
+        created_at: CREATED,
+        paging_token: `${BigInt(DRAIN_OP) + 1n}-2`,
+      },
+      ...drain(),
     ];
-    const finding = forwardFinding(retiredRelay, drainTx, payout);
+    const [finding] = forwardFindings(retiredRelay, payout, [mergeRecord(OPERATOR)]);
     expect(finding?.message).toContain("paid out 10005 XLM but the merge delivered 10000 XLM");
   });
 
-  test("a credit to the operator in another operation does not offset the merge", () => {
-    const effects: HorizonEffect[] = [
-      ...drain(OTHER),
-      { type: "account_credited", account: OPERATOR, amount: "10000", paging_token: "77-1" },
-      { type: "account_removed", account: OTHER, paging_token: "77-2" },
-    ];
-    expect(forwardFinding(retiredRelay, drainTx, effects)).not.toBeNull();
+  test("a merge into the operator in another operation does not offset the merge", () => {
+    const other = String(BigInt(DRAIN_OP) + 1n);
+    const records = [mergeRecord(OTHER), mergeRecord(OPERATOR, OPERATOR, other, OTHER)];
+    expect(forwardFindings(retiredRelay, drain(), records)).toHaveLength(1);
   });
 
   test("effects with no operation to match fire", () => {
-    const bare = drain(OPERATOR).map((effect) => ({ ...effect, paging_token: undefined }));
-    expect(forwardFinding(retiredRelay, drainTx, bare)).not.toBeNull();
+    const bare = drain().map((effect) => ({ ...effect, paging_token: "x" }));
+    expect(forwardFindings(retiredRelay, bare, [mergeRecord(OPERATOR)])).toHaveLength(1);
+  });
+
+  test("a removal whose record could not be read is left unjudged, for the caller to report", () => {
+    expect(forwardFindings(retiredRelay, drain(), [])).toEqual([]);
   });
 });
 
 describe("a retired fee sponsor", () => {
-  const retiredSponsor: ServiceAccount = {
-    role: "sponsor",
-    network: "testnet",
-    address: RETIRED_SPONSOR,
-    floorXlm: "50",
-    retired: true,
-    drainTo: OPERATOR,
-  };
   // The sponsor drain of the 2026-11-17 testnet rotation, 6ccf2429…356f, as Horizon returns it.
   const DRAIN_OP = "24829936082640898";
-  const drainTx: HorizonTransaction = {
-    hash: "6ccf2429bb1a8671b2c1a97ed8b00425b7f195996a6a72d512f50da3c898356f",
-    created_at: "2026-11-17T15:31:36Z",
-    source_account: OPERATOR,
-    paging_token: "24829936082640896",
-  };
-  const drain = (into: string): HorizonEffect[] => [
+  const CREATED = "2026-11-17T15:31:36Z";
+  const drainEffects: HorizonAccountEffect[] = [
     {
       type: "account_debited",
       account: RETIRED_SPONSOR,
       amount: "9999.9998600",
+      asset_type: "native",
+      created_at: CREATED,
       paging_token: `${DRAIN_OP}-1`,
     },
     {
-      type: "account_credited",
-      account: into,
-      amount: "9999.9998600",
-      paging_token: `${DRAIN_OP}-2`,
+      type: "account_removed",
+      account: RETIRED_SPONSOR,
+      created_at: CREATED,
+      paging_token: `${DRAIN_OP}-3`,
     },
-    { type: "account_removed", account: RETIRED_SPONSOR, paging_token: `${DRAIN_OP}-3` },
   ];
+  const mergeRecord = (into: string, txSource = OPERATOR): HorizonOperation => ({
+    type: "account_merge",
+    source_account: RETIRED_SPONSOR,
+    into,
+    transaction_hash: "6ccf2429bb1a8671b2c1a97ed8b00425b7f195996a6a72d512f50da3c898356f",
+    created_at: CREATED,
+    paging_token: DRAIN_OP,
+    transaction: { source_account: txSource },
+  });
 
-  test("is read by the forward check through its transactions, the current sponsor through its effects", () => {
+  test("every account is read by the forward check through its own effects; only the current sponsor's every debit is a payout", () => {
     const accounts = loadServiceAccounts(
       { ...testnetEnv, FEE_ACCOUNT_ADDRESS_TESTNET_RETIRED: RETIRED_SPONSOR },
       testnetOnly,
       {}
     );
-    const current: ServiceAccount = {
-      role: "sponsor",
-      network: "testnet",
-      address: SPONSOR,
-      floorXlm: "50",
-    };
-    expect(accountsFor(accounts, "forward")).toEqual([mediator, current, retiredSponsor]);
-    expect(accountsFor(accounts, "forward").map(readsOwnEffects)).toEqual([false, true, false]);
+    expect(accountsFor(accounts, "forward")).toEqual([mediator, sponsor, retiredSponsor]);
+    expect(accountsFor(accounts, "forward").map(anyDebitIsPayout)).toEqual([false, true, false]);
   });
 
   test("the runbook's drain into the operator is quiet", () => {
-    expect(forwardFinding(retiredSponsor, drainTx, drain(OPERATOR))).toBeNull();
+    expect(forwardFindings(retiredSponsor, drainEffects, [mergeRecord(OPERATOR)])).toEqual([]);
   });
 
   test("the same merge into another address fires", () => {
-    const finding = forwardFinding(retiredSponsor, drainTx, drain(OTHER));
+    const [finding] = forwardFindings(retiredSponsor, drainEffects, [mergeRecord(OTHER)]);
     expect(finding?.message).toContain("paid out 9999.99986 XLM but the merge delivered 0 XLM");
   });
 
   test("a payment out fires", () => {
-    const payment: HorizonEffect[] = [
-      { type: "account_debited", account: RETIRED_SPONSOR, amount: "40", paging_token: "88-1" },
-      { type: "account_credited", account: OTHER, amount: "40", paging_token: "88-2" },
-    ];
-    const foreign = { ...drainTx, source_account: OTHER };
-    expect(forwardFinding(retiredSponsor, foreign, payment)).not.toBeNull();
+    const payment = inTransaction(
+      [{ type: "account_debited", account: RETIRED_SPONSOR, amount: "40" }],
+      FORWARD_TX,
+      CREATED
+    );
+    expect(forwardFindings(retiredSponsor, payment, [])).toHaveLength(1);
   });
 
   test("a fee bump it paid for raises nothing: a fee is not an effect", () => {
-    // 52cb1ed3…37d0, a close the testnet sponsor paid the fee for: its effects never name it.
-    const feeBump: HorizonTransaction = {
-      hash: "52cb1ed3f18d1a43e4c2abcf3813edabfc802fcd95141bb96f1f21add4f537d0",
-      created_at: "2026-11-17T15:25:56Z",
-      source_account: "GA6CGRMFIHJCIXJJ7DSI6FD6DPEIA2LC2YMJJB7MDWXVY7FSAEQAX2WY",
-      paging_token: "24829644024844288",
-    };
-    const effects: HorizonEffect[] = [
-      {
-        type: "account_debited",
-        account: feeBump.source_account,
-        amount: "1.0000000",
-        paging_token: "24829644024844289-1",
-      },
-      {
-        type: "account_credited",
-        account: OPERATOR,
-        amount: "1.0000000",
-        paging_token: "24829644024844289-2",
-      },
-      {
-        type: "account_removed",
-        account: feeBump.source_account,
-        paging_token: "24829644024844289-3",
-      },
-    ];
-    expect(forwardFinding({ ...retiredSponsor, address: SPONSOR }, feeBump, effects)).toBeNull();
+    // 52cb1ed3…37d0, a close the testnet sponsor paid the fee for: its effects never name it, so
+    // the sponsor's own effects list holds nothing for it.
+    const closer = "GA6CGRMFIHJCIXJJ7DSI6FD6DPEIA2LC2YMJJB7MDWXVY7FSAEQAX2WY";
+    const effects = inTransaction(
+      [
+        { type: "account_debited", account: closer, amount: "1.0000000" },
+        { type: "account_credited", account: OPERATOR, amount: "1.0000000" },
+        { type: "account_removed", account: closer },
+      ],
+      24829644024844288n,
+      "2026-11-17T15:25:56Z"
+    );
+    expect(forwardFindings({ ...retiredSponsor, address: SPONSOR }, effects, [])).toEqual([]);
   });
 });
 
@@ -1084,18 +1199,196 @@ describe("the current sponsor's debits", () => {
   });
 
   test("the relay's forward check fires on the same transfer: no merge delivered it", () => {
-    const debit: HorizonEffect = {
-      type: "account_debited",
-      account: MEDIATOR,
-      amount: "1.0000000",
-    };
-    const credit: HorizonEffect = {
-      type: "account_credited",
-      account: CALLER,
-      amount: "1.0000000",
-    };
-    expect(forwardFinding(mediator, { ...tx, hash: SAC_TX }, [debit, credit])?.message).toContain(
+    const debit = effect({ account: MEDIATOR });
+    expect(forwardFindings(mediator, [debit], [])[0]?.message).toContain(
       "paid out 1 XLM but the merge delivered 0 XLM"
     );
+  });
+});
+
+describe("the order accounts are read in", () => {
+  test("mainnet first, each network in its configured order", () => {
+    const mainnetRelay: ServiceAccount = { ...mediator, network: "mainnet", address: OTHER };
+    const mainnetSponsor: ServiceAccount = { ...sponsor, network: "mainnet", address: USER };
+    const accounts = [mediator, sponsor, mainnetRelay, mainnetSponsor, retiredRelay];
+    for (const check of ["keys", "forward"] as const) {
+      expect(accountsFor(accounts, check)).toEqual([
+        mainnetRelay,
+        mainnetSponsor,
+        mediator,
+        sponsor,
+        retiredRelay,
+      ]);
+    }
+    expect(accountsFor(accounts, "balances")).toEqual([
+      mainnetRelay,
+      mainnetSponsor,
+      mediator,
+      sponsor,
+    ]);
+  });
+});
+
+describe("checkStatus", () => {
+  const finding = { account: mediator, message: "fired" };
+  const unread = { account: mediator, message: "stopped" };
+
+  test("nothing fired and everything was read: clean", () => {
+    expect(checkStatus([], [])).toBe("clean");
+  });
+
+  test("something could not be read and nothing fired: incomplete, never clean", () => {
+    expect(checkStatus([], [unread])).toBe("incomplete");
+  });
+
+  test("a finding is a finding whatever else went unread", () => {
+    expect(checkStatus([finding], [])).toBe("finding");
+    expect(checkStatus([finding], [unread])).toBe("finding");
+  });
+});
+
+describe("a read that stopped inside a transaction", () => {
+  // The API's forward, newest operation first as Horizon lists it: the payment (op 2) comes
+  // before the merge into the relay (op 1), so a read that stops between them holds only the
+  // payment.
+  const FORWARD_HASH = "6065aa4ae0dc33d7a847f87b24aed3d1131bd413d2674f9088f947b90b114267";
+  const op = (fields: Partial<HorizonOperation>): HorizonOperation => ({
+    type: "payment",
+    source_account: MEDIATOR,
+    asset_type: "native",
+    transaction_hash: FORWARD_HASH,
+    created_at: "2026-11-17T15:24:51Z",
+    paging_token: "2",
+    transaction: { source_account: USER },
+    ...fields,
+  });
+  const payment = op({});
+  const setOptions = op({
+    type: "set_options",
+    transaction_hash: "c0ffee".padEnd(64, "0"),
+    paging_token: "9",
+  });
+
+  test("keys: a forward's payment without its merge is left out, so nothing fires", () => {
+    const cut = { records: [payment], complete: false, stopped: "the 1-page cap was reached" };
+    expect(keysFindings(mediator, [], [payment])).toHaveLength(1);
+    expect(
+      keysFindings(
+        mediator,
+        [],
+        wholeTransactions(cut, (o) => o.transaction_hash)
+      )
+    ).toEqual([]);
+    const findings = keysFindings(
+      mediator,
+      [],
+      wholeTransactions(cut, (o) => o.transaction_hash)
+    );
+    expect(checkStatus(findings, [incompleteRead(mediator, 168, "operations", { count: 1 })])).toBe(
+      "incomplete"
+    );
+  });
+
+  test("keys: a finding in a transaction read in full still fires when the read stopped later", () => {
+    const cut = { records: [setOptions, payment], complete: false, stopped: "Horizon timed out" };
+    const findings = keysFindings(
+      mediator,
+      [],
+      wholeTransactions(cut, (o) => o.transaction_hash)
+    );
+    expect(findings).toHaveLength(1);
+    expect(findings[0].message).toContain("set_options");
+    expect(checkStatus(findings, [incompleteRead(mediator, 168, "operations", { count: 2 })])).toBe(
+      "finding"
+    );
+  });
+
+  test("a complete read keeps its oldest transaction", () => {
+    const whole = { records: [setOptions, payment], complete: true };
+    expect(wholeTransactions(whole, (o) => o.transaction_hash)).toEqual([setOptions, payment]);
+  });
+
+  // The same forward in the relay's own effects: the debit (op …634) before the credit (op …633).
+  const debit: HorizonAccountEffect = {
+    type: "account_debited",
+    account: MEDIATOR,
+    amount: "9999.9999800",
+    asset_type: "native",
+    created_at: "2026-11-17T15:24:51Z",
+    paging_token: "24829588190277634-2",
+  };
+  const credit: HorizonAccountEffect = {
+    ...debit,
+    type: "account_credited",
+    paging_token: "24829588190277633-2",
+  };
+  const payout: HorizonAccountEffect = {
+    ...debit,
+    amount: "5",
+    created_at: "2026-11-17T16:00:00Z",
+    paging_token: "24829600000004097-1",
+  };
+
+  test("forward: a debit without the credit before it is left out, so nothing fires", () => {
+    const cut = { records: [debit], complete: false, stopped: "the 1-page cap was reached" };
+    expect(forwardFindings(mediator, [debit], [])).toHaveLength(1);
+    const findings = forwardFindings(mediator, wholeTransactions(cut, transactionOf), []);
+    expect(findings).toEqual([]);
+    expect(checkStatus(findings, [incompleteRead(mediator, 168, "effects", { count: 1 })])).toBe(
+      "incomplete"
+    );
+  });
+
+  test("forward: a payout in a transaction read in full still fires when the read stopped later", () => {
+    const cut = { records: [payout, debit], complete: false, stopped: "Horizon timed out" };
+    const findings = forwardFindings(mediator, wholeTransactions(cut, transactionOf), []);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].message).toContain("paid out 5 XLM");
+    expect(checkStatus(findings, [incompleteRead(mediator, 168, "effects", { count: 2 })])).toBe(
+      "finding"
+    );
+  });
+
+  test("forward: the whole forward read in full is quiet", () => {
+    const whole = { records: [debit, credit], complete: true };
+    expect(forwardFindings(mediator, wholeTransactions(whole, transactionOf), [])).toEqual([]);
+  });
+});
+
+describe("sequenceFinding", () => {
+  const since = new Date("2026-11-11T00:00:00Z");
+  const record = (sequenceTime: string | null | undefined) => ({
+    balances: [],
+    sequence_time: sequenceTime,
+  });
+
+  test("a sequence that moved inside the window fires", () => {
+    const at = String(Date.parse("2026-11-17T15:30:00Z") / 1000);
+    expect(sequenceFinding(mediator, record(at), since)?.message).toContain(
+      "its sequence number moved at 2026-11-17T15:30:00.000Z"
+    );
+  });
+
+  test("a sequence that moved exactly at the window start fires", () => {
+    expect(sequenceFinding(mediator, record(String(since.getTime() / 1000)), since)).not.toBeNull();
+  });
+
+  test("a sequence that last moved before the window is quiet", () => {
+    expect(sequenceFinding(mediator, record(String(since.getTime() / 1000 - 1)), since)).toBeNull();
+  });
+
+  test("a sequence that never moved is quiet, as Horizon shows the testnet relay and sponsor", () => {
+    expect(sequenceFinding(mediator, record(null), since)).toBeNull();
+    expect(sequenceFinding(sponsor, record(undefined), since)).toBeNull();
+  });
+
+  test("keysFindings reports it when the history read found nothing, and only then", () => {
+    const moved = sequenceFinding(mediator, record(String(since.getTime() / 1000)), since);
+    expect(keysFindings(mediator, [], [], moved)).toEqual([moved!]);
+    const sourced = { ...tx, source_account: MEDIATOR };
+    const findings = keysFindings(mediator, [sourced], [], moved);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].message).toContain("is sourced from the account");
+    expect(keysFindings(mediator, [], [], null)).toEqual([]);
   });
 });

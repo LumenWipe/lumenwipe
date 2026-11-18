@@ -10,6 +10,7 @@ const WORKFLOW = new URL("../../../../.github/workflows/onchain-monitors.yml", i
 
 interface Step {
   id?: string;
+  name?: string;
   run?: string;
 }
 const workflow = Bun.YAML.parse(readFileSync(WORKFLOW, "utf8")) as {
@@ -17,6 +18,10 @@ const workflow = Bun.YAML.parse(readFileSync(WORKFLOW, "utf8")) as {
 };
 const script = workflow.jobs.report.steps.find((s) => s.id === "issue")?.run;
 if (!script) throw new Error("the report job has no `issue` step");
+const alertScript = workflow.jobs.report.steps.find(
+  (s) => s.name === "Alert the maintainers' channel"
+)?.run;
+if (!alertScript) throw new Error("the report job has no alert step");
 
 const dir = mkdtempSync(join(tmpdir(), "monitors-report-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -35,6 +40,8 @@ chmodSync(join(dir, "gh"), 0o755);
 
 interface Outcome {
   outputs: Record<string, string>;
+  /** The whole output file, multi-line values included. */
+  raw: string;
   calls: string[];
 }
 
@@ -63,12 +70,13 @@ async function report(env: Record<string, string>, existing = false): Promise<Ou
     stderr: "pipe",
   });
   expect(await proc.exited).toBe(0);
+  const raw = readFileSync(output, "utf8");
   const outputs: Record<string, string> = {};
-  for (const line of readFileSync(output, "utf8").split("\n")) {
+  for (const line of raw.split("\n")) {
     const eq = line.indexOf("=");
     if (eq > 0) outputs[line.slice(0, eq)] = line.slice(eq + 1);
   }
-  return { outputs, calls: readFileSync(log, "utf8").split("\n").filter(Boolean) };
+  return { outputs, raw, calls: readFileSync(log, "utf8").split("\n").filter(Boolean) };
 }
 
 const CLEAN = { CONFIG: "success", KEYS: "success", BALANCES: "success", FORWARD: "success" };
@@ -104,16 +112,97 @@ describe("the on-chain monitors report", () => {
     expect(outputs.critical).toBe("no");
   });
 
+  // One row per way a keys or forward step can end: its outcome, the status it wrote (none when
+  // it crashed, timed out or never ran), and whether that pages everyone.
   test.each([
-    ["KEYS", "failure", "yes"],
-    ["FORWARD", "failure", "yes"],
-    ["BALANCES", "failure", "no"],
-    ["CONFIG", "failure", "no"],
-    ["KEYS", "skipped", "no"],
-    ["FORWARD", "cancelled", "no"],
-  ])("%s %s pages everyone: %s", async (check, result, critical) => {
-    const { outputs } = await report({ ...CLEAN, [check]: result });
+    ["KEYS", "failure", "finding", "yes"],
+    ["FORWARD", "failure", "finding", "yes"],
+    ["KEYS", "failure", "incomplete", "no"],
+    ["FORWARD", "failure", "incomplete", "no"],
+    ["KEYS", "failure", "", "no"],
+    ["FORWARD", "failure", "", "no"],
+    ["KEYS", "cancelled", "", "no"],
+    ["FORWARD", "cancelled", "", "no"],
+    ["KEYS", "skipped", "", "no"],
+    ["FORWARD", "", "", "no"],
+    ["BALANCES", "failure", "", "no"],
+    ["CONFIG", "failure", "", "no"],
+  ])("%s %p with status %p pages everyone: %s", async (check, result, status, critical) => {
+    const { outputs } = await report({
+      ...CLEAN,
+      [check]: result,
+      ...(status === "" ? {} : { [`${check}_STATUS`]: status }),
+    });
+    expect(outputs.alert).toBe("finding");
     expect(outputs.critical).toBe(critical);
+  });
+
+  test("a finding pages even when the other history check could not read everything", async () => {
+    const { outputs } = await report({
+      ...CLEAN,
+      KEYS: "failure",
+      KEYS_STATUS: "incomplete",
+      FORWARD: "failure",
+      FORWARD_STATUS: "finding",
+    });
+    expect(outputs.critical).toBe("yes");
+  });
+
+  test("the status lines say which failures are findings and which are incomplete reads", async () => {
+    const { raw } = await report({
+      ...CLEAN,
+      KEYS: "failure",
+      KEYS_STATUS: "finding",
+      FORWARD: "cancelled",
+    });
+    expect(raw).toContain("- service keys have not signed anything: failure (finding)\n");
+    expect(raw).toContain(
+      "- no service account paid out beyond the forward and the drain: cancelled (incomplete)\n"
+    );
+    expect(raw).toContain("- service accounts are above their balance floor: success\n");
+  });
+
+  test("a failed step that wrote no status reads as incomplete, not clean or critical", async () => {
+    const { outputs, raw } = await report({ ...CLEAN, KEYS: "failure", FORWARD: "failure" });
+    expect(raw).toContain("- service keys have not signed anything: failure (incomplete)\n");
+    expect(raw).toContain(
+      "- no service account paid out beyond the forward and the drain: failure (incomplete)\n"
+    );
+    expect(outputs.alert).toBe("finding");
+    expect(outputs.critical).toBe("no");
+  });
+
+  test("an hourly incomplete read on an open issue neither alerts nor comments again", async () => {
+    const { outputs, calls } = await report(
+      { ...CLEAN, KEYS: "failure", KEYS_STATUS: "incomplete" },
+      true
+    );
+    expect(outputs.alert).toBeUndefined();
+    expect(outputs.issue).toBe("7");
+    expect(calls.some((c) => c.startsWith("issue comment"))).toBe(false);
+    expect(calls.some((c) => c.startsWith("issue close"))).toBe(false);
+  });
+
+  test("a daily incomplete read on an open issue comments without alerting", async () => {
+    const { outputs, calls } = await report(
+      {
+        ...CLEAN,
+        REGISTRY: "success",
+        HOURLY: "false",
+        FORWARD: "failure",
+        FORWARD_STATUS: "incomplete",
+      },
+      true
+    );
+    expect(outputs.alert).toBeUndefined();
+    expect(calls.some((c) => c.startsWith("issue comment 7"))).toBe(true);
+    expect(calls.some((c) => c.startsWith("issue close"))).toBe(false);
+  });
+
+  test("an hourly finding on an open issue alerts again", async () => {
+    const { outputs } = await report({ ...CLEAN, KEYS: "failure", KEYS_STATUS: "finding" }, true);
+    expect(outputs.alert).toBe("finding");
+    expect(outputs.critical).toBe("yes");
   });
 
   test("a registry that skips or is cancelled is not a finding on its own", async () => {
@@ -121,5 +210,51 @@ describe("the on-chain monitors report", () => {
       const { outputs } = await report({ ...CLEAN, REGISTRY: registry }, true);
       expect(outputs.alert).toBeUndefined();
     }
+  });
+});
+
+describe("the on-chain monitors alert", () => {
+  // A stub `curl` that keeps the payload and answers like Discord.
+  const curlDir = mkdtempSync(join(tmpdir(), "monitors-alert-"));
+  afterAll(() => rmSync(curlDir, { recursive: true, force: true }));
+  writeFileSync(
+    join(curlDir, "curl"),
+    ["#!/usr/bin/env bash", 'cat > "$CURL_BODY"', "printf 204"].join("\n")
+  );
+  chmodSync(join(curlDir, "curl"), 0o755);
+
+  async function alert(critical: string) {
+    const body = join(curlDir, `body-${critical}`);
+    const proc = Bun.spawn(["bash", "-c", alertScript as string], {
+      env: {
+        PATH: `${curlDir}:${process.env.PATH}`,
+        CURL_BODY: body,
+        WEBHOOK: "https://discord.invalid/hook",
+        ALERT: "finding",
+        CRITICAL: critical,
+        STATUS: "- service keys have not signed anything: failure (incomplete)",
+        ISSUE_URL: "https://github.com/o/r/issues/7",
+        RUN_URL: "https://github.com/o/r/actions/runs/1",
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(await proc.exited).toBe(0);
+    return JSON.parse(readFileSync(body, "utf8")) as {
+      content: string;
+      allowed_mentions: { parse: string[] };
+    };
+  }
+
+  test("a finding mentions everyone", async () => {
+    const payload = await alert("yes");
+    expect(payload.content.startsWith("@everyone ")).toBe(true);
+    expect(payload.allowed_mentions.parse).toEqual(["everyone"]);
+  });
+
+  test("an incomplete read alerts without the mention", async () => {
+    const payload = await alert("no");
+    expect(payload.content).not.toContain("@everyone");
+    expect(payload.allowed_mentions.parse).toEqual([]);
   });
 });

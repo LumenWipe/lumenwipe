@@ -70,17 +70,27 @@ jobs:
   service-accounts:
     name: service accounts
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Each check ends on its own and reports what it could not read (scripts/monitors): keys reads
+    # every account record at once (30 s at most) and then history within a 4-minute budget,
+    # forward reads within 4 minutes, and balances is one request per current account (30 s each,
+    # 2 minutes for four, also capped at 4). With about 2 minutes of setup, the worst case is about
+    # 2 + 4.5 + 2 + 4 = 12.5 minutes. A job timeout loses the statuses and reads as an incomplete
+    # read, so the limit leaves room above that.
+    timeout-minutes: 20
     permissions:
       contents: read
     # The report reads each check from these. Anything but `success`, an empty value included,
     # is a finding there. A failing check fails its step and this job, so the run shows it red;
     # each check still runs after another one failed, and none runs after a config failure.
+    # The keys and forward checks also say whether they found something or could not read
+    # everything; only `finding` pages everyone, and a step that never said either does not.
     outputs:
       config: ${{ steps.config.outcome }}
       keys: ${{ steps.keys.outcome }}
+      keys_status: ${{ steps.keys.outputs.status }}
       balances: ${{ steps.balances.outcome }}
       forward: ${{ steps.forward.outcome }}
+      forward_status: ${{ steps.forward.outputs.status }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -132,8 +142,10 @@ jobs:
           REGISTRY: ${{ needs.registry.result }}
           CONFIG: ${{ needs.service-accounts.outputs.config }}
           KEYS: ${{ needs.service-accounts.outputs.keys }}
+          KEYS_STATUS: ${{ needs.service-accounts.outputs.keys_status }}
           BALANCES: ${{ needs.service-accounts.outputs.balances }}
           FORWARD: ${{ needs.service-accounts.outputs.forward }}
+          FORWARD_STATUS: ${{ needs.service-accounts.outputs.forward_status }}
           HOURLY: ${{ github.event.schedule == '0 0-5,7-23 * * *' }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -153,12 +165,19 @@ jobs:
           BALANCES="${BALANCES:-missing}"
           FORWARD="${FORWARD:-missing}"
 
+          # What a failed keys or forward step reported: a finding, or a read it could not finish
+          # (page cap, Horizon error or timeout, time budget). A step that wrote neither crashed,
+          # timed out or never ran, which is an incomplete read too.
+          KEYS_STATUS="${KEYS_STATUS:-incomplete}"
+          FORWARD_STATUS="${FORWARD_STATUS:-incomplete}"
+          detail() { if [ "$1" = "success" ]; then echo "$1"; else echo "$1 ($2)"; fi; }
+
           STATUS=$(printf '%s\n' \
             "- registry hashes still match mainnet: $REGISTRY" \
             "- variables, monitoring plan and stellar.toml agree: $CONFIG" \
-            "- service keys have not signed anything: $KEYS" \
+            "- service keys have not signed anything: $(detail "$KEYS" "$KEYS_STATUS")" \
             "- service accounts are above their balance floor: $BALANCES" \
-            "- no service account paid out beyond the forward and the drain: $FORWARD")
+            "- no service account paid out beyond the forward and the drain: $(detail "$FORWARD" "$FORWARD_STATUS")")
 
           # The registry's `cancelled` and `skipped` are a superseded run, a human stopping a job,
           # or the hourly run leaving it to the daily one: not findings.
@@ -199,18 +218,26 @@ jobs:
             "stellar.toml disagree, or one the plan expects is unset: the checks did not run." \
             "Fix the variable or the plan; the run log names which." \
             "" \
-            "A service-key or forward failure is different. It means a key the API holds signed a" \
+            "A service-key or forward finding is different. It means a key the API holds signed a" \
             "transaction this codebase did not build, or a service or retired account paid out" \
             "of its own balance. Treat it as a suspected key compromise: rotate the key and audit every" \
             "transaction it signed or paid for." \
+            "" \
+            "A service-key or forward incomplete read means the check could not read the whole" \
+            "window: Horizon failed or timed out, the history outgrew the page cap (anyone can" \
+            "fill it with tiny payments), or the job timed out. It is not evidence of a" \
+            "compromise and pages nobody, but nothing it did not read is known to be clean:" \
+            "re-run the workflow, and if the cap was hit, read the account's history by hand." \
             "" \
             "This issue closes itself on the next clean daily run, including a manual one from the" \
             "Actions tab.")
 
           # A key compromise is re-announced every hour it persists; a registry or balance
-          # finding gets one alert, then one daily comment, so the channel stays readable.
+          # finding, or an incomplete read, gets one alert, then one daily comment, so the channel
+          # stays readable. Only a check that found something is critical: an incomplete read is
+          # one anyone can cause.
           CRITICAL=no
-          if [ "$KEYS" = "failure" ] || [ "$FORWARD" = "failure" ]; then CRITICAL=yes; fi
+          if [ "$KEYS_STATUS" = "finding" ] || [ "$FORWARD_STATUS" = "finding" ]; then CRITICAL=yes; fi
 
           if [ -n "$EXISTING" ]; then
             if [ "$HOURLY" != "true" ]; then
@@ -249,8 +276,8 @@ jobs:
             exit 1
           fi
 
-          # Only a suspected key compromise pages everyone; a registry or balance finding, and
-          # a recovery, must not teach anyone to mute the channel.
+          # Only a suspected key compromise pages everyone; a registry or balance finding, an
+          # incomplete read, and a recovery must not teach anyone to mute the channel.
           MENTION=""
           PARSE='[]'
           if [ "$ALERT" = "recovered" ]; then
@@ -266,7 +293,7 @@ jobs:
           fi
 
           code=$(jq -n --arg c "$CONTENT" --argjson p "$PARSE" '{content: $c, allowed_mentions: {parse: $p}}' \
-            | curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d @- "$WEBHOOK")
+            | curl -sS --max-time 30 -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d @- "$WEBHOOK")
           if [ "$code" != "204" ] && [ "$code" != "200" ]; then
             echo "::error::Discord returned $code; the alert was not delivered."
             exit 1

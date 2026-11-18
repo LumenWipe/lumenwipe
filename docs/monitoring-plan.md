@@ -133,23 +133,44 @@ transaction the old key sources is a finding, reported as for the current accoun
 sourced from the operator (see the [relay account rotation](/runbooks/rotate-relay-account)). The drain merges
 the whole balance out with no forward, which the forward check would read as a payout from the account's own
 balance; it reads it as the drain only when all three hold: the account is retired, the operator sourced the
-transaction, and that one merge operation removed the account and credited the operator. A merge into any
+transaction, and that one merge operation removed the account into the operator. The account's own effects
+name the operation that removed it, and the check reads that operation, with its transaction joined, for the
+destination and the source. A merge into any
 other address, a merge from a transaction the operator did not sign, a merge of the current relay, and any
 other debit in the same transaction are still findings, so holding the old key alone cannot reproduce the
 exemption. A retired fee sponsor is read by the forward check too, because it keeps its float until the
 drain: a fee bump it paid for before the switch is a fee, which Horizon reports as no effect, so any debit
-other than the drain is a payout by the old key. While a retired sponsor is set, the forward check reads one
-effects page for each transaction it was part of in the window, its sponsored fee bumps included; on a busy
-sponsor, lower `MONITOR_HISTORY_HOURS` for the rotation. A retired sponsor as `fee_account` is not judged: the
+other than the drain is a payout by the old key. Its fee bumps have no effect, so they cost the forward check
+nothing. A retired sponsor as `fee_account` is not judged: the
 window still holds the fee bumps it paid for before the switch, and the monitor has no on-chain mark of the
 switch to tell them from later ones. The runbook deletes the variable once the 24 hours are over.
 
-The source-account and forward checks read the transactions of the last `MONITOR_HISTORY_HOURS` hours (an
-optional repository variable from 2 to 720; 168, one week, when unset), paging through Horizon 200 at a time.
-A transaction older than the window is no longer read, so a finding stops being reported once the transaction
-behind it leaves the window, one week after it happened by default; the issue it opened stays open until a
-clean daily run closes it, as before. More than 25 pages inside the window is itself a finding for that
-account, naming the window, because the older transactions went unchecked.
+The source-account and forward checks read the history of the last `MONITOR_HISTORY_HOURS` hours (an
+optional repository variable from 2 to 720; 168, one week, when unset), paging through Horizon 200 records at
+a time, newest first. A record older than the window is no longer read, so a finding stops being reported once
+the transaction behind it leaves the window, one week after it happened by default; the issue it opened stays
+open until a clean daily run closes it, as before.
+
+Each of those checks ends in one of three statuses, which it writes as a step output for the report job:
+
+- **finding**: a key was used or an account paid out. Only this pages `@everyone`, and it does so on every
+  hourly run it persists, whatever else in the same check could not be read.
+- **incomplete**: nothing fired, but something was not read: a list hit the 25-page cap inside the window, a
+  Horizon request failed or did not answer within 30 seconds, or an account ran out of its share of the
+  check's 4-minute budget. Each account gets an equal share and mainnet is read first, so a flood on one
+  account, a free testnet one included, cannot spend the time another account needs. The records read
+  before the stop are still judged, and an account that fails does not stop the next one.
+  A read that stopped inside a transaction leaves that transaction out rather than judging half of it (a
+  forward's payment read without the merge before it would read as a payout). An incomplete read opens or
+  updates the issue and alerts the channel without the mention, like a balance finding; it is never clean.
+  A job that times out or is cancelled, and a step that wrote no status, count as incomplete too.
+- **clean**: everything in the window was read and nothing fired.
+
+Anyone can fill a service account's history past the cap without any key, with tiny payments to it or failed
+transactions that name it, which is why a full cap is not evidence of a compromise. Horizon offers no way to
+read fewer records: the account lists take no filter by type or by source, `/payments` lists incoming credits
+too and leaves out `set_options`, `change_trust` and `bump_sequence`, and failed transactions have to stay in
+the read because they still carry valid signatures.
 
 `S7.Tampering.1.M.1` reads each `verifiedLive` mainnet entry's executable hash over RPC and compares it to the
 registry. It also runs on every pull request as part of the integration suite, but the schedule is what makes
@@ -172,17 +193,26 @@ alert by sending to it. The transactions read includes failed ones, and the rela
 payer's transactions with the inner source as `source_account`, the payer as `fee_account` and no effect, and
 the relay never pays a fee. The current sponsor as `fee_account` is every sponsored close. Each transaction is
 reported once. This costs one more Horizon request per watched account and run (an operations page of 200), up
-to the same 25-page cap, which is a finding naming the operations when it is reached. Measured on the testnet sponsor on 2026-09-18: 8
+to the same 25-page cap, which is an incomplete read when it is reached. The keys check also reads the account
+record: its `sequence_time` moves only when the account sources a transaction, failed or not, or bumps its
+own sequence, so one inside the window is a finding even when the history read was incomplete. Every
+account's record is read first, all at once and outside the history budget, with only the 30-second request
+timeout, so a flood of one account's history, or of another's, cannot keep it from being read. Neither the relay's forward nor a fee bump the sponsor pays moves it: on testnet on
+2026-11-18 the relay and the sponsor both had none, after forward `6065aa4a…` and fee bump `52cb1ed3…`, and the
+operator, which sources its own transactions, had one. A retired account its drain removed has no record left
+to read. Measured on the testnet sponsor on 2026-09-18: 8
 transactions touching the account, 0 sourced from it. The mediator: 0 as well. The threshold is that
 measurement, not a guess.
 
 `S4a.Elevation.1.M.1` has two signals, both in `apps/api/scripts/monitors/service-accounts.ts`. The balance
 floor reads each account's native balance from Horizon and compares it to its role's floor in
 `service-accounts.ts`: the mediator's base reserve, and a provisional top-up level for the sponsor that stands
-in for `S4b.Denial.1.M.1`'s balance half until real usage sets one. The forward check reads the effects of
-every transaction touching the mediator, and any retired account, inside the history window, one transaction at a time, and fires when
-it debited more than the merge credited in the same transaction, which is the only way the mediator can pay
-out of its own balance. Measured on the testnet mediator on 2026-10-07: 6 transactions, forward equal to the
+in for `S4b.Denial.1.M.1`'s balance half until real usage sets one. The forward check reads the mediator's own
+effects list inside the history window, and any retired account's, groups the effects by transaction (an
+effect's operation id carries its transaction), and fires when a transaction debited the account more XLM
+than it credited it (a credit of another asset does not count against an XLM debit), which is the only way the mediator can pay out of its own balance. That is one request per 200
+effects, so a flood of credits fills the cap and reads as incomplete rather than pushing the check past its
+time. Measured on the testnet mediator on 2026-10-07: 6 transactions, forward equal to the
 merge in every one. The current sponsor has no forward and no drain, and pays fees, which Horizon reports as no
 effect, so any debit of it is a payout: the forward check reads its own effects list in the window and reports
 each operation with an `account_debited` on it, whatever the operation and whoever sourced it. That is one
@@ -193,22 +223,31 @@ them a debit, and the API never makes it the sponsor of a reserve.
 
 What these checks do not see, verified on testnet on 2026-11-18:
 
-- An `approve` or any other Soroban authorization signed by a service key that moves no balance. Horizon lists
-  it in neither the account's transactions nor its operations, and it has no effect. It stays invisible until
+- Any Soroban authorization that moves no asset-contract balance (an `approve`, a `mint` or admin call on a
+  contract the key controls, any `require_auth` on another contract), signed by a service key. Horizon lists
+  it in neither the account's transactions nor its operations, and it has no effect. A failed
+  `invoke_host_function` lists no balance change either, so a contract call that tried to debit the account
+  and failed is not seen. It stays invisible until
   it is spent: a `transfer_from` against the allowance is a debit, reported by the keys check and, for the
   relay and the sponsor, by the forward check.
 - A retired sponsor paying the fee of a fee bump between the switch and the drain. It spends the float on
   fees only, and ends with the drain: after it the account no longer exists and cannot pay.
 - A fee is not an effect, so the current sponsor's fee bumps for something that is not a close are not judged
   here: `S4b.Elevation.1.M.1` is not yet a live check.
+- A use of a key buried under a flood. Someone who holds a key can use it and then, within the same hour, fill
+  the account's history past the cap; the next run reads only the flood and reports an incomplete read, which
+  alerts without `@everyone`. The `sequence_time` read still pages for a transaction the key sourced, and the
+  balance floor still fires on a drain, but a use as an operation source or through Soroban authorization
+  stays an incomplete read until someone reads the history by hand.
 
 A finding opens a GitHub issue, assigned rather than merely labelled, and posts to the team channels the
 maintainers watch. A check that did not report success, whether it failed, was skipped behind a failed config
 step, was cancelled, or never ran, counts as a finding: a check that did not run never reads as clean. A
-suspected key compromise (the two service-key checks and the forward check) pings `@everyone`; a registry or
-balance finding, and a recovery, do not, so the ping keeps its meaning. The two service-key checks and the
-forward check post again on every hourly run they keep failing, because a suspected key compromise is worth
-repeating; a registry or balance finding posts once, then gets a daily comment on the issue, so the channel
+suspected key compromise (a service-key or forward check whose status is `finding`) pings `@everyone`; a
+registry or balance finding, an incomplete read, and a recovery do not, so the ping keeps its meaning. The
+two service-key checks and the forward check post again on every hourly run they keep reporting a finding,
+because a suspected key compromise is worth repeating; a registry or balance finding, or an incomplete read,
+posts once, then gets a daily comment on the issue, so the channel
 stays readable. A failing check also fails its own step and the service-account job, so the run shows which
 check found something without opening the issue; the remaining checks still run. The next clean daily run
 closes the issue and posts the recovery. A finding the webhook cannot
