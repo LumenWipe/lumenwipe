@@ -4,7 +4,7 @@ import { firstValueFrom, of } from "rxjs";
 import type { AuthedRequest } from "@/auth/api-key.guard";
 import { MeteringInterceptor, meteredRoute } from "@/metering/metering.interceptor";
 import { MeteringService, RECORD_TIMEOUT_MS } from "@/metering/metering.service";
-import type { Firestore } from "@google-cloud/firestore";
+import type { Firestore, Timestamp } from "@google-cloud/firestore";
 import { FIRESTORE_BATCH_LIMIT } from "@/auth/api-key-store";
 import {
   FirestoreUsageStore,
@@ -165,6 +165,27 @@ describe("FirestoreUsageStore per-key fields", () => {
     expect(writes).toHaveLength(2);
     expect(Object.keys(writes[0]!.byKey as object)).toEqual([KEY_ID]);
     expect(writes[1]!.byKey).toBeUndefined();
+  });
+
+  test("gives every usage day an expireAt 400 days after the day, from either write", async () => {
+    const writes: Record<string, unknown>[] = [];
+    const days = {
+      doc: () => ({ set: async (data: Record<string, unknown>) => writes.push(data) }),
+    };
+    const firestore = {
+      collection: () => ({ doc: () => ({ collection: () => days }) }),
+      batch: () => ({
+        set: (_ref: unknown, data: Record<string, unknown>) => writes.push(data),
+        commit: async () => undefined,
+      }),
+    } as unknown as Firestore;
+    const store = new FirestoreUsageStore(firestore);
+    await store.increment(OWNER, "r", "2026-10-09", KEY_ID);
+    await store.addRateLimited([{ owner: OWNER, keyId: KEY_ID, date: "2026-10-10", count: 1 }]);
+    expect(writes.map((w) => (w.expireAt as Timestamp).toDate().toISOString())).toEqual([
+      "2027-11-13T00:00:00.000Z",
+      "2027-11-14T00:00:00.000Z",
+    ]);
   });
 
   test("adds 429s in one batch without touching total, skipping unsafe ids", async () => {

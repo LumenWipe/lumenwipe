@@ -1,4 +1,4 @@
-import { FieldValue, Firestore } from "@google-cloud/firestore";
+import { FieldValue, Firestore, Timestamp } from "@google-cloud/firestore";
 import { FIRESTORE_BATCH_LIMIT, isKeyId } from "@/auth/api-key-store";
 import { createFirestore } from "@/config/firestore";
 import type { UpstreamDelta } from "@/lib/stellar/upstream-metrics";
@@ -36,6 +36,13 @@ export interface UsageStore {
 
 export const USAGE_STORE = Symbol("USAGE_STORE");
 
+/** How long a usage day is kept before a TTL policy deletes it. */
+export const USAGE_RETENTION_DAYS = 400;
+
+export function usageExpireAt(date: string): Timestamp {
+  return Timestamp.fromMillis(Date.parse(date) + USAGE_RETENTION_DAYS * 86_400_000);
+}
+
 /**
  * Owners are wallet addresses or operator-chosen labels; the second can hold characters a
  * document id may not (`/`, or a `.`/`__` id Firestore reserves), so they are escaped.
@@ -52,13 +59,13 @@ export function ownerDocId(owner: string): string {
  *
  *   usage/{owner}/daily/{date}   { owner, date, total, byRoute: { "<METHOD> <path>": n },
  *                                  byKey: { <key id>: n }, rateLimitedByKey: { <key id>: n },
- *                                  updatedAt }
+ *                                  updatedAt, expireAt }
  *
  * Every counter moves through `FieldValue.increment`, which the server applies atomically, so
  * one request is exactly one write: `byKey` rides in the same write as `total`. 429s are counted
  * in memory and added in batches (`KeyActivityService`), and never touch `total`, which is what
- * billing reads. Kept indefinitely. A key id is a SHA-256 hex hash, checked before it becomes a
- * field name.
+ * billing reads. `expireAt` is USAGE_RETENTION_DAYS after the day, for a TTL policy. A key id
+ * is a SHA-256 hex hash, checked before it becomes a field name.
  *
  *   upstreamUsage/{date}   { date, counts: { <network>: { <upstream>: { <metric>: n } } }, updatedAt }
  *
@@ -104,6 +111,7 @@ export class FirestoreUsageStore implements UsageStore {
           byRoute: { [route]: FieldValue.increment(1) },
           ...(keyId && isKeyId(keyId) && { byKey: { [keyId]: FieldValue.increment(1) } }),
           updatedAt: FieldValue.serverTimestamp(),
+          expireAt: usageExpireAt(date),
         },
         { merge: true }
       );
@@ -121,6 +129,7 @@ export class FirestoreUsageStore implements UsageStore {
             date,
             rateLimitedByKey: { [keyId]: FieldValue.increment(count) },
             updatedAt: FieldValue.serverTimestamp(),
+            expireAt: usageExpireAt(date),
           },
           { merge: true }
         );

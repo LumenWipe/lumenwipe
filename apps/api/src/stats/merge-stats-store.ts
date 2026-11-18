@@ -37,6 +37,13 @@ export const DAILY_RETENTION_DAYS = 400;
 /** Long enough to count a close reported well after it confirmed, then a TTL policy deletes it. */
 export const BUILT_RETENTION_DAYS = 30;
 
+/** A counted close outlives the 365-day chart by about a month, then a TTL policy deletes it. */
+export const MERGE_RETENTION_DAYS = 400;
+
+export function mergeExpireAt(closedAt: Date): Timestamp {
+  return Timestamp.fromMillis(closedAt.getTime() + MERGE_RETENTION_DAYS * 86_400_000);
+}
+
 export function utcDate(at: Date): string {
   return at.toISOString().slice(0, 10);
 }
@@ -45,7 +52,7 @@ export function utcDate(at: Date): string {
  * Layout, one tree per network so testnet traffic never touches mainnet's documents:
  *
  *   stats/{network}                      { accountsClosed, xlmStroops, updatedAt }
- *   stats/{network}/merges/{txHash}      { network, accountsClosed, xlmStroops, timestamp }
+ *   stats/{network}/merges/{txHash}      { network, accountsClosed, xlmStroops, timestamp, expireAt }
  *   stats/{network}/mergeDaily/{date}    { date, accountsClosed, expireAt }
  *   stats/{network}/builtCloses/{txHash} { expireAt }
  *
@@ -79,6 +86,7 @@ export class FirestoreMergeStatsStore implements MergeStatsStore {
         accountsClosed: merge.accountsClosed,
         xlmStroops: merge.xlmStroops,
         timestamp: Timestamp.fromDate(closedAt),
+        expireAt: mergeExpireAt(closedAt),
       });
       tx.set(
         totalsRef,
