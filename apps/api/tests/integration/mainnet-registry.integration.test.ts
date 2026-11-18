@@ -3,6 +3,14 @@ import { Address, Contract, scValToNative, xdr } from "@stellar/stellar-sdk";
 import { codeMatchesEntry, entriesForNetwork, entriesForProtocol } from "@/lib/contract-registry";
 import { readLiveCodeIdentity, type CodeIdentity } from "@/lib/stellar/contract-instance";
 import { getRpcServer } from "@/lib/stellar/rpc";
+import {
+  phoenixConfigKey,
+  phoenixNewLpKey,
+  phoenixShareToken,
+  phoenixStakeConfigKey,
+  phoenixStakeContract,
+  phoenixUnbondToken,
+} from "@/lib/defi-exits/phoenix";
 
 // Read-only against live mainnet RPC: no account, no transaction, no funds. Every verifiedLive
 // mainnet entry must still run the code it was verified as, or exits on that protocol would halt
@@ -113,6 +121,43 @@ test.skipIf(!RUN_INTEGRATION)(
     }
     expect(missing).toEqual([]);
     expect([...stakes].filter((s) => !named.has(s))).toEqual([]);
+  },
+  120_000
+);
+
+test.skipIf(!RUN_INTEGRATION)(
+  "every listed mainnet Phoenix stake pays, on unbond, its pool's own share_token",
+  async () => {
+    // A stake paying another token would make an unbond-then-withdraw chain hand the pool a token
+    // it does not take; the adapter blocks that live, and this catches the registry drifting there.
+    const rpc = getRpcServer("mainnet");
+    const pools = entriesForProtocol("mainnet", "phoenix").filter((e) => e.kind === "pool");
+    expect(pools.length).toBeGreaterThan(0);
+    const mismatches: string[] = [];
+    for (const pool of pools) {
+      const configKey = phoenixConfigKey(pool.address);
+      const config = (await rpc.getLedgerEntries(configKey)).entries[0]?.val;
+      const shareToken = config ? phoenixShareToken(config) : null;
+      const stake = config ? phoenixStakeContract(config) : null;
+      if (!shareToken || !stake) {
+        mismatches.push(`${pool.address}: CONFIG unreadable`);
+        continue;
+      }
+      const stakeConfigKey = phoenixStakeConfigKey(stake);
+      const newLpKey = phoenixNewLpKey(stake);
+      const res = await rpc.getLedgerEntries(stakeConfigKey, newLpKey);
+      const byKey = new Map(res.entries.map((e) => [e.key.toXdr("base64"), e.val]));
+      const pays = phoenixUnbondToken(
+        byKey.get(stakeConfigKey.toXdr("base64")),
+        byKey.get(newLpKey.toXdr("base64"))
+      );
+      if (pays !== shareToken) {
+        mismatches.push(
+          `${pool.address} -> ${stake}: unbond pays ${pays ?? "unreadable"}, share_token ${shareToken}`
+        );
+      }
+    }
+    expect(mismatches).toEqual([]);
   },
   120_000
 );

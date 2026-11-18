@@ -15,6 +15,10 @@ release is cut.
   expiry now take their clock and snapshot dates from the bundled registry, so their
   `nowSeconds`, descriptions and dates move with it; their names and expected results are
   unchanged.
+- The bundled contract registry's Phoenix stake entry `CDOXQONP…` records new evidence: its
+  `unbond` pays the token under its `NEWLP` storage key, which is its pool's share token, so its
+  `verifiedBy` and `verifiedAt` change. Its address, code hash and version are unchanged, and so
+  is verification.
 
 ## [0.5.0] - 2026-11-17
 

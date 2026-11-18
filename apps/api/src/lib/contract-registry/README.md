@@ -142,7 +142,9 @@ backstop's reward zone, `blend-utils`, and the directory's `Blend Pool` entries)
 only when it is a directory `Phoenix Pool` running a registered pool hash, together with the stake
 contract its `CONFIG` names, since `unbond` runs there. Four of those stake contracts run an
 earlier build of the stake code, registered as its own hash after its interface and `BondingInfo`
-layout were confirmed to match.
+layout were confirmed to match. The v2 stake code pays on `unbond` the token under its persistent
+`NEWLP` key, not its `CONFIG.lp_token`; the mainnet registry integration test checks that every
+listed stake pays its pool's `share_token`.
 FxDAO's documented Vaults contract is the one mainnet exception: its live interface exposes only
 `evict`/`upgrade`, not `pay_debt` or any other vault-management entrypoint. It is pinned to its
 live hash under its own version, `wind-down`, so its code is recognized, and that version is listed
