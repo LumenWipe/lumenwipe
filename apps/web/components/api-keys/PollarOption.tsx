@@ -17,8 +17,8 @@ export interface PollarOptionProps extends PollarSignInProps {
 }
 
 /**
- * Google and GitHub sign-in without Pollar's code at page load: it loads when the visitor chooses
- * it, or on load when Pollar kept a session here to restore.
+ * Google, GitHub and email sign-in without Pollar's code at page load: it loads when the visitor
+ * chooses it, or on load when Pollar kept a session here to restore.
  */
 export default function PollarOption({
   load = loadPollarSignIn,
@@ -77,7 +77,7 @@ export default function PollarOption({
           onFocus={prefetch}
           onClick={choose}
         >
-          Continue with Google or GitHub
+          Continue with Google, GitHub or email
         </Button>
         {failed && <Callout tone="danger">{POLLAR_LOAD_FAILED}</Callout>}
       </CardBody>

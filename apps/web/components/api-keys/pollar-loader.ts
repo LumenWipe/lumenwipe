@@ -5,7 +5,7 @@ import type { PollarSignInProps } from "./PollarSignIn";
 export type PollarSignInComponent = ComponentType<PollarSignInProps>;
 
 export const POLLAR_LOAD_FAILED =
-  "Google and GitHub sign-in could not load. Check your connection and try again.";
+  "Google, GitHub and email sign-in could not load. Check your connection and try again.";
 
 /** The Pollar sign-in code could not be loaded. */
 export class PollarLoadError extends UserFacingError {
