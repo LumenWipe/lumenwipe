@@ -99,7 +99,7 @@ describe("the reserve example", () => {
 describe("footer", () => {
   test("the year is the current one", () => {
     setSystemTime(new Date("2031-03-01T00:00:00Z"));
-    render(<MarketingFooter />);
+    render(<MarketingFooter locale="en" />);
     expect(screen.getByText(/© 2031 LumenWipe/)).toBeTruthy();
   });
 });

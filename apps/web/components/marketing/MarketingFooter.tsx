@@ -1,58 +1,55 @@
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { GithubIcon } from "@/components/icons/GithubIcon";
-import {
-  APP_HREF,
-  DEVELOPER_LINKS,
-  DOCS_URL,
-  GITHUB_URL,
-  PRIMARY_LINKS,
-  type SiteLink,
-} from "@/lib/site/navigation";
-import { SITE_LOCALE } from "@/lib/i18n/locale";
+import { APP_HREF, DOCS_URL, GITHUB_URL, siteLinks, type SiteLink } from "@/lib/site/navigation";
+import type { Locale } from "@/lib/i18n/locale";
 import { FOOTER } from "@/lib/i18n/messages/footer";
+import LanguageSwitch from "./LanguageSwitch";
 import Logo from "./Logo";
 
-const T = FOOTER[SITE_LOCALE];
-const L = T.links;
+function columns(locale: Locale): { title: string; links: readonly SiteLink[] }[] {
+  const T = FOOTER[locale];
+  const L = T.links;
+  const links = siteLinks(locale);
+  return [
+    {
+      title: T.columns.product,
+      links: [
+        { label: L.openApp, href: APP_HREF },
+        { label: L.testnet, href: "/testnet" },
+        ...links.primary.filter((l) => l.href !== "/content"),
+        { label: L.faq, href: "/faq" },
+        { label: L.stats, href: "/stats" },
+        { label: L.registry, href: "/registry" },
+      ],
+    },
+    {
+      title: T.columns.guides,
+      links: [
+        { label: L.guidesAndVideos, href: "/content" },
+        { label: L.blog, href: "/blog" },
+      ],
+    },
+    {
+      title: T.columns.developers,
+      links: [
+        ...links.developer,
+        { label: L.architecture, href: `${DOCS_URL}/architecture`, external: true },
+      ],
+    },
+    {
+      title: T.columns.openSource,
+      links: [
+        { label: L.securityPolicy, href: `${GITHUB_URL}/blob/main/SECURITY.md`, external: true },
+        { label: L.contributing, href: `${GITHUB_URL}/blob/main/CONTRIBUTING.md`, external: true },
+        { label: L.license, href: `${GITHUB_URL}/blob/main/LICENSE`, external: true },
+      ],
+    },
+  ];
+}
 
-const COLS: { title: string; links: readonly SiteLink[] }[] = [
-  {
-    title: T.columns.product,
-    links: [
-      { label: L.openApp, href: APP_HREF },
-      { label: L.testnet, href: "/testnet" },
-      ...PRIMARY_LINKS.filter((l) => l.href !== "/content"),
-      { label: L.faq, href: "/faq" },
-      { label: L.stats, href: "/stats" },
-      { label: L.registry, href: "/registry" },
-    ],
-  },
-  {
-    title: T.columns.guides,
-    links: [
-      { label: L.guidesAndVideos, href: "/content" },
-      { label: L.blog, href: "/blog" },
-    ],
-  },
-  {
-    title: T.columns.developers,
-    links: [
-      ...DEVELOPER_LINKS,
-      { label: L.architecture, href: `${DOCS_URL}/architecture`, external: true },
-    ],
-  },
-  {
-    title: T.columns.openSource,
-    links: [
-      { label: L.securityPolicy, href: `${GITHUB_URL}/blob/main/SECURITY.md`, external: true },
-      { label: L.contributing, href: `${GITHUB_URL}/blob/main/CONTRIBUTING.md`, external: true },
-      { label: L.license, href: `${GITHUB_URL}/blob/main/LICENSE`, external: true },
-    ],
-  },
-];
-
-export default function MarketingFooter() {
+export default function MarketingFooter({ locale }: { locale: Locale }) {
+  const T = FOOTER[locale];
   return (
     <footer className="relative border-t border-white/10 bg-canvas">
       <div className="mx-auto max-w-6xl px-5 py-14 lg:px-8">
@@ -70,10 +67,11 @@ export default function MarketingFooter() {
               >
                 <GithubIcon className="h-4 w-4" />
               </a>
+              <LanguageSwitch locale={locale} className="text-sm" />
             </div>
           </div>
 
-          {COLS.map((col) => (
+          {columns(locale).map((col) => (
             <div key={col.title}>
               <p className="mkt-eyebrow text-fg-muted">{col.title}</p>
               <ul className="mt-4 space-y-2.5">

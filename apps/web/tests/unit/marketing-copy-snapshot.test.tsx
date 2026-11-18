@@ -23,7 +23,7 @@ import MarketingNav from "@/components/marketing/MarketingNav";
 import MarketingFooter from "@/components/marketing/MarketingFooter";
 import NotFoundView, { NOT_FOUND_METADATA } from "@/components/marketing/NotFoundView";
 import { renderLlmsTxt } from "@/lib/site/llms";
-import { ROOT_METADATA } from "@/lib/site/root-metadata";
+import { rootMetadata } from "@/lib/site/root-metadata";
 import { fakeRouter } from "./fixtures/navigation";
 
 // Recorded from the English copy as it stood before it moved into the locale dictionary. A change
@@ -36,13 +36,13 @@ const SURFACES: Record<string, () => ReactElement> = {
   faq: () => <FaqPage />,
   security: () => <SecurityPage />,
   "how it works": () => <HowItWorksPage />,
-  nav: () => <MarketingNav />,
-  footer: () => <MarketingFooter />,
+  nav: () => <MarketingNav locale="en" />,
+  footer: () => <MarketingFooter locale="en" />,
   "not found": () => <NotFoundView />,
 };
 
 const METADATA: Record<string, Metadata> = {
-  root: ROOT_METADATA,
+  root: rootMetadata("en"),
   landing: landingMetadata,
   faq: faqMetadata,
   security: securityMetadata,

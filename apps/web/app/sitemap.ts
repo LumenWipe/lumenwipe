@@ -1,10 +1,10 @@
 import type { MetadataRoute } from "next";
 import { getAllPostMetas } from "@/lib/blog";
-import { INDEXED_PAGES } from "@/lib/site/pages";
+import { INDEXED_PAGES, spanishIndexedPages } from "@/lib/site/pages";
 import { siteUrl } from "@/lib/site/url";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const pages: MetadataRoute.Sitemap = INDEXED_PAGES.map((page) => ({
+  const pages: MetadataRoute.Sitemap = [...INDEXED_PAGES, ...spanishIndexedPages()].map((page) => ({
     url: siteUrl(page.path),
     changeFrequency: page.changeFrequency,
     priority: page.priority,

@@ -18,4 +18,4 @@ const en = {
 
 export type ContentCopy = typeof en;
 
-export const CONTENT: Record<Locale, ContentCopy> = { en };
+export const CONTENT: Record<Locale, ContentCopy> = { en, es: en };

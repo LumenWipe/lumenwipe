@@ -72,6 +72,6 @@ These carry no fund path or key, so ordinary review applies:
 
 - The playground's UI: `apps/playground/app/` and `apps/playground/components/`, except `apps/playground/app/api/`
   and the files listed above.
-- The marketing pages: `apps/web/app/(marketing)/`.
+- The marketing pages: `apps/web/app/(marketing)/` and `apps/web/app/(marketing-es)/`.
 - The docs site under `docs/`, except the pages listed above. For other pages, review covers their claims;
   `bun run check:docs` only confirms that the files, symbols and tests they name exist.

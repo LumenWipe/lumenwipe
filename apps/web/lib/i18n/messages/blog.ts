@@ -32,4 +32,4 @@ const en = {
 
 export type BlogCopy = typeof en;
 
-export const BLOG: Record<Locale, BlogCopy> = { en };
+export const BLOG: Record<Locale, BlogCopy> = { en, es: en };

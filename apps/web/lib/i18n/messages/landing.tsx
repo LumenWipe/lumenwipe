@@ -72,4 +72,4 @@ const en = {
 
 export type LandingCopy = typeof en;
 
-export const LANDING: Record<Locale, LandingCopy> = { en };
+export const LANDING: Record<Locale, LandingCopy> = { en, es: en };

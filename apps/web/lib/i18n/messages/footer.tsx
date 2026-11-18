@@ -30,4 +30,4 @@ const en = {
 
 export type FooterCopy = typeof en;
 
-export const FOOTER: Record<Locale, FooterCopy> = { en };
+export const FOOTER: Record<Locale, FooterCopy> = { en, es: en };

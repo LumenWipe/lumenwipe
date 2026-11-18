@@ -1,4 +1,4 @@
-export const LOCALES = ["en"] as const;
+export const LOCALES = ["en", "es"] as const;
 
 export type Locale = (typeof LOCALES)[number];
 
@@ -17,4 +17,8 @@ export interface LocaleTags {
 
 export const LOCALE_TAGS: Record<Locale, LocaleTags> = {
   en: { html: "en", intl: "en-US", openGraph: "en_US" },
+  es: { html: "es-419", intl: "es-419", openGraph: "es_LA" },
 };
+
+/** Each locale's name in its own language, as the language switch shows it. */
+export const LOCALE_NAMES: Record<Locale, string> = { en: "English", es: "Español" };

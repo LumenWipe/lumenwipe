@@ -85,4 +85,4 @@ const en = {
 
 export type StatsPageCopy = typeof en;
 
-export const STATS_PAGE: Record<Locale, StatsPageCopy> = { en };
+export const STATS_PAGE: Record<Locale, StatsPageCopy> = { en, es: en };

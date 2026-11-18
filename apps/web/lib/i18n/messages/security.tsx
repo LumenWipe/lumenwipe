@@ -75,4 +75,4 @@ const en = {
 
 export type SecurityCopy = typeof en;
 
-export const SECURITY: Record<Locale, SecurityCopy> = { en };
+export const SECURITY: Record<Locale, SecurityCopy> = { en, es: en };

@@ -158,4 +158,4 @@ const en = {
 
 export type FaqCopy = typeof en;
 
-export const FAQ: Record<Locale, FaqCopy> = { en };
+export const FAQ: Record<Locale, FaqCopy> = { en, es: en };

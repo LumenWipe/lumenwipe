@@ -5,8 +5,8 @@
  *   node scripts/marketing-csp.mjs check              check an already injected build, write nothing
  *   node scripts/marketing-csp.mjs check-output <dir> check a finished Vercel build output
  *
- * 1. Every route under app/(marketing) must be prerendered, as Next's own prerender manifest
- *    records it: a dynamic marketing route fails the build, by name.
+ * 1. Every route under app/(marketing) and app/(marketing-es) must be prerendered, as Next's own
+ *    prerender manifest records it: a dynamic marketing route fails the build, by name.
  * 2. Each prerendered marketing page gets a Content-Security-Policy whose script-src lists the
  *    SHA-256 of every inline script in that page's HTML (config/marketing-csp.mjs). The proxy
  *    skips these paths, so this is their only policy. It is written where the deployment reads
@@ -30,7 +30,8 @@ import { HOMEPAGE_LINK } from "../config/discovery-links.mjs";
 import { marketingPolicy } from "../config/marketing-csp.mjs";
 import { SECURITY_HEADERS } from "../config/security-headers.mjs";
 
-const GROUP = "/(marketing)/";
+// The English and Spanish marketing route groups (docs/contributing/localization.mdx).
+const GROUPS = ["/(marketing)/", "/(marketing-es)/"];
 const CSP = "Content-Security-Policy";
 const LINK = "Link";
 const HSTS = "Strict-Transport-Security";
@@ -95,8 +96,13 @@ export function prerenderedMarketingPages(appPaths, prerender) {
   ) {
     fail("prerender-manifest.json has no routes or dynamicRoutes map");
   }
-  const entries = Object.entries(appPaths).filter(([appPath]) => appPath.startsWith(GROUP));
-  if (entries.length === 0) fail("app-path-routes-manifest.json lists no (marketing) route");
+  const entries = Object.entries(appPaths).filter(([appPath]) =>
+    GROUPS.some((group) => appPath.startsWith(group))
+  );
+  for (const group of GROUPS) {
+    if (!entries.some(([appPath]) => appPath.startsWith(group)))
+      fail(`app-path-routes-manifest.json lists no ${group.slice(1, -1)} route`);
+  }
 
   const dynamic = [];
   const pages = [];
@@ -293,6 +299,7 @@ export const NONCE_PATHS = [
   "/api-keys",
   "/x/y/z",
   "/blog/nope",
+  "/es/nope",
 ];
 
 /**

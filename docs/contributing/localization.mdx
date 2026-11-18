@@ -4,12 +4,12 @@ description: "How the marketing site holds its copy per locale, how a Spanish lo
 icon: "language"
 ---
 
-The marketing site renders in English only. Its copy is held in a typed dictionary keyed by locale, so a second locale is a set of translated entries plus routing, not a rewrite of every page. This page records how the copy is held today, how a Spanish locale will be routed, and the language rules for the translation. The app flow (`/mainnet`, `/testnet` and their pages) is out of scope.
+The marketing site renders in English. A Spanish locale is routed under `/es` but not translated yet. Its copy is held in a typed dictionary keyed by locale, so a second locale is a set of translated entries plus routing, not a rewrite of every page. This page records how the copy is held today, how the Spanish locale is routed, and the language rules for the translation. The app flow (`/mainnet`, `/testnet` and their pages) is out of scope.
 
 ## How the copy is held
 
-- `apps/web/lib/i18n/locale.ts` declares the locales (`en` only), `SITE_LOCALE`, and for each locale the `<html lang>` value, the tag dates and numbers are formatted with, and the `og:locale` value.
-- `SITE_LOCALE` is a build-time constant. Nothing reads a header or a cookie to choose the locale, so every page under `app/(marketing)` stays prerendered and keeps its per-page hash policy (`apps/web/scripts/marketing-csp.mjs`).
+- `apps/web/lib/i18n/locale.ts` declares the locales (`en` and `es`), `SITE_LOCALE` (the English default), and for each locale the `<html lang>` value, the tag dates and numbers are formatted with, and the `og:locale` value.
+- `SITE_LOCALE` is a build-time constant. Nothing reads a header or a cookie to choose the locale, so every page under `app/(marketing)` and `app/(marketing-es)` stays prerendered and keeps its per-page hash policy (`apps/web/scripts/marketing-csp.mjs`).
 - `apps/web/lib/i18n/messages/` holds one module per surface (`nav`, `footer`, `not-found`, `landing`, `faq`, `security`, `how-it-works`, `hero`, `stats`, `registry`, `playground`, `content`, `blog`, `site`, `common`), each a `Record<Locale, Copy>`. A client component imports only its own section, so the browser never downloads the whole dictionary.
 - A post's title and description come from the post, and a video's title and description from the video, each in its own language. The planned article titles on `/content` are titles of posts to come, so they stay with the post list in `lib/site/content-status.ts`. The page around them (headings, labels, and the units of a reading time or a video's length) is dictionary copy.
 - A sentence built from data is a function of that data, never a frozen string. The status registry (`lib/site/status.ts`) keeps each feature's id, status and link; its title, noun and summary come from the dictionary, and the sentences that list testnet-only features or live protocol exits are dictionary functions called with the registry's names. The FAQ answers are a function of the registry facts and the trust statements (`lib/site/trust.ts`), and the FAQ structured data reads the same answers.
@@ -37,6 +37,16 @@ The App Router has no configuration-based locale routing: the `i18n` option in `
 - The Proxy matcher gains the literal `es/...` paths, with the test in `apps/web/tests/unit/proxy-matcher.test.ts` extended to them, and `marketing-csp.mjs` accepts both groups.
 - Moving between the two root layouts reloads the page, which is acceptable for a language switch.
 - There is no automatic redirect by browser language. A visitor switches with a link in the header and footer, and search engines find the Spanish pages through `hreflang`.
+
+### What is in place
+
+- `app/(marketing-es)/layout.tsx` is the Spanish root layout: `RootDocument`, `MarketingShell` and the root metadata, each given `locale="es"`. The navigation and footer read their copy for the locale they are given.
+- `SPANISH_PAGES` in `apps/web/lib/site/pages.ts` lists the English pages that have a Spanish version, each with a `translated` flag. That one list drives everything else:
+  - an untranslated Spanish page is marked `noindex` and left out of the sitemap; a translated one is indexed and listed in the sitemap with its English page's rank;
+  - the language switch (`components/marketing/LanguageSwitch.tsx`) links a page to its other version only when that entry is translated, in both directions, so no link leads to English text under `lang="es-419"`.
+- Today the list holds only the landing page, untranslated: `/es` renders the English landing behind `noindex`, and the switch renders nowhere. An unknown path under `/es/` gets the English 404 from `app/global-not-found.tsx`, under the proxy's nonce policy, until the 404 is translated.
+- The Proxy matcher skips `es` (and its RSC payloads) literally, and `tests/unit/proxy-matcher.test.ts` walks both route groups, so a Spanish page without its matcher line fails the test. `marketing-csp.mjs` requires both groups to be prerendered, hashes each Spanish page like an English one, and checks that `/es/nope` keeps the nonce policy.
+- The sitemap alternates and `alternates.languages` wait for the first translated page: a `noindex` page should not be named as an alternate.
 
 ### `hreflang`, canonical and Open Graph
 
@@ -89,4 +99,4 @@ Two pull requests under #534 do the extraction: the dictionary, the helpers, the
 7. **[web] Translate the five merge-blocker articles into Spanish.** Extra signers, open offers, trustlines, data entries and claimable balances, each with its own canonical and `hreflang` pair.
 8. **[web] Give Spanish pages Spanish share images.**
 
-Each translation issue removes `noindex` from the pages it ships and adds them to the sitemap.
+Each translation issue sets `translated: true` on the `SPANISH_PAGES` entries it ships, which removes their `noindex`, adds them to the sitemap and shows the language switch on both versions, and adds the sitemap alternates with the first one.
