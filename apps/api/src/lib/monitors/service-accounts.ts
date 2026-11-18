@@ -39,6 +39,25 @@ export interface HorizonTransactionPage {
   _embedded: { records: HorizonTransaction[] };
 }
 
+/** One operation from an account's operations, with `join=transactions` embedding its transaction. */
+export interface HorizonOperation {
+  type: string;
+  /** The operation's source: its own when set, the transaction's otherwise. */
+  source_account: string;
+  transaction_hash: string;
+  created_at: string;
+  paging_token: string;
+  /** account_merge: the destination. */
+  into?: string;
+  /** payment: the asset paid. */
+  asset_type?: string;
+  transaction?: { source_account: string };
+}
+
+export interface HorizonOperationPage {
+  _embedded: { records: HorizonOperation[] };
+}
+
 export interface HorizonEffect {
   type: string;
   account?: string;
@@ -277,6 +296,12 @@ export function historyWindowHours(raw: string | undefined): number {
 export const HORIZON_PAGE_LIMIT = 200;
 export const MAX_HISTORY_PAGES = 25;
 
+export interface History<T> {
+  records: T[];
+  /** False when the page cap was reached before the window start: the rest went unread. */
+  complete: boolean;
+}
+
 export interface TransactionHistory {
   transactions: HorizonTransaction[];
   /** False when the page cap was reached before the window start: the rest went unread. */
@@ -284,37 +309,84 @@ export interface TransactionHistory {
 }
 
 /**
- * Every transaction touching `address` created at or after `since`, newest first, paging
- * through Horizon with the last record's paging token as the cursor.
+ * Every record of one of an account's Horizon lists created at or after `since`, newest first,
+ * paging with the last record's paging token as the cursor.
  */
+async function recordsInWindow<T extends { created_at: string; paging_token: string }>(
+  get: (path: string) => Promise<{ _embedded: { records: T[] } }>,
+  path: string,
+  params: Record<string, string>,
+  since: Date,
+  maxPages: number
+): Promise<History<T>> {
+  const found: T[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < maxPages; page++) {
+    const query = new URLSearchParams({
+      ...params,
+      limit: String(HORIZON_PAGE_LIMIT),
+      order: "desc",
+    });
+    if (cursor !== undefined) query.set("cursor", cursor);
+    const records = (await get(`${path}?${query}`))._embedded.records;
+    for (const record of records) {
+      if (Date.parse(record.created_at) < since.getTime())
+        return { records: found, complete: true };
+      found.push(record);
+    }
+    if (records.length < HORIZON_PAGE_LIMIT) return { records: found, complete: true };
+    cursor = records[records.length - 1].paging_token;
+  }
+  return { records: found, complete: false };
+}
+
+/** Every transaction touching `address` created at or after `since`, newest first. */
 export async function transactionsInWindow(
   get: (path: string) => Promise<HorizonTransactionPage>,
   address: string,
   since: Date,
   maxPages = MAX_HISTORY_PAGES
 ): Promise<TransactionHistory> {
-  const transactions: HorizonTransaction[] = [];
-  let cursor: string | undefined;
-  for (let page = 0; page < maxPages; page++) {
-    const query = new URLSearchParams({ limit: String(HORIZON_PAGE_LIMIT), order: "desc" });
-    if (cursor !== undefined) query.set("cursor", cursor);
-    const records = (await get(`/accounts/${address}/transactions?${query}`))._embedded.records;
-    for (const tx of records) {
-      if (Date.parse(tx.created_at) < since.getTime()) return { transactions, complete: true };
-      transactions.push(tx);
-    }
-    if (records.length < HORIZON_PAGE_LIMIT) return { transactions, complete: true };
-    cursor = records[records.length - 1].paging_token;
-  }
-  return { transactions, complete: false };
+  const { records, complete } = await recordsInWindow(
+    get,
+    `/accounts/${address}/transactions`,
+    {},
+    since,
+    maxPages
+  );
+  return { transactions: records, complete };
+}
+
+/**
+ * Every operation `address` takes part in created at or after `since`, newest first, each with
+ * its transaction's source, failed transactions included: a failed transaction still carries a
+ * valid signature of every key it needed.
+ */
+export async function operationsInWindow(
+  get: (path: string) => Promise<HorizonOperationPage>,
+  address: string,
+  since: Date,
+  maxPages = MAX_HISTORY_PAGES
+): Promise<History<HorizonOperation>> {
+  return recordsInWindow(
+    get,
+    `/accounts/${address}/operations`,
+    { join: "transactions", include_failed: "true" },
+    since,
+    maxPages
+  );
 }
 
 /** The finding for a history the page cap cut short: the check did not see the whole window. */
-export function incompleteHistoryFinding(account: ServiceAccount, hours: number): Finding {
+export function incompleteHistoryFinding(
+  account: ServiceAccount,
+  hours: number,
+  records = "transactions"
+): Finding {
   return {
     account,
     message:
-      `more than ${MAX_HISTORY_PAGES * HORIZON_PAGE_LIMIT} transactions in the last ${hours} h; ` +
+      `more than ${MAX_HISTORY_PAGES * HORIZON_PAGE_LIMIT} ${records} in the last ${hours} h; ` +
       "the older ones were not checked. Lower MONITOR_HISTORY_HOURS.",
   };
 }
@@ -331,6 +403,79 @@ export function sourcedFinding(account: ServiceAccount, tx: HorizonTransaction):
     account,
     message: `transaction ${tx.hash} (${tx.created_at}) is sourced from the account. Expected none.`,
   };
+}
+
+/**
+ * The operations the account may source in a transaction it did not: the mediator's forward, a
+ * native payment in a transaction that also merges an account into the mediator (the forward
+ * check bounds its amount), and a retired account's drain.
+ */
+function isExpectedOperation(
+  account: ServiceAccount,
+  operation: HorizonOperation,
+  transaction: HorizonOperation[]
+): boolean {
+  const txSource = operation.transaction?.source_account;
+  if (operation.type === "account_merge") {
+    return isRotationDrain(account, txSource, operation.into);
+  }
+  return (
+    account.role === "mediator" &&
+    operation.type === "payment" &&
+    operation.asset_type === "native" &&
+    txSource !== undefined &&
+    txSource !== account.address &&
+    transaction.some((op) => op.type === "account_merge" && op.into === account.address)
+  );
+}
+
+/**
+ * S4a.Information.1.M.1 and S4b.Information.1.M.1 for operation sources: a transaction someone
+ * else sourced in which the account sourced an operation the API never builds, such as a
+ * `set_options` adding a signer or a `change_trust` that blocks the drain. `transaction` is every
+ * operation of one transaction that the account's operations list returned.
+ */
+export function operationSourceFinding(
+  account: ServiceAccount,
+  transaction: HorizonOperation[]
+): Finding | null {
+  const unexpected = transaction.filter(
+    (op) => op.source_account === account.address && !isExpectedOperation(account, op, transaction)
+  );
+  if (unexpected.length === 0) return null;
+  const { transaction_hash: hash, created_at: createdAt } = unexpected[0];
+  return {
+    account,
+    message:
+      `transaction ${hash} (${createdAt}) has operations sourced from the account: ` +
+      `${unexpected.map((op) => op.type).join(", ")}. Expected none but the forward and the drain.`,
+  };
+}
+
+/**
+ * The keys check for one account: each transaction it sourced, and each other transaction in which
+ * it sourced an unexpected operation, reported once.
+ */
+export function keysFindings(
+  account: ServiceAccount,
+  transactions: HorizonTransaction[],
+  operations: HorizonOperation[]
+): Finding[] {
+  const findings = new Map<string, Finding>();
+  for (const tx of transactions) {
+    const finding = sourcedFinding(account, tx);
+    if (finding) findings.set(tx.hash, finding);
+  }
+  const byTransaction = new Map<string, HorizonOperation[]>();
+  for (const op of operations) {
+    byTransaction.set(op.transaction_hash, [...(byTransaction.get(op.transaction_hash) ?? []), op]);
+  }
+  for (const [hash, transaction] of byTransaction) {
+    if (findings.has(hash)) continue;
+    const finding = operationSourceFinding(account, transaction);
+    if (finding) findings.set(hash, finding);
+  }
+  return [...findings.values()];
 }
 
 export function nativeBalanceStroops(account: HorizonAccount): bigint | null {
@@ -359,18 +504,34 @@ function operationOf(effect: HorizonEffect): string | undefined {
 }
 
 /**
- * The operations of `tx` that are the rotation's own drain of a retired account: a merge of the
- * account (the only operation that removes one) into the operator it was configured with, in a
- * transaction the operator sourced. Holding the old key alone cannot produce it: the transaction
- * source needs the operator's signature, and the balance lands with the operator.
+ * The rotation's own drain of a retired account: a merge of the account into the operator it was
+ * configured with, in a transaction the operator sourced. Holding the old key alone cannot
+ * produce it: the transaction source needs the operator's signature, and the balance lands with
+ * the operator.
+ */
+function isRotationDrain(
+  account: ServiceAccount,
+  txSource: string | undefined,
+  mergedInto: string | undefined
+): boolean {
+  const drainTo = account.drainTo;
+  return (
+    account.retired === true &&
+    drainTo !== undefined &&
+    txSource === drainTo &&
+    mergedInto === drainTo
+  );
+}
+
+/**
+ * The operations of `tx` that are the rotation's drain, read from effects: the merge is the only
+ * operation that removes the account, and the operator is what it credited.
  */
 function drainOperations(
   account: ServiceAccount,
   tx: HorizonTransaction,
   effects: HorizonEffect[]
 ): Set<string> {
-  const drainTo = account.drainTo;
-  if (!account.retired || drainTo === undefined || tx.source_account !== drainTo) return new Set();
   const removed = new Set<string>();
   const credited = new Set<string>();
   for (const effect of effects) {
@@ -379,7 +540,12 @@ function drainOperations(
     if (effect.type === "account_removed" && effect.account === account.address) {
       removed.add(operation);
     }
-    if (effect.type === "account_credited" && effect.account === drainTo) credited.add(operation);
+    if (
+      effect.type === "account_credited" &&
+      isRotationDrain(account, tx.source_account, effect.account)
+    ) {
+      credited.add(operation);
+    }
   }
   return new Set([...removed].filter((operation) => credited.has(operation)));
 }

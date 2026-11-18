@@ -18,14 +18,16 @@ import {
   formatFinding,
   historyWindowHours,
   incompleteHistoryFinding,
+  keysFindings,
   loadServiceAccounts,
+  operationsInWindow,
   plannedAccounts,
   roleLabel,
-  sourcedFinding,
   transactionsInWindow,
   type Finding,
   type HorizonAccount,
   type HorizonEffect,
+  type HorizonOperationPage,
   type HorizonTransactionPage,
   type ServiceAccount,
   type ServiceNetwork,
@@ -66,16 +68,18 @@ async function keys(accounts: ServiceAccount[], hours: number): Promise<Finding[
   const findings: Finding[] = [];
   for (const account of accountsFor(accounts, "keys")) {
     const transactions = await history(account, hours, findings);
-    let sourced = 0;
-    for (const tx of transactions) {
-      const finding = sourcedFinding(account, tx);
-      if (finding) {
-        findings.push(finding);
-        sourced++;
-      }
-    }
+    const operations = await operationsInWindow(
+      (path) => horizon<HorizonOperationPage>(account.network, path),
+      account.address,
+      new Date(Date.now() - hours * 3_600_000)
+    );
+    if (!operations.complete) findings.push(incompleteHistoryFinding(account, hours, "operations"));
+    const found = keysFindings(account, transactions, operations.records);
+    findings.push(...found);
     console.log(
-      `${roleLabel(account)} (${account.network}): ${sourced} of ${transactions.length} transactions in the last ${hours} h sourced from it`
+      `${roleLabel(account)} (${account.network}): ${found.length} transactions in the last ${hours} h ` +
+        "sourced from it or carrying an operation it sourced, beyond the forward and the drain " +
+        `(${transactions.length} transactions and ${operations.records.length} operations read)`
     );
   }
   return findings;

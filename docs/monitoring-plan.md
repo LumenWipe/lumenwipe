@@ -155,7 +155,15 @@ registry. It also runs on every pull request as part of the integration suite, b
 it a monitor: a contract can be upgraded during a week when nobody opens a pull request.
 
 `S4a.Information.1.M.1` and `S4b.Information.1.M.1` read every transaction touching each service account
-inside the history window and report each one it sourced. Measured on the testnet sponsor on 2026-09-18: 8
+inside the history window and report each one it sourced. They also read the account's operations, with each
+operation's transaction joined and failed transactions included, and report each transaction in which the
+account is the source of any operation, because a key can sign an operation inside a transaction someone else
+sources: a `set_options` adding a signer, a `change_trust` that blocks a drain, a payment. Two shapes are not
+findings. The mediator's forward is a native payment sourced by the mediator in a transaction that also merges
+an account into it, which the forward check bounds by that merge. A retired account's drain is the merge into
+the operator described above, in a transaction the operator sourced. Each transaction is reported once. This
+costs one more Horizon request per watched account and run (an operations page of 200), up to the same 25-page
+cap, which is a finding naming the operations when it is reached. Measured on the testnet sponsor on 2026-09-18: 8
 transactions touching the account, 0 sourced from it. The mediator: 0 as well. The threshold is that
 measurement, not a guess.
 

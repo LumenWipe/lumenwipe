@@ -9,14 +9,17 @@ import {
   forwardFinding,
   historyWindowHours,
   incompleteHistoryFinding,
+  keysFindings,
   loadServiceAccounts,
   nativeBalanceStroops,
+  operationsInWindow,
   plannedAccounts,
   operatorVariable,
   retiredVariable,
   sourcedFinding,
   transactionsInWindow,
   type HorizonEffect,
+  type HorizonOperation,
   type HorizonTransaction,
   type HorizonTransactionPage,
   type PlannedAccounts,
@@ -700,5 +703,145 @@ describe("a retired fee sponsor", () => {
       },
     ];
     expect(forwardFinding({ ...retiredSponsor, address: SPONSOR }, feeBump, effects)).toBeNull();
+  });
+});
+
+describe("keysFindings on operation sources", () => {
+  const HASH = "c0ffee".padEnd(64, "0");
+  const op = (
+    fields: Pick<HorizonOperation, "type" | "source_account"> & Partial<HorizonOperation>,
+    txSource: string = OTHER
+  ): HorizonOperation => ({
+    transaction_hash: HASH,
+    created_at: "2026-11-17T15:24:51Z",
+    paging_token: "1",
+    transaction: { source_account: txSource },
+    ...fields,
+  });
+  const sponsor: ServiceAccount = {
+    role: "sponsor",
+    network: "testnet",
+    address: SPONSOR,
+    floorXlm: "50",
+  };
+  const retiredRelay: ServiceAccount = {
+    role: "mediator",
+    network: "testnet",
+    address: RETIRED_RELAY,
+    floorXlm: "1",
+    retired: true,
+    drainTo: OPERATOR,
+  };
+  // The API's forward as the mediator's operations list returns it: the user merges into the
+  // mediator and the mediator pays the exchange, in a transaction the user sourced.
+  const forward = (relay: string, txSource = USER): HorizonOperation[] => [
+    op({ type: "account_merge", source_account: txSource, into: relay }, txSource),
+    op({ type: "payment", source_account: relay, asset_type: "native" }, txSource),
+  ];
+
+  test.each([
+    ["set_options", "relay", mediator],
+    ["change_trust", "relay", mediator],
+    ["payment", "relay", mediator],
+    ["payment", "sponsor", sponsor],
+    ["set_options", "retired relay", retiredRelay],
+    ["change_trust", "retired relay", retiredRelay],
+  ] as const)(
+    "a %s sourced by the %s inside someone else's transaction fires",
+    (type, _, account) => {
+      const findings = keysFindings(account, [], [op({ type, source_account: account.address })]);
+      expect(findings).toHaveLength(1);
+      expect(findings[0].message).toContain(`transaction ${HASH}`);
+      expect(findings[0].message).toContain(`operations sourced from the account: ${type}`);
+    }
+  );
+
+  test("the API's forward is quiet, from the current and from a retired relay", () => {
+    expect(keysFindings(mediator, [], forward(MEDIATOR))).toEqual([]);
+    expect(keysFindings(retiredRelay, [], forward(RETIRED_RELAY))).toEqual([]);
+  });
+
+  test("a native payment by the relay with no merge into it fires", () => {
+    const [, payment] = forward(MEDIATOR);
+    expect(keysFindings(mediator, [], [payment])).toHaveLength(1);
+  });
+
+  test("a payment of another asset in the forward's shape fires", () => {
+    const [merge, payment] = forward(MEDIATOR);
+    const credit = { ...payment, asset_type: "credit_alphanum4" };
+    expect(keysFindings(mediator, [], [merge, credit])).toHaveLength(1);
+  });
+
+  test("the sponsor has no forward to excuse", () => {
+    expect(keysFindings(sponsor, [], forward(SPONSOR))).toHaveLength(1);
+  });
+
+  test("an operation with no transaction joined fires", () => {
+    const bare = forward(MEDIATOR).map((o) => ({ ...o, transaction: undefined }));
+    expect(keysFindings(mediator, [], bare)).toHaveLength(1);
+  });
+
+  describe("the rotation's drain", () => {
+    // 1b2ea80a…f282: the operator bumps its own sequence and the retired relay merges into it.
+    const drain = (into: string, txSource = OPERATOR): HorizonOperation[] => [
+      op({ type: "bump_sequence", source_account: txSource }, txSource),
+      op({ type: "account_merge", source_account: RETIRED_RELAY, into }, txSource),
+    ];
+
+    test("is quiet", () => {
+      expect(keysFindings(retiredRelay, [], drain(OPERATOR))).toEqual([]);
+    });
+
+    test("into another address fires", () => {
+      expect(keysFindings(retiredRelay, [], drain(OTHER))).toHaveLength(1);
+    });
+
+    test("in a transaction the operator did not source fires", () => {
+      expect(keysFindings(retiredRelay, [], drain(OPERATOR, OTHER))).toHaveLength(1);
+    });
+
+    test("of the current relay fires", () => {
+      const current = { ...retiredRelay, address: MEDIATOR, retired: undefined };
+      const merge = op(
+        { type: "account_merge", source_account: MEDIATOR, into: OPERATOR },
+        OPERATOR
+      );
+      expect(keysFindings(current, [], [merge])).toHaveLength(1);
+    });
+  });
+
+  test("a transaction the account sourced is reported once", () => {
+    const sourced = { ...tx, hash: HASH, source_account: MEDIATOR };
+    const own = op({ type: "set_options", source_account: MEDIATOR }, MEDIATOR);
+    const findings = keysFindings(mediator, [sourced], [own]);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].message).toContain("is sourced from the account");
+  });
+
+  test("operations from separate transactions are judged separately", () => {
+    const [merge] = forward(MEDIATOR);
+    const payment = {
+      ...forward(MEDIATOR)[1],
+      transaction_hash: "beef".padEnd(64, "0"),
+    };
+    expect(keysFindings(mediator, [], [merge, payment])).toHaveLength(1);
+  });
+
+  test("operationsInWindow joins each transaction and keeps failed ones", async () => {
+    const paths: string[] = [];
+    await operationsInWindow(
+      async (path) => {
+        paths.push(path);
+        return { _embedded: { records: [] } };
+      },
+      MEDIATOR,
+      new Date(0)
+    );
+    const [path, query] = paths[0].split("?");
+    expect(path).toBe(`/accounts/${MEDIATOR}/operations`);
+    const params = new URLSearchParams(query);
+    expect(params.get("join")).toBe("transactions");
+    expect(params.get("include_failed")).toBe("true");
+    expect(params.get("order")).toBe("desc");
   });
 });
