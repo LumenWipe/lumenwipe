@@ -434,16 +434,20 @@ compatibility promises for zero actual benefit to anyone outside this repo.
 
 ## Tag and environment protection
 
-`sdk-v*` and `verify-v*` tags are not currently protected - anyone with push access can push one.
-Both publish workflows share the `npm-publish` environment and its `NPM_TOKEN`. Each refuses a tag
-whose commit is not on `main`, so a tag on a stray branch fails before
-anything is built, but a tag on any commit of `main` still publishes, and the `npm-publish` GitHub
-environment has no required reviewers. For a two-person team this hasn't bitten anyone, but it's
-worth tightening before onboarding another maintainer:
+Both publish workflows authenticate to npm through
+[trusted publishing](https://docs.npmjs.com/trusted-publishers): npm exchanges the run's GitHub OIDC
+token for a short-lived publish token. No npm token is stored in the repository, so there is nothing
+to rotate and nothing that expires. On npmjs.com, each package's trusted publisher names
+`LumenWipe/lumenwipe`, its workflow file (`publish-sdk.yml` or `publish-verify.yml`) and the
+`npm-publish` environment. Renaming either workflow file or the environment breaks publishing until
+the trusted publisher is updated to match.
 
-- A [tag protection rule](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/managing-tag-protection-rules)
-  for `sdk-v*` and `verify-v*` restricting who can create matching tags.
-- A `deployment_branch_policy` on the `npm-publish` environment restricting it to `main`, so a tag
-  pushed against a stray branch can't publish even if someone creates one by mistake.
+The `npm-publish` environment only accepts deployments from `main` and from `sdk-v*.*.*` and
+`verify-v*.*.*` tags, so a workflow on any other branch cannot run in it. Each workflow also refuses a
+tag whose commit is not on `main`, so a tag on a stray branch fails before anything is built.
 
-Neither is done yet; both are additive settings changes, not code.
+`sdk-v*` and `verify-v*` tags are not protected: anyone with push access can push one, and a tag on
+any commit of `main` still publishes, since the environment has no required reviewers. For a
+two-person team this hasn't bitten anyone, but a
+[tag protection rule](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/managing-tag-protection-rules)
+restricting who can create those tags is worth adding before onboarding another maintainer.
