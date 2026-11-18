@@ -62,6 +62,7 @@ const goldAction = bannedActionClass(
 
 const MARKETING = [
   "app/(marketing)/**/*.{ts,tsx}",
+  "app/(marketing-es)/**/*.{ts,tsx}",
   "app/global-not-found.tsx",
   "app/(app)/not-found.tsx",
   "app/(app)/api-keys/**/*.{ts,tsx}",
@@ -94,6 +95,8 @@ export const DICTIONARY_COPY = [
   "app/(marketing)/registry/page.tsx",
   "app/(marketing)/security/page.tsx",
   "app/(marketing)/stats/page.tsx",
+  "app/(marketing-es)/layout.tsx",
+  "app/(marketing-es)/es/page.tsx",
   "app/global-not-found.tsx",
   "components/blog/BaseReserve.tsx",
   "components/blog/CategoryBadge.tsx",
@@ -105,6 +108,7 @@ export const DICTIONARY_COPY = [
   "components/marketing/FaqAccordion.tsx",
   "components/marketing/HeroAccountInput.tsx",
   "components/marketing/HeroConsole.tsx",
+  "components/marketing/LanguageSwitch.tsx",
   "components/marketing/MarketingFooter.tsx",
   "components/marketing/MarketingNav.tsx",
   "components/marketing/MarketingShell.tsx",

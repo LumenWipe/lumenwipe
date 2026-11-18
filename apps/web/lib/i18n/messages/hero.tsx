@@ -77,4 +77,4 @@ const en = {
 
 export type HeroCopy = typeof en;
 
-export const HERO: Record<Locale, HeroCopy> = { en };
+export const HERO: Record<Locale, HeroCopy> = { en, es: en };

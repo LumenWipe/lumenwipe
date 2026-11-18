@@ -3,19 +3,21 @@ import { readdirSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { getAllSlugs } from "@/lib/blog";
 
-const MARKETING_DIR = join(process.cwd(), "app", "(marketing)");
+const MARKETING_DIRS = ["(marketing)", "(marketing-es)"].map((group) =>
+  join(process.cwd(), "app", group)
+);
 
-/** Every marketing page path, from the files under app/(marketing) and the published posts. */
+/** Every marketing page path, from the files under both marketing route groups and the published
+ *  posts. */
 function marketingPaths(): string[] {
   const pages: string[] = [];
-  const walk = (dir: string) => {
+  const walk = (root: string, dir: string) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (entry.isDirectory()) walk(join(dir, entry.name));
-      else if (entry.name === "page.tsx")
-        pages.push(relative(MARKETING_DIR, dir).split(sep).join("/"));
+      if (entry.isDirectory()) walk(root, join(dir, entry.name));
+      else if (entry.name === "page.tsx") pages.push(relative(root, dir).split(sep).join("/"));
     }
   };
-  walk(MARKETING_DIR);
+  for (const root of MARKETING_DIRS) walk(root, root);
   return pages.flatMap((route) =>
     route.includes("[slug]")
       ? getAllSlugs().map((slug) => `/${route.replace("[slug]", slug)}`)
@@ -42,10 +44,11 @@ describe("the proxy matcher", () => {
   test("finds the marketing pages and every published post", () => {
     expect(paths).toContain("/");
     expect(paths).toContain("/faq");
+    expect(paths).toContain("/es");
     expect(paths.filter((p) => p.startsWith("/blog/"))).toHaveLength(getAllSlugs().length);
   });
 
-  test("skips every prerendered marketing page and its RSC payload, so a new post needs its line", () => {
+  test("skips every prerendered marketing page and its RSC payload, so a new post or Spanish page needs its line", () => {
     for (const path of paths) {
       expect(runsProxy(path), path).toBe(false);
       expect(runsProxy(path === "/" ? "/index.rsc" : `${path}.rsc`), `${path}.rsc`).toBe(false);
@@ -71,6 +74,10 @@ describe("the proxy matcher", () => {
       "/index",
       "/faq/x",
       "/x/y/z",
+      "/es/nope",
+      "/es/x/y",
+      "/esx",
+      "/es.rscx",
       "/api/health",
       "/api/mainnet/paths",
     ]) {

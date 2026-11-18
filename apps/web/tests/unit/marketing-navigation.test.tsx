@@ -51,7 +51,7 @@ function openMenu(): { toggle: HTMLElement; sheet: HTMLElement } {
 
 describe("mobile menu", () => {
   test("the toggle names its action and state and controls the sheet", () => {
-    render(<MarketingNav />);
+    render(<MarketingNav locale="en" />);
     const toggle = screen.getByRole("button", { name: "Open menu" });
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     const sheet = document.getElementById(toggle.getAttribute("aria-controls") ?? "");
@@ -65,14 +65,14 @@ describe("mobile menu", () => {
   });
 
   test("opening moves focus into the sheet and locks the page scroll", () => {
-    render(<MarketingNav />);
+    render(<MarketingNav locale="en" />);
     const { sheet } = openMenu();
     expectSameElement(document.activeElement, within(sheet).getAllByRole("link")[0]);
     expect(document.body.style.overflow).toBe("hidden");
   });
 
   test("Tab wraps between the last item and the toggle, both ways", () => {
-    render(<MarketingNav />);
+    render(<MarketingNav locale="en" />);
     const { toggle, sheet } = openMenu();
     const items = within(sheet).getAllByRole("link");
     const last = items[items.length - 1]!;
@@ -86,7 +86,7 @@ describe("mobile menu", () => {
   });
 
   test("Escape closes the sheet, returns focus to the toggle and releases the scroll", () => {
-    render(<MarketingNav />);
+    render(<MarketingNav locale="en" />);
     const { toggle, sheet } = openMenu();
     fireEvent.keyDown(document.activeElement as HTMLElement, { key: "Escape" });
 
@@ -97,7 +97,7 @@ describe("mobile menu", () => {
   });
 
   test("widening to the desktop layout closes the sheet and releases the scroll", () => {
-    render(<MarketingNav />);
+    render(<MarketingNav locale="en" />);
     const { sheet } = openMenu();
     act(() => {
       desktop.matches = true;
@@ -110,7 +110,7 @@ describe("mobile menu", () => {
   });
 
   test("unmounting with the sheet open releases the scroll", () => {
-    const { unmount } = render(<MarketingNav />);
+    const { unmount } = render(<MarketingNav locale="en" />);
     openMenu();
     unmount();
     expect(document.body.style.overflow).toBe("");
@@ -119,7 +119,7 @@ describe("mobile menu", () => {
 
 describe("navigation grouping", () => {
   test("the primary navigation follows the visitor's questions, with Developers grouped", () => {
-    render(<MarketingNav />);
+    render(<MarketingNav locale="en" />);
     const nav = screen.getByRole("navigation", { name: "Main" });
     const desktop = nav.querySelector(".lg\\:flex") as HTMLElement;
     const names = Array.from(desktop.querySelectorAll(":scope > a, :scope > div > button")).map(
@@ -133,13 +133,13 @@ describe("navigation grouping", () => {
 
   test("Guides is current on the blog", () => {
     spyOn(navigation, "usePathname").mockReturnValue("/blog/some-post");
-    render(<MarketingNav />);
+    render(<MarketingNav locale="en" />);
     const guides = screen.getAllByRole("link", { name: "Guides" });
     for (const link of guides) expect(link.getAttribute("aria-current")).toBe("page");
   });
 
   test("Developers opens a disclosure that Escape closes, returning focus", () => {
-    render(<MarketingNav />);
+    render(<MarketingNav locale="en" />);
     const button = screen.getByRole("button", { name: "Developers" });
     const panel = document.getElementById(
       button.getAttribute("aria-controls") ?? ""
@@ -163,7 +163,7 @@ describe("navigation grouping", () => {
   });
 
   test("the footer repeats the groups and reaches the blog in one click", () => {
-    render(<MarketingFooter />);
+    render(<MarketingFooter locale="en" />);
     for (const title of ["Product", "Guides", "Developers", "Open source"]) {
       expect(screen.getByText(title, { selector: "p" })).toBeTruthy();
     }

@@ -161,4 +161,4 @@ const en = {
 
 export type SiteCopy = typeof en;
 
-export const SITE: Record<Locale, SiteCopy> = { en };
+export const SITE: Record<Locale, SiteCopy> = { en, es: en };

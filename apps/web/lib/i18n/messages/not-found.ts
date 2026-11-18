@@ -42,4 +42,4 @@ const en = {
 
 export type NotFoundCopy = typeof en;
 
-export const NOT_FOUND: Record<Locale, NotFoundCopy> = { en };
+export const NOT_FOUND: Record<Locale, NotFoundCopy> = { en, es: en };

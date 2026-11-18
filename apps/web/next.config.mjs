@@ -8,7 +8,8 @@ import { walletConnectBuildError } from "./config/wallet-connect-build.mjs";
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // Two root layouts, (app) and (marketing), so unmatched URLs need app/global-not-found.tsx.
+  // Three root layouts, (app), (marketing) and (marketing-es), so unmatched URLs need
+  // app/global-not-found.tsx.
   experimental: { globalNotFound: true },
   // Consume the workspace SDK/types from their TypeScript source so the web
   // never depends on a pre-built dist (keeps CI/Vercel free of a build-order

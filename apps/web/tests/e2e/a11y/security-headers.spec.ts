@@ -165,7 +165,7 @@ for (const path of ["/", "/faq", "/registry", "/blog", "/blog/account-merge-on-s
   });
 }
 
-for (const path of ["/x/y/z", "/mainnet/nope", "/foo", "/blog/nope"]) {
+for (const path of ["/x/y/z", "/mainnet/nope", "/foo", "/blog/nope", "/es/nope"]) {
   test(`${path} answers 404 under the nonce policy, noindex, and hydrates`, async ({ page }) => {
     const violations = await watchViolations(page);
     const res = await page.goto(path);

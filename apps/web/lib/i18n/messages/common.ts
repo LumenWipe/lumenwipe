@@ -7,4 +7,4 @@ const en = {
 
 export type CommonCopy = typeof en;
 
-export const COMMON: Record<Locale, CommonCopy> = { en };
+export const COMMON: Record<Locale, CommonCopy> = { en, es: en };

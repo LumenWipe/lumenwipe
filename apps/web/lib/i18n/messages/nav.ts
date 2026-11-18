@@ -21,4 +21,4 @@ const en = {
 
 export type NavCopy = typeof en;
 
-export const NAV: Record<Locale, NavCopy> = { en };
+export const NAV: Record<Locale, NavCopy> = { en, es: en };

@@ -27,6 +27,7 @@ const APP_PATHS = {
   "/(marketing)/faq/page": "/faq",
   "/(marketing)/blog/[slug]/page": "/blog/[slug]",
   "/(marketing)/blog/[slug]/share.png/route": "/blog/[slug]/share.png",
+  "/(marketing-es)/es/page": "/es",
   "/(app)/[network]/page": "/[network]",
 };
 const PRERENDER = {
@@ -34,6 +35,7 @@ const PRERENDER = {
   routes: {
     "/": { srcRoute: "/" },
     "/faq": { srcRoute: "/faq" },
+    "/es": { srcRoute: "/es" },
     "/blog/a-post": { srcRoute: "/blog/[slug]" },
     "/blog/a-post/share.png": { srcRoute: "/blog/[slug]/share.png" },
   },
@@ -69,6 +71,7 @@ beforeEach(() => {
   write("routes-manifest.json", { version: 3, headers: [SECURITY_ENTRY] });
   write("server/app/index.html", page("home"));
   write("server/app/faq.html", page("faq"));
+  write("server/app/es.html", page("es"));
   write("server/app/blog/a-post.html", page("post"));
 });
 
@@ -112,7 +115,12 @@ describe("marketingPolicy", () => {
 
 describe("prerenderedMarketingPages", () => {
   test("lists each prerendered marketing page, posts expanded, route handlers left out", () => {
-    expect(prerenderedMarketingPages(APP_PATHS, PRERENDER)).toEqual(["/", "/blog/a-post", "/faq"]);
+    expect(prerenderedMarketingPages(APP_PATHS, PRERENDER)).toEqual([
+      "/",
+      "/blog/a-post",
+      "/es",
+      "/faq",
+    ]);
   });
 
   test("a marketing page Next did not prerender fails the build, by name", () => {
@@ -130,6 +138,29 @@ describe("prerenderedMarketingPages", () => {
     );
   });
 
+  test("a Spanish page Next did not prerender fails the build, by name", () => {
+    const routes = { ...PRERENDER.routes } as Record<string, { srcRoute: string }>;
+    delete routes["/es"];
+    expect(() => prerenderedMarketingPages(APP_PATHS, { ...PRERENDER, routes })).toThrow(
+      "marketing routes not prerendered (dynamic): /es"
+    );
+  });
+
+  test("a build with either marketing group missing fails instead of checking fewer pages", () => {
+    const english = Object.fromEntries(
+      Object.entries(APP_PATHS).filter(([appPath]) => !appPath.startsWith("/(marketing-es)/"))
+    );
+    expect(() => prerenderedMarketingPages(english, PRERENDER)).toThrow(
+      "app-path-routes-manifest.json lists no (marketing-es) route"
+    );
+    const spanish = Object.fromEntries(
+      Object.entries(APP_PATHS).filter(([appPath]) => !appPath.startsWith("/(marketing)/"))
+    );
+    expect(() => prerenderedMarketingPages(spanish, PRERENDER)).toThrow(
+      "app-path-routes-manifest.json lists no (marketing) route"
+    );
+  });
+
   test("a dynamic marketing route handler fails too", () => {
     const routes = { ...PRERENDER.routes } as Record<string, { srcRoute: string }>;
     delete routes["/blog/a-post/share.png"];
@@ -141,9 +172,14 @@ describe("prerenderedMarketingPages", () => {
 
 describe("run", () => {
   test("gives each page one exact-path entry hashing exactly its inline scripts", () => {
-    expect(run(dir, true)).toEqual(["/", "/blog/a-post", "/faq"]);
+    expect(run(dir, true)).toEqual(["/", "/blog/a-post", "/es", "/faq"]);
     const entries = cspEntries();
-    expect(entries.map((e: { source: string }) => e.source)).toEqual(["/", "/blog/a-post", "/faq"]);
+    expect(entries.map((e: { source: string }) => e.source)).toEqual([
+      "/",
+      "/blog/a-post",
+      "/es",
+      "/faq",
+    ]);
     const faq = entries.find((e: { source: string }) => e.source === "/faq");
     expect(faq.regex).toBe("^/faq(?:/)?$");
     const hashes = pageScripts(page("faq")).inline.map(scriptHash);
@@ -154,7 +190,7 @@ describe("run", () => {
   test("running twice replaces its entries instead of doubling them", () => {
     run(dir, true);
     run(dir, true);
-    expect(cspEntries()).toHaveLength(3);
+    expect(cspEntries()).toHaveLength(4);
   });
 
   test("check mode fails on a page whose entry was removed after injection", () => {
@@ -263,6 +299,7 @@ describe("under a build adapter, as on Vercel", () => {
     write("output/config.json", { version: 3, routes: BASE_ROUTES });
     write("output/functions/index.prerender-fallback.html", page("home"));
     write("output/functions/faq.prerender-fallback.html", page("faq"));
+    write("output/functions/es.prerender-fallback.html", page("es"));
     write("output/functions/blog/a-post.prerender-fallback.html", page("post"));
   });
 
@@ -270,17 +307,19 @@ describe("under a build adapter, as on Vercel", () => {
     expect(run(dir, true, { NEXT_ADAPTER_PATH: "/adapter.js" })).toEqual([
       "/",
       "/blog/a-post",
+      "/es",
       "/faq",
     ]);
     const routes = config().routes;
-    expect(routes.slice(0, 3).map((r) => r.src)).toEqual([
+    expect(routes.slice(0, 4).map((r) => r.src)).toEqual([
       "^/$",
       "^/blog/a-post(?:/)?$",
+      "^/es(?:/)?$",
       "^/faq(?:/)?$",
     ]);
-    expect(routes.slice(3)).toEqual(BASE_ROUTES);
+    expect(routes.slice(4)).toEqual(BASE_ROUTES);
     const hashes = pageScripts(page("faq")).inline.map(scriptHash);
-    expect(routes[2]).toEqual({
+    expect(routes[3]).toEqual({
       src: "^/faq(?:/)?$",
       headers: { [CSP]: marketingPolicy({ hashes }) },
       continue: true,
@@ -298,18 +337,19 @@ describe("under a build adapter, as on Vercel", () => {
   test("running twice replaces its routes instead of doubling them", () => {
     run(dir, true);
     run(dir, true);
-    expect(cspRoutes(config().routes)).toHaveLength(3);
+    expect(cspRoutes(config().routes)).toHaveLength(4);
   });
 
   test("an adapter that left no output config fails instead of falling back to the manifest", () => {
     rmSync(join(dir, "output"), { recursive: true });
     write("server/app/index.html", page("home"));
     write("server/app/faq.html", page("faq"));
+    write("server/app/es.html", page("es"));
     write("server/app/blog/a-post.html", page("post"));
     expect(() => run(dir, true, { NEXT_ADAPTER_PATH: "/adapter.js" })).toThrow(
       "a build adapter ran but"
     );
-    expect(run(dir, true, {})).toHaveLength(3);
+    expect(run(dir, true, {})).toHaveLength(4);
   });
 
   test("a prerendered page with no fallback HTML in the output fails", () => {
@@ -421,7 +461,7 @@ describe("under a build adapter, as on Vercel", () => {
   };
 
   test("the apex redirect from the real build passes, with the app's HSTS ahead of it", () => {
-    expect(run(dir, true)).toHaveLength(3);
+    expect(run(dir, true)).toHaveLength(4);
   });
 
   test("an apex host value with an unescaped dot fails", () => {
@@ -468,11 +508,14 @@ describe("under a build adapter, as on Vercel", () => {
     run(dir, true);
     const out = join(dir, "vercel-output");
     cpSync(join(dir, "output"), out, { recursive: true });
-    expect(checkOutput(dir, out)).toEqual(["/", "/blog/a-post", "/faq"]);
+    expect(checkOutput(dir, out)).toEqual(["/", "/blog/a-post", "/es", "/faq"]);
     const c = config("vercel-output");
     c.routes = c.routes.filter((r) => r.src !== "^/blog/a-post(?:/)?$");
     write("vercel-output/config.json", c);
     expect(() => checkOutput(dir, out)).toThrow("/blog/a-post has 0 CSP header entries");
+    c.routes = config("output").routes.filter((r) => r.src !== "^/es(?:/)?$");
+    write("vercel-output/config.json", c);
+    expect(() => checkOutput(dir, out)).toThrow("/es has 0 CSP header entries");
     rmSync(join(out, "config.json"));
     expect(() => checkOutput(dir, out)).toThrow("config.json is missing");
   });
@@ -480,6 +523,7 @@ describe("under a build adapter, as on Vercel", () => {
   test("an output config that cannot be parsed fails instead of falling back to the manifest", () => {
     write("server/app/index.html", page("home"));
     write("server/app/faq.html", page("faq"));
+    write("server/app/es.html", page("es"));
     write("server/app/blog/a-post.html", page("post"));
     write("output/config.json", '{"version":3,"routes":[');
     expect(() => run(dir, true, {})).toThrow("config.json is not valid JSON");

@@ -49,4 +49,4 @@ const en = {
 
 export type RegistryCopy = typeof en;
 
-export const REGISTRY: Record<Locale, RegistryCopy> = { en };
+export const REGISTRY: Record<Locale, RegistryCopy> = { en, es: en };

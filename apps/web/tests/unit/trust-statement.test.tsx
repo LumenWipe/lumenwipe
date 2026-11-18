@@ -51,7 +51,7 @@ const PAGES = {
   howItWorks: <HowItWorksPage />,
   faq: <FaqPage />,
   heroConsole: <HeroConsole />,
-  footer: <MarketingFooter />,
+  footer: <MarketingFooter locale="en" />,
 };
 
 describe("no surface overstates the trust model", () => {

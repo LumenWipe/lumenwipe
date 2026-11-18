@@ -144,4 +144,4 @@ const en = {
 
 export type HowItWorksCopy = typeof en;
 
-export const HOW_IT_WORKS: Record<Locale, HowItWorksCopy> = { en };
+export const HOW_IT_WORKS: Record<Locale, HowItWorksCopy> = { en, es: en };

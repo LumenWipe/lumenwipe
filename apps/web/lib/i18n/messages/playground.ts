@@ -15,4 +15,4 @@ const en = {
 
 export type PlaygroundCopy = typeof en;
 
-export const PLAYGROUND: Record<Locale, PlaygroundCopy> = { en };
+export const PLAYGROUND: Record<Locale, PlaygroundCopy> = { en, es: en };

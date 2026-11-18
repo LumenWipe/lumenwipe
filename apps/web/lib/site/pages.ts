@@ -1,5 +1,5 @@
 import type { Metadata, MetadataRoute } from "next";
-import { LOCALE_TAGS, SITE_LOCALE } from "@/lib/i18n/locale";
+import { LOCALE_TAGS, SITE_LOCALE, type Locale } from "@/lib/i18n/locale";
 import { SITE } from "@/lib/i18n/messages/site";
 import { siteUrl } from "@/lib/site/url";
 
@@ -64,11 +64,56 @@ export const BLOG_FEED = {
 /** The blog's own description, for the blog index and its feed. */
 export const BLOG_DESCRIPTION = COPY.blogDescription;
 
+/** A page's path in `locale`: English at the site root, Spanish under `/es`. */
+export function localePath(locale: Locale, path: string): string {
+  if (locale === "en") return path;
+  return path === "/" ? `/${locale}` : `/${locale}${path}`;
+}
+
+export interface SpanishPage {
+  /** The English page's path. */
+  path: string;
+  /** Whether its Spanish version is translated. Until it is, the Spanish page is `noindex`, left
+   *  out of the sitemap, and the language switch does not link the two. */
+  translated: boolean;
+}
+
+/** The English pages that have a Spanish version under `/es` (docs/contributing/localization.mdx). */
+export const SPANISH_PAGES: readonly SpanishPage[] = [{ path: "/", translated: false }];
+
+/** The sitemap entries of the translated Spanish pages, ranked as their English page. */
+export function spanishIndexedPages(pages: readonly SpanishPage[] = SPANISH_PAGES): IndexedPage[] {
+  return pages
+    .filter((page) => page.translated)
+    .flatMap((page) =>
+      INDEXED_PAGES.filter((indexed) => indexed.path === page.path).map((indexed) => ({
+        ...indexed,
+        path: localePath("es", page.path),
+      }))
+    );
+}
+
+/** The other locale's version of the page at `pathname`, when both exist and are translated. */
+export function languageAlternate(
+  locale: Locale,
+  pathname: string,
+  pages: readonly SpanishPage[] = SPANISH_PAGES
+): { locale: Locale; path: string } | null {
+  const page = pages.find((p) => p.translated && localePath(locale, p.path) === pathname);
+  if (!page) return null;
+  const other: Locale = locale === "en" ? "es" : "en";
+  return { locale: other, path: localePath(other, page.path) };
+}
+
 /** Pages search engines must not index: kept out of the sitemap and marked `noindex`. */
-export const NOINDEX_PAGES: readonly string[] = ["/api-keys"];
+export const NOINDEX_PAGES: readonly string[] = [
+  "/api-keys",
+  ...SPANISH_PAGES.filter((page) => !page.translated).map((page) => localePath("es", page.path)),
+];
 
 interface PageInput {
   path: string;
+  locale?: Locale;
   /** The page's own name; the root layout's title template adds the brand. */
   title: string;
   description: string;
@@ -84,17 +129,19 @@ interface PageInput {
  *  for both Open Graph and X. */
 export function pageMetadata({
   path,
+  locale = SITE_LOCALE,
   title,
   description,
   shareImage = SHARE_IMAGE,
   blogFeed = false,
   openGraph = { type: "website" },
 }: PageInput): Metadata {
-  const isHome = path === "/";
-  const fullTitle = isHome ? HOME_TITLE : `${title} | ${SITE_NAME}`;
+  const isHome = path === localePath(locale, "/");
+  const homeTitle = SITE[locale].metadata.homeTitle;
+  const fullTitle = isHome ? homeTitle : `${title} | ${SITE_NAME}`;
   const url = siteUrl(path);
   return {
-    title: isHome ? { absolute: HOME_TITLE } : title,
+    title: isHome ? { absolute: homeTitle } : title,
     description,
     alternates: {
       canonical: url,
@@ -110,7 +157,7 @@ export function pageMetadata({
       description,
       url,
       siteName: SITE_NAME,
-      locale: LOCALE_TAGS[SITE_LOCALE].openGraph,
+      locale: LOCALE_TAGS[locale].openGraph,
       images: [shareImage],
     },
     twitter: { card: "summary_large_image", title: fullTitle, description, images: [shareImage] },

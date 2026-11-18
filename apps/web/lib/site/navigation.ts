@@ -1,4 +1,4 @@
-import { SITE_LOCALE } from "@/lib/i18n/locale";
+import type { Locale } from "@/lib/i18n/locale";
 import { NAV } from "@/lib/i18n/messages/nav";
 import { DOCS_URL } from "@/config/discovery-links.mjs";
 
@@ -13,22 +13,29 @@ export { DOCS_URL };
 export const PLAYGROUND_URL = "https://playground.lumenwipe.com";
 export const APP_HREF = "/mainnet";
 
-const LABEL = NAV[SITE_LOCALE].links;
+export interface SiteLinks {
+  /** The primary navigation, in the order a first-time visitor asks: what it does, whether it is
+   *  safe, where to learn more, and where to try it. */
+  primary: readonly SiteLink[];
+  developer: readonly SiteLink[];
+}
 
-/** The primary navigation, in the order a first-time visitor asks: what it does, whether it is
- *  safe, where to learn more, and where to try it. */
-export const PRIMARY_LINKS: readonly SiteLink[] = [
-  { href: "/how-it-works", label: LABEL.howItWorks },
-  { href: "/security", label: LABEL.security },
-  { href: "/content", label: LABEL.guides },
-  { href: PLAYGROUND_URL, label: LABEL.playground, external: true },
-];
-
-export const DEVELOPER_LINKS: readonly SiteLink[] = [
-  { href: "/api-keys", label: LABEL.apiKeys },
-  { href: DOCS_URL, label: LABEL.docs, external: true },
-  { href: GITHUB_URL, label: LABEL.github, external: true },
-];
+export function siteLinks(locale: Locale): SiteLinks {
+  const label = NAV[locale].links;
+  return {
+    primary: [
+      { href: "/how-it-works", label: label.howItWorks },
+      { href: "/security", label: label.security },
+      { href: "/content", label: label.guides },
+      { href: PLAYGROUND_URL, label: label.playground, external: true },
+    ],
+    developer: [
+      { href: "/api-keys", label: label.apiKeys },
+      { href: DOCS_URL, label: label.docs, external: true },
+      { href: GITHUB_URL, label: label.github, external: true },
+    ],
+  };
+}
 
 /** Whether `pathname` is the page `link` leads to. Guides covers the blog it lists. */
 export function isCurrent(link: SiteLink, pathname: string): boolean {

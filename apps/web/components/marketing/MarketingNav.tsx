@@ -5,20 +5,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X, ArrowUpRight, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  APP_HREF,
-  DEVELOPER_LINKS,
-  isCurrent,
-  PRIMARY_LINKS,
-  type SiteLink,
-} from "@/lib/site/navigation";
-import { SITE_LOCALE } from "@/lib/i18n/locale";
+import { APP_HREF, isCurrent, siteLinks, type SiteLink } from "@/lib/site/navigation";
+import type { Locale } from "@/lib/i18n/locale";
 import { COMMON } from "@/lib/i18n/messages/common";
 import { NAV } from "@/lib/i18n/messages/nav";
+import LanguageSwitch from "./LanguageSwitch";
 import Logo from "./Logo";
-
-const T = NAV[SITE_LOCALE];
-const NEW_TAB = COMMON[SITE_LOCALE].newTab;
 
 const DESKTOP = "(min-width: 1024px)";
 const FOCUSABLE = "a[href], button:not([disabled])";
@@ -27,16 +19,26 @@ function linkProps(l: SiteLink) {
   return l.external ? { target: "_blank", rel: "noopener noreferrer" } : {};
 }
 
-function NewTab() {
-  return <span className="sr-only">{NEW_TAB}</span>;
+function NewTab({ label }: { label: string }) {
+  return <span className="sr-only">{label}</span>;
 }
 
-function DevelopersMenu({ pathname }: { pathname: string }) {
+function DevelopersMenu({
+  pathname,
+  label,
+  links,
+  newTab,
+}: {
+  pathname: string;
+  label: string;
+  links: readonly SiteLink[];
+  newTab: string;
+}) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
   const root = useRef<HTMLDivElement>(null);
   const toggle = useRef<HTMLButtonElement>(null);
-  const current = DEVELOPER_LINKS.some((l) => isCurrent(l, pathname));
+  const current = links.some((l) => isCurrent(l, pathname));
 
   useEffect(() => {
     if (!open) return;
@@ -74,7 +76,7 @@ function DevelopersMenu({ pathname }: { pathname: string }) {
           current || open ? "text-white" : "text-fg-muted hover:text-white"
         }`}
       >
-        {T.developers}
+        {label}
         <ChevronDown
           aria-hidden
           className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`}
@@ -85,7 +87,7 @@ function DevelopersMenu({ pathname }: { pathname: string }) {
         hidden={!open}
         className="absolute right-0 top-full mt-3 min-w-44 rounded-xl border border-white/10 bg-surface-raised p-1.5 shadow-lg"
       >
-        {DEVELOPER_LINKS.map((l) => (
+        {links.map((l) => (
           <li key={l.href}>
             <Link
               href={l.href}
@@ -97,7 +99,7 @@ function DevelopersMenu({ pathname }: { pathname: string }) {
               {l.label}
               {l.external && (
                 <>
-                  <NewTab />
+                  <NewTab label={newTab} />
                   <ArrowUpRight aria-hidden className="h-3.5 w-3.5 text-fg-muted" />
                 </>
               )}
@@ -109,8 +111,11 @@ function DevelopersMenu({ pathname }: { pathname: string }) {
   );
 }
 
-export default function MarketingNav() {
+export default function MarketingNav({ locale }: { locale: Locale }) {
   const pathname = usePathname();
+  const T = NAV[locale];
+  const newTab = COMMON[locale].newTab;
+  const links = siteLinks(locale);
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const toggle = useRef<HTMLButtonElement>(null);
@@ -191,7 +196,7 @@ export default function MarketingNav() {
         </Link>
 
         <div className="hidden items-center gap-7 lg:flex">
-          {PRIMARY_LINKS.map((l) => {
+          {links.primary.map((l) => {
             const active = isCurrent(l, pathname);
             return (
               <Link
@@ -206,7 +211,7 @@ export default function MarketingNav() {
                 {l.label}
                 {l.external && (
                   <>
-                    <NewTab />
+                    <NewTab label={newTab} />
                     <ArrowUpRight
                       aria-hidden
                       className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-60"
@@ -223,10 +228,16 @@ export default function MarketingNav() {
               </Link>
             );
           })}
-          <DevelopersMenu pathname={pathname} />
+          <DevelopersMenu
+            pathname={pathname}
+            label={T.developers}
+            links={links.developer}
+            newTab={newTab}
+          />
         </div>
 
         <div className="flex items-center gap-2">
+          <LanguageSwitch locale={locale} className="hidden lg:inline-flex" />
           <Button asChild variant="secondary" size="sm" className="whitespace-nowrap">
             <Link href={APP_HREF}>{T.openApp}</Link>
           </Button>
@@ -256,16 +267,19 @@ export default function MarketingNav() {
       >
         <div className="mx-auto flex max-w-6xl flex-col gap-1 px-5 py-4">
           <MobileLinks
-            links={PRIMARY_LINKS}
+            links={links.primary}
             pathname={pathname}
+            newTab={newTab}
             onNavigate={() => setOpen(false)}
           />
           <p className="mkt-eyebrow mt-3 px-3 pb-1 text-fg-muted">{T.developers}</p>
           <MobileLinks
-            links={DEVELOPER_LINKS}
+            links={links.developer}
             pathname={pathname}
+            newTab={newTab}
             onNavigate={() => setOpen(false)}
           />
+          <LanguageSwitch locale={locale} className="mt-3 px-3 py-2.5" />
         </div>
       </div>
     </header>
@@ -275,10 +289,12 @@ export default function MarketingNav() {
 function MobileLinks({
   links,
   pathname,
+  newTab,
   onNavigate,
 }: {
   links: readonly SiteLink[];
   pathname: string;
+  newTab: string;
   onNavigate: () => void;
 }) {
   return (
@@ -302,7 +318,7 @@ function MobileLinks({
               </span>
               {l.external && (
                 <>
-                  <NewTab />
+                  <NewTab label={newTab} />
                   <ArrowUpRight aria-hidden className="h-3.5 w-3.5 opacity-50" />
                 </>
               )}
