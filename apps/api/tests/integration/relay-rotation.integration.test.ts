@@ -14,10 +14,13 @@ import {
 import type { Subprocess } from "bun";
 import { buildMediatorMergePaymentTx } from "@/lib/stellar/tx-builder/merge";
 import {
-  forwardFinding,
+  effectsInWindow,
+  forwardFindings,
+  removalOperations,
   sourcedFinding,
   transactionsInWindow,
-  type HorizonEffect,
+  type HorizonAccountEffectPage,
+  type HorizonOperation,
   type HorizonTransactionPage,
   type ServiceAccount,
 } from "@/lib/monitors/service-accounts";
@@ -272,17 +275,27 @@ test.skipIf(!RUN_INTEGRATION)(
       expect.anything()
     );
     // The forward check reads the drain as the drain, and only because it went to the operator.
-    const drainRecord = history.transactions.find((tx) => tx.hash === drained.hash);
-    expect(drainRecord).toBeDefined();
-    const effects = (
-      (await (
-        await fetch(`${HORIZON_URL}/transactions/${drained.hash}/effects?limit=200`)
-      ).json()) as { _embedded: { records: HorizonEffect[] } }
-    )._embedded.records;
-    expect(forwardFinding(retired, drainRecord!, effects)).toBeNull();
+    expect(history.transactions.some((tx) => tx.hash === drained.hash)).toBe(true);
+    const effects = await effectsInWindow(
+      async (path) =>
+        (await (await fetch(`${HORIZON_URL}${path}`)).json()) as HorizonAccountEffectPage,
+      retired.address,
+      started
+    );
+    expect(effects.complete).toBe(true);
+    const removals = await Promise.all(
+      removalOperations(retired, effects.records).map(
+        async (id) =>
+          (await (
+            await fetch(`${HORIZON_URL}/operations/${id}?join=transactions`)
+          ).json()) as HorizonOperation
+      )
+    );
+    expect(removals.map((op) => op.transaction_hash)).toEqual([drained.hash]);
+    expect(forwardFindings(retired, effects.records, removals)).toEqual([]);
     expect(
-      forwardFinding({ ...retired, drainTo: exchange.publicKey() }, drainRecord!, effects)
-    ).not.toBeNull();
+      forwardFindings({ ...retired, drainTo: exchange.publicKey() }, effects.records, removals)
+    ).toHaveLength(1);
 
     // A close co-signed before the rotation and submitted after the drain fails as a whole.
     const stale = await submit(server, lateSigned).then(

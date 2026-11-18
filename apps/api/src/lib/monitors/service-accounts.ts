@@ -26,6 +26,8 @@ export interface ServiceAccount {
 
 export interface HorizonAccount {
   balances: Array<{ asset_type: string; balance: string }>;
+  /** Unix seconds of the last change to the sequence number; absent or null when it never moved. */
+  sequence_time?: string | null;
 }
 
 export interface HorizonTransaction {
@@ -323,19 +325,24 @@ export const MAX_HISTORY_PAGES = 25;
 
 export interface History<T> {
   records: T[];
-  /** False when the page cap was reached before the window start: the rest went unread. */
+  /** False when the read stopped before the window start: the rest went unread. */
   complete: boolean;
+  /** Why the read stopped, when it is not complete. */
+  stopped?: string;
 }
 
 export interface TransactionHistory {
   transactions: HorizonTransaction[];
-  /** False when the page cap was reached before the window start: the rest went unread. */
+  /** False when the read stopped before the window start: the rest went unread. */
   complete: boolean;
+  /** Why the read stopped, when it is not complete. */
+  stopped?: string;
 }
 
 /**
  * Every record of one of an account's Horizon lists created at or after `since`, newest first,
- * paging with the last record's paging token as the cursor.
+ * paging with the last record's paging token as the cursor. A request that fails ends the read
+ * with what came before it, so the records already read are still judged.
  */
 async function recordsInWindow<T extends { created_at: string; paging_token: string }>(
   get: (path: string) => Promise<{ _embedded: { records: T[] } }>,
@@ -353,7 +360,12 @@ async function recordsInWindow<T extends { created_at: string; paging_token: str
       order: "desc",
     });
     if (cursor !== undefined) query.set("cursor", cursor);
-    const records = (await get(`${path}?${query}`))._embedded.records;
+    let records: T[];
+    try {
+      records = (await get(`${path}?${query}`))._embedded.records;
+    } catch (error) {
+      return { records: found, complete: false, stopped: (error as Error).message };
+    }
     for (const record of records) {
       if (Date.parse(record.created_at) < since.getTime())
         return { records: found, complete: true };
@@ -362,7 +374,11 @@ async function recordsInWindow<T extends { created_at: string; paging_token: str
     if (records.length < HORIZON_PAGE_LIMIT) return { records: found, complete: true };
     cursor = records[records.length - 1].paging_token;
   }
-  return { records: found, complete: false };
+  return {
+    records: found,
+    complete: false,
+    stopped: `the ${maxPages}-page cap was reached; lower MONITOR_HISTORY_HOURS`,
+  };
 }
 
 /**
@@ -376,14 +392,14 @@ export async function transactionsInWindow(
   maxPages = MAX_HISTORY_PAGES,
   includeFailed = false
 ): Promise<TransactionHistory> {
-  const { records, complete } = await recordsInWindow(
+  const { records, ...read } = await recordsInWindow(
     get,
     `/accounts/${address}/transactions`,
     includeFailed ? { include_failed: "true" } : {},
     since,
     maxPages
   );
-  return { transactions: records, complete };
+  return { transactions: records, ...read };
 }
 
 /**
@@ -416,18 +432,51 @@ export async function effectsInWindow(
   return recordsInWindow(get, `/accounts/${address}/effects`, {}, since, maxPages);
 }
 
-/** The finding for a history the page cap cut short: the check did not see the whole window. */
-export function incompleteHistoryFinding(
+/**
+ * What a check reports for a list it could not read to the window start, after a page cap, a
+ * Horizon error or timeout, or the check's time budget. Nothing in the unread part was seen, so
+ * it is not a finding, and it is never clean.
+ */
+export function incompleteRead(
   account: ServiceAccount,
   hours: number,
-  records = "transactions"
+  list: string,
+  read: { count: number; stopped?: string }
 ): Finding {
+  const what = read.count === 0 ? `none of the ${list}` : `only the newest ${read.count} ${list}`;
   return {
     account,
     message:
-      `more than ${MAX_HISTORY_PAGES * HORIZON_PAGE_LIMIT} ${records} in the last ${hours} h; ` +
-      "the older ones were not checked. Lower MONITOR_HISTORY_HOURS.",
+      `${what} of the last ${hours} h were read before the read stopped: ` +
+      `${read.stopped ?? "unknown reason"}. The rest were not checked.`,
   };
+}
+
+/**
+ * How a check ended: a finding when anything fired, which pages whatever else went unread; an
+ * incomplete read when nothing fired but something could not be read; clean only otherwise.
+ */
+export type CheckStatus = "clean" | "finding" | "incomplete";
+
+export function checkStatus(findings: Finding[], incomplete: Finding[]): CheckStatus {
+  if (findings.length > 0) return "finding";
+  return incomplete.length > 0 ? "incomplete" : "clean";
+}
+
+/**
+ * The records of a history that belong to transactions read in full. Horizon lists a
+ * transaction's records newest operation first, so a read that stopped early may hold the
+ * forward's payment without the merge before it; the oldest transaction of an incomplete read is
+ * left out, as part of what went unread, rather than judged by half.
+ */
+export function wholeTransactions<T>(
+  history: History<T>,
+  transactionOf: (record: T) => string
+): T[] {
+  const last = history.records.at(-1);
+  if (history.complete || last === undefined) return history.records;
+  const cut = transactionOf(last);
+  return history.records.filter((record) => transactionOf(record) !== cut);
 }
 
 /**
@@ -540,14 +589,37 @@ export function operationSourceFinding(
 }
 
 /**
+ * S4a.Information.1.M.1 and S4b.Information.1.M.1 from the account record. The sequence number
+ * moves only when the account sources a transaction, failed or not, or bumps its own sequence, and
+ * neither the relay's forward nor a fee bump the sponsor pays moves it. One request that no flood
+ * of history can push out of reach.
+ */
+export function sequenceFinding(
+  account: ServiceAccount,
+  record: HorizonAccount,
+  since: Date
+): Finding | null {
+  const seconds = Number(record.sequence_time ?? 0);
+  if (!(seconds * 1000 >= since.getTime())) return null;
+  return {
+    account,
+    message:
+      `its sequence number moved at ${new Date(seconds * 1000).toISOString()}: its key sourced ` +
+      "a transaction or bumped its sequence. Expected never.",
+  };
+}
+
+/**
  * The keys check for one account: each transaction it sourced or, as the relay, paid the fee for,
  * and each other transaction in which it sourced an unexpected operation or a contract call
- * debited it, reported once.
+ * debited it, reported once. The sequence finding is reported when nothing else is, so a use of
+ * the key that the history read missed still fires.
  */
 export function keysFindings(
   account: ServiceAccount,
   transactions: HorizonTransaction[],
-  operations: HorizonOperation[]
+  operations: HorizonOperation[],
+  sequence: Finding | null = null
 ): Finding[] {
   const findings = new Map<string, Finding>();
   for (const tx of transactions) {
@@ -564,6 +636,7 @@ export function keysFindings(
       operationSourceFinding(account, transaction) ?? contractDebitFinding(account, transaction);
     if (finding) findings.set(hash, finding);
   }
+  if (findings.size === 0 && sequence !== null) return [sequence];
   return [...findings.values()];
 }
 
@@ -613,79 +686,101 @@ function isRotationDrain(
 }
 
 /**
- * The operations of `tx` that are the rotation's drain, read from effects: the merge is the only
- * operation that removes the account, and the operator is what it credited.
+ * The transaction an effect belongs to. Horizon's operation ids are TOIDs, whose low 12 bits
+ * number the operation inside its transaction; an effect with no operation id stands alone.
  */
-function drainOperations(
+export function transactionOf(effect: HorizonAccountEffect): string {
+  const operation = operationOf(effect);
+  if (operation === undefined || !/^\d+$/.test(operation)) return effect.paging_token;
+  return String((BigInt(operation) >> 12n) << 12n);
+}
+
+/**
+ * The operations whose record the forward check reads to tell a retired account's drain from a
+ * payout: each one that removed the account, which only a merge does. None for an account with
+ * no drain to tell apart.
+ */
+export function removalOperations(
   account: ServiceAccount,
-  tx: HorizonTransaction,
-  effects: HorizonEffect[]
-): Set<string> {
-  const removed = new Set<string>();
-  const credited = new Set<string>();
+  effects: HorizonAccountEffect[]
+): string[] {
+  if (account.retired !== true || account.drainTo === undefined) return [];
+  const removals = new Set<string>();
   for (const effect of effects) {
+    if (effect.type !== "account_removed" || effect.account !== account.address) continue;
     const operation = operationOf(effect);
-    if (operation === undefined) continue;
-    if (effect.type === "account_removed" && effect.account === account.address) {
-      removed.add(operation);
-    }
-    if (
-      effect.type === "account_credited" &&
-      isRotationDrain(account, tx.source_account, effect.account)
-    ) {
-      credited.add(operation);
-    }
+    if (operation !== undefined && /^\d+$/.test(operation)) removals.add(operation);
   }
-  return new Set([...removed].filter((operation) => credited.has(operation)));
+  return [...removals];
 }
 
 /**
  * S4a.Elevation.1.M.1's other signal: in one transaction the mediator paid out more than the merge
- * delivered to it, so the difference came from its own balance. Horizon's effects carry what the
- * merge credited and what the forward debited; the API bounds the forward by the merge at co-sign
- * time, so any transaction where the debit exceeds the credit is one that got past that bound.
- * A retired account's drain counts what it delivered to the operator as delivered, in that
- * operation only, so any other debit in the same transaction still fires. A retired sponsor is
- * read the same way: its fee bumps are fees, not effects, so only a payout or a merge debits it.
+ * delivered to it, so the difference came from its own balance. The account's own effects carry
+ * what the merge credited and what the forward debited, grouped here by transaction; the API
+ * bounds the forward by the merge at co-sign time, so any transaction where the debit exceeds the
+ * credit is one that got past that bound. A retired account's drain counts what it delivered to
+ * the operator as delivered, in that operation only, so any other debit in the same transaction
+ * still fires. `removals` holds the operation record of each of `removalOperations`; a
+ * transaction with a removal whose record is missing is not judged, and the caller reports it
+ * unread. A retired sponsor is read the same way: its fee bumps are fees, not effects, so only a
+ * payout or a merge debits it.
  */
-export function forwardFinding(
+export function forwardFindings(
   account: ServiceAccount,
-  tx: HorizonTransaction,
-  effects: HorizonEffect[]
-): Finding | null {
-  const drain = drainOperations(account, tx, effects);
-  let credited = 0n;
-  let debited = 0n;
+  effects: HorizonAccountEffect[],
+  removals: HorizonOperation[]
+): Finding[] {
+  const drains = new Set(
+    removals
+      .filter(
+        (op) =>
+          op.type === "account_merge" &&
+          isRotationDrain(account, op.transaction?.source_account, op.into)
+      )
+      .map((op) => op.paging_token)
+  );
+  const resolved = new Set(removals.map((op) => op.paging_token));
+  const unresolved = new Set(
+    removalOperations(account, effects).filter((operation) => !resolved.has(operation))
+  );
+  const transactions = new Map<string, HorizonAccountEffect[]>();
   for (const effect of effects) {
-    if (effect.amount === undefined) continue;
-    const operation = operationOf(effect);
-    if (
-      effect.type === "account_credited" &&
-      effect.account === account.drainTo &&
-      operation !== undefined &&
-      drain.has(operation)
-    ) {
-      credited += BigInt(xlmToStroops(effect.amount));
-    }
     if (effect.account !== account.address) continue;
-    if (effect.type === "account_credited") credited += BigInt(xlmToStroops(effect.amount));
-    if (effect.type === "account_debited") debited += BigInt(xlmToStroops(effect.amount));
+    const key = transactionOf(effect);
+    transactions.set(key, [...(transactions.get(key) ?? []), effect]);
   }
-  if (debited <= credited) return null;
-  return {
-    account,
-    message:
-      `transaction ${tx.hash} (${tx.created_at}) paid out ${stroopsToXlm(debited)} XLM ` +
-      `but the merge delivered ${stroopsToXlm(credited)} XLM`,
-  };
+  const findings: Finding[] = [];
+  for (const transaction of transactions.values()) {
+    const operations = [...new Set(transaction.map((e) => operationOf(e) ?? e.paging_token))];
+    if (operations.some((operation) => unresolved.has(operation))) continue;
+    let credited = 0n;
+    let debited = 0n;
+    for (const effect of transaction) {
+      if (typeof effect.amount !== "string") continue;
+      const amount = BigInt(xlmToStroops(effect.amount));
+      if (effect.type === "account_credited") credited += amount;
+      if (effect.type !== "account_debited") continue;
+      debited += amount;
+      const operation = operationOf(effect);
+      if (operation !== undefined && drains.has(operation)) credited += amount;
+    }
+    if (debited <= credited) continue;
+    findings.push({
+      account,
+      message:
+        `operations ${operations.join(", ")} (${transaction[0].created_at}) paid out ` +
+        `${stroopsToXlm(debited)} XLM but the merge delivered ${stroopsToXlm(credited)} XLM`,
+    });
+  }
+  return findings;
 }
 
 /**
- * The current sponsor has no forward and no drain: it pays fees, which are not effects, so the
- * forward check reads its own effects list, one page for the whole window, rather than the effects
- * of every fee bump it paid for.
+ * The current sponsor has no forward and no drain: it pays fees, which are not effects, so any
+ * debit of it is a payout. The relay and a retired account are judged per transaction instead.
  */
-export function readsOwnEffects(account: ServiceAccount): boolean {
+export function anyDebitIsPayout(account: ServiceAccount): boolean {
   return account.role === "sponsor" && account.retired !== true;
 }
 
@@ -717,8 +812,8 @@ export type ServiceCheck = "keys" | "balances" | "forward";
 
 /**
  * The accounts one check reads. A retired account has no balance left to floor. The forward check
- * reads every account: the relay and a retired account against the merge and the drain, the
- * current sponsor for any debit at all.
+ * reads every account's own effects: the relay and a retired account against the merge and the
+ * drain, the current sponsor for any debit at all.
  */
 export function accountsFor(accounts: ServiceAccount[], check: ServiceCheck): ServiceAccount[] {
   switch (check) {
