@@ -465,9 +465,10 @@ export function phoenixSwapCall(
 
 /**
  * The pool call that opens the position: `provide_liquidity(sender, desired_a, min_a, desired_b,
- * min_b, custom_slippage_bps, deadline)`, offering the LWPHX and the XLM given. The pool takes
- * only what its ratio needs, so the minimums are one base unit: this is the demo's own deposit,
- * and the exit's floors are what protect what comes back.
+ * min_b, custom_slippage_bps, deadline, auto_stake)`, offering the LWPHX and the XLM given, with
+ * nothing staked inside the call: the scenario bonds in a step of its own. The pool takes only
+ * what its ratio needs, so the minimums are one base unit: this is the demo's own deposit, and the
+ * exit's floors are what protect what comes back.
  */
 export function phoenixProvideCall(demoPublic: string, lwphx: bigint, xlm: bigint): ContractCall {
   return {
@@ -481,6 +482,7 @@ export function phoenixProvideCall(demoPublic: string, lwphx: bigint, xlm: bigin
       scI128(BigInt(1)),
       scI64(PHOENIX_SEED.depositSlippageBps),
       xdr.ScVal.scvVoid(),
+      xdr.ScVal.scvBool(false),
     ],
   };
 }

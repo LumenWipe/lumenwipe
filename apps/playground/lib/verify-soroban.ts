@@ -70,6 +70,8 @@ interface FunctionRule {
   variants: readonly SeededProtocol["variant"][] | null;
   /** The exact argument count. */
   arity: number;
+  /** Positions of `Option` arguments that must be unset (void): a deadline, an in-call unstake. */
+  voidArgs: readonly number[];
   /** Positions of arguments that name the account paid or acted for: each must be the demo. */
   accountArgs: readonly number[];
   /** Positions of arguments that name where the call sends funds: each must be `address`, which
@@ -132,9 +134,10 @@ interface ProtocolPins {
  * Phoenix: the pinned pool and its stake contract, the only contracts a call may be made to, and
  * the pool's share token, the only other one its authorization tree may reach. Its exit is the
  * calls apps/api/src/lib/defi-exits/phoenix.ts builds: `withdraw_liquidity(sender, share_amount,
- * min_a, min_b, deadline)` on the pool, which authorizes moving the demo's shares, and before it,
- * only when the selection bonded, `unbond(sender, stake_amount, stake_timestamp)` on the stake,
- * which the stake pays out of its own balance.
+ * min_a, min_b, deadline, auto_unstake)` on the pool with no deadline and nothing unstaked inside
+ * the call, which authorizes moving the demo's shares, and before it, only when the selection
+ * bonded, `unbond(sender, stake_amount, stake_timestamp)` on the stake, which the stake pays out
+ * of its own balance.
  *
  * The playground token: its own pinned contract, and nothing else. Its one call is the plain
  * SEP-41 `transfer(from, to, amount)` apps/api/src/lib/close-api/token-transfer-round.ts builds,
@@ -152,6 +155,7 @@ export const PINNED_SOROBAN_PROTOCOLS: Readonly<Record<SorobanProtocol, Protocol
         on: SOROSWAP.router,
         variants: null,
         arity: 7,
+        voidArgs: [],
         recipientArgs: null,
         accountArgs: [5],
         amountType: "scvI128",
@@ -172,6 +176,7 @@ export const PINNED_SOROBAN_PROTOCOLS: Readonly<Record<SorobanProtocol, Protocol
         on: AQUARIUS.pool,
         variants: null,
         arity: 3,
+        voidArgs: [],
         recipientArgs: null,
         accountArgs: [0],
         amountType: "scvU128",
@@ -192,6 +197,7 @@ export const PINNED_SOROBAN_PROTOCOLS: Readonly<Record<SorobanProtocol, Protocol
         on: BLEND.pool,
         variants: null,
         arity: 4,
+        voidArgs: [],
         recipientArgs: null,
         accountArgs: [0, 1, 2],
         amountType: "scvI128",
@@ -218,7 +224,8 @@ export const PINNED_SOROBAN_PROTOCOLS: Readonly<Record<SorobanProtocol, Protocol
       withdraw_liquidity: {
         on: PHOENIX.pool,
         variants: null,
-        arity: 5,
+        arity: 6,
+        voidArgs: [4, 5],
         recipientArgs: null,
         accountArgs: [0],
         amountType: "scvI128",
@@ -232,6 +239,7 @@ export const PINNED_SOROBAN_PROTOCOLS: Readonly<Record<SorobanProtocol, Protocol
         on: PHOENIX.stake,
         variants: ["bonded"],
         arity: 3,
+        voidArgs: [],
         recipientArgs: null,
         accountArgs: [0],
         amountType: "scvI128",
@@ -252,6 +260,7 @@ export const PINNED_SOROBAN_PROTOCOLS: Readonly<Record<SorobanProtocol, Protocol
         on: PLAYGROUND_TOKEN.contract,
         variants: null,
         arity: 3,
+        voidArgs: [],
         recipientArgs: { at: [1], address: PLAYGROUND_TOKEN.admin },
         accountArgs: [0],
         amountType: "scvI128",
@@ -359,6 +368,9 @@ export function assertSorobanTransaction(tx: Transaction, expected: SorobanExpec
   }
   const args = call.args;
   if (args.length !== rule.arity) throw new SorobanVerificationError("soroban_arguments_invalid");
+  if (!rule.voidArgs.every((i) => args[i]?.type === "scvVoid")) {
+    throw new SorobanVerificationError("soroban_arguments_invalid");
+  }
   for (const i of rule.accountArgs) {
     if (addressOf(args[i]) !== expected.demoPublic) {
       throw new SorobanVerificationError("soroban_account_argument_mismatch");

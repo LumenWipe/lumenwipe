@@ -197,6 +197,7 @@ async function runVariant(variant: 0 | 1): Promise<void> {
       i128(shares),
       i128(floor(info.asset_a.amount)),
       i128(floor(info.asset_b.amount)),
+      xdr.ScVal.scvVoid(),
       xdr.ScVal.scvVoid()
     )
   );

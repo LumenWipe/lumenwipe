@@ -532,7 +532,7 @@ export const ENVIRONMENT: Record<EnvApp, Record<string, EnvironmentFacts>> = {
       secret: true,
       default: NONE,
       purpose:
-        "Admin of the project's testnet Phoenix test token, for the funded integration tests",
+        "Admin of the project's testnet Phoenix test token and pool, for the funded integration tests and the pool's deployment script",
     },
     FXDAO_TESTNET_ORACLE_ADMIN_SECRET: {
       required: "Tests only",

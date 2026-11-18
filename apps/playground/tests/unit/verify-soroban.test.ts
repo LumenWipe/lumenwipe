@@ -1202,14 +1202,21 @@ describe("the Phoenix row", () => {
     minB?: xdr.ScVal;
   }
 
-  /** `withdraw_liquidity(sender, share_amount, min_a, min_b, deadline)`, as
+  /** `withdraw_liquidity(sender, share_amount, min_a, min_b, deadline, auto_unstake)`, as
    *  apps/api/src/lib/defi-exits/phoenix.ts builds it. */
   const withdrawArgs = ({
     sender = demo,
     shares = i128(BigInt(1000)),
     minA = i128(BigInt(5)),
     minB = i128(BigInt(7)),
-  }: Withdrawal = {}): xdr.ScVal[] => [address(sender), shares, minA, minB, xdr.ScVal.scvVoid()];
+  }: Withdrawal = {}): xdr.ScVal[] => [
+    address(sender),
+    shares,
+    minA,
+    minB,
+    xdr.ScVal.scvVoid(),
+    xdr.ScVal.scvVoid(),
+  ];
 
   /** `unbond(sender, stake_amount, stake_timestamp)`, as the same adapter builds it. */
   const unbondArgs = (sender = demo, amount = i128(BigInt(500))): xdr.ScVal[] => [
@@ -1344,10 +1351,26 @@ describe("the Phoenix row", () => {
 
   test("arguments of another shape are refused", () => {
     expect(outcome(withdrawal(withdrawArgs().slice(0, 4)), LP)).toBe("soroban_arguments_invalid");
+    expect(outcome(withdrawal(withdrawArgs().slice(0, 5)), LP)).toBe("soroban_arguments_invalid");
     expect(outcome(withdrawal([...withdrawArgs(), xdr.ScVal.scvVoid()]), LP)).toBe(
       "soroban_arguments_invalid"
     );
     expect(outcome(unbond(unbondArgs().slice(0, 2)), BONDED)).toBe("soroban_arguments_invalid");
+  });
+
+  test("a withdrawal with a deadline, or one that unstakes inside the call, is refused", () => {
+    const set = (at: number, val: xdr.ScVal): xdr.ScVal[] =>
+      withdrawArgs().map((arg, i) => (i === at ? val : arg));
+    const autoUnstake = xdr.ScVal.scvMap([
+      new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("stake_amount"), val: i128(BigInt(500)) }),
+      new xdr.ScMapEntry({
+        key: xdr.ScVal.scvSymbol("stake_timestamp"),
+        val: nativeToScVal(BigInt(1_762_000_000), { type: "u64" }),
+      }),
+    ]);
+    const deadline = nativeToScVal(BigInt(1_762_000_000), { type: "u64" });
+    expect(outcome(withdrawal(set(4, deadline)), LP)).toBe("soroban_arguments_invalid");
+    expect(outcome(withdrawal(set(5, autoUnstake)), BONDED)).toBe("soroban_arguments_invalid");
   });
 
   test("a pool other than the pinned one, or a call to a token, is refused", () => {

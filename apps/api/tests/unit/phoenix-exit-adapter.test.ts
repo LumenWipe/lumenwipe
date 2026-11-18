@@ -10,7 +10,6 @@ import type { PhoenixLpPosition, PhoenixStakePosition } from "@lumenwipe/types";
 import { EXIT_POSITION_GONE, phoenixExitAdapter, runExitAdapter } from "@/lib/defi-exits";
 import {
   PHOENIX_BLENDED_VERSION,
-  PHOENIX_FIVE_ARG_WITHDRAW_VERSION,
   phoenixNewLpKey,
   phoenixStakeConfigKey,
   phoenixUnbondToken,
@@ -261,32 +260,9 @@ describe("phoenix exit adapter", () => {
     ]);
   });
 
-  test("the testnet pool code without auto_unstake gets the first five args (until #1048 redeploys it)", async () => {
-    const fiveArg = registry([
-      entry({ version: PHOENIX_FIVE_ARG_WITHDRAW_VERSION }),
-      entry({ address: STAKE_CONTRACT, wasmHash: PHX_STAKE_HASH, kind: "stake" }),
-    ]);
-    const result = await runExitAdapter(adapter, lpPosition, ctx, {
-      rpc: rpc(),
-      resolveCode: fiveArg.resolveCode,
-      isRegistryFresh: () => true,
-    });
-    if (!result.next) throw new Error("expected a built step");
-    const args = invocationArgs(result.next.simulation.txXdr);
-    expect(args.map((a) => a.type)).toEqual([
-      "scvAddress",
-      "scvI128",
-      "scvI128",
-      "scvI128",
-      "scvVoid",
-    ]);
-    expect(result.next.intent.args).toHaveLength(5);
-  });
-
   test("phoenixWithdrawArgs never sets a deadline or an auto_unstake", () => {
-    const six = phoenixWithdrawArgs(ACCOUNT, 10n, 1n, 2n, 6);
-    expect(six.map((a) => scValToNative(a))).toEqual([ACCOUNT, 10n, 1n, 2n, null, null]);
-    expect(phoenixWithdrawArgs(ACCOUNT, 10n, 1n, 2n, 5)).toEqual(six.slice(0, 5));
+    const args = phoenixWithdrawArgs(ACCOUNT, 10n, 1n, 2n);
+    expect(args.map((a) => scValToNative(a))).toEqual([ACCOUNT, 10n, 1n, 2n, null, null]);
   });
 
   test("unbonds every stake before any withdrawal, oldest timestamp first, one step per round", async () => {

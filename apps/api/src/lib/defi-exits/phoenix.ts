@@ -21,10 +21,8 @@ import { contractAddressOf, contractDataEntry, instanceOfEntry } from "@/lib/ste
  * The Phoenix exit (architecture.md §9.6): an LP position leaves the pool through
  * `withdraw_liquidity(sender, share_amount, min_a, min_b, deadline, auto_unstake)`, the six
  * arguments every registered mainnet pool code's own contract spec declares, with `deadline` and
- * `auto_unstake` both `None`. Only the older testnet build registered as
- * `PHOENIX_FIVE_ARG_WITHDRAW_VERSION` lacks `auto_unstake`, and it gets the first five; a pool
- * given the wrong count fails at the ledger (`Error(WasmVm, UnexpectedSize)`), so the count
- * follows the code version the registry resolved. It burns the account's shares (held in the pool's
+ * `auto_unstake` both `None`; a pool given another count fails at the ledger
+ * (`Error(WasmVm, UnexpectedSize)`). It burns the account's shares (held in the pool's
  * own `share_token` SEP-41 balance) and pays both reserves back to the account pro rata, bounded
  * by one floor per token. A staked position must unbond first: staking lives in a separate
  * contract (`config.stake_contract`, itself read from the pool's own storage) whose
@@ -52,10 +50,6 @@ export interface PhoenixStakeEntry {
   timestamp: bigint;
 }
 
-/** The registry version of the testnet pool build whose `withdraw_liquidity` takes no
- *  `auto_unstake` argument. No mainnet entry runs it. */
-export const PHOENIX_FIVE_ARG_WITHDRAW_VERSION = "v1-no-auto-unstake";
-
 /**
  * The registry version of Phoenix's `pool_blended` code. It is deployed without staking, naming
  * itself as its own stake contract, and its delegate may lend part of each reserve out (to Blend)
@@ -63,14 +57,8 @@ export const PHOENIX_FIVE_ARG_WITHDRAW_VERSION = "v1-no-auto-unstake";
  */
 export const PHOENIX_BLENDED_VERSION = "blended";
 
-/** How many arguments `withdraw_liquidity` takes on the pool code the registry names `version`. */
-export const phoenixWithdrawArgCount = (version: string): 5 | 6 =>
-  version === PHOENIX_FIVE_ARG_WITHDRAW_VERSION ? 5 : 6;
-
 export interface PhoenixPoolState {
   pool: string;
-  /** How many arguments this pool's `withdraw_liquidity` takes, from its registry version. */
-  withdrawArgCount: 5 | 6;
   tokenA: string;
   tokenB: string;
   shareToken: string;
@@ -226,17 +214,16 @@ async function readEntries(
   return out;
 }
 
-/** `withdraw_liquidity`'s arguments for a pool whose code takes `argCount` of them: the sender,
- *  the shares and both floors, then `None` for the deadline and, on six, for `auto_unstake`. */
+/** `withdraw_liquidity`'s arguments: the sender, the shares and both floors, then `None` for the
+ *  deadline and for `auto_unstake`. */
 export function phoenixWithdrawArgs(
   account: string,
   shares: string | bigint,
   minA: string | bigint,
-  minB: string | bigint,
-  argCount: 5 | 6
+  minB: string | bigint
 ): xdr.ScVal[] {
   const i128 = (v: string | bigint): xdr.ScVal => nativeToScVal(BigInt(v), { type: "i128" });
-  const args = [
+  return [
     new Address(account).toScVal(),
     i128(shares),
     i128(minA),
@@ -244,7 +231,6 @@ export function phoenixWithdrawArgs(
     xdr.ScVal.scvVoid(),
     xdr.ScVal.scvVoid(),
   ];
-  return args.slice(0, argCount);
 }
 
 /** The individual stakes a `BondingInfo` entry holds, oldest first. Null on a malformed shape. */
@@ -370,7 +356,6 @@ export function phoenixExitAdapter(): ExitAdapter<PhoenixPosition, PhoenixLive> 
         return {
           status: "loaded",
           pool,
-          withdrawArgCount: phoenixWithdrawArgCount(code.version),
           tokenA,
           tokenB,
           shareToken,
@@ -584,13 +569,7 @@ export function phoenixExitAdapter(): ExitAdapter<PhoenixPosition, PhoenixLive> 
       if (step.kind !== "lp_withdraw") throw new Error(`Phoenix: no call for a ${step.kind} step`);
       const [floorA, floorB] = step.minReceived;
       if (!floorA || !floorB) throw new Error("Phoenix: a withdrawal needs both floors");
-      const args = phoenixWithdrawArgs(
-        ctx.account,
-        step.amount,
-        floorA.amount,
-        floorB.amount,
-        live.withdrawArgCount
-      );
+      const args = phoenixWithdrawArgs(ctx.account, step.amount, floorA.amount, floorB.amount);
       return {
         step,
         build: {
@@ -600,10 +579,7 @@ export function phoenixExitAdapter(): ExitAdapter<PhoenixPosition, PhoenixLive> 
         intent: {
           contract: step.contract,
           function: "withdraw_liquidity",
-          args: [ctx.account, step.amount, floorA.amount, floorB.amount, "null", "null"].slice(
-            0,
-            live.withdrawArgCount
-          ),
+          args: [ctx.account, step.amount, floorA.amount, floorB.amount, "null", "null"],
           minReceived: step.minReceived,
           recipient: ctx.account,
         },

@@ -24,7 +24,7 @@ import { fakeRpcServer } from "../support/rpc-server";
 const ADDRESS = Keypair.random().publicKey();
 const OCTOPOS_BASE = "https://octopos.example";
 const PHOENIX_POOL = "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD";
-const PHOENIX_SHARE = "CC53IRMBHWTXE4BWPD5N4LH2L43YSYBMOFD6UARPMZBTWPSODFFKW2EG";
+const PHOENIX_SHARE = "CDZPFQQU6EZVRKC7CJD6I6KIBKTBI76TLC75HA72PWLTCJ446ZNLNRGR";
 const PHOENIX_WASM_HASH = "3".repeat(64);
 
 function jsonResponse(body: unknown, init: ResponseInit = {}): Response {

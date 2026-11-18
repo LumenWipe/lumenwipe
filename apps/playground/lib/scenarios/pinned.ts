@@ -131,18 +131,19 @@ export const BLEND_SEED = {
 
 /**
  * Phoenix on testnet: the XYK pool the registry vouches for (apps/api/src/config/
- * contract-registry.json, `phoenix` / `pool`, code `14ed2bb1…`), and the stake contract its own
- * config names (`phoenix` / `stake`, code `a27578aa…`), which bonds with a minimum of one share
- * and unbonds at once. The pool's token_a is LWPHX, a custom SEP-41 token with 7 decimals and no
+ * contract-registry.json, `phoenix` / `pool`, the mainnet v1 pool code `167ab414…`), and the stake
+ * contract its own config names (`phoenix` / `stake`, the mainnet v1 stake code `649715de…`),
+ * which bonds with a minimum of one share and unbonds at once. All of it is created by
+ * apps/api/scripts/phoenix-testnet-pool.ts, at addresses its admin and salts derive. The pool's token_a is LWPHX, a custom SEP-41 token with 7 decimals and no
  * trustline, and token_b is XLM; it keeps its shares in a separate token contract, `shareToken`.
  * Its fee is 30 bps, and it allows at most 500 bps of spread and of slippage.
  */
 export const PHOENIX = {
-  pool: "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV",
-  stake: "CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP",
-  tokenA: "CDI3UIVKFNJAFBWOUMWQ6AO34BQ5JMFBHG4EUB3ZVKCKH5FINXE6QGGZ",
+  pool: "CA4V7YVUC3EE2EFVTEYJ47ZD34K4DCAKEYV6AHRR73KTKO5GDGNZLLMT",
+  stake: "CBYFZPJ2DP5IK74JOXUPUM2RAM7N42OVOLK7K5UOIK7QQQKQTN2PZJWU",
+  tokenA: "CBQP4F36A7N4QAOEM6MAWBWU52WN6RBN2CIS5EO7H542CX2AFXP5VL4Y",
   tokenB: XLM_SAC,
-  shareToken: "CC53IRMBHWTXE4BWPD5N4LH2L43YSYBMOFD6UARPMZBTWPSODFFKW2EG",
+  shareToken: "CDZPFQQU6EZVRKC7CJD6I6KIBKTBI76TLC75HA72PWLTCJ446ZNLNRGR",
 } as const;
 
 /**

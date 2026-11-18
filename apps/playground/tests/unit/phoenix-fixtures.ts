@@ -112,7 +112,7 @@ export class FakePhoenixLedger implements DemolishApi, DemolishChain {
     if (this.shares > BigInt(0)) {
       // Floors at the position's share of each reserve less the slippage margin, both positive.
       const args = [user, i128(this.shares), i128(BigInt(4_600_000)), i128(BigInt(4_800_000))];
-      args.push(xdr.ScVal.scvVoid());
+      args.push(xdr.ScVal.scvVoid(), xdr.ScVal.scvVoid());
       const moveShares = new xdr.SorobanAuthorizedInvocation({
         function: fn(PHOENIX.shareToken, "transfer", [
           user,

@@ -23,7 +23,6 @@ import {
   phoenixStakeConfigKey,
   phoenixStakeContract,
   phoenixUnbondToken,
-  phoenixWithdrawArgCount,
   phoenixWithdrawArgs,
 } from "@/lib/defi-exits/phoenix";
 
@@ -222,14 +221,14 @@ test.skipIf(!RUN_INTEGRATION)(
     // source is a fresh public key with no secret anywhere, and nothing is submitted.
     const rpc = getRpcServer("mainnet");
     const poolEntries = await readPhoenixPools();
-    const byCode = new Map<string, { address: string; version: string }>();
+    const byCode = new Map<string, string>();
     for (const pool of entriesForProtocol("mainnet", "phoenix").filter((e) => e.kind === "pool")) {
-      if (pool.wasmHash && !byCode.has(pool.wasmHash)) byCode.set(pool.wasmHash, pool);
+      if (pool.wasmHash && !byCode.has(pool.wasmHash)) byCode.set(pool.wasmHash, pool.address);
     }
     expect(byCode.size).toBeGreaterThan(1);
     const source = new Account(Keypair.random().publicKey(), "0");
     const results: Record<string, unknown> = {};
-    for (const [hash, { address: pool, version }] of byCode) {
+    for (const [hash, pool] of byCode) {
       const config = poolEntries.get(phoenixConfigKey(pool).toXdr("base64"));
       const holder = config ? phoenixStakeContract(config) : null;
       const reserve = (key: number) =>
@@ -245,13 +244,7 @@ test.skipIf(!RUN_INTEGRATION)(
         .addOperation(
           new Contract(pool).call(
             "withdraw_liquidity",
-            ...phoenixWithdrawArgs(
-              holder ?? pool,
-              1_000n,
-              floor,
-              floor,
-              phoenixWithdrawArgCount(version)
-            )
+            ...phoenixWithdrawArgs(holder ?? pool, 1_000n, floor, floor)
           )
         )
         .setTimeout(0)

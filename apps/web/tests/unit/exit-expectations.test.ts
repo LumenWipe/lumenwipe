@@ -142,7 +142,7 @@ test("routers and backstops come only from the bundled registry, for the network
 });
 
 test("a Phoenix stake contract comes only from the bundled registry, for the network and protocols asked", () => {
-  const PHOENIX_STAKE = "CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP";
+  const PHOENIX_STAKE = "CBYFZPJ2DP5IK74JOXUPUM2RAM7N42OVOLK7K5UOIK7QQQKQTN2PZJWU";
   expect(exitContractsFor("testnet", ["phoenix"], "stake")).toEqual([
     { address: PHOENIX_STAKE, protocol: "phoenix" },
   ]);
@@ -177,8 +177,8 @@ test("an Aquarius LP position pins its pool, allows withdraw and claim on it, an
 });
 
 test("a Phoenix LP position's share token and an FxDAO vault's stablecoin are that position's own tokens", () => {
-  const PHOENIX_POOL = "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV";
-  const PHOENIX_SHARE = "CC53IRMBHWTXE4BWPD5N4LH2L43YSYBMOFD6UARPMZBTWPSODFFKW2EG";
+  const PHOENIX_POOL = "CA4V7YVUC3EE2EFVTEYJ47ZD34K4DCAKEYV6AHRR73KTKO5GDGNZLLMT";
+  const PHOENIX_SHARE = "CDZPFQQU6EZVRKC7CJD6I6KIBKTBI76TLC75HA72PWLTCJ446ZNLNRGR";
   const VAULT = "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N";
   const STABLE = "CAEGVALLV7CA2SIFEDJNA52RKGUWRQWQXM5YNFUH7TH5G6X6QXMRQM4L";
   const e = exitExpectations(
@@ -214,8 +214,8 @@ test("a Phoenix LP position's share token and an FxDAO vault's stablecoin are th
 });
 
 test("a Phoenix position pins its pool and the bundled registry's stake contract, each to its own call", () => {
-  const PHOENIX_POOL = "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV";
-  const PHOENIX_STAKE = "CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP";
+  const PHOENIX_POOL = "CA4V7YVUC3EE2EFVTEYJ47ZD34K4DCAKEYV6AHRR73KTKO5GDGNZLLMT";
+  const PHOENIX_STAKE = "CBYFZPJ2DP5IK74JOXUPUM2RAM7N42OVOLK7K5UOIK7QQQKQTN2PZJWU";
   const e = exitExpectations(
     state([
       {
@@ -237,8 +237,8 @@ test("a Phoenix position pins its pool and the bundled registry's stake contract
 });
 
 test("a Phoenix stake carries its pool's share token, so a read holding only stakes admits it", () => {
-  const PHOENIX_POOL = "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV";
-  const PHOENIX_SHARE = "CC53IRMBHWTXE4BWPD5N4LH2L43YSYBMOFD6UARPMZBTWPSODFFKW2EG";
+  const PHOENIX_POOL = "CA4V7YVUC3EE2EFVTEYJ47ZD34K4DCAKEYV6AHRR73KTKO5GDGNZLLMT";
+  const PHOENIX_SHARE = "CDZPFQQU6EZVRKC7CJD6I6KIBKTBI76TLC75HA72PWLTCJ446ZNLNRGR";
   const stake = (stakedAtEpoch: string) => ({
     protocol: "phoenix" as const,
     positionType: "stake" as const,
