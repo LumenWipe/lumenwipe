@@ -12,6 +12,10 @@ As of 2026-11-14, the mediator flow (exchange closes) and sponsored fees are ava
 
 ## 2026-11
 
+### 2026-11-18
+
+- **API:** A mediator secret that is not a valid secret seed no longer fails `/mediator/sign` and `/mediator/check` with `500 internal_error`: `/mediator/sign` answers `503 mediator_not_configured` and `/mediator/check` reports `available: false`, as when no secret is set. The mediator and fee-bump sponsor secrets are now trimmed before use, so surrounding whitespace such as a trailing newline no longer makes a valid secret unusable.
+
 ### 2026-11-17
 
 - **Registry:** the contract and exchange registries were re-verified and are valid until 2027-02-15.

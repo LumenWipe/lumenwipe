@@ -1,5 +1,9 @@
-import { Keypair } from "@stellar/stellar-sdk";
+import type { Keypair } from "@stellar/stellar-sdk";
+import { Logger } from "@nestjs/common";
 import type { Network } from "@/config/networks";
+import { keypairFromEnv } from "@/lib/stellar/secret-keypair";
+
+const logger = new Logger("mediator-server");
 
 // Server-only: reads the shared mediator secret from the environment. This
 // module must never be imported from client code. The env vars have no
@@ -12,10 +16,9 @@ const SECRET_ENV: Record<Network, string> = {
 
 /**
  * Returns the shared mediator keypair for the network, or null if no secret is
- * configured (in which case the exchange-merge flow is unavailable).
+ * configured or the configured value is not a valid secret seed (in which case the
+ * exchange-merge flow is unavailable and answers `mediator_not_configured`).
  */
 export function getMediatorKeypair(network: Network): Keypair | null {
-  const secret = process.env[SECRET_ENV[network]];
-  if (!secret) return null;
-  return Keypair.fromSecret(secret);
+  return keypairFromEnv(SECRET_ENV[network], logger);
 }
