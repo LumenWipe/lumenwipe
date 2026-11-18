@@ -2,9 +2,12 @@
 
 import { formatNumber } from "@/lib/i18n/format";
 import { SITE_LOCALE } from "@/lib/i18n/locale";
+import { STATS_PAGE } from "@/lib/i18n/messages/stats";
 import { useEffect, useRef, useState } from "react";
 import { stroopsToXlm } from "@/lib/utils/amounts";
 import type { FeedData } from "@/hooks/useFeed";
+
+const T = STATS_PAGE[SITE_LOCALE].hero;
 
 function useCountUp(target: number, duration = 1400): number {
   const [count, setCount] = useState(0);
@@ -84,24 +87,20 @@ export default function StatsHero({ feed }: { feed: FeedData | null }) {
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
       <StatCard
-        label="Accounts closed on mainnet"
+        label={T.mainnet}
         value={feed ? formatNumber(SITE_LOCALE, mainnetClosedCount) : null}
-        sub={
-          feed
-            ? `Testnet, counted separately: ${formatNumber(SITE_LOCALE, testnetClosedCount)}`
-            : undefined
-        }
+        sub={feed ? T.testnet(formatNumber(SITE_LOCALE, testnetClosedCount)) : undefined}
       />
       <StatCard
-        label="XLM recovered on mainnet"
+        label={T.recovered}
         value={feed ? `${formatNumber(SITE_LOCALE, xlmAnimated)} XLM` : null}
-        sub="From reserves released on-chain"
+        sub={T.recoveredSub}
         accent="value"
       />
       <StatCard
-        label="Avg per mainnet close"
+        label={T.average}
         value={feed ? (avg ? `${avg} XLM` : "-") : null}
-        sub="Mean XLM recovered per mainnet close"
+        sub={T.averageSub}
       />
     </div>
   );

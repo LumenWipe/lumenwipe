@@ -8,12 +8,16 @@ import {
   type RegistrySnapshot,
 } from "@/lib/exchange-registry";
 import { isUsableAt } from "@/lib/exchange-registry/merge";
+import { SITE_LOCALE } from "@/lib/i18n/locale";
+import { REGISTRY } from "@/lib/i18n/messages/registry";
 import {
   PROTOCOLS,
   PROTOCOLS_VERIFIED,
   protocolStatusUsable,
   STATUS_LABEL,
 } from "@/lib/site/status";
+
+const T = REGISTRY[SITE_LOCALE];
 
 interface Props {
   load?: () => Promise<RegistrySnapshot | null>;
@@ -44,18 +48,20 @@ function groupByExchange(entries: readonly RegistryEntry[]): ExchangeGroup[] {
 }
 
 function memoRule(entry: RegistryEntry): string {
-  return entry.requiresMemo ? `${MEMO_TYPE[entry.memoType]} memo required` : "No memo";
+  return entry.requiresMemo ? T.memoRequired(MEMO_TYPE[entry.memoType]) : T.noMemo;
 }
 
 function route(entry: RegistryEntry): string {
-  return entry.requiresMediator ? "Through the relay account" : "Merged directly";
+  return entry.requiresMediator ? T.throughRelay : T.mergedDirectly;
 }
 
 function DateLine({ lastVerified, validUntil }: { lastVerified: string; validUntil: string }) {
   return (
     <p className="mkt-mono text-caption text-fg-subtle">
-      Last checked <time dateTime={lastVerified}>{lastVerified}</time> · relied on until{" "}
-      <time dateTime={validUntil}>{validUntil}</time>
+      {T.dates(
+        <time dateTime={lastVerified}>{lastVerified}</time>,
+        <time dateTime={validUntil}>{validUntil}</time>
+      )}
     </p>
   );
 }
@@ -63,7 +69,7 @@ function DateLine({ lastVerified, validUntil }: { lastVerified: string; validUnt
 function Verdict({ usable, expired }: { usable: boolean | null; expired: string }) {
   return (
     <div aria-live="polite">
-      {usable === true && <p className="text-sm text-fg-muted">Current.</p>}
+      {usable === true && <p className="text-sm text-fg-muted">{T.current}</p>}
       {usable === false && (
         <p className="rounded-xl border border-warning/30 bg-warning/5 p-3 text-sm text-warning">
           {expired}
@@ -101,16 +107,12 @@ export default function RegistryClient({ load = fetchServedRegistry, clock }: Pr
   const exchanges = groupByExchange(snapshot.entries);
 
   const source =
-    served === undefined
-      ? "Reading the API's copy. Shown meanwhile: the copy shipped with this site."
-      : served === null
-        ? "The API's copy could not be read. Shown: the copy shipped with this site."
-        : "Shown: the API's copy, read when this page loaded.";
+    served === undefined ? T.source.reading : served === null ? T.source.failed : T.source.served;
 
   return (
     <div className="mt-12 space-y-14">
       <div>
-        <h2 className="mkt-display text-2xl font-bold text-white">Exchanges and memo rules</h2>
+        <h2 className="mkt-display text-2xl font-bold text-white">{T.exchanges}</h2>
         <div className="mt-3 space-y-2">
           <p aria-live="polite" className="text-sm text-fg-muted">
             {source}
@@ -118,13 +120,9 @@ export default function RegistryClient({ load = fetchServedRegistry, clock }: Pr
           <DateLine lastVerified={snapshot.lastVerified} validUntil={snapshot.validUntil} />
           <Verdict
             usable={now === null ? null : isUsableAt(snapshot.validUntil, now)}
-            expired={`This list is past ${snapshot.validUntil}, the last day it is relied on, so it is not current. The app refuses exchange closes until it is checked again.`}
+            expired={T.exchangesExpired(snapshot.validUntil)}
           />
-          <p className="max-w-3xl text-sm leading-relaxed text-fg-muted">
-            The API&apos;s copy is not signed, so it can only make a rule stricter. It can add an
-            exchange, but a close passes through the relay account only for an exchange listed in
-            the copy shipped with this site.
-          </p>
+          <p className="max-w-3xl text-sm leading-relaxed text-fg-muted">{T.unsigned}</p>
         </div>
 
         <ul className="mt-6 grid gap-4 md:grid-cols-2">
@@ -145,18 +143,13 @@ export default function RegistryClient({ load = fetchServedRegistry, clock }: Pr
                     <p className="mkt-mono break-all text-label text-white/75">{entry.address}</p>
                     <p className="mt-1 text-sm text-fg-muted">
                       {memoRule(entry)} · {route(entry)}
-                      {entry.network === "testnet" && " · Testnet only"}
+                      {entry.network === "testnet" && T.testnetOnly}
                     </p>
                     {!bundledAddresses.has(entry.address) && (
-                      <p className="mt-1 text-caption text-fg-subtle">
-                        Added by the API&apos;s copy.
-                      </p>
+                      <p className="mt-1 text-caption text-fg-subtle">{T.added}</p>
                     )}
                     {disputes.has(entry.address) && (
-                      <p className="mt-1 text-caption text-warning">
-                        The API&apos;s copy gives another memo type. Closes into this address are
-                        refused until the two copies agree.
-                      </p>
+                      <p className="mt-1 text-caption text-warning">{T.disputed}</p>
                     )}
                   </li>
                 ))}
@@ -167,7 +160,7 @@ export default function RegistryClient({ load = fetchServedRegistry, clock }: Pr
       </div>
 
       <div>
-        <h2 className="mkt-display text-2xl font-bold text-white">DeFi protocol exits</h2>
+        <h2 className="mkt-display text-2xl font-bold text-white">{T.protocols}</h2>
         <div className="mt-3 space-y-2">
           <DateLine
             lastVerified={PROTOCOLS_VERIFIED.lastVerified}
@@ -175,18 +168,18 @@ export default function RegistryClient({ load = fetchServedRegistry, clock }: Pr
           />
           <Verdict
             usable={now === null ? null : protocolStatusUsable(now)}
-            expired={`The protocol contract list is past ${PROTOCOLS_VERIFIED.validUntil}, the last day it is relied on, so these statuses are not current. The app refuses exits through a registered contract until it is checked again.`}
+            expired={T.protocolsExpired(PROTOCOLS_VERIFIED.validUntil)}
           />
         </div>
         <table className="mt-6 w-full max-w-xl overflow-hidden rounded-2xl border border-white/10 text-left text-sm">
-          <caption className="sr-only">DeFi protocols and whether the app can exit them</caption>
+          <caption className="sr-only">{T.protocolsCaption}</caption>
           <thead>
             <tr className="border-b border-white/10 text-fg-muted">
               <th scope="col" className="p-3 font-medium">
-                Protocol
+                {T.protocolColumn}
               </th>
               <th scope="col" className="p-3 font-medium">
-                Exit status
+                {T.statusColumn}
               </th>
             </tr>
           </thead>

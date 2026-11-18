@@ -1,12 +1,15 @@
 import type { Metadata } from "next";
+import { SITE_LOCALE } from "@/lib/i18n/locale";
+import { REGISTRY } from "@/lib/i18n/messages/registry";
 import { pageMetadata } from "@/lib/site/pages";
 import RegistryClient from "@/components/marketing/registry/RegistryClient";
 
+const T = REGISTRY[SITE_LOCALE];
+
 export const metadata: Metadata = pageMetadata({
   path: "/registry",
-  title: "Exchange registry",
-  description:
-    "The exchanges LumenWipe recognizes, the memo rule each one enforces, which DeFi protocols it can exit today, and when each list was last checked.",
+  title: T.metadata.title,
+  description: T.metadata.description,
 });
 
 export default function RegistryPage() {
@@ -15,21 +18,11 @@ export default function RegistryPage() {
       <div className="max-w-2xl">
         <span className="mkt-eyebrow inline-flex items-center gap-2 text-fg-muted">
           <span className="h-px w-5 bg-line-strong" />
-          Registry
+          {T.eyebrow}
         </span>
-        <h1 className="mkt-display mt-4 text-4xl font-bold text-white sm:text-5xl">
-          What LumenWipe treats as an exchange.
-        </h1>
-        <p className="mt-5 text-body leading-relaxed text-white/70">
-          A close into an exchange needs the memo type that exchange enforces, and most exchanges
-          need the balance passed on through the shared relay account. This page lists the exchanges
-          the app recognizes, the rule it applies to each, and which DeFi protocols it can exit
-          today, each with the date it was last checked.
-        </p>
-        <p className="mt-4 text-body leading-relaxed text-white/70">
-          The addresses below are the ones the app recognizes, not addresses to send to. Always take
-          your deposit address and memo from your exchange.
-        </p>
+        <h1 className="mkt-display mt-4 text-4xl font-bold text-white sm:text-5xl">{T.heading}</h1>
+        <p className="mt-5 text-body leading-relaxed text-white/70">{T.intro}</p>
+        <p className="mt-4 text-body leading-relaxed text-white/70">{T.notDeposit}</p>
       </div>
       <RegistryClient />
     </section>

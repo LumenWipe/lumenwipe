@@ -1,6 +1,9 @@
-/** "November 15, 2026" for "2026-11-15". */
-export function formatPostDate(isoDate: string): string {
-  return new Date(isoDate).toLocaleDateString("en-US", {
+import { formatDate } from "@/lib/i18n/format";
+import type { Locale } from "@/lib/i18n/locale";
+
+/** A post date as a reader of `locale` writes it: "November 15, 2026" for "2026-11-15" in English. */
+export function formatPostDate(locale: Locale, isoDate: string): string {
+  return formatDate(locale, isoDate, {
     year: "numeric",
     month: "long",
     day: "numeric",

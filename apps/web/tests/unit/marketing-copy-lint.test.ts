@@ -62,6 +62,7 @@ describe("hard-coded marketing copy lint", () => {
         '<div className={cn("flex items center gap", ok && "sr only now")} />',
         '<div className={`group inline flex ${ok ? "text white now" : "text fg muted"}`} />',
         '<input groupClassName="rounded-2xl border border-line-strong bg-white/[0.04]" />',
+        '<div style={{ outline: ok ? "1px solid hsl(var(--accent) / 0.80)" : undefined }} />',
         '<a href="https://docs.lumenwipe.com" rel="noopener noreferrer" target="_blank" />',
         '<div role="region" aria-hidden data-site-status="testnet-only" />',
         '<span>{ok ? "✓" : "✗"}</span>',
@@ -84,6 +85,15 @@ describe("hard-coded marketing copy lint", () => {
     );
     expect(await copyMessages(code, COMPONENT)).toEqual([]);
   }, 30_000);
+
+  test("a literal added to any file whose copy moved to the dictionary fails", async () => {
+    const missed: string[] = [];
+    for (const file of DICTIONARY_COPY.filter((f) => f.endsWith(".tsx"))) {
+      const code = `${fs.readFileSync(path.join(root, file), "utf8")}\nexport function Added() {\n  return <p>Hello there</p>;\n}\n`;
+      if ((await copyMessages(code, file)).length !== 1) missed.push(file);
+    }
+    expect(missed).toEqual([]);
+  }, 60_000);
 
   test("every file whose copy moved to the dictionary passes", async () => {
     const flagged: string[] = [];

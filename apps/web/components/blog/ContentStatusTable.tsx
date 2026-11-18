@@ -2,10 +2,14 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import type { ContentStatusRow } from "@/lib/site/content-status";
 import { formatPostDate } from "@/lib/blog-date";
+import { SITE_LOCALE } from "@/lib/i18n/locale";
+import { BLOG } from "@/lib/i18n/messages/blog";
+
+const T = BLOG[SITE_LOCALE].status;
 
 const STATUS = {
-  published: { label: "Published", tone: "success" },
-  planned: { label: "Planned", tone: "neutral" },
+  published: { label: T.published, tone: "success" },
+  planned: { label: T.planned, tone: "neutral" },
 } as const;
 
 /** Which articles are out and which are planned. */
@@ -13,17 +17,17 @@ export default function ContentStatusTable({ rows }: { rows: readonly ContentSta
   return (
     <div className="mkt-panel overflow-x-auto rounded-2xl">
       <table className="w-full text-left text-sm">
-        <caption className="sr-only">Published and planned articles</caption>
+        <caption className="sr-only">{T.caption}</caption>
         <thead>
           <tr className="border-b border-white/10 mkt-mono text-caption uppercase tracking-wider text-fg-subtle">
             <th scope="col" className="px-4 py-3 font-medium">
-              Article
+              {T.article}
             </th>
             <th scope="col" className="px-4 py-3 font-medium">
-              Status
+              {T.statusColumn}
             </th>
             <th scope="col" className="px-4 py-3 font-medium">
-              Published
+              {T.published}
             </th>
           </tr>
         </thead>
@@ -44,9 +48,11 @@ export default function ContentStatusTable({ rows }: { rows: readonly ContentSta
               </td>
               <td className="px-4 py-3 mkt-mono text-xs text-fg-muted whitespace-nowrap">
                 {row.publishedAt ? (
-                  <time dateTime={row.publishedAt}>{formatPostDate(row.publishedAt)}</time>
+                  <time dateTime={row.publishedAt}>
+                    {formatPostDate(SITE_LOCALE, row.publishedAt)}
+                  </time>
                 ) : (
-                  "Not yet"
+                  T.notYet
                 )}
               </td>
             </tr>

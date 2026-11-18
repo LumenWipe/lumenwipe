@@ -2,12 +2,21 @@
 
 import { formatDate } from "@/lib/i18n/format";
 import { SITE_LOCALE } from "@/lib/i18n/locale";
+import { STATS_PAGE } from "@/lib/i18n/messages/stats";
 import { useState } from "react";
 import type { FeedData, DailyActivity, MergeRecord } from "@/hooks/useFeed";
 import { useNow } from "@/hooks/useNow";
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const DAYS = ["Mon", "Wed", "Fri"];
+const T = STATS_PAGE[SITE_LOCALE].heatmap;
+
+const DAY_MS = 86_400_000;
+/** A Monday, the weekday of the grid's first row. */
+const A_MONDAY = Date.UTC(2024, 0, 1);
+const LABELLED_ROWS = [0, 2, 4];
+
+function weekdayLabel(row: number): string {
+  return formatDate(SITE_LOCALE, A_MONDAY + row * DAY_MS, { weekday: "short", timeZone: "UTC" });
+}
 
 function countToLevel(count: number): 0 | 1 | 2 | 3 | 4 {
   if (count === 0) return 0;
@@ -71,7 +80,10 @@ function getMonthLabels(weeks: Cell[][]): { label: string; col: number }[] {
   weeks.forEach((week, col) => {
     const month = new Date(week[0].date).getUTCMonth();
     if (month !== lastMonth) {
-      labels.push({ label: MONTHS[month], col });
+      labels.push({
+        label: formatDate(SITE_LOCALE, week[0].date, { month: "short", timeZone: "UTC" }),
+        col,
+      });
       lastMonth = month;
     }
   });
@@ -125,19 +137,21 @@ export default function CalendarHeatmap({ feed }: { feed: FeedData | null }) {
     >
       <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
         <span className="mkt-mono text-caption uppercase tracking-wide text-fg-muted">
-          Activity - last 12 months
+          {T.title}
         </span>
         <div className="flex items-center gap-4">
           {feed && (
             <>
-              <span className="mkt-mono text-caption text-fg-subtle">{totalDays} active days</span>
+              <span className="mkt-mono text-caption text-fg-subtle">
+                {T.activeDays(totalDays)}
+              </span>
               {maxStreak > 1 && (
-                <span className="mkt-mono text-caption text-fg-subtle">{maxStreak}-day streak</span>
+                <span className="mkt-mono text-caption text-fg-subtle">{T.streak(maxStreak)}</span>
               )}
             </>
           )}
           <div className="flex items-center gap-1">
-            <span className="mkt-mono text-caption text-fg-subtle">Less</span>
+            <span className="mkt-mono text-caption text-fg-subtle">{T.less}</span>
             {([0, 1, 2, 3, 4] as const).map((l) => (
               <div
                 key={l}
@@ -145,7 +159,7 @@ export default function CalendarHeatmap({ feed }: { feed: FeedData | null }) {
                 style={{ backgroundColor: LEVEL_BG[l] }}
               />
             ))}
-            <span className="mkt-mono text-caption text-fg-subtle">More</span>
+            <span className="mkt-mono text-caption text-fg-subtle">{T.more}</span>
           </div>
         </div>
       </div>
@@ -153,7 +167,7 @@ export default function CalendarHeatmap({ feed }: { feed: FeedData | null }) {
       {/* Focusable so a keyboard user can scroll the weeks that overflow a narrow screen. */}
       <div
         role="region"
-        aria-label="Activity heatmap, last 12 months"
+        aria-label={T.region}
         tabIndex={0}
         className="overflow-x-auto px-4 pb-4 pt-2 focus-visible:outline-offset-[-2px]"
       >
@@ -180,7 +194,7 @@ export default function CalendarHeatmap({ feed }: { feed: FeedData | null }) {
                   className="mkt-mono text-caption text-fg-subtle"
                   style={{ height: 12, lineHeight: "12px" }}
                 >
-                  {i === 0 ? "Mon" : i === 2 ? "Wed" : i === 4 ? "Fri" : ""}
+                  {LABELLED_ROWS.includes(i) ? weekdayLabel(i) : ""}
                 </div>
               ))}
             </div>
@@ -252,9 +266,7 @@ export default function CalendarHeatmap({ feed }: { feed: FeedData | null }) {
                 })}
               </span>
               <p className="mt-0.5 mkt-mono text-caption text-white/75">
-                {hovered.count === 0
-                  ? "No closes"
-                  : `${hovered.count} account${hovered.count !== 1 ? "s" : ""} closed`}
+                {hovered.count === 0 ? T.noCloses : T.accountsClosed(hovered.count)}
               </p>
             </div>
             {hovered.closes.length > 0 && (
@@ -272,18 +284,16 @@ export default function CalendarHeatmap({ feed }: { feed: FeedData | null }) {
                 ))}
                 {hovered.closes.length > 5 && (
                   <span className="mkt-mono text-caption text-fg-subtle">
-                    +{hovered.closes.length - 5} more
+                    {T.moreCloses(hovered.closes.length - 5)}
                   </span>
                 )}
               </div>
             )}
           </div>
         ) : (
-          <p className="mkt-mono text-caption text-fg-subtle">Hover a day to inspect</p>
+          <p className="mkt-mono text-caption text-fg-subtle">{T.hint}</p>
         )}
       </div>
-
-      {DAYS.length === 0 && null}
     </div>
   );
 }

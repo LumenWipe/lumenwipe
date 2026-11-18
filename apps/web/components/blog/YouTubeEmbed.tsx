@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Play } from "lucide-react";
+import { SITE_LOCALE } from "@/lib/i18n/locale";
+import { BLOG } from "@/lib/i18n/messages/blog";
 import { videoEmbedUrl, videoPoster } from "@/lib/site/videos";
 import { cn } from "@/lib/utils/cn";
 
@@ -42,7 +44,7 @@ export default function YouTubeEmbed({
         <button
           type="button"
           onClick={() => setPlaying(true)}
-          aria-label={`Play video: ${title}`}
+          aria-label={BLOG[SITE_LOCALE].playVideo(title)}
           className="group absolute inset-0 h-full w-full focus-visible:-outline-offset-2"
         >
           {/* Pre-sized at 640x360 in public/, so the image optimizer has nothing to add. */}

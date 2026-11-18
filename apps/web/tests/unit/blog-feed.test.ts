@@ -40,7 +40,7 @@ function post(overrides: Partial<PostMeta>): PostMeta {
     updatedAt: "2026-11-01",
     category: "Guides",
     tags: ["stellar"],
-    readingTime: "1 min read",
+    readingMinutes: 1,
     ...overrides,
   };
 }

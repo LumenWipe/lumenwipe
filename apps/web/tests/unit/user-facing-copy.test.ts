@@ -5,7 +5,7 @@ import ts from "typescript";
 import { findBannedWords } from "@/lib/glossary";
 
 const WEB_ROOT = join(import.meta.dir, "..", "..");
-const SCAN_DIRS = ["app", "components"];
+const SCAN_DIRS = ["app", "components", "lib/i18n/messages"];
 
 const ALLOWED_LITERALS: ReadonlyArray<{ text: string; reason: string; exact?: boolean }> = [
   {
@@ -81,7 +81,7 @@ function listSources(dir: string): string[] {
 }
 
 describe("user-facing copy follows the glossary", () => {
-  test("no banned word in string literals or JSX text under app and components", () => {
+  test("no banned word in string literals or JSX text under app, components and the dictionary", () => {
     const found: string[] = [];
     for (const dir of SCAN_DIRS) {
       for (const file of listSources(join(WEB_ROOT, dir))) {

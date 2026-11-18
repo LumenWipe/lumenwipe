@@ -2,6 +2,8 @@ import Link from "next/link";
 import { Calendar, Clock } from "lucide-react";
 import type { PostMeta } from "@/lib/blog";
 import { formatPostDate } from "@/lib/blog-date";
+import { SITE_LOCALE } from "@/lib/i18n/locale";
+import { BLOG } from "@/lib/i18n/messages/blog";
 import CategoryBadge from "./CategoryBadge";
 
 export default function PostCard({ post }: { post: PostMeta }) {
@@ -25,11 +27,11 @@ export default function PostCard({ post }: { post: PostMeta }) {
       <div className="flex items-center gap-4 mkt-mono text-caption text-fg-subtle mt-auto pt-3 border-t border-white/8">
         <span className="flex items-center gap-1.5">
           <Calendar className="h-3 w-3" />
-          <time dateTime={post.publishedAt}>{formatPostDate(post.publishedAt)}</time>
+          <time dateTime={post.publishedAt}>{formatPostDate(SITE_LOCALE, post.publishedAt)}</time>
         </span>
         <span className="flex items-center gap-1.5">
           <Clock className="h-3 w-3" />
-          {post.readingTime}
+          {BLOG[SITE_LOCALE].readingTime(post.readingMinutes)}
         </span>
       </div>
     </Link>

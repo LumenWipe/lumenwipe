@@ -86,10 +86,21 @@ export const DICTIONARY_COPY = [
   "app/(marketing)/layout.tsx",
   "app/(marketing)/not-found.tsx",
   "app/(marketing)/page.tsx",
+  "app/(marketing)/blog/page.tsx",
+  "app/(marketing)/content/page.tsx",
   "app/(marketing)/faq/page.tsx",
   "app/(marketing)/how-it-works/page.tsx",
+  "app/(marketing)/playground/page.tsx",
+  "app/(marketing)/registry/page.tsx",
   "app/(marketing)/security/page.tsx",
+  "app/(marketing)/stats/page.tsx",
   "app/global-not-found.tsx",
+  "components/blog/BaseReserve.tsx",
+  "components/blog/CategoryBadge.tsx",
+  "components/blog/ContentStatusTable.tsx",
+  "components/blog/PostCard.tsx",
+  "components/blog/PostDates.tsx",
+  "components/blog/YouTubeEmbed.tsx",
   "components/marketing/Faq.tsx",
   "components/marketing/FaqAccordion.tsx",
   "components/marketing/HeroAccountInput.tsx",
@@ -100,6 +111,14 @@ export const DICTIONARY_COPY = [
   "components/marketing/NotFoundView.tsx",
   "components/marketing/RecoveryEstimate.tsx",
   "components/marketing/Reveal.tsx",
+  "components/marketing/registry/RegistryClient.tsx",
+  "components/marketing/stats/AxisLabels.tsx",
+  "components/marketing/stats/CalendarHeatmap.tsx",
+  "components/marketing/stats/ConstellationChart.tsx",
+  "components/marketing/stats/DistributionStrip.tsx",
+  "components/marketing/stats/RecentFeed.tsx",
+  "components/marketing/stats/StatsClient.tsx",
+  "components/marketing/stats/StatsHero.tsx",
   "lib/site/navigation.ts",
   "lib/site/numbers.ts",
   "lib/site/pages.ts",
@@ -134,11 +153,11 @@ function shownLiterals(container) {
   });
 }
 
-// Prose: three words in a row. Class lists, import paths, directives and error messages are not
-// shown to a reader.
+// Prose: three words in a row. Class lists, inline styles, import paths, directives and error
+// messages are not shown to a reader.
 const PROSE = "[A-Za-z]+ [A-Za-z]+ [A-Za-z]+";
 const NOT_SHOWN =
-  ":not(JSXAttribute[name.name=/[cC]lassName$/] *, CallExpression[callee.name=/^(?:cn|clsx|cva)$/] *, ImportDeclaration *, ExportNamedDeclaration > Literal, ExportAllDeclaration > Literal, NewExpression[callee.name=/Error$/] *, ExpressionStatement[directive] > Literal)";
+  ":not(JSXAttribute[name.name=/[cC]lassName$/] *, JSXAttribute[name.name=style] *, CallExpression[callee.name=/^(?:cn|clsx|cva)$/] *, ImportDeclaration *, ExportNamedDeclaration > Literal, ExportAllDeclaration > Literal, NewExpression[callee.name=/Error$/] *, ExpressionStatement[directive] > Literal)";
 
 const hardCodedCopy = [
   `JSXText[value=/^(?!\\s*XLM\\s*$)[\\s\\S]*${WORD}/]`,

@@ -2,11 +2,14 @@
 
 import { formatNumber, TWO_DECIMALS } from "@/lib/i18n/format";
 import { SITE_LOCALE } from "@/lib/i18n/locale";
+import { STATS_PAGE } from "@/lib/i18n/messages/stats";
 import { useState } from "react";
 import { stroopsToXlm } from "@/lib/utils/amounts";
 import { SE_EXPLORER_BASE } from "@/config/networks";
 import type { FeedData, MergeRecord } from "@/hooks/useFeed";
 import AxisLabels from "./AxisLabels";
+
+const T = STATS_PAGE[SITE_LOCALE].strip;
 
 const W = 900;
 const H = 104;
@@ -57,9 +60,9 @@ export default function DistributionStrip({ feed }: { feed: FeedData | null }) {
     <div className="overflow-hidden rounded-2xl border border-white/8 bg-white/[0.02]">
       <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
         <span className="mkt-mono text-caption uppercase tracking-wider text-fg-muted">
-          XLM distribution · each dot is one close
+          {T.title}
         </span>
-        <span className="mkt-mono text-caption text-fg-subtle">log scale · hover to verify</span>
+        <span className="mkt-mono text-caption text-fg-subtle">{T.hint}</span>
       </div>
 
       <div className="relative">
@@ -67,7 +70,7 @@ export default function DistributionStrip({ feed }: { feed: FeedData | null }) {
           viewBox={`0 0 ${W} ${H}`}
           width="100%"
           height="auto"
-          aria-label="Distribution of XLM recovered per close"
+          aria-label={T.label}
           style={{ display: "block" }}
         >
           <defs>
@@ -159,7 +162,7 @@ export default function DistributionStrip({ feed }: { feed: FeedData | null }) {
         </svg>
         {feed && records.length === 0 && (
           <p className="mkt-mono absolute inset-0 flex items-center justify-center text-caption text-fg-subtle">
-            No closes yet
+            {T.empty}
           </p>
         )}
 

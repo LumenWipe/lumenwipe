@@ -1,9 +1,12 @@
 import { test, expect, beforeAll, afterAll } from "bun:test";
 import fs from "fs";
+import readingTime from "reading-time";
+import { BLOG } from "@/lib/i18n/messages/blog";
 import path from "path";
 import {
   getAllPostMetas,
   getAllSlugs,
+  minutesToRead,
   getPost,
   parseFrontMatter,
   PostNotFoundError,
@@ -53,6 +56,23 @@ test("getPost › throws for a draft post instead of returning unpublished conte
 test("getAllPostMetas › every listed post has a publishedAt that parses to a valid date", () => {
   for (const post of getAllPostMetas()) {
     expect(Number.isNaN(new Date(post.publishedAt).getTime())).toBe(false);
+  }
+});
+
+test("minutesToRead › renders as reading-time's own text, for every published post and a few lengths", () => {
+  const texts = [
+    "",
+    "word ".repeat(1),
+    "word ".repeat(200),
+    "word ".repeat(201),
+    "word ".repeat(1999),
+    ...getAllSlugs().map((slug) => getPost(slug).content),
+  ];
+  for (const text of texts) {
+    expect(BLOG.en.readingTime(minutesToRead(text))).toBe(readingTime(text).text);
+  }
+  for (const post of getAllPostMetas()) {
+    expect(post.readingMinutes).toBe(minutesToRead(getPost(post.slug).content));
   }
 });
 
@@ -173,7 +193,7 @@ function meta(slug: string, tags: string[], publishedAt = "2026-06-02"): PostMet
     updatedAt: publishedAt,
     category: "Guides",
     tags,
-    readingTime: "1 min read",
+    readingMinutes: 1,
   };
 }
 
