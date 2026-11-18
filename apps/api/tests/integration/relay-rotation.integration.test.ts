@@ -14,8 +14,10 @@ import {
 import type { Subprocess } from "bun";
 import { buildMediatorMergePaymentTx } from "@/lib/stellar/tx-builder/merge";
 import {
+  forwardFinding,
   sourcedFinding,
   transactionsInWindow,
+  type HorizonEffect,
   type HorizonTransactionPage,
   type ServiceAccount,
 } from "@/lib/monitors/service-accounts";
@@ -234,7 +236,7 @@ test.skipIf(!RUN_INTEGRATION)(
     expect(await exists(server, inFlight.publicKey())).toBe(false);
 
     // The drain: the operator sources the transaction and the old key signs only the merge, so
-    // the retired address never sources a transaction and its monitor stays quiet.
+    // the retired address never sources a transaction and its monitors stay quiet.
     const drain = new TransactionBuilder(await server.loadAccount(operator.publicKey()), {
       fee: BASE_FEE,
       networkPassphrase: Networks.TESTNET,
@@ -248,7 +250,7 @@ test.skipIf(!RUN_INTEGRATION)(
       .setTimeout(60)
       .build();
     drain.sign(operator, oldRelay);
-    await server.submitTransaction(drain);
+    const drained = await server.submitTransaction(drain);
     expect(await exists(server, oldRelay.publicKey())).toBe(false);
 
     const retired: ServiceAccount = {
@@ -257,6 +259,7 @@ test.skipIf(!RUN_INTEGRATION)(
       address: oldRelay.publicKey(),
       floorXlm: "1",
       retired: true,
+      drainTo: operator.publicKey(),
     };
     const history = await transactionsInWindow(
       async (path) =>
@@ -268,6 +271,18 @@ test.skipIf(!RUN_INTEGRATION)(
     expect(history.transactions.map((tx) => sourcedFinding(retired, tx))).not.toContain(
       expect.anything()
     );
+    // The forward check reads the drain as the drain, and only because it went to the operator.
+    const drainRecord = history.transactions.find((tx) => tx.hash === drained.hash);
+    expect(drainRecord).toBeDefined();
+    const effects = (
+      (await (
+        await fetch(`${HORIZON_URL}/transactions/${drained.hash}/effects?limit=200`)
+      ).json()) as { _embedded: { records: HorizonEffect[] } }
+    )._embedded.records;
+    expect(forwardFinding(retired, drainRecord!, effects)).toBeNull();
+    expect(
+      forwardFinding({ ...retired, drainTo: exchange.publicKey() }, drainRecord!, effects)
+    ).not.toBeNull();
 
     // A close co-signed before the rotation and submitted after the drain fails as a whole.
     const stale = await submit(server, lateSigned).then(

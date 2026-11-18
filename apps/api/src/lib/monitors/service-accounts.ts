@@ -20,6 +20,8 @@ export interface ServiceAccount {
   floorXlm: string;
   /** A rotated-out address, still watched for use of its key after it was drained. */
   retired?: true;
+  /** The rotation operator a retired address is drained into: the one merge that is no payout. */
+  drainTo?: string;
 }
 
 export interface HorizonAccount {
@@ -41,6 +43,8 @@ export interface HorizonEffect {
   type: string;
   account?: string;
   amount?: string;
+  /** `<operation id>-<index>`: the operation that produced the effect. */
+  paging_token?: string;
 }
 
 /** A condition that fired, in the form the workflow prints and the alert carries. */
@@ -59,9 +63,10 @@ const NETWORKS: readonly ServiceNetwork[] = ["testnet", "mainnet"];
 const FLOOR_XLM: Record<ServiceRole, string> = { mediator: "1", sponsor: "50" };
 
 /** The row labels of the inventory table in docs/monitoring-plan.md section 1. */
-const PLAN_LABEL: Record<ServiceRole, string> = {
+const PLAN_LABEL: Record<PlannedRole, string> = {
   mediator: "Mediator account",
   sponsor: "Fee-bump sponsor",
+  operator: "Rotation operator",
 };
 
 const NOT_DEPLOYED = "not yet deployed";
@@ -79,12 +84,20 @@ export function retiredVariable(role: ServiceRole, network: ServiceNetwork): str
   return `${addressVariable(role, network)}_RETIRED`;
 }
 
-/** Each service account's address as the plan lists it, or null where it says not yet deployed. */
-export type PlannedAccounts = Record<ServiceNetwork, Record<ServiceRole, string | null>>;
+/** The variable that holds the account a rotation drains a retired address into. */
+export function operatorVariable(network: ServiceNetwork): string {
+  return `OPERATOR_ADDRESS_${network.toUpperCase()}`;
+}
+
+/** The service accounts and the rotation operator, each a row of the plan's inventory. */
+export type PlannedRole = ServiceRole | "operator";
+
+/** Each address as the plan lists it, or null where it says not yet deployed. */
+export type PlannedAccounts = Record<ServiceNetwork, Record<PlannedRole, string | null>>;
 
 export function plannedAccounts(markdown: string): PlannedAccounts {
   const lines = markdown.split("\n");
-  const cell = (role: ServiceRole, network: ServiceNetwork): string | null => {
+  const cell = (role: PlannedRole, network: ServiceNetwork): string | null => {
     const label = `${PLAN_LABEL[role]} (${network})`;
     const row = lines.find((line) => line.split("|")[1]?.trim() === label);
     if (!row) throw new Error(`${PLAN_PATH} has no "${label}" row in its inventory table`);
@@ -98,10 +111,12 @@ export function plannedAccounts(markdown: string): PlannedAccounts {
     }
     return address;
   };
-  return {
-    testnet: { mediator: cell("mediator", "testnet"), sponsor: cell("sponsor", "testnet") },
-    mainnet: { mediator: cell("mediator", "mainnet"), sponsor: cell("sponsor", "mainnet") },
-  };
+  const network = (n: ServiceNetwork) => ({
+    mediator: cell("mediator", n),
+    sponsor: cell("sponsor", n),
+    operator: cell("operator", n),
+  });
+  return { testnet: network("testnet"), mainnet: network("mainnet") };
 }
 
 /**
@@ -118,33 +133,53 @@ export function loadServiceAccounts(
   const problems: string[] = [];
   const accounts: ServiceAccount[] = [];
 
+  /** The variable's account id, held to the plan's row; null when unset or not an account id. */
+  const agreed = (name: string, what: string, planned: string | null): string | null => {
+    const value = env[name] ?? "";
+    if (value === "") {
+      if (planned !== null) {
+        problems.push(
+          `${name} is not set, but ${PLAN_PATH} lists the ${what} account. ` +
+            "Set it as a repository variable."
+        );
+      }
+      return null;
+    }
+    if (!StrKey.isValidEd25519PublicKey(value)) {
+      problems.push(`${name} is not a Stellar account id`);
+      return null;
+    }
+    if (value !== planned) {
+      problems.push(
+        `${name} is ${value}, but ${PLAN_PATH} lists the ${what} account as ` +
+          `${planned ?? NOT_DEPLOYED}. A rotation updates both.`
+      );
+    }
+    return value;
+  };
+
   for (const network of NETWORKS) {
     for (const role of ROLES) {
       const name = addressVariable(role, network);
-      const value = env[name] ?? "";
-      const planned = plan[network][role];
-      if (value === "") {
-        if (planned !== null) {
-          problems.push(
-            `${name} is not set, but ${PLAN_PATH} lists the ${role} (${network}) account. ` +
-              "Set it as a repository variable."
-          );
-        }
-        continue;
+      const value = agreed(name, `${role} (${network})`, plan[network][role]);
+      if (value !== null) {
+        accounts.push({ role, network, address: value, floorXlm: FLOOR_XLM[role] });
       }
-      if (!StrKey.isValidEd25519PublicKey(value)) {
-        problems.push(`${name} is not a Stellar account id`);
-        continue;
-      }
-      if (value !== planned) {
-        problems.push(
-          `${name} is ${value}, but ${PLAN_PATH} lists the ${role} (${network}) account as ` +
-            `${planned ?? NOT_DEPLOYED}. A rotation updates both.`
-        );
-      }
-      accounts.push({ role, network, address: value, floorXlm: FLOOR_XLM[role] });
     }
   }
+
+  const operators: Record<ServiceNetwork, string | null> = {
+    testnet: agreed(
+      operatorVariable("testnet"),
+      "rotation operator (testnet)",
+      plan.testnet.operator
+    ),
+    mainnet: agreed(
+      operatorVariable("mainnet"),
+      "rotation operator (mainnet)",
+      plan.mainnet.operator
+    ),
+  };
 
   const listed = (stellarToml as { ACCOUNTS?: unknown } | null)?.ACCOUNTS ?? [];
   if (!Array.isArray(listed) || !listed.every((a) => typeof a === "string")) {
@@ -179,7 +214,39 @@ export function loadServiceAccounts(
         );
         continue;
       }
-      accounts.push({ role, network, address: value, floorXlm: FLOOR_XLM[role], retired: true });
+      const drainTo = operators[network];
+      if (drainTo === null) {
+        if (role === "mediator") {
+          problems.push(
+            `${name} is set, but ${operatorVariable(network)} is not: the forward check could not ` +
+              "tell the rotation's drain from a payout. Set it, and its row in " +
+              `${PLAN_PATH}, to the account the rotation drains into.`
+          );
+        }
+        accounts.push({ role, network, address: value, floorXlm: FLOOR_XLM[role], retired: true });
+        continue;
+      }
+      accounts.push({
+        role,
+        network,
+        address: value,
+        floorXlm: FLOOR_XLM[role],
+        retired: true,
+        drainTo,
+      });
+    }
+  }
+
+  // A drain into a service account would read as that account's own credit, and the runbooks
+  // drain into an account that is neither relay nor sponsor.
+  for (const network of NETWORKS) {
+    const operator = operators[network];
+    const clash = accounts.find((a) => a.network === network && a.address === operator);
+    if (clash) {
+      problems.push(
+        `${operatorVariable(network)} is the ${roleLabel(clash)} (${network}) account. ` +
+          "The rotation operator must be neither relay nor sponsor."
+      );
     }
   }
 
@@ -288,21 +355,66 @@ export function balanceFinding(account: ServiceAccount, horizon: HorizonAccount)
   };
 }
 
+/** The operation an effect belongs to, from its `<operation id>-<index>` paging token. */
+function operationOf(effect: HorizonEffect): string | undefined {
+  const parts = effect.paging_token?.split("-");
+  return parts?.length === 2 ? parts[0] : undefined;
+}
+
+/**
+ * The operations of `tx` that are the rotation's own drain of a retired account: a merge of the
+ * account (the only operation that removes one) into the operator it was configured with, in a
+ * transaction the operator sourced. Holding the old key alone cannot produce it: the transaction
+ * source needs the operator's signature, and the balance lands with the operator.
+ */
+function drainOperations(
+  account: ServiceAccount,
+  tx: HorizonTransaction,
+  effects: HorizonEffect[]
+): Set<string> {
+  const drainTo = account.drainTo;
+  if (!account.retired || drainTo === undefined || tx.source_account !== drainTo) return new Set();
+  const removed = new Set<string>();
+  const credited = new Set<string>();
+  for (const effect of effects) {
+    const operation = operationOf(effect);
+    if (operation === undefined) continue;
+    if (effect.type === "account_removed" && effect.account === account.address) {
+      removed.add(operation);
+    }
+    if (effect.type === "account_credited" && effect.account === drainTo) credited.add(operation);
+  }
+  return new Set([...removed].filter((operation) => credited.has(operation)));
+}
+
 /**
  * S4a.Elevation.1.M.1's other signal: in one transaction the mediator paid out more than the merge
  * delivered to it, so the difference came from its own balance. Horizon's effects carry what the
  * merge credited and what the forward debited; the API bounds the forward by the merge at co-sign
  * time, so any transaction where the debit exceeds the credit is one that got past that bound.
+ * A retired account's drain counts what it delivered to the operator as delivered, in that
+ * operation only, so any other debit in the same transaction still fires.
  */
 export function forwardFinding(
   account: ServiceAccount,
   tx: HorizonTransaction,
   effects: HorizonEffect[]
 ): Finding | null {
+  const drain = drainOperations(account, tx, effects);
   let credited = 0n;
   let debited = 0n;
   for (const effect of effects) {
-    if (effect.account !== account.address || effect.amount === undefined) continue;
+    if (effect.amount === undefined) continue;
+    const operation = operationOf(effect);
+    if (
+      effect.type === "account_credited" &&
+      effect.account === account.drainTo &&
+      operation !== undefined &&
+      drain.has(operation)
+    ) {
+      credited += BigInt(xlmToStroops(effect.amount));
+    }
+    if (effect.account !== account.address) continue;
     if (effect.type === "account_credited") credited += BigInt(xlmToStroops(effect.amount));
     if (effect.type === "account_debited") debited += BigInt(xlmToStroops(effect.amount));
   }

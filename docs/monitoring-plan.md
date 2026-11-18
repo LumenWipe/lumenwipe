@@ -22,6 +22,8 @@ What LumenWipe does have on the ledger is **two service accounts that hold a sig
 | Mediator account (mainnet)         | not yet deployed                                            | Exchange closes are testnet-only today. This row exists so the inventory shows the gap rather than hiding it.                                                                                                                              |
 | Fee-bump sponsor (testnet)         | `GD6VXLZZPNRO4J2PNM4AUPS6OYMLPAE3XPSNCV2NSGEWN5FC2A7DCK5E`  | Pays the network fee for accounts sitting at their minimum balance, via CAP-15. Verifiable as `fee_account` on [`52cb1ed3…`](https://stellar.expert/explorer/testnet/tx/52cb1ed3f18d1a43e4c2abcf3813edabfc802fcd95141bb96f1f21add4f537d0). |
 | Fee-bump sponsor (mainnet)         | not yet deployed                                            | Sponsored fees are testnet-only today.                                                                                                                                                                                                     |
+| Rotation operator (testnet)        | `GD7VZL7FUZP4MZY2ROW4L7TQ4D2N47NRWWO2B4TJJWOFUV74AZZGYAHQ`  | Holds no key the API uses. Funds a new service account in a key rotation and receives the old one's balance when the rotation drains it; the forward check reads that drain by this address (§4).                                          |
+| Rotation operator (mainnet)        | not yet deployed                                            | Set before the first mainnet rotation.                                                                                                                                                                                                     |
 | Protocol contracts read and exited | The entries in `apps/api/src/config/contract-registry.json` | Third-party contracts (Blend, Aquarius, Soroswap, Phoenix, FxDAO, and the xBull swap router), not ours. We do not control them; we verify their code hash before building anything against them.                                           |
 
 The registry carries a `validUntil` date and every entry's `wasmHash`. **Keeping that file current is the
@@ -112,12 +114,13 @@ against public endpoints: no account, no transaction, no funds.
 
 The service accounts to watch come from repository variables, one per role and network and read nowhere else:
 `MEDIATOR_ADDRESS_TESTNET`, `FEE_ACCOUNT_ADDRESS_TESTNET`, `MEDIATOR_ADDRESS_MAINNET` and
-`FEE_ACCOUNT_ADDRESS_MAINNET`. Every check runs for each network that has a variable set. Before any check
+`FEE_ACCOUNT_ADDRESS_MAINNET`, plus `OPERATOR_ADDRESS_TESTNET` and `OPERATOR_ADDRESS_MAINNET` for the rotation
+operator, which no check reads as a service account. Every check runs for each network that has a variable set. Before any check
 runs, a config step compares the variables with the inventory table in §1 and with the `ACCOUNTS` list of the
 published `stellar.toml`, and fails when they disagree: a variable the table lists an address for but that is
 unset, an address that differs from the table, a set variable whose row says not yet deployed, a
 `stellar.toml` account that is not a configured mainnet account, or a configured mainnet mediator that
-`stellar.toml` does not list. A key rotation therefore edits one variable and the matching row of the table,
+`stellar.toml` does not list, and an operator that is one of the service accounts. A key rotation therefore edits one variable and the matching row of the table,
 and the run stays red until both agree. The same comparison between the table and `stellar.toml` runs in the
 unit suite on every pull request.
 
@@ -125,9 +128,15 @@ A rotation also keeps the address it drained watched for 24 hours: each variable
 counterpart (`MEDIATOR_ADDRESS_TESTNET_RETIRED` and so on) that holds the old address. A retired address is
 read by the source-account and forward checks only. It is in neither the table nor `stellar.toml`, and it has
 no balance floor, because the account no longer exists. A value that is not an account id, or that equals the
-current address, fails the config step. Any transaction the old key sources after the drain is a finding,
-reported as for the current account, so the drain itself is sourced from another account (see the
-[relay account rotation](/runbooks/rotate-relay-account)). The runbook deletes the variable once the 24 hours are over.
+current address, fails the config step, and so does a retired mediator on a network with no operator set. Any
+transaction the old key sources is a finding, reported as for the current account, so the drain itself is
+sourced from the operator (see the [relay account rotation](/runbooks/rotate-relay-account)). The drain merges
+the whole balance out with no forward, which the forward check would read as a payout from the account's own
+balance; it reads it as the drain only when all three hold: the account is retired, the operator sourced the
+transaction, and that one merge operation removed the account and credited the operator. A merge into any
+other address, a merge from a transaction the operator did not sign, a merge of the current relay, and any
+other debit in the same transaction are still findings, so holding the old key alone cannot reproduce the
+exemption. The runbook deletes the variable once the 24 hours are over.
 
 The source-account and forward checks read the transactions of the last `MONITOR_HISTORY_HOURS` hours (an
 optional repository variable from 2 to 720; 168, one week, when unset), paging through Horizon 200 at a time.
@@ -161,7 +170,9 @@ suspected key compromise (the two service-key checks and the forward check) ping
 balance finding, and a recovery, do not, so the ping keeps its meaning. The two service-key checks and the
 forward check post again on every hourly run they keep failing, because a suspected key compromise is worth
 repeating; a registry or balance finding posts once, then gets a daily comment on the issue, so the channel
-stays readable. The next clean daily run closes the issue and posts the recovery. A finding the webhook cannot
+stays readable. A failing check also fails its own step and the service-account job, so the run shows which
+check found something without opening the issue; the remaining checks still run. The next clean daily run
+closes the issue and posts the recovery. A finding the webhook cannot
 deliver fails the run itself, so a missing or revoked webhook shows up as red rather than as silence.
 
 ### Provider contract check

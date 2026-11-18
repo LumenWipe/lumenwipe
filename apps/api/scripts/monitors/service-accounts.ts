@@ -7,7 +7,8 @@
  *
  * MEDIATOR_ADDRESS_MAINNET and FEE_ACCOUNT_ADDRESS_MAINNET add mainnet; MONITOR_HISTORY_HOURS
  * sets how far back keys and forward read. Each variable with a _RETIRED suffix adds an address
- * rotated out, read by keys and forward only.
+ * rotated out, read by keys and forward only. OPERATOR_ADDRESS_TESTNET and _MAINNET name the
+ * account a rotation drains a retired address into.
  */
 import { readFileSync } from "node:fs";
 import {
@@ -123,7 +124,10 @@ async function run(check: string | undefined): Promise<Finding[]> {
   const hours = historyWindowHours(process.env.MONITOR_HISTORY_HOURS);
   switch (check) {
     case "config":
-      for (const a of accounts) console.log(`${roleLabel(a)} (${a.network}): ${a.address}`);
+      for (const a of accounts) {
+        const drain = a.drainTo === undefined ? "" : `, drained into ${a.drainTo}`;
+        console.log(`${roleLabel(a)} (${a.network}): ${a.address}${drain}`);
+      }
       console.log(`History window: ${hours} h. Variables, plan and stellar.toml agree.`);
       return [];
     case "keys":

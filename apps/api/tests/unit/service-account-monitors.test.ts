@@ -12,9 +12,11 @@ import {
   loadServiceAccounts,
   nativeBalanceStroops,
   plannedAccounts,
+  operatorVariable,
   retiredVariable,
   sourcedFinding,
   transactionsInWindow,
+  type HorizonEffect,
   type HorizonTransaction,
   type HorizonTransactionPage,
   type PlannedAccounts,
@@ -26,6 +28,9 @@ const SPONSOR = "GD6VXLZZPNRO4J2PNM4AUPS6OYMLPAE3XPSNCV2NSGEWN5FC2A7DCK5E";
 const USER = "GD27CZC3DRI2YPKIDXIEPMHVBWXSTOFO7HNK5OMIZBMS7N6UWUNM2SOP";
 // A valid account id that is neither service account (32 bytes of 0x07).
 const OTHER = "GADQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOZPI";
+// The testnet rotation of 2026-11-17: the operator and the relay it drained.
+const OPERATOR = "GD7VZL7FUZP4MZY2ROW4L7TQ4D2N47NRWWO2B4TJJWOFUV74AZZGYAHQ";
+const RETIRED_RELAY = "GC2VH6XP7HTOZHIX4OC3PU5HUXWY5XANGML4F6GBCNH5MBDFN5MU4WG7";
 
 const mediator: ServiceAccount = {
   role: "mediator",
@@ -45,12 +50,13 @@ const ROOT = new URL("../../../../", import.meta.url);
 const SCRIPT = new URL("apps/api/scripts/monitors/service-accounts.ts", ROOT).pathname;
 
 const testnetOnly: PlannedAccounts = {
-  testnet: { mediator: MEDIATOR, sponsor: SPONSOR },
-  mainnet: { mediator: null, sponsor: null },
+  testnet: { mediator: MEDIATOR, sponsor: SPONSOR, operator: OPERATOR },
+  mainnet: { mediator: null, sponsor: null, operator: null },
 };
 const testnetEnv = {
   MEDIATOR_ADDRESS_TESTNET: MEDIATOR,
   FEE_ACCOUNT_ADDRESS_TESTNET: SPONSOR,
+  OPERATOR_ADDRESS_TESTNET: OPERATOR,
 };
 
 describe("plannedAccounts", () => {
@@ -62,6 +68,8 @@ describe("plannedAccounts", () => {
       "| Mediator account (mainnet)  | not yet deployed | Gap. |",
       `| Fee-bump sponsor (testnet)  | \`${SPONSOR}\` | Pays fees. |`,
       "| Fee-bump sponsor (mainnet)  | not yet deployed | Gap. |",
+      `| Rotation operator (testnet) | \`${OPERATOR}\` | Drains. |`,
+      "| Rotation operator (mainnet) | not yet deployed | Gap. |",
     ].join("\n");
 
   test("reads each role and network from the inventory table", () => {
@@ -91,6 +99,8 @@ describe("the monitoring plan and stellar.toml agree", () => {
         const address = plan[network][role];
         if (address !== null) env[addressVariable(role, network)] = address;
       }
+      const operator = plan[network].operator;
+      if (operator !== null) env[operatorVariable(network)] = operator;
     }
     expect(loadServiceAccounts(env, plan, toml).length).toBeGreaterThan(0);
   });
@@ -116,8 +126,8 @@ describe("loadServiceAccounts", () => {
 
   test("fails when no account is configured at all", () => {
     const none: PlannedAccounts = {
-      testnet: { mediator: null, sponsor: null },
-      mainnet: { mediator: null, sponsor: null },
+      testnet: { mediator: null, sponsor: null, operator: null },
+      mainnet: { mediator: null, sponsor: null, operator: null },
     };
     expect(() => loadServiceAccounts({}, none, {})).toThrow("No service account is configured");
   });
@@ -148,13 +158,13 @@ describe("loadServiceAccounts", () => {
       }
       return "";
     })();
-    expect(message.split("\n")).toHaveLength(2);
+    expect(message.split("\n")).toHaveLength(3);
   });
 
   describe("against stellar.toml", () => {
     const withMainnet: PlannedAccounts = {
-      testnet: { mediator: null, sponsor: null },
-      mainnet: { mediator: MEDIATOR, sponsor: SPONSOR },
+      testnet: { mediator: null, sponsor: null, operator: null },
+      mainnet: { mediator: MEDIATOR, sponsor: SPONSOR, operator: null },
     };
     const mainnetEnv = { MEDIATOR_ADDRESS_MAINNET: MEDIATOR, FEE_ACCOUNT_ADDRESS_MAINNET: SPONSOR };
 
@@ -198,6 +208,7 @@ describe("loadServiceAccounts", () => {
     expect(exitCode).toBe(1);
     expect(stderr).toContain("::error::MEDIATOR_ADDRESS_TESTNET is not set");
     expect(stderr).toContain("::error::FEE_ACCOUNT_ADDRESS_TESTNET is not set");
+    expect(stderr).toContain("::error::OPERATOR_ADDRESS_TESTNET is not set");
   });
 });
 
@@ -209,6 +220,7 @@ describe("a retired address", () => {
     address: OTHER,
     floorXlm: "1",
     retired: true,
+    drainTo: OPERATOR,
   };
 
   test("is the address variable with a _RETIRED suffix", () => {
@@ -239,10 +251,14 @@ describe("a retired address", () => {
 
   test("does not have to be in stellar.toml, and may not stay listed there", () => {
     const withMainnet: PlannedAccounts = {
-      testnet: { mediator: null, sponsor: null },
-      mainnet: { mediator: MEDIATOR, sponsor: null },
+      testnet: { mediator: null, sponsor: null, operator: null },
+      mainnet: { mediator: MEDIATOR, sponsor: null, operator: OPERATOR },
     };
-    const env = { MEDIATOR_ADDRESS_MAINNET: MEDIATOR, MEDIATOR_ADDRESS_MAINNET_RETIRED: OTHER };
+    const env = {
+      MEDIATOR_ADDRESS_MAINNET: MEDIATOR,
+      MEDIATOR_ADDRESS_MAINNET_RETIRED: OTHER,
+      OPERATOR_ADDRESS_MAINNET: OPERATOR,
+    };
     expect(loadServiceAccounts(env, withMainnet, { ACCOUNTS: [MEDIATOR] })).toHaveLength(2);
     expect(() => loadServiceAccounts(env, withMainnet, { ACCOUNTS: [MEDIATOR, OTHER] })).toThrow(
       `stellar.toml lists ${OTHER}`
@@ -261,6 +277,78 @@ describe("a retired address", () => {
     expect(formatFinding({ account: retired, message: "m" })).toBe(
       `mediator (retired) (testnet, ${OTHER}): m`
     );
+  });
+});
+
+describe("the rotation operator", () => {
+  test("is a variable per network", () => {
+    expect(operatorVariable("mainnet")).toBe("OPERATOR_ADDRESS_MAINNET");
+  });
+
+  test("is held to the plan like the service accounts", () => {
+    const rotated = { ...testnetEnv, OPERATOR_ADDRESS_TESTNET: OTHER };
+    expect(() => loadServiceAccounts(rotated, testnetOnly, {})).toThrow(
+      `OPERATOR_ADDRESS_TESTNET is ${OTHER}, but docs/monitoring-plan.md lists the rotation operator (testnet) account as ${OPERATOR}`
+    );
+    const unset = { ...testnetEnv, OPERATOR_ADDRESS_TESTNET: "" };
+    expect(() => loadServiceAccounts(unset, testnetOnly, {})).toThrow(
+      "OPERATOR_ADDRESS_TESTNET is not set"
+    );
+    const undeployed = { ...testnetEnv, OPERATOR_ADDRESS_MAINNET: OTHER };
+    expect(() => loadServiceAccounts(undeployed, testnetOnly, {})).toThrow("as not yet deployed");
+  });
+
+  test.each([
+    "not-an-account",
+    "SAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    ` ${OPERATOR}`,
+  ])("rejects %p, which is not an account id", (value) => {
+    const env = { ...testnetEnv, OPERATOR_ADDRESS_TESTNET: value };
+    expect(() => loadServiceAccounts(env, testnetOnly, {})).toThrow(
+      "OPERATOR_ADDRESS_TESTNET is not a Stellar account id"
+    );
+  });
+
+  test("is not a service account", () => {
+    const plan: PlannedAccounts = {
+      ...testnetOnly,
+      testnet: { ...testnetOnly.testnet, operator: SPONSOR },
+    };
+    const env = { ...testnetEnv, OPERATOR_ADDRESS_TESTNET: SPONSOR };
+    expect(() => loadServiceAccounts(env, plan, {})).toThrow(
+      "OPERATOR_ADDRESS_TESTNET is the sponsor (testnet) account"
+    );
+    const retired = { ...testnetEnv, MEDIATOR_ADDRESS_TESTNET_RETIRED: OPERATOR };
+    expect(() => loadServiceAccounts(retired, testnetOnly, {})).toThrow(
+      "OPERATOR_ADDRESS_TESTNET is the mediator (retired) (testnet) account"
+    );
+  });
+
+  test("is required by a retired mediator, which carries it as its drain destination", () => {
+    const noOperator: PlannedAccounts = {
+      ...testnetOnly,
+      testnet: { ...testnetOnly.testnet, operator: null },
+    };
+    const env = {
+      MEDIATOR_ADDRESS_TESTNET: MEDIATOR,
+      FEE_ACCOUNT_ADDRESS_TESTNET: SPONSOR,
+      MEDIATOR_ADDRESS_TESTNET_RETIRED: RETIRED_RELAY,
+    };
+    expect(() => loadServiceAccounts(env, noOperator, {})).toThrow(
+      "MEDIATOR_ADDRESS_TESTNET_RETIRED is set, but OPERATOR_ADDRESS_TESTNET is not"
+    );
+    const retired = loadServiceAccounts(
+      { ...env, OPERATOR_ADDRESS_TESTNET: OPERATOR },
+      testnetOnly,
+      {}
+    ).find((a) => a.retired);
+    expect(retired?.drainTo).toBe(OPERATOR);
+  });
+
+  test("leaves the current accounts without a drain destination", () => {
+    for (const account of loadServiceAccounts(testnetEnv, testnetOnly, {})) {
+      expect(account.drainTo).toBeUndefined();
+    }
   });
 });
 
@@ -427,5 +515,83 @@ describe("forwardFinding", () => {
       { type: "account_debited", account: USER, amount: "1000" },
     ];
     expect(forwardFinding(mediator, tx, effects)).toBeNull();
+  });
+});
+
+describe("forwardFinding on a rotation's drain", () => {
+  // The relay drain of the 2026-11-17 testnet rotation, 1b2ea80a…f282, with the effects Horizon
+  // returns for it: the operator sources the transaction, the retired relay merges into it.
+  const DRAIN_OP = "24829931787669506";
+  const drainTx: HorizonTransaction = {
+    hash: "1b2ea80a70265944e6335ce3173bc244dee9627ae44db0c3f35f851bdec5f282",
+    created_at: "2026-11-17T15:31:31Z",
+    source_account: OPERATOR,
+    paging_token: "24829931787669504",
+  };
+  const drain = (into: string, op = DRAIN_OP): HorizonEffect[] => [
+    {
+      type: "account_debited",
+      account: RETIRED_RELAY,
+      amount: "10000.0000000",
+      paging_token: `${op}-1`,
+    },
+    { type: "account_credited", account: into, amount: "10000.0000000", paging_token: `${op}-2` },
+    { type: "account_removed", account: RETIRED_RELAY, paging_token: `${op}-3` },
+  ];
+  const retiredRelay: ServiceAccount = {
+    role: "mediator",
+    network: "testnet",
+    address: RETIRED_RELAY,
+    floorXlm: "1",
+    retired: true,
+    drainTo: OPERATOR,
+  };
+
+  test("the runbook's drain into the operator is quiet", () => {
+    expect(forwardFinding(retiredRelay, drainTx, drain(OPERATOR))).toBeNull();
+  });
+
+  test("the same merge into another address fires", () => {
+    const finding = forwardFinding(retiredRelay, drainTx, drain(OTHER));
+    expect(finding?.message).toContain("paid out 10000 XLM but the merge delivered 0 XLM");
+  });
+
+  test("a merge into the operator from a transaction it did not source fires", () => {
+    const foreign = { ...drainTx, source_account: OTHER };
+    expect(forwardFinding(retiredRelay, foreign, drain(OPERATOR))).not.toBeNull();
+  });
+
+  test("a merge of the current relay into the operator fires", () => {
+    const current = { ...retiredRelay, retired: undefined };
+    expect(forwardFinding(current, drainTx, drain(OPERATOR))).not.toBeNull();
+  });
+
+  test("a retired relay with no drain destination fires", () => {
+    const unset = { ...retiredRelay, drainTo: undefined };
+    expect(forwardFinding(unset, drainTx, drain(OPERATOR))).not.toBeNull();
+  });
+
+  test("a payment out next to the drain fires, in another operation", () => {
+    const payout: HorizonEffect[] = [
+      { type: "account_debited", account: RETIRED_RELAY, amount: "5", paging_token: "77-1" },
+      { type: "account_credited", account: OTHER, amount: "5", paging_token: "77-2" },
+      ...drain(OPERATOR),
+    ];
+    const finding = forwardFinding(retiredRelay, drainTx, payout);
+    expect(finding?.message).toContain("paid out 10005 XLM but the merge delivered 10000 XLM");
+  });
+
+  test("a credit to the operator in another operation does not offset the merge", () => {
+    const effects: HorizonEffect[] = [
+      ...drain(OTHER),
+      { type: "account_credited", account: OPERATOR, amount: "10000", paging_token: "77-1" },
+      { type: "account_removed", account: OTHER, paging_token: "77-2" },
+    ];
+    expect(forwardFinding(retiredRelay, drainTx, effects)).not.toBeNull();
+  });
+
+  test("effects with no operation to match fire", () => {
+    const bare = drain(OPERATOR).map((effect) => ({ ...effect, paging_token: undefined }));
+    expect(forwardFinding(retiredRelay, drainTx, bare)).not.toBeNull();
   });
 });

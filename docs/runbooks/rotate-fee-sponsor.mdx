@@ -70,7 +70,7 @@ The steps follow the [relay account rotation](/runbooks/rotate-relay-account), w
 
    Expected: `<new>` as `fee_account`, and the closed account, never `<new>`, as `source_account`.
 
-7. **Monitors**, before the drain: set `FEE_ACCOUNT_ADDRESS_<NET>` to `<new>` and `FEE_ACCOUNT_ADDRESS_<NET>_RETIRED` to `<old>`, merge the change to the `Fee-bump sponsor (<net>)` row of the inventory table in the same hour, and run the workflow. Expected: the config step lists `sponsor (<net>): <new>` and `sponsor (retired) (<net>): <old>`, every job succeeds, and the balances step reports only `<new>`.
+7. **Monitors**, before the drain: set `FEE_ACCOUNT_ADDRESS_<NET>` to `<new>` and `FEE_ACCOUNT_ADDRESS_<NET>_RETIRED` to `<old>`, merge the change to the `Fee-bump sponsor (<net>)` row of the inventory table in the same hour, and run the workflow. Expected: the config step lists `sponsor (<net>): <new>` and `sponsor (retired) (<net>): <old>, drained into <operator address>`, every job succeeds, and the balances step reports only `<new>`.
 
 8. **Wait 6 minutes** after the new revision took traffic, so no fee bump signed by the old key can still land.
 
