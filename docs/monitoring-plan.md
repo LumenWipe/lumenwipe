@@ -128,7 +128,7 @@ A rotation also keeps the address it drained watched for 24 hours: each variable
 counterpart (`MEDIATOR_ADDRESS_TESTNET_RETIRED` and so on) that holds the old address. A retired address is
 read by the source-account and forward checks only. It is in neither the table nor `stellar.toml`, and it has
 no balance floor, because the account no longer exists. A value that is not an account id, or that equals the
-current address, fails the config step, and so does a retired mediator on a network with no operator set. Any
+current address, fails the config step, and so does a retired address on a network with no operator set. Any
 transaction the old key sources is a finding, reported as for the current account, so the drain itself is
 sourced from the operator (see the [relay account rotation](/runbooks/rotate-relay-account)). The drain merges
 the whole balance out with no forward, which the forward check would read as a payout from the account's own
@@ -136,7 +136,12 @@ balance; it reads it as the drain only when all three hold: the account is retir
 transaction, and that one merge operation removed the account and credited the operator. A merge into any
 other address, a merge from a transaction the operator did not sign, a merge of the current relay, and any
 other debit in the same transaction are still findings, so holding the old key alone cannot reproduce the
-exemption. The runbook deletes the variable once the 24 hours are over.
+exemption. A retired fee sponsor is read by the forward check too, because it keeps its float until the
+drain: a fee bump it paid for before the switch is a fee, which Horizon reports as no effect, so any debit
+other than the drain is a payout by the old key. While a retired sponsor is set, the forward check reads one
+effects page for each transaction it was part of in the window, its sponsored fee bumps included; on a busy
+sponsor, lower `MONITOR_HISTORY_HOURS` for the rotation. The runbook deletes the variable once the 24 hours are
+over.
 
 The source-account and forward checks read the transactions of the last `MONITOR_HISTORY_HOURS` hours (an
 optional repository variable from 2 to 720; 168, one week, when unset), paging through Horizon 200 at a time.
@@ -158,7 +163,7 @@ measurement, not a guess.
 floor reads each account's native balance from Horizon and compares it to its role's floor in
 `service-accounts.ts`: the mediator's base reserve, and a provisional top-up level for the sponsor that stands
 in for `S4b.Denial.1.M.1`'s balance half until real usage sets one. The forward check reads the effects of
-every transaction touching the mediator inside the history window, one transaction at a time, and fires when
+every transaction touching the mediator, and any retired account, inside the history window, one transaction at a time, and fires when
 it debited more than the merge credited in the same transaction, which is the only way the mediator can pay
 out of its own balance. Measured on the testnet mediator on 2026-10-07: 6 transactions, forward equal to the
 merge in every one.

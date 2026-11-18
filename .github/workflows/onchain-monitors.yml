@@ -109,7 +109,7 @@ jobs:
         working-directory: apps/api
         run: bun run scripts/monitors/service-accounts.ts balances
 
-      - name: The mediator never paid out more than a merge delivered
+      - name: No relay or retired account paid out more than a merge delivered
         id: forward
         if: ${{ !cancelled() && steps.config.outcome == 'success' }}
         working-directory: apps/api
@@ -158,7 +158,7 @@ jobs:
             "- variables, monitoring plan and stellar.toml agree: $CONFIG" \
             "- service keys have not signed anything: $KEYS" \
             "- service accounts are above their balance floor: $BALANCES" \
-            "- the mediator never paid out more than a merge delivered: $FORWARD")
+            "- no relay or retired account paid out more than a merge delivered: $FORWARD")
 
           # The registry's `cancelled` and `skipped` are a superseded run, a human stopping a job,
           # or the hourly run leaving it to the daily one: not findings.
@@ -199,9 +199,9 @@ jobs:
             "stellar.toml disagree, or one the plan expects is unset: the checks did not run." \
             "Fix the variable or the plan; the run log names which." \
             "" \
-            "A service-key or mediator-forward failure is different. It means a key the API holds" \
-            "signed a transaction this codebase did not build, or the mediator paid out of its own" \
-            "balance. Treat it as a suspected key compromise: rotate the key and audit every" \
+            "A service-key or forward failure is different. It means a key the API holds signed a" \
+            "transaction this codebase did not build, or the mediator or a retired account paid out" \
+            "of its own balance. Treat it as a suspected key compromise: rotate the key and audit every" \
             "transaction it signed or paid for." \
             "" \
             "This issue closes itself on the next clean daily run, including a manual one from the" \

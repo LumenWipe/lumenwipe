@@ -216,14 +216,11 @@ export function loadServiceAccounts(
       }
       const drainTo = operators[network];
       if (drainTo === null) {
-        if (role === "mediator") {
-          problems.push(
-            `${name} is set, but ${operatorVariable(network)} is not: the forward check could not ` +
-              "tell the rotation's drain from a payout. Set it, and its row in " +
-              `${PLAN_PATH}, to the account the rotation drains into.`
-          );
-        }
-        accounts.push({ role, network, address: value, floorXlm: FLOOR_XLM[role], retired: true });
+        problems.push(
+          `${name} is set, but ${operatorVariable(network)} is not: the forward check could not ` +
+            "tell the rotation's drain from a payout. Set it, and its row in " +
+            `${PLAN_PATH}, to the account the rotation drains into.`
+        );
         continue;
       }
       accounts.push({
@@ -393,7 +390,8 @@ function drainOperations(
  * merge credited and what the forward debited; the API bounds the forward by the merge at co-sign
  * time, so any transaction where the debit exceeds the credit is one that got past that bound.
  * A retired account's drain counts what it delivered to the operator as delivered, in that
- * operation only, so any other debit in the same transaction still fires.
+ * operation only, so any other debit in the same transaction still fires. A retired sponsor is
+ * read the same way: its fee bumps are fees, not effects, so only a payout or a merge debits it.
  */
 export function forwardFinding(
   account: ServiceAccount,
@@ -429,7 +427,10 @@ export function forwardFinding(
 
 export type ServiceCheck = "keys" | "balances" | "forward";
 
-/** The accounts one check reads: a retired account has no balance left to floor. */
+/**
+ * The accounts one check reads. A retired account has no balance left to floor, and any payout
+ * from one, sponsor included, is read by the forward check until it is drained.
+ */
 export function accountsFor(accounts: ServiceAccount[], check: ServiceCheck): ServiceAccount[] {
   switch (check) {
     case "keys":
@@ -437,7 +438,7 @@ export function accountsFor(accounts: ServiceAccount[], check: ServiceCheck): Se
     case "balances":
       return accounts.filter((a) => !a.retired);
     case "forward":
-      return accounts.filter((a) => a.role === "mediator");
+      return accounts.filter((a) => a.role === "mediator" || a.retired);
   }
 }
 

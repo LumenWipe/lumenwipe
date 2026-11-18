@@ -28,9 +28,10 @@ const SPONSOR = "GD6VXLZZPNRO4J2PNM4AUPS6OYMLPAE3XPSNCV2NSGEWN5FC2A7DCK5E";
 const USER = "GD27CZC3DRI2YPKIDXIEPMHVBWXSTOFO7HNK5OMIZBMS7N6UWUNM2SOP";
 // A valid account id that is neither service account (32 bytes of 0x07).
 const OTHER = "GADQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOBYHA4DQOZPI";
-// The testnet rotation of 2026-11-17: the operator and the relay it drained.
+// The testnet rotation of 2026-11-17: the operator and the two accounts it drained.
 const OPERATOR = "GD7VZL7FUZP4MZY2ROW4L7TQ4D2N47NRWWO2B4TJJWOFUV74AZZGYAHQ";
 const RETIRED_RELAY = "GC2VH6XP7HTOZHIX4OC3PU5HUXWY5XANGML4F6GBCNH5MBDFN5MU4WG7";
+const RETIRED_SPONSOR = "GCMCGC6EJZKJJUTFY6RK43PGOODW6EL6FSHSLXBV4EYSZ3GHNJO3FXAP";
 
 const mediator: ServiceAccount = {
   role: "mediator",
@@ -324,6 +325,21 @@ describe("the rotation operator", () => {
     );
   });
 
+  test("is required by a retired sponsor too", () => {
+    const noOperator: PlannedAccounts = {
+      ...testnetOnly,
+      testnet: { ...testnetOnly.testnet, operator: null },
+    };
+    const env = {
+      MEDIATOR_ADDRESS_TESTNET: MEDIATOR,
+      FEE_ACCOUNT_ADDRESS_TESTNET: SPONSOR,
+      FEE_ACCOUNT_ADDRESS_TESTNET_RETIRED: RETIRED_SPONSOR,
+    };
+    expect(() => loadServiceAccounts(env, noOperator, {})).toThrow(
+      "FEE_ACCOUNT_ADDRESS_TESTNET_RETIRED is set, but OPERATOR_ADDRESS_TESTNET is not"
+    );
+  });
+
   test("is required by a retired mediator, which carries it as its drain destination", () => {
     const noOperator: PlannedAccounts = {
       ...testnetOnly,
@@ -593,5 +609,96 @@ describe("forwardFinding on a rotation's drain", () => {
   test("effects with no operation to match fire", () => {
     const bare = drain(OPERATOR).map((effect) => ({ ...effect, paging_token: undefined }));
     expect(forwardFinding(retiredRelay, drainTx, bare)).not.toBeNull();
+  });
+});
+
+describe("a retired fee sponsor", () => {
+  const retiredSponsor: ServiceAccount = {
+    role: "sponsor",
+    network: "testnet",
+    address: RETIRED_SPONSOR,
+    floorXlm: "50",
+    retired: true,
+    drainTo: OPERATOR,
+  };
+  // The sponsor drain of the 2026-11-17 testnet rotation, 6ccf2429…356f, as Horizon returns it.
+  const DRAIN_OP = "24829936082640898";
+  const drainTx: HorizonTransaction = {
+    hash: "6ccf2429bb1a8671b2c1a97ed8b00425b7f195996a6a72d512f50da3c898356f",
+    created_at: "2026-11-17T15:31:36Z",
+    source_account: OPERATOR,
+    paging_token: "24829936082640896",
+  };
+  const drain = (into: string): HorizonEffect[] => [
+    {
+      type: "account_debited",
+      account: RETIRED_SPONSOR,
+      amount: "9999.9998600",
+      paging_token: `${DRAIN_OP}-1`,
+    },
+    {
+      type: "account_credited",
+      account: into,
+      amount: "9999.9998600",
+      paging_token: `${DRAIN_OP}-2`,
+    },
+    { type: "account_removed", account: RETIRED_SPONSOR, paging_token: `${DRAIN_OP}-3` },
+  ];
+
+  test("is read by the forward check, and a current sponsor is not", () => {
+    const accounts = loadServiceAccounts(
+      { ...testnetEnv, FEE_ACCOUNT_ADDRESS_TESTNET_RETIRED: RETIRED_SPONSOR },
+      testnetOnly,
+      {}
+    );
+    expect(accountsFor(accounts, "forward")).toEqual([mediator, retiredSponsor]);
+  });
+
+  test("the runbook's drain into the operator is quiet", () => {
+    expect(forwardFinding(retiredSponsor, drainTx, drain(OPERATOR))).toBeNull();
+  });
+
+  test("the same merge into another address fires", () => {
+    const finding = forwardFinding(retiredSponsor, drainTx, drain(OTHER));
+    expect(finding?.message).toContain("paid out 9999.99986 XLM but the merge delivered 0 XLM");
+  });
+
+  test("a payment out fires", () => {
+    const payment: HorizonEffect[] = [
+      { type: "account_debited", account: RETIRED_SPONSOR, amount: "40", paging_token: "88-1" },
+      { type: "account_credited", account: OTHER, amount: "40", paging_token: "88-2" },
+    ];
+    const foreign = { ...drainTx, source_account: OTHER };
+    expect(forwardFinding(retiredSponsor, foreign, payment)).not.toBeNull();
+  });
+
+  test("a fee bump it paid for raises nothing: a fee is not an effect", () => {
+    // 52cb1ed3…37d0, a close the testnet sponsor paid the fee for: its effects never name it.
+    const feeBump: HorizonTransaction = {
+      hash: "52cb1ed3f18d1a43e4c2abcf3813edabfc802fcd95141bb96f1f21add4f537d0",
+      created_at: "2026-11-17T15:25:56Z",
+      source_account: "GA6CGRMFIHJCIXJJ7DSI6FD6DPEIA2LC2YMJJB7MDWXVY7FSAEQAX2WY",
+      paging_token: "24829644024844288",
+    };
+    const effects: HorizonEffect[] = [
+      {
+        type: "account_debited",
+        account: feeBump.source_account,
+        amount: "1.0000000",
+        paging_token: "24829644024844289-1",
+      },
+      {
+        type: "account_credited",
+        account: OPERATOR,
+        amount: "1.0000000",
+        paging_token: "24829644024844289-2",
+      },
+      {
+        type: "account_removed",
+        account: feeBump.source_account,
+        paging_token: "24829644024844289-3",
+      },
+    ];
+    expect(forwardFinding({ ...retiredSponsor, address: SPONSOR }, feeBump, effects)).toBeNull();
   });
 });
