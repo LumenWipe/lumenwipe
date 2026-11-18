@@ -60,6 +60,20 @@ test("a discarded plan sends /execute back to /analyze for a fresh plan", async 
   await waitFor(() => expect(calls).toContain("replace /testnet/analyze"));
 });
 
+test("landing on /execute with a discarded plan goes only to /analyze, keeping the notice", async () => {
+  const calls = stubRouter();
+  useDemolishStore.getState().discardPlan("changed");
+  let container!: HTMLElement;
+  await act(async () => {
+    ({ container } = render(<ExecutePage params={settled({ network: "testnet" as const })} />));
+  });
+  expect(calls).toEqual(["replace /testnet/analyze"]);
+  const state = useDemolishStore.getState();
+  expect(state.executeInterrupted).toBe(false);
+  expect(state.planChangedNotice).toBe("changed");
+  expect(container.innerHTML).toBe("");
+});
+
 test("a discarded plan cannot be confirmed again on /review", async () => {
   const calls = stubRouter();
   useDemolishStore.getState().discardPlan("changed");
