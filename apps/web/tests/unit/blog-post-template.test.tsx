@@ -19,7 +19,7 @@ function meta(slug: string, tags: string[], publishedAt = "2026-06-02"): PostMet
     updatedAt: publishedAt,
     category: "Guides",
     tags,
-    readingTime: "4 min read",
+    readingMinutes: 4,
   };
 }
 

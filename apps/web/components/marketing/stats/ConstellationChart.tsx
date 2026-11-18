@@ -1,7 +1,9 @@
 "use client";
 
 import { formatNumber, TWO_DECIMALS } from "@/lib/i18n/format";
+import { formatDate } from "@/lib/i18n/format";
 import { SITE_LOCALE } from "@/lib/i18n/locale";
+import { STATS_PAGE } from "@/lib/i18n/messages/stats";
 import { useState } from "react";
 import { stroopsToXlm } from "@/lib/utils/amounts";
 import { SE_EXPLORER_BASE } from "@/config/networks";
@@ -18,6 +20,8 @@ const CHART_H = H - PAD_TOP - PAD_BOTTOM;
 const AXIS_Y = PAD_TOP + CHART_H + 8;
 const CHART_W = W - PAD_X * 2;
 const DAYS_SHOWN = 60;
+
+const T = STATS_PAGE[SITE_LOCALE].chart;
 
 // Deterministic Y jitter from txHash so server and client agree.
 function hashJitter(txHash: string): number {
@@ -57,24 +61,10 @@ function buildAxisLabels(start: number, end: number): AxisLabel[] {
   const cursor = new Date(start);
   cursor.setUTCHours(0, 0, 0, 0);
   cursor.setUTCDate(cursor.getUTCDate() + 1);
-  const months = [
-    "Jan",
-    "Feb",
-    "Mar",
-    "Apr",
-    "May",
-    "Jun",
-    "Jul",
-    "Aug",
-    "Sep",
-    "Oct",
-    "Nov",
-    "Dec",
-  ];
   while (cursor.getTime() <= end) {
     if (cursor.getUTCDate() === 1) {
       labels.push({
-        label: months[cursor.getUTCMonth()],
+        label: formatDate(SITE_LOCALE, cursor, { month: "short", timeZone: "UTC" }),
         x: tsToX(cursor.toISOString(), start, end),
       });
     }
@@ -115,11 +105,9 @@ export default function ConstellationChart({ feed }: { feed: FeedData | null }) 
       {/* header */}
       <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
         <span className="mkt-mono text-caption uppercase tracking-wider text-fg-muted">
-          Each close · last {DAYS_SHOWN} days
+          {T.title(DAYS_SHOWN)}
         </span>
-        <span className="mkt-mono text-caption text-fg-subtle">
-          size = XLM recovered · gold = large close
-        </span>
+        <span className="mkt-mono text-caption text-fg-subtle">{T.legend}</span>
       </div>
 
       {/* chart */}
@@ -128,7 +116,7 @@ export default function ConstellationChart({ feed }: { feed: FeedData | null }) 
           viewBox={`0 0 ${W} ${H}`}
           width="100%"
           height="auto"
-          aria-label="Constellation of account closes over time"
+          aria-label={T.label}
           style={{ display: "block" }}
         >
           <defs>
@@ -248,7 +236,7 @@ export default function ConstellationChart({ feed }: { feed: FeedData | null }) 
         </svg>
         {feed && now !== null && records.length === 0 && (
           <p className="mkt-mono absolute inset-0 flex items-center justify-center text-caption text-fg-subtle">
-            No mainnet closes in this window yet
+            {T.empty}
           </p>
         )}
 

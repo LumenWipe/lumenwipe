@@ -1,4 +1,5 @@
 import { formatPostDate } from "@/lib/blog-date";
+import { SITE_LOCALE } from "@/lib/i18n/locale";
 import { BASE_RESERVE_CHECKED_ON, BASE_RESERVE_XLM } from "@/lib/site/reserve";
 
 /** The network's base reserve, for a post to state without copying the number. */
@@ -8,5 +9,9 @@ export function BaseReserve() {
 
 /** The day the base reserve was last checked against the network. */
 export function BaseReserveCheckedOn() {
-  return <time dateTime={BASE_RESERVE_CHECKED_ON}>{formatPostDate(BASE_RESERVE_CHECKED_ON)}</time>;
+  return (
+    <time dateTime={BASE_RESERVE_CHECKED_ON}>
+      {formatPostDate(SITE_LOCALE, BASE_RESERVE_CHECKED_ON)}
+    </time>
+  );
 }

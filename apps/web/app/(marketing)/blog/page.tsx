@@ -6,10 +6,14 @@ import Link from "next/link";
 import { getAllPostMetas } from "@/lib/blog";
 import PostCard from "@/components/blog/PostCard";
 import { Button } from "@/components/ui/button";
+import { SITE_LOCALE } from "@/lib/i18n/locale";
+import { BLOG } from "@/lib/i18n/messages/blog";
+
+const T = BLOG[SITE_LOCALE];
 
 export const metadata: Metadata = pageMetadata({
   path: "/blog",
-  title: "Blog",
+  title: T.title,
   description: BLOG_DESCRIPTION,
   blogFeed: true,
 });
@@ -23,15 +27,12 @@ export default function BlogPage() {
       <div className="mb-12">
         <span className="mkt-eyebrow inline-flex items-center gap-2 text-fg-muted">
           <span className="h-px w-6 bg-line-strong" />
-          Blog
+          {T.eyebrow}
         </span>
         <h1 className="mkt-display text-4xl font-extrabold text-white mt-4 mb-3 tracking-tight">
-          Field notes on closing Stellar accounts
+          {T.heading}
         </h1>
-        <p className="text-white/85 text-base max-w-2xl leading-relaxed">
-          Technical deep dives, project updates, and guides on Stellar account management, reserve
-          recovery, and non-custodial tooling.
-        </p>
+        <p className="text-white/85 text-base max-w-2xl leading-relaxed">{T.lede}</p>
       </div>
 
       {posts.length > 0 ? (
@@ -42,17 +43,14 @@ export default function BlogPage() {
         </div>
       ) : (
         <div className="mkt-card flex flex-col items-center gap-4 px-6 py-14 text-center">
-          <p className="text-body font-semibold text-white">No articles published yet.</p>
-          <p className="max-w-md text-sm leading-relaxed text-fg-muted">
-            The first guides are on the way. Until then, watch the walkthrough videos or read how a
-            close works, step by step.
-          </p>
+          <p className="text-body font-semibold text-white">{T.noPosts}</p>
+          <p className="max-w-md text-sm leading-relaxed text-fg-muted">{T.noPostsBody}</p>
           <div className="flex flex-wrap justify-center gap-3">
             <Button asChild>
-              <Link href="/content">Watch the videos</Link>
+              <Link href="/content">{T.watchVideos}</Link>
             </Button>
             <Button asChild variant="secondary">
-              <Link href="/how-it-works">How it works</Link>
+              <Link href="/how-it-works">{T.howItWorks}</Link>
             </Button>
           </div>
         </div>

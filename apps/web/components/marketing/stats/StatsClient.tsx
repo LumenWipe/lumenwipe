@@ -8,6 +8,10 @@ import CalendarHeatmap from "./CalendarHeatmap";
 import DistributionStrip from "./DistributionStrip";
 import Reveal from "@/components/marketing/Reveal";
 import { ExternalLink } from "lucide-react";
+import { SITE_LOCALE } from "@/lib/i18n/locale";
+import { STATS_PAGE } from "@/lib/i18n/messages/stats";
+
+const T = STATS_PAGE[SITE_LOCALE];
 
 export default function StatsClient() {
   const { feed, stale } = useFeed();
@@ -20,22 +24,22 @@ export default function StatsClient() {
           <div>
             <span className="mkt-eyebrow inline-flex items-center gap-2 text-fg-muted">
               <span className="h-px w-6 bg-line-strong" />
-              On-chain activity
+              {T.eyebrow}
             </span>
             <h1 className="mkt-display mt-3 text-3xl font-bold text-white sm:text-4xl">
-              Real numbers. Verifiable on Stellar.
+              {T.heading}
             </h1>
             <p className="mt-3 max-w-xl text-sm leading-relaxed text-fg-muted">
-              Every transaction on this page is an{" "}
-              <code className="rounded bg-white/5 px-1 py-0.5 mkt-mono text-label text-white/75">
-                ACCOUNT_MERGE
-              </code>{" "}
-              operation recorded on the Stellar blockchain. Click any hash to verify.
+              {T.intro((text) => (
+                <code className="rounded bg-white/5 px-1 py-0.5 mkt-mono text-label text-white/75">
+                  {text}
+                </code>
+              ))}
             </p>
           </div>
           {stale && (
             <span className="mkt-mono rounded-full border border-warning/30 bg-warning/5 px-3 py-1 text-caption text-warning/70">
-              Data may be stale
+              {T.stale}
             </span>
           )}
         </div>
@@ -72,11 +76,9 @@ export default function StatsClient() {
           </div>
           <div className="flex-1">
             <p className="text-body-sm leading-relaxed text-fg-muted">
-              Each close counted here was completed through LumenWipe. Before being recorded, the
-              backend confirms the transaction hash is a successful{" "}
-              <code className="mkt-mono text-label text-white/70">ACCOUNT_MERGE</code> on the
-              Stellar blockchain - merges done outside LumenWipe are not included. Every row in the
-              feed links directly to stellar.expert so you can verify each one independently.
+              {T.verification((text) => (
+                <code className="mkt-mono text-label text-white/70">{text}</code>
+              ))}
             </p>
           </div>
           <a
@@ -85,7 +87,7 @@ export default function StatsClient() {
             rel="noopener noreferrer"
             className="shrink-0 mkt-mono rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-caption text-fg-muted transition-colors hover:border-accent/30 hover:text-accent"
           >
-            stellar.expert ↗
+            {T.explorer}
           </a>
         </div>
       </Reveal>

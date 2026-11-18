@@ -7,12 +7,16 @@ import { contentStatusRows } from "@/lib/site/content-status";
 import { Play } from "lucide-react";
 import YouTubeEmbed from "@/components/blog/YouTubeEmbed";
 import { VIDEOS } from "@/lib/site/videos";
+import { SITE_LOCALE } from "@/lib/i18n/locale";
+import { BLOG } from "@/lib/i18n/messages/blog";
+import { CONTENT } from "@/lib/i18n/messages/content";
+
+const T = CONTENT[SITE_LOCALE];
 
 export const metadata: Metadata = pageMetadata({
   path: "/content",
-  title: "Content",
-  description:
-    "Videos, guides, and technical deep dives on LumenWipe - closing Stellar accounts, recovering XLM reserves, and DeFi position unwinding.",
+  title: T.metadata.title,
+  description: T.metadata.description,
 });
 
 function Eyebrow({ children }: { children: React.ReactNode }) {
@@ -32,11 +36,11 @@ function LangBadge({ lang }: { lang: "EN" | "ES" }) {
   );
 }
 
-function DurationBadge({ duration }: { duration: string }) {
+function DurationBadge({ minutes }: { minutes: number }) {
   return (
     <span className="mkt-mono inline-flex items-center gap-1 text-caption text-fg-subtle">
       <Play className="h-2.5 w-2.5" />
-      {duration}
+      {T.duration(minutes)}
     </span>
   );
 }
@@ -48,19 +52,16 @@ export default function ContentPage() {
     <div className="mx-auto max-w-5xl px-5 py-14 lg:px-8 lg:py-20">
       {/* Header */}
       <div className="mb-14">
-        <Eyebrow>Content</Eyebrow>
+        <Eyebrow>{T.eyebrow}</Eyebrow>
         <h1 className="mkt-display mt-4 mb-3 text-4xl font-extrabold tracking-tight text-white">
-          Videos &amp; articles
+          {T.heading}
         </h1>
-        <p className="max-w-2xl text-base leading-relaxed text-white/70">
-          Walkthroughs, deep dives, and guides on closing Stellar accounts and recovering locked
-          reserves.
-        </p>
+        <p className="max-w-2xl text-base leading-relaxed text-white/70">{T.lede}</p>
       </div>
 
       {/* Videos */}
       <section className="mb-16">
-        <h2 className="mkt-display mb-6 text-xl font-bold text-white">Videos</h2>
+        <h2 className="mkt-display mb-6 text-xl font-bold text-white">{T.videos}</h2>
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {VIDEOS.map((v) => (
             <div key={v.id} className="mkt-card flex flex-col overflow-hidden">
@@ -69,7 +70,7 @@ export default function ContentPage() {
               <div className="flex flex-1 flex-col gap-2 p-4">
                 <div className="flex items-center gap-2">
                   <LangBadge lang={v.lang} />
-                  <DurationBadge duration={v.duration} />
+                  <DurationBadge minutes={v.minutes} />
                 </div>
                 <h3 className="mkt-display text-body font-semibold leading-snug text-white">
                   {v.title}
@@ -86,7 +87,7 @@ export default function ContentPage() {
 
       {/* Blog */}
       <section>
-        <h2 className="mkt-display mb-6 text-xl font-bold text-white">From the blog</h2>
+        <h2 className="mkt-display mb-6 text-xl font-bold text-white">{T.fromBlog}</h2>
         {posts.length > 0 ? (
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
             {posts.map((post) => (
@@ -94,17 +95,15 @@ export default function ContentPage() {
             ))}
           </div>
         ) : (
-          <p className="text-sm text-fg-subtle">No articles published yet.</p>
+          <p className="text-sm text-fg-subtle">{BLOG[SITE_LOCALE].noPosts}</p>
         )}
       </section>
 
       <section aria-labelledby="content-status" className="mt-16">
         <h2 id="content-status" className="mkt-display mb-2 text-xl font-bold text-white">
-          Article status
+          {T.statusHeading}
         </h2>
-        <p className="mb-6 max-w-2xl text-sm leading-relaxed text-white/70">
-          What is published and what is planned next.
-        </p>
+        <p className="mb-6 max-w-2xl text-sm leading-relaxed text-white/70">{T.statusLede}</p>
         <ContentStatusTable rows={contentStatusRows(posts)} />
       </section>
     </div>

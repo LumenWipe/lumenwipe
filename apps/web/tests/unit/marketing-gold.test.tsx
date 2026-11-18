@@ -22,7 +22,7 @@ const POST: PostMeta = {
   updatedAt: "2026-11-15",
   category: "Guides",
   tags: ["stellar"],
-  readingTime: "1 min read",
+  readingMinutes: 1,
 };
 
 const PAGES: Record<string, () => ReactElement> = {

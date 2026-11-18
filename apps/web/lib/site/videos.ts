@@ -3,7 +3,7 @@ export interface Video {
   title: string;
   description: string;
   lang: "EN" | "ES";
-  duration: string;
+  minutes: number;
 }
 
 export const VIDEOS: readonly Video[] = [
@@ -13,7 +13,7 @@ export const VIDEOS: readonly Video[] = [
     description:
       "A 3-minute overview of what LumenWipe does, why Stellar reserves get locked, and how the non-custodial close flow works.",
     lang: "EN",
-    duration: "3 min",
+    minutes: 3,
   },
   {
     id: "nVS2zI9mRzw",
@@ -21,7 +21,7 @@ export const VIDEOS: readonly Video[] = [
     description:
       "An 11-minute demo covering the full close flow - from testnet dry run to a live mainnet account close.",
     lang: "EN",
-    duration: "11 min",
+    minutes: 11,
   },
   {
     id: "eRkcNd9996c",
@@ -29,7 +29,7 @@ export const VIDEOS: readonly Video[] = [
     description:
       "Demo de 14 minutos que cubre el flujo completo: testnet, playground y cierre real en mainnet.",
     lang: "ES",
-    duration: "14 min",
+    minutes: 14,
   },
 ];
 

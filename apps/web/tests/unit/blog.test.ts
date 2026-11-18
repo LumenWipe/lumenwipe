@@ -1,9 +1,12 @@
-import { test, expect, beforeAll, afterAll } from "bun:test";
+import { test, expect, beforeAll, afterAll, spyOn } from "bun:test";
 import fs from "fs";
+import readingTime from "reading-time";
+import { BLOG } from "@/lib/i18n/messages/blog";
 import path from "path";
 import {
   getAllPostMetas,
   getAllSlugs,
+  minutesToRead,
   getPost,
   parseFrontMatter,
   PostNotFoundError,
@@ -46,6 +49,27 @@ test("getAllPostMetas › excludes draft posts", () => {
   expect(slugs).not.toContain(DRAFT_SLUG);
 });
 
+test("getAllPostMetas › posts of the same day keep one order whatever order the directory lists them in", () => {
+  const listed = getAllPostMetas().map((post) => post.slug);
+  const readdir = fs.readdirSync.bind(fs);
+  const spy = spyOn(fs, "readdirSync").mockImplementation(((dir: fs.PathLike) =>
+    (readdir(dir) as string[]).reverse()) as typeof fs.readdirSync);
+  try {
+    expect(getAllPostMetas().map((post) => post.slug)).toEqual(listed);
+  } finally {
+    spy.mockRestore();
+  }
+  const sameDay = getAllPostMetas().filter((post, i, all) =>
+    all.some((other, j) => j !== i && other.publishedAt === post.publishedAt)
+  );
+  expect(sameDay.length).toBeGreaterThan(1);
+  for (let i = 1; i < sameDay.length; i++) {
+    if (sameDay[i].publishedAt === sameDay[i - 1].publishedAt) {
+      expect(sameDay[i - 1].slug < sameDay[i].slug).toBe(true);
+    }
+  }
+});
+
 test("getPost › throws for a draft post instead of returning unpublished content", () => {
   expect(() => getPost(DRAFT_SLUG)).toThrow();
 });
@@ -53,6 +77,23 @@ test("getPost › throws for a draft post instead of returning unpublished conte
 test("getAllPostMetas › every listed post has a publishedAt that parses to a valid date", () => {
   for (const post of getAllPostMetas()) {
     expect(Number.isNaN(new Date(post.publishedAt).getTime())).toBe(false);
+  }
+});
+
+test("minutesToRead › renders as reading-time's own text, for every published post and a few lengths", () => {
+  const texts = [
+    "",
+    "word ".repeat(1),
+    "word ".repeat(200),
+    "word ".repeat(201),
+    "word ".repeat(1999),
+    ...getAllSlugs().map((slug) => getPost(slug).content),
+  ];
+  for (const text of texts) {
+    expect(BLOG.en.readingTime(minutesToRead(text))).toBe(readingTime(text).text);
+  }
+  for (const post of getAllPostMetas()) {
+    expect(post.readingMinutes).toBe(minutesToRead(getPost(post.slug).content));
   }
 });
 
@@ -173,7 +214,7 @@ function meta(slug: string, tags: string[], publishedAt = "2026-06-02"): PostMet
     updatedAt: publishedAt,
     category: "Guides",
     tags,
-    readingTime: "1 min read",
+    readingMinutes: 1,
   };
 }
 

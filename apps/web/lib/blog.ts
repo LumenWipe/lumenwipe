@@ -20,7 +20,8 @@ export interface PostMeta {
   updatedAt: string;
   category: Category;
   tags: string[];
-  readingTime: string;
+  /** Minutes to read, rounded up as `reading-time` rounds them. */
+  readingMinutes: number;
 }
 
 export interface Post extends PostMeta {
@@ -94,7 +95,7 @@ const FRONT_MATTER = z.strictObject({
   draft: z.boolean().optional(),
 });
 
-export type FrontMatter = Omit<PostMeta, "slug" | "readingTime"> & { cta?: string };
+export type FrontMatter = Omit<PostMeta, "slug" | "readingMinutes"> & { cta?: string };
 
 /** Validates a published post's front matter, failing the build with the post and field named. */
 export function parseFrontMatter(slug: string, data: unknown): FrontMatter {
@@ -114,6 +115,11 @@ export function parseFrontMatter(slug: string, data: unknown): FrontMatter {
   };
 }
 
+/** Minutes to read `content`, rounded the way `reading-time` rounds its own text. */
+export function minutesToRead(content: string): number {
+  return Math.ceil(Number(readingTime(content).minutes.toFixed(2)));
+}
+
 function readPublishedPosts(): Post[] {
   if (!fs.existsSync(CONTENT_DIR)) return [];
   return fs
@@ -124,7 +130,7 @@ function readPublishedPosts(): Post[] {
       const { data, content } = matter(fs.readFileSync(path.join(CONTENT_DIR, file), "utf8"));
       if (data.draft === true) return [];
       return [
-        { slug, ...parseFrontMatter(slug, data), readingTime: readingTime(content).text, content },
+        { slug, ...parseFrontMatter(slug, data), readingMinutes: minutesToRead(content), content },
       ];
     });
 }
@@ -132,7 +138,11 @@ function readPublishedPosts(): Post[] {
 export function getAllPostMetas(): PostMeta[] {
   return readPublishedPosts()
     .map(({ content: _content, cta: _cta, ...meta }) => meta)
-    .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+    .sort(
+      (a, b) =>
+        new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime() ||
+        a.slug.localeCompare(b.slug)
+    );
 }
 
 /** A published post by slug. The slug is matched against the posts on disk, never joined into a

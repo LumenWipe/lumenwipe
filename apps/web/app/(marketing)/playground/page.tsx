@@ -3,29 +3,26 @@ import { pageMetadata } from "@/lib/site/pages";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { SITE_LOCALE } from "@/lib/i18n/locale";
+import { PLAYGROUND } from "@/lib/i18n/messages/playground";
+
+const T = PLAYGROUND[SITE_LOCALE];
 
 export const metadata: Metadata = pageMetadata({
   path: "/playground",
-  title: "Playground",
-  description:
-    "Try the exact same close flow as the app on a disposable Stellar testnet account - no wallet, no real funds.",
+  title: T.metadata.title,
+  description: T.metadata.description,
 });
 
 export default function PlaygroundPage() {
   return (
     <section className="mx-auto w-full max-w-2xl px-4 pb-24 pt-24 text-center sm:px-6">
-      <p className="mkt-eyebrow mb-3 text-fg-muted">Testnet playground</p>
-      <h1 className="mkt-display text-4xl text-white sm:text-5xl">
-        Try the exact same close, risk-free
-      </h1>
-      <p className="mt-4 text-base leading-relaxed text-white/70">
-        The playground runs on the LumenWipe API and walks the identical close flow as the app -
-        trustlines, offers, data entries, signers, the merge - against a disposable testnet account
-        we hand you. No wallet, no real funds, nothing to lose.
-      </p>
+      <p className="mkt-eyebrow mb-3 text-fg-muted">{T.eyebrow}</p>
+      <h1 className="mkt-display text-4xl text-white sm:text-5xl">{T.heading}</h1>
+      <p className="mt-4 text-base leading-relaxed text-white/70">{T.body}</p>
       <Button asChild size="lg" className="group mt-8">
         <a href="https://playground.lumenwipe.com" target="_blank" rel="noopener noreferrer">
-          Open the playground
+          {T.open}
           <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
         </a>
       </Button>
@@ -34,7 +31,7 @@ export default function PlaygroundPage() {
           href="/testnet"
           className="inline-block text-sm text-accent underline-offset-2 hover:underline"
         >
-          Or close your own testnet account →
+          {T.ownAccount}
         </Link>
       </div>
     </section>

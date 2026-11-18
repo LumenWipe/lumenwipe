@@ -2,22 +2,25 @@
 
 import { formatNumber, TWO_DECIMALS } from "@/lib/i18n/format";
 import { SITE_LOCALE } from "@/lib/i18n/locale";
+import { STATS_PAGE } from "@/lib/i18n/messages/stats";
 import { ExternalLink } from "lucide-react";
 import { stroopsToXlm } from "@/lib/utils/amounts";
 import { SE_EXPLORER_BASE } from "@/config/networks";
 import type { FeedData } from "@/hooks/useFeed";
 import { useNow } from "@/hooks/useNow";
 
+const T = STATS_PAGE[SITE_LOCALE].feed;
+
 function timeAgo(timestamp: string, now: number): string {
   const diff = now - new Date(timestamp).getTime();
   const s = Math.floor(diff / 1000);
-  if (s < 60) return `${s}s ago`;
+  if (s < 60) return T.ago.seconds(s);
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
+  if (m < 60) return T.ago.minutes(m);
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
+  if (h < 24) return T.ago.hours(h);
   const d = Math.floor(h / 24);
-  return `${d}d ago`;
+  return T.ago.days(d);
 }
 
 function fmtXlm(stroops: string): string {
@@ -47,15 +50,15 @@ export default function RecentFeed({ feed }: { feed: FeedData | null }) {
         <div className="flex items-center gap-2">
           <span className="h-1.5 w-1.5 rounded-full bg-accent mkt-pulse" />
           <span className="mkt-mono text-caption uppercase tracking-wider text-fg-muted">
-            Recent closes
+            {T.title}
           </span>
         </div>
-        <span className="mkt-mono text-caption text-fg-subtle">mainnet · verified on-chain</span>
+        <span className="mkt-mono text-caption text-fg-subtle">{T.sub}</span>
       </div>
 
       {/* column labels */}
       <div className="grid grid-cols-[90px_80px_1fr_28px] gap-x-2 border-b border-white/5 px-4 py-2">
-        {["When", "XLM", "TX hash", ""].map((h) => (
+        {[T.columns.when, T.columns.xlm, T.columns.hash, ""].map((h) => (
           <span key={h} className="mkt-mono text-caption uppercase tracking-wider text-fg-subtle">
             {h}
           </span>
@@ -68,7 +71,7 @@ export default function RecentFeed({ feed }: { feed: FeedData | null }) {
           Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} />)
         ) : items.length === 0 ? (
           <div className="flex items-center justify-center py-16 text-sm text-fg-subtle">
-            No mainnet closes yet
+            {T.empty}
           </div>
         ) : (
           items.map((r) => {
@@ -97,7 +100,7 @@ export default function RecentFeed({ feed }: { feed: FeedData | null }) {
                   href={link}
                   target="_blank"
                   rel="noopener noreferrer"
-                  aria-label="Verify on stellar.expert"
+                  aria-label={T.verify}
                   className="flex items-center justify-center text-fg-subtle transition-colors hover:text-accent"
                 >
                   <ExternalLink className="h-3 w-3" />
@@ -111,9 +114,7 @@ export default function RecentFeed({ feed }: { feed: FeedData | null }) {
       {/* footer */}
       {feed && items.length > 0 && (
         <div className="border-t border-white/5 px-4 py-2.5">
-          <span className="mkt-mono text-caption text-fg-subtle">
-            Showing last {items.length} closes · each row links to the Stellar blockchain
-          </span>
+          <span className="mkt-mono text-caption text-fg-subtle">{T.showing(items.length)}</span>
         </div>
       )}
     </div>

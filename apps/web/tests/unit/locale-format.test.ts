@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { formatPostDate } from "@/lib/blog-date";
 import { formatDate, formatNumber, TWO_DECIMALS } from "@/lib/i18n/format";
 import { LOCALE_TAGS, LOCALES, SITE_LOCALE } from "@/lib/i18n/locale";
 
@@ -27,6 +28,57 @@ describe("locale-aware formatting", () => {
     expect(formatDate("en", readAt, { hour: "2-digit", minute: "2-digit" })).toBe(
       new Date(readAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })
     );
+  });
+
+  test("a post date is the calendar day written, whatever the reader's time zone", () => {
+    const tz = process.env.TZ;
+    process.env.TZ = "America/Bogota";
+    try {
+      expect(formatPostDate("en", "2026-11-15")).toBe("November 15, 2026");
+    } finally {
+      process.env.TZ = tz;
+    }
+  });
+
+  test("post dates read as the en-US call they replace", () => {
+    for (const iso of ["2026-01-01", "2026-11-15", "2026-12-31"]) {
+      expect(formatPostDate("en", iso)).toBe(
+        new Date(iso).toLocaleDateString("en-US", {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+          timeZone: "UTC",
+        })
+      );
+    }
+  });
+
+  test("short month and weekday names read as the en-US labels they replace", () => {
+    const months = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
+    months.forEach((label, month) =>
+      expect(formatDate("en", Date.UTC(2026, month, 1), { month: "short", timeZone: "UTC" })).toBe(
+        label
+      )
+    );
+    const monday = Date.UTC(2024, 0, 1);
+    expect(
+      [0, 2, 4].map((day) =>
+        formatDate("en", monday + day * 86_400_000, { weekday: "short", timeZone: "UTC" })
+      )
+    ).toEqual(["Mon", "Wed", "Fri"]);
   });
 });
 
