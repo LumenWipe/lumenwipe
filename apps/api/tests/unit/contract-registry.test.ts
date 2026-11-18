@@ -12,6 +12,7 @@ import {
   validateContractRegistry,
 } from "@/lib/contract-registry";
 import { FXDAO_REPAY_VERSION } from "@/lib/defi-exits/fxdao";
+import { PHOENIX_FIVE_ARG_WITHDRAW_VERSION } from "@/lib/defi-exits/phoenix";
 import shippedRegistry from "@/config/contract-registry.json";
 import { StrKey } from "@stellar/stellar-sdk";
 import type { CodeIdentity } from "@/lib/stellar/contract-instance";
@@ -138,6 +139,17 @@ test("every mainnet Phoenix pool's stake contract is listed, so a staked positio
     (p) => stakes.filter((e) => e.label.includes(p.address)).length === 1
   );
   expect(covered.length).toBe(pools.length - representatives.length);
+});
+
+test("only the testnet Phoenix pool runs the five-argument withdraw_liquidity code; no mainnet entry does", () => {
+  const fiveArg = (network: "mainnet" | "testnet") =>
+    entriesForProtocol(network, "phoenix")
+      .filter((e) => e.version === PHOENIX_FIVE_ARG_WITHDRAW_VERSION)
+      .map((e) => `${e.kind}:${e.address}`);
+  expect(fiveArg("mainnet")).toEqual([]);
+  expect(fiveArg("testnet")).toEqual([
+    "pool:CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV",
+  ]);
 });
 
 test("filters entries by network and protocol", () => {

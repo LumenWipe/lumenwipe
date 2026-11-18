@@ -69,6 +69,7 @@ export const VERIFICATION_ERROR_CODES = [
   "exit_function_not_allowed",
   "exit_foreign_contract",
   "exit_argument_party_mismatch",
+  "exit_arguments_unexpected",
   "exit_request_not_allowed",
   "exit_unverified_spend",
   "exit_spend_not_repay",

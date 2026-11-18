@@ -9,9 +9,11 @@ import { StrKey, scValToNative, xdr } from "@stellar/stellar-sdk";
 import type { PhoenixLpPosition, PhoenixStakePosition } from "@lumenwipe/types";
 import { EXIT_POSITION_GONE, phoenixExitAdapter, runExitAdapter } from "@/lib/defi-exits";
 import {
+  PHOENIX_FIVE_ARG_WITHDRAW_VERSION,
   phoenixNewLpKey,
   phoenixStakeConfigKey,
   phoenixUnbondToken,
+  phoenixWithdrawArgs,
 } from "@/lib/defi-exits/phoenix";
 import {
   createContractRegistryLookup,
@@ -216,21 +218,57 @@ describe("phoenix exit adapter", () => {
     ]);
   });
 
-  // Regression guard: the real pool's withdraw_liquidity takes exactly five arguments (sender,
-  // share_amount, min_a, min_b, deadline) - confirmed against a live pool's own
-  // `stellar contract info interface`. A sixth trailing argument (a stale assumption that
-  // `auto_unstake` was its own parameter) always failed the real call; nothing in this file's
-  // fake harness could ever have caught that, since it reimplements whatever this adapter itself
-  // emits rather than the real contract's own argument count.
-  test("withdraw_liquidity is called with exactly five args: i128 amounts and a void deadline", async () => {
+  // Every registered mainnet pool code (167ab414, 13b15865, d54d01e0, 6fe099b6) declares
+  // withdraw_liquidity(sender, share_amount, min_a, min_b, deadline, auto_unstake); a call with
+  // another argument count fails at the ledger with Error(WasmVm, UnexpectedSize).
+  test("withdraw_liquidity is called with the mainnet spec's six args: i128 amounts, void deadline and auto_unstake", async () => {
     const result = await run();
     if (!result.next) throw new Error("expected a built step");
     const args = invocationArgs(result.next.simulation.txXdr);
-    expect(args).toHaveLength(5);
-    expect(args[1]!.type).toBe("scvI128");
-    expect(args[2]!.type).toBe("scvI128");
-    expect(args[3]!.type).toBe("scvI128");
-    expect(args[4]!.type).toBe("scvVoid");
+    expect(args.map((a) => a.type)).toEqual([
+      "scvAddress",
+      "scvI128",
+      "scvI128",
+      "scvI128",
+      "scvVoid",
+      "scvVoid",
+    ]);
+    expect(result.next.intent.args).toEqual([
+      ACCOUNT,
+      SHARES.toString(),
+      "99500000",
+      "199000000",
+      "null",
+      "null",
+    ]);
+  });
+
+  test("the testnet pool code without auto_unstake gets the first five args (until #1048 redeploys it)", async () => {
+    const fiveArg = registry([
+      entry({ version: PHOENIX_FIVE_ARG_WITHDRAW_VERSION }),
+      entry({ address: STAKE_CONTRACT, wasmHash: PHX_STAKE_HASH, kind: "stake" }),
+    ]);
+    const result = await runExitAdapter(adapter, lpPosition, ctx, {
+      rpc: rpc(),
+      resolveCode: fiveArg.resolveCode,
+      isRegistryFresh: () => true,
+    });
+    if (!result.next) throw new Error("expected a built step");
+    const args = invocationArgs(result.next.simulation.txXdr);
+    expect(args.map((a) => a.type)).toEqual([
+      "scvAddress",
+      "scvI128",
+      "scvI128",
+      "scvI128",
+      "scvVoid",
+    ]);
+    expect(result.next.intent.args).toHaveLength(5);
+  });
+
+  test("phoenixWithdrawArgs never sets a deadline or an auto_unstake", () => {
+    const six = phoenixWithdrawArgs(ACCOUNT, 10n, 1n, 2n, 6);
+    expect(six.map((a) => scValToNative(a))).toEqual([ACCOUNT, 10n, 1n, 2n, null, null]);
+    expect(phoenixWithdrawArgs(ACCOUNT, 10n, 1n, 2n, 5)).toEqual(six.slice(0, 5));
   });
 
   test("unbonds every stake before any withdrawal, oldest timestamp first, one step per round", async () => {

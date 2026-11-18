@@ -19,10 +19,12 @@ import { contractAddressOf, contractDataEntry, instanceOfEntry } from "@/lib/ste
 
 /**
  * The Phoenix exit (architecture.md §9.6): an LP position leaves the pool through
- * `withdraw_liquidity(sender, share_amount, min_a, min_b, deadline)` - five arguments, confirmed
- * against a live pool's own `stellar contract info interface`, not the six a docs-only reading
- * once assumed (see [[phoenix-fxdao-exit-wiring]] - integration testing caught the mismatch,
- * which had made every real withdrawal fail). It burns the account's shares (held in the pool's
+ * `withdraw_liquidity(sender, share_amount, min_a, min_b, deadline, auto_unstake)`, the six
+ * arguments every registered mainnet pool code's own contract spec declares, with `deadline` and
+ * `auto_unstake` both `None`. Only the older testnet build registered as
+ * `PHOENIX_FIVE_ARG_WITHDRAW_VERSION` lacks `auto_unstake`, and it gets the first five; a pool
+ * given the wrong count fails at the ledger (`Error(WasmVm, UnexpectedSize)`), so the count
+ * follows the code version the registry resolved. It burns the account's shares (held in the pool's
  * own `share_token` SEP-41 balance) and pays both reserves back to the account pro rata, bounded
  * by one floor per token. A staked position must unbond first: staking lives in a separate
  * contract (`config.stake_contract`, itself read from the pool's own storage) whose
@@ -50,8 +52,18 @@ export interface PhoenixStakeEntry {
   timestamp: bigint;
 }
 
+/** The registry version of the testnet pool build whose `withdraw_liquidity` takes no
+ *  `auto_unstake` argument. No mainnet entry runs it. */
+export const PHOENIX_FIVE_ARG_WITHDRAW_VERSION = "v1-no-auto-unstake";
+
+/** How many arguments `withdraw_liquidity` takes on the pool code the registry names `version`. */
+export const phoenixWithdrawArgCount = (version: string): 5 | 6 =>
+  version === PHOENIX_FIVE_ARG_WITHDRAW_VERSION ? 5 : 6;
+
 export interface PhoenixPoolState {
   pool: string;
+  /** How many arguments this pool's `withdraw_liquidity` takes, from its registry version. */
+  withdrawArgCount: 5 | 6;
   tokenA: string;
   tokenB: string;
   shareToken: string;
@@ -200,6 +212,27 @@ async function readEntries(
   return out;
 }
 
+/** `withdraw_liquidity`'s arguments for a pool whose code takes `argCount` of them: the sender,
+ *  the shares and both floors, then `None` for the deadline and, on six, for `auto_unstake`. */
+export function phoenixWithdrawArgs(
+  account: string,
+  shares: string | bigint,
+  minA: string | bigint,
+  minB: string | bigint,
+  argCount: 5 | 6
+): xdr.ScVal[] {
+  const i128 = (v: string | bigint): xdr.ScVal => nativeToScVal(BigInt(v), { type: "i128" });
+  const args = [
+    new Address(account).toScVal(),
+    i128(shares),
+    i128(minA),
+    i128(minB),
+    xdr.ScVal.scvVoid(),
+    xdr.ScVal.scvVoid(),
+  ];
+  return args.slice(0, argCount);
+}
+
 /** The individual stakes a `BondingInfo` entry holds, oldest first. Null on a malformed shape. */
 export function stakesFrom(val: xdr.ScVal): PhoenixStakeEntry[] | null {
   const fields = mapView(val);
@@ -308,6 +341,7 @@ export function phoenixExitAdapter(): ExitAdapter<PhoenixPosition, PhoenixLive> 
         return {
           status: "loaded",
           pool,
+          withdrawArgCount: phoenixWithdrawArgCount(code.version),
           tokenA,
           tokenB,
           shareToken,
@@ -500,28 +534,26 @@ export function phoenixExitAdapter(): ExitAdapter<PhoenixPosition, PhoenixLive> 
       if (step.kind !== "lp_withdraw") throw new Error(`Phoenix: no call for a ${step.kind} step`);
       const [floorA, floorB] = step.minReceived;
       if (!floorA || !floorB) throw new Error("Phoenix: a withdrawal needs both floors");
+      const args = phoenixWithdrawArgs(
+        ctx.account,
+        step.amount,
+        floorA.amount,
+        floorB.amount,
+        live.withdrawArgCount
+      );
       return {
         step,
         build: {
           source: "local",
-          // withdraw_liquidity(sender, share_amount, min_a, min_b, deadline) - exactly five
-          // arguments, confirmed against the live pool's own `stellar contract info interface`.
-          // An extra trailing `auto_unstake` argument here (matching this module's own outdated
-          // doc comment) always failed the real call - unbonding every stake first, as this
-          // adapter already does, makes a separate auto_unstake unnecessary anyway.
-          op: new Contract(step.contract).call(
-            "withdraw_liquidity",
-            account,
-            i128(step.amount),
-            i128(floorA.amount),
-            i128(floorB.amount),
-            xdr.ScVal.scvVoid()
-          ),
+          op: new Contract(step.contract).call("withdraw_liquidity", ...args),
         },
         intent: {
           contract: step.contract,
           function: "withdraw_liquidity",
-          args: [ctx.account, step.amount, floorA.amount, floorB.amount],
+          args: [ctx.account, step.amount, floorA.amount, floorB.amount, "null", "null"].slice(
+            0,
+            live.withdrawArgCount
+          ),
           minReceived: step.minReceived,
           recipient: ctx.account,
         },

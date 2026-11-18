@@ -101,7 +101,7 @@ function call(contract: string, fn: string, referenced: string[] = []): InvokeOp
     type: "invoke_host_function",
     contract,
     function: fn,
-    args: [],
+    args: fn === "withdraw_liquidity" ? [SRC, "1000", "9", "18", "null", "null"] : [],
     accountsReferenced: [SRC],
     contractsReferenced: [contract, ...referenced],
     unsupportedAddressCount: 0,
