@@ -635,6 +635,13 @@ export const ENVIRONMENT: Record<EnvApp, Record<string, EnvironmentFacts>> = {
       default: NONE,
       purpose: "Token for that Upstash Redis",
     },
+    RATE_LIMIT_HASH_KEY: {
+      required: "Production",
+      secret: true,
+      default: NONE,
+      purpose:
+        "Key for the hash of the client IP in the rate-limit counters, at least 32 characters, never the web's; unset on a deployment leaves the routes unlimited",
+    },
     PLAYGROUND_DEV_FILE_STORE: optional(
       "`1` keeps sessions in a private local file; ignored by production builds and on Vercel"
     ),
