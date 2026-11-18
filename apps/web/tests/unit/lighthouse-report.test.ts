@@ -77,12 +77,12 @@ test("lighthouse-report › third-party requests are listed as blocked or reache
     requests: [
       { url: "http://localhost:3000/_next/static/chunks/main.js", statusCode: 200 },
       { url: "data:image/png;base64,AAAA", statusCode: 200 },
-      { url: "https://cloud.umami.is/script.js", statusCode: -1 },
+      { url: "https://cdn.example/script.js", statusCode: -1 },
       { url: "https://api.web3modal.org/appkit/v1/project-limits?projectId=0", statusCode: 200 },
     ],
   });
   expect(thirdPartyRequests(result)).toEqual([
-    { url: "https://cloud.umami.is/script.js", blocked: true, status: -1 },
+    { url: "https://cdn.example/script.js", blocked: true, status: -1 },
     { url: "https://api.web3modal.org/appkit/v1/project-limits", blocked: false, status: 200 },
   ]);
 });

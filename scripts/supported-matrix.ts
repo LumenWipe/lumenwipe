@@ -595,7 +595,6 @@ export const ENVIRONMENT: Record<EnvApp, Record<string, EnvironmentFacts>> = {
       default: NONE,
       purpose: "WalletConnect project ID; without it the WalletConnect option is unavailable",
     },
-    NEXT_PUBLIC_UMAMI_WEBSITE_ID: optional("Umami website ID for analytics"),
   },
   playground: {
     PLAYGROUND_ENCRYPTION_KEY: {

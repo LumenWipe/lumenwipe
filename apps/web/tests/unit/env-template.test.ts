@@ -7,9 +7,9 @@ import {
 } from "@/scripts/check-env-template";
 
 test("env-template › a variable the app reads but the template omits is reported", () => {
-  const reads = readsIn("const id = process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID;");
+  const reads = readsIn("const id = process.env.NEXT_PUBLIC_EXAMPLE_ID;");
   expect(envTemplateDrift({ reads, template: templateEntries("LUMENWIPE_API_URL=\n") })).toEqual([
-    "NEXT_PUBLIC_UMAMI_WEBSITE_ID is read by the web app but missing from .env.example",
+    "NEXT_PUBLIC_EXAMPLE_ID is read by the web app but missing from .env.example",
     "LUMENWIPE_API_URL is in .env.example but the web app never reads it",
   ]);
 });
