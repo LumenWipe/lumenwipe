@@ -3,8 +3,8 @@ import { Address, Contract, scValToNative, xdr } from "@stellar/stellar-sdk";
 import { codeMatchesEntry, entriesForNetwork, entriesForProtocol } from "@/lib/contract-registry";
 import { readLiveCodeIdentity, type CodeIdentity } from "@/lib/stellar/contract-instance";
 import { getRpcServer } from "@/lib/stellar/rpc";
+import { UpstreamError } from "@/lib/stellar/upstream-client";
 import {
-  phoenixConfigKey,
   phoenixNewLpKey,
   phoenixShareToken,
   phoenixStakeConfigKey,
@@ -94,14 +94,32 @@ test.skipIf(!RUN_INTEGRATION)(
   120_000
 );
 
+/** Ledger entries by key in one request, retried once after a pause if the provider is busy. */
+async function entriesByKey(keys: xdr.LedgerKey[]): Promise<Map<string, xdr.LedgerEntryData>> {
+  const rpc = getRpcServer("mainnet");
+  let res: Awaited<ReturnType<typeof rpc.getLedgerEntries>>;
+  try {
+    res = await rpc.getLedgerEntries(...keys);
+  } catch (err) {
+    if (!(err instanceof UpstreamError) || err.kind !== "rate_limited") throw err;
+    await Bun.sleep(20_000);
+    res = await rpc.getLedgerEntries(...keys);
+  }
+  return new Map(res.entries.map((e) => [e.key.toXdr("base64"), e.val]));
+}
+
 test.skipIf(!RUN_INTEGRATION)(
-  "every listed mainnet Phoenix pool names, in its own CONFIG, a stake contract the registry lists",
+  "every listed mainnet Phoenix pool names, in its own CONFIG, a stake contract the registry lists, and that stake pays the pool's share_token on unbond",
   async () => {
+    // A stake paying another token would make an unbond-then-withdraw chain hand the pool a token
+    // it does not take; the adapter blocks that live, and this catches the registry drifting there.
     const rpc = getRpcServer("mainnet");
     const phoenix = entriesForProtocol("mainnet", "phoenix");
     const stakes = new Set(phoenix.filter((e) => e.kind === "stake").map((e) => e.address));
     const named = new Set<string>();
     const missing: string[] = [];
+    const unbondMismatches: string[] = [];
+    const pairs: Array<{ pool: string; stake: string; shareToken: string }> = [];
     for (const pool of phoenix.filter((e) => e.kind === "pool")) {
       const key = xdr.LedgerKey.contractData(
         new xdr.LedgerKeyContractData({
@@ -118,46 +136,31 @@ test.skipIf(!RUN_INTEGRATION)(
       const stake = config.stake_contract ?? "unreadable";
       named.add(stake);
       if (!stakes.has(stake)) missing.push(`${pool.address}: ${stake}`);
+      const shareToken = data ? phoenixShareToken(data) : null;
+      const stakeContract = data ? phoenixStakeContract(data) : null;
+      if (!shareToken || !stakeContract)
+        unbondMismatches.push(`${pool.address}: CONFIG unreadable`);
+      else pairs.push({ pool: pool.address, stake: stakeContract, shareToken });
     }
-    expect(missing).toEqual([]);
-    expect([...stakes].filter((s) => !named.has(s))).toEqual([]);
-  },
-  120_000
-);
-
-test.skipIf(!RUN_INTEGRATION)(
-  "every listed mainnet Phoenix stake pays, on unbond, its pool's own share_token",
-  async () => {
-    // A stake paying another token would make an unbond-then-withdraw chain hand the pool a token
-    // it does not take; the adapter blocks that live, and this catches the registry drifting there.
-    const rpc = getRpcServer("mainnet");
-    const pools = entriesForProtocol("mainnet", "phoenix").filter((e) => e.kind === "pool");
-    expect(pools.length).toBeGreaterThan(0);
-    const mismatches: string[] = [];
-    for (const pool of pools) {
-      const configKey = phoenixConfigKey(pool.address);
-      const config = (await rpc.getLedgerEntries(configKey)).entries[0]?.val;
-      const shareToken = config ? phoenixShareToken(config) : null;
-      const stake = config ? phoenixStakeContract(config) : null;
-      if (!shareToken || !stake) {
-        mismatches.push(`${pool.address}: CONFIG unreadable`);
-        continue;
-      }
-      const stakeConfigKey = phoenixStakeConfigKey(stake);
-      const newLpKey = phoenixNewLpKey(stake);
-      const res = await rpc.getLedgerEntries(stakeConfigKey, newLpKey);
-      const byKey = new Map(res.entries.map((e) => [e.key.toXdr("base64"), e.val]));
+    const stakeKeys = [...new Set(pairs.map((p) => p.stake))].flatMap((stake) => [
+      phoenixStakeConfigKey(stake),
+      phoenixNewLpKey(stake),
+    ]);
+    const stakeEntries = stakeKeys.length > 0 ? await entriesByKey(stakeKeys) : new Map();
+    for (const { pool, stake, shareToken } of pairs) {
       const pays = phoenixUnbondToken(
-        byKey.get(stakeConfigKey.toXdr("base64")),
-        byKey.get(newLpKey.toXdr("base64"))
+        stakeEntries.get(phoenixStakeConfigKey(stake).toXdr("base64")),
+        stakeEntries.get(phoenixNewLpKey(stake).toXdr("base64"))
       );
       if (pays !== shareToken) {
-        mismatches.push(
-          `${pool.address} -> ${stake}: unbond pays ${pays ?? "unreadable"}, share_token ${shareToken}`
+        unbondMismatches.push(
+          `${pool} -> ${stake}: unbond pays ${pays ?? "unreadable"}, share_token ${shareToken}`
         );
       }
     }
-    expect(mismatches).toEqual([]);
+    expect(missing).toEqual([]);
+    expect([...stakes].filter((s) => !named.has(s))).toEqual([]);
+    expect(unbondMismatches).toEqual([]);
   },
   120_000
 );
