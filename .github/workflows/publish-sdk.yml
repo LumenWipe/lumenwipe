@@ -27,7 +27,7 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
-      id-token: write # required for npm provenance attestation
+      id-token: write # npm trusted publishing (OIDC) and the provenance attestation
     environment: npm-publish
     steps:
       # The tag reaches the shell through env only, and must be exactly sdk-vX.Y.Z before anything
@@ -104,10 +104,13 @@ jobs:
           PACK_OUT_DIR: ${{ runner.temp }}/sdk-pack
         run: bun run --filter '@lumenwipe/sdk' pack:check
 
+      # Authenticates through npm trusted publishing: npm exchanges this run's OIDC token for a
+      # short-lived publish token, so no npm token is stored in the repository. The trusted
+      # publisher on npmjs.com names this repository, this workflow file and the npm-publish
+      # environment; a run that does not match all three cannot publish.
       - name: Publish to npm
         env:
           TARBALL: ${{ steps.pack.outputs.tarball }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish "$TARBALL" --provenance --access public
 
       # The registry can take a while to serve a new version; the run is green only once
