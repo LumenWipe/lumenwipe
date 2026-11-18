@@ -17,13 +17,3 @@ export function redactUrl(url: string): string {
 export function redactEvent(event: BeforeSendEvent): BeforeSendEvent {
   return { ...event, url: redactUrl(event.url) };
 }
-
-/** The global Umami calls on each payload before sending it (`data-before-send`). */
-export const UMAMI_BEFORE_SEND = "lumenwipeRedactAnalytics";
-
-/**
- * The same redaction for Umami, as an inline script that runs before Umami's deferred script
- * loads, so no payload is sent unredacted. It redacts the referrer too: on a client-side
- * navigation Umami reports the previous page there.
- */
-export const UMAMI_BEFORE_SEND_SCRIPT = `window.${UMAMI_BEFORE_SEND}=function(type,payload){function r(u){return typeof u==="string"?u.split(/[?#]/)[0].replace(${RECEIPT_ID},"$1[id]"):u}return payload&&Object.assign({},payload,{url:r(payload.url),referrer:r(payload.referrer)})};`;

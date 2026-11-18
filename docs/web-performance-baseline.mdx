@@ -65,6 +65,6 @@ That request is gone. Since #536 the entry page loads no wallet-kit code until a
 
 ## What the baseline leaves out
 
-- **Analytics.** Production also loads the Umami script (deferred, only when `NEXT_PUBLIC_UMAMI_WEBSITE_ID` is set) and Vercel Analytics. Neither is configured in CI.
+- **Analytics.** Production also loads Vercel Web Analytics, which is not configured in CI.
 - **Hosting.** These are lab numbers from a local `next start` on a shared CI runner, not field data from the Vercel deployment and its CDN.
 - **Network.** Third-party hosts are unreachable by design, so a page's cost of waiting on them is not measured.

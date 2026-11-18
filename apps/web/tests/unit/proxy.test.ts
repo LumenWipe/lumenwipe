@@ -3,7 +3,8 @@ import { NextRequest } from "next/server";
 import { proxy } from "@/proxy";
 // Generated once from origin/main at 9a13771c, before the marketing pages left the proxy (#535): the
 // policy proxy.ts returned for each path, its nonce replaced with NONCE. Never regenerate it from
-// a later proxy: it is what keeps the app and sign-in policy byte for byte unchanged.
+// a later proxy: it is what keeps the app and sign-in policy byte for byte unchanged. One
+// deliberate edit since: https://gateway.umami.is was removed from each connect-src (#1001).
 import NONCE_POLICY from "./fixtures/nonce-csp-golden.json";
 
 function cspFor(url = "https://www.lumenwipe.com/"): string {
@@ -13,8 +14,8 @@ function cspFor(url = "https://www.lumenwipe.com/"): string {
   return csp;
 }
 
-test("connect-src allows Umami's collection gateway, so the analytics beacon isn't blocked", () => {
-  expect(cspFor()).toContain("https://gateway.umami.is");
+test("connect-src allows no analytics host", () => {
+  expect(cspFor()).not.toContain("umami");
 });
 
 test("connect-src still allows every WalletConnect host it always has", () => {
@@ -41,7 +42,7 @@ test("the page CSP is the strict nonce policy, with only report-to added", () =>
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: https:",
       "font-src 'self'",
-      "connect-src 'self' wss://relay.walletconnect.org wss://relay.walletconnect.com https://pulse.walletconnect.org https://api.web3modal.org https://explorer-api.walletconnect.com https://gateway.umami.is https://sdk.api.pollar.xyz https://server.api.pollar.xyz",
+      "connect-src 'self' wss://relay.walletconnect.org wss://relay.walletconnect.com https://pulse.walletconnect.org https://api.web3modal.org https://explorer-api.walletconnect.com https://sdk.api.pollar.xyz https://server.api.pollar.xyz",
       "frame-src https://verify.walletconnect.com https://verify.walletconnect.org https://www.youtube-nocookie.com",
       "frame-ancestors 'none'",
       "base-uri 'self'",

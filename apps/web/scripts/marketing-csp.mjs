@@ -24,7 +24,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { HOMEPAGE_LINK } from "../config/discovery-links.mjs";
-import { marketingPolicy, UMAMI_SCRIPT_ORIGIN } from "../config/marketing-csp.mjs";
+import { marketingPolicy } from "../config/marketing-csp.mjs";
 
 const GROUP = "/(marketing)/";
 const CSP = "Content-Security-Policy";
@@ -64,14 +64,9 @@ export function scriptHash(body) {
   return createHash("sha256").update(body, "utf8").digest("base64");
 }
 
-/** @param {string} src @returns {boolean} whether src is same-origin or Umami's script. */
+/** @param {string} src @returns {boolean} whether src is a same-origin path. */
 function allowedScriptSource(src) {
-  if (src.startsWith("/") && !src.startsWith("//")) return true;
-  try {
-    return new URL(src).origin === UMAMI_SCRIPT_ORIGIN;
-  } catch {
-    return false;
-  }
+  return src.startsWith("/") && !src.startsWith("//");
 }
 
 /** @param {string} path @returns {string} the exact-path regex Vercel's router matches. */
@@ -147,10 +142,7 @@ export function policyForPage(html, path) {
   const refused = external.filter((src) => !allowedScriptSource(src));
   if (refused.length > 0)
     fail(`${path} loads a script the policy cannot allow: ${refused.join(", ")}`);
-  return marketingPolicy({
-    hashes: inline.map(scriptHash),
-    umami: external.some((src) => !src.startsWith("/")),
-  });
+  return marketingPolicy({ hashes: inline.map(scriptHash) });
 }
 
 /**

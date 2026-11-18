@@ -94,7 +94,7 @@ describe("pageScripts", () => {
 
 describe("marketingPolicy", () => {
   test("allows only self and the given hashes in script-src, never unsafe sources or a nonce", () => {
-    const policy = marketingPolicy({ hashes: ["b", "a", "a"], umami: false });
+    const policy = marketingPolicy({ hashes: ["b", "a", "a"] });
     const scriptSrc = policy.split("; ").find((d) => d.startsWith("script-src "));
     expect(scriptSrc).toBe("script-src 'self' 'sha256-a' 'sha256-b'");
     expect(policy).not.toMatch(/unsafe-eval|nonce|strict-dynamic/);
@@ -103,10 +103,10 @@ describe("marketingPolicy", () => {
     expect(policy.split("; ").at(-1)).toBe("report-to csp");
   });
 
-  test("adds Umami's origin only when the page loads it", () => {
-    expect(marketingPolicy({ hashes: [], umami: true })).toContain(
-      "script-src 'self' https://cloud.umami.is;"
-    );
+  test("allows no third-party origin to run scripts or receive requests", () => {
+    const policy = marketingPolicy({ hashes: [] });
+    expect(policy).toContain("script-src 'self'; ");
+    expect(policy).toContain("connect-src 'self'; ");
   });
 });
 
@@ -147,7 +147,7 @@ describe("run", () => {
     const faq = entries.find((e: { source: string }) => e.source === "/faq");
     expect(faq.regex).toBe("^/faq(?:/)?$");
     const hashes = pageScripts(page("faq")).inline.map(scriptHash);
-    expect(faq.headers[0].value).toBe(marketingPolicy({ hashes, umami: false }));
+    expect(faq.headers[0].value).toBe(marketingPolicy({ hashes }));
     expect(manifest().headers[0]).toEqual(SECURITY_ENTRY);
   });
 
@@ -190,16 +190,14 @@ describe("run", () => {
     expect(() => run(dir, true)).toThrow(MarketingCspError);
   });
 
-  test("Umami's script adds its origin to the page's policy", () => {
+  test("the Umami script fails the build like any other cross-origin script", () => {
     write(
       "server/app/faq.html",
       page("faq", '<script defer src="https://cloud.umami.is/script.js"></script>')
     );
-    run(dir, true);
-    const faq = cspEntries().find((e: { source: string }) => e.source === "/faq");
-    expect(faq.headers[0].value).toContain("https://cloud.umami.is");
-    const home = cspEntries().find((e: { source: string }) => e.source === "/");
-    expect(home.headers[0].value).not.toContain("https://cloud.umami.is");
+    expect(() => run(dir, true)).toThrow(
+      "/faq loads a script the policy cannot allow: https://cloud.umami.is/script.js"
+    );
   });
 
   test("a prerendered page with no HTML fails", () => {
@@ -269,7 +267,7 @@ describe("under a build adapter, as on Vercel", () => {
     const hashes = pageScripts(page("faq")).inline.map(scriptHash);
     expect(routes[2]).toEqual({
       src: "^/faq(?:/)?$",
-      headers: { [CSP]: marketingPolicy({ hashes, umami: false }) },
+      headers: { [CSP]: marketingPolicy({ hashes }) },
       continue: true,
     });
     expect(manifest().headers).toEqual([SECURITY_ENTRY]);
