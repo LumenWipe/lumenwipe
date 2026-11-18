@@ -11,6 +11,7 @@ import {
   needsLedgerMemoRead,
 } from "@/lib/close-api/memo-rules";
 import { LiveReadError } from "@/lib/stellar/live-trustline";
+import { relayKey } from "@/lib/stellar/mediator-server";
 import { fail } from "@/common/fail";
 import { readKillSwitches } from "@/config/kill-switches";
 import { MIN_MEDIATOR_FORWARD_STROOPS } from "@/config/constants";
@@ -52,21 +53,20 @@ export class MediatorSigningService {
         503
       );
     }
-    const mediatorKeypair = this.keys.keypair(network);
-    if (!mediatorKeypair) {
+    const relay = relayKey(this.keys, network);
+    if (relay.state === "not_configured") {
       fail(
         "mediator_not_configured",
         "Exchange (mediator) flow is not configured on this server.",
         503
       );
     }
-    const mediator = mediatorKeypair.publicKey();
-
-    const configuredPublic = this.keys.configuredPublicKey(network);
-    if (configuredPublic && configuredPublic !== mediator) {
+    if (relay.state === "mismatch") {
       this.logger.error("the mediator key does not match its configured public key");
       fail("mediator_key_misconfiguration", "The exchange flow is temporarily unavailable.", 503);
     }
+    const mediatorKeypair = relay.keypair;
+    const mediator = mediatorKeypair.publicKey();
 
     if (!body?.transaction) fail("missing_transaction", "Missing transaction", 400);
 
@@ -158,8 +158,8 @@ export class MediatorSigningService {
   }
 
   async checkDestination(network: Network, address: string) {
-    // Whether this server can actually co-sign the mediator flow (secret configured).
-    const available = this.keys.keypair(network) !== null;
+    // Whether this server can actually co-sign the mediator flow: the same decision sign makes.
+    const available = relayKey(this.keys, network).state === "usable";
     const registryFresh = this.registry.isFresh(this.clock());
 
     const exchange = this.registry.lookup(address, network);

@@ -210,7 +210,7 @@ describe("mediator", () => {
 
   function service(): MediatorSigningService {
     return new MediatorSigningService(
-      { keypair: () => MEDIATOR, configuredPublicKey: () => "" },
+      { keypair: () => MEDIATOR, configuredPublicKey: () => MEDIATOR.publicKey() },
       port,
       defaultClock,
       {

@@ -81,7 +81,7 @@ stellar keys add operator --secret-key
      --update-env-vars=MEDIATOR_PUBLIC_<NET>=<new>
    ```
 
-   If `MEDIATOR_PUBLIC_<NET>` is bound to a secret as well, add its version as in step 4 and bind it in the same `--update-secrets` instead. Expected: `Done.` and the new revision serving 100 percent; a `describe` now shows version `<n>` and `<new>`. Note the time: step 8 counts from it.
+   If `MEDIATOR_PUBLIC_<NET>` is bound to a secret as well, add its version as in step 4 and bind it in the same `--update-secrets` instead. Expected: `Done.` and the new revision serving 100 percent; a `describe` now shows version `<n>` and `<new>`. Note the time: step 8 counts from it. Then `curl -s "https://api.lumenwipe.com/v1/<net>/mediator/check/<an exchange address>" -H "Authorization: Bearer $KEY" | jq .available` must print `true`; `false` means the secret and `MEDIATOR_PUBLIC_<NET>` disagree or one is unset, and for a mismatch the API logs `the mediator key does not match its configured public key`.
 
 6. **Confirm the new account co-signs.** On testnet, run the full exchange flow through the deployed web app:
 

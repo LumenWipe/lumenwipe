@@ -100,7 +100,7 @@ for (const reader of READERS) {
 const USER = Keypair.random().publicKey();
 const EXCHANGE = servedRegistry().entries[0]!.address;
 
-async function makeController(): Promise<MediatorController> {
+async function makeController(configuredPublic = ""): Promise<MediatorController> {
   const module = await Test.createTestingModule({
     controllers: [MediatorController],
     providers: [
@@ -109,7 +109,7 @@ async function makeController(): Promise<MediatorController> {
         provide: MEDIATOR_KEY_PROVIDER,
         useValue: {
           keypair: defaultMediatorKeyProvider.keypair,
-          configuredPublicKey: () => "",
+          configuredPublicKey: () => configuredPublic,
         } satisfies MediatorKeyProvider,
       },
       { provide: EXCHANGE_REGISTRY, useValue: defaultExchangeRegistry },
@@ -185,7 +185,7 @@ describe("mediator routes with the environment reader", () => {
   test("a padded seed signs and is reported available", async () => {
     const mediator = Keypair.random();
     process.env.MEDIATOR_SECRET_TESTNET = `${mediator.secret()}\n`;
-    const controller = await makeController();
+    const controller = await makeController(mediator.publicKey());
     expect((await controller.check("testnet", EXCHANGE)).available).toBe(true);
     const out = await controller.sign("testnet", { transaction: forwardXdr(mediator.publicKey()) });
     const signed = new Transaction(out.transaction, Networks.TESTNET);

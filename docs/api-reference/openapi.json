@@ -11635,7 +11635,7 @@
           },
           "available": {
             "type": "boolean",
-            "description": "Whether the server can actually perform the mediator flow (secret configured)."
+            "description": "Whether the server can actually perform the mediator flow: its key is configured and matches its configured public key."
           },
           "registryFresh": {
             "type": "boolean",

@@ -1,6 +1,6 @@
 import type { DefiProtocol } from "@lumenwipe/types";
 import { getMediatorPublicKey, type Network } from "@/config/networks";
-import { getMediatorKeypair } from "@/lib/stellar/mediator-server";
+import { getMediatorKeypair, relayKey } from "@/lib/stellar/mediator-server";
 import { getFeeAccountKeypair } from "@/lib/stellar/fee-account";
 import { isConversionEnabled, readSoroswapEnv } from "@/lib/soroswap/conversion-quotes";
 import { isXBullEnabled, readXBullEnv } from "@/lib/xbull/conversion-quotes";
@@ -12,7 +12,8 @@ import { isXBullEnabled, readXBullEnv } from "@/lib/xbull/conversion-quotes";
 export interface KillSwitches {
   feeSponsorship: boolean;
   mediatorForward: boolean;
-  /** Whether the relay account's key is set for the network, so its forward can be co-signed. */
+  /** Whether the relay account's key is set for the network and matches its public key, so its
+   *  forward can be co-signed. */
   mediatorConfigured: boolean;
   /** Whether the fee sponsor's key is set for the network, so it can pay a fee the account cannot. */
   feeSponsorConfigured: boolean;
@@ -60,12 +61,12 @@ export function isMalformedFlag(value: string | undefined): boolean {
   return normalized !== "" && normalized !== "true" && normalized !== "false";
 }
 
+/** Whether the relay can co-sign on the network: its key loads and matches its public key. */
 function relayKeyConfigured(network: Network): boolean {
-  try {
-    return getMediatorPublicKey(network) !== "" && getMediatorKeypair(network) !== null;
-  } catch {
-    return false;
-  }
+  return (
+    relayKey({ keypair: getMediatorKeypair, configuredPublicKey: getMediatorPublicKey }, network)
+      .state === "usable"
+  );
 }
 
 function sponsorKeyConfigured(network: Network): boolean {

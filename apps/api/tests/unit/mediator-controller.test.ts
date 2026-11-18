@@ -1,6 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { Test } from "@nestjs/testing";
-import { HttpException } from "@nestjs/common";
+import { HttpException, Logger } from "@nestjs/common";
 import {
   Account,
   Asset,
@@ -44,7 +44,7 @@ interface Fakes {
 
 const DEFAULTS: Fakes = {
   keypair: MEDIATOR,
-  configuredPublic: "",
+  configuredPublic: MEDIATOR.publicKey(),
   balance: "100.0000000",
   memoRequired: false,
 };
@@ -156,13 +156,39 @@ describe("sign: configuration gates", () => {
   });
 
   test("S2 a configured public key that differs from the secret's is a 503 naming nothing internal", async () => {
-    const { controller } = await makeController({ configuredPublic: Keypair.random().publicKey() });
-    await expectFail(
-      controller.sign("testnet", { transaction: buildXdr() }),
-      503,
-      "mediator_key_misconfiguration",
-      "The exchange flow is temporarily unavailable."
-    );
+    const error = spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
+    try {
+      const { controller } = await makeController({
+        configuredPublic: Keypair.random().publicKey(),
+      });
+      await expectFail(
+        controller.sign("testnet", { transaction: buildXdr() }),
+        503,
+        "mediator_key_misconfiguration",
+        "The exchange flow is temporarily unavailable."
+      );
+      expect(error.mock.calls).toEqual([
+        ["the mediator key does not match its configured public key"],
+      ]);
+    } finally {
+      error.mockRestore();
+    }
+  });
+
+  test("S2c an unset public key with a loaded secret is not configured, and logs no mismatch", async () => {
+    const error = spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
+    try {
+      const { controller } = await makeController({ configuredPublic: "" });
+      await expectFail(
+        controller.sign("testnet", { transaction: buildXdr() }),
+        503,
+        "mediator_not_configured",
+        "Exchange (mediator) flow is not configured on this server."
+      );
+      expect(error).not.toHaveBeenCalled();
+    } finally {
+      error.mockRestore();
+    }
   });
 
   test("S2b a configured public key that matches the secret's is accepted", async () => {
@@ -604,6 +630,27 @@ describe("check", () => {
   test("C5 an unconfigured mediator reports available false on every path", async () => {
     const entry = servedRegistry().entries[0]!;
     const { controller } = await makeController({ keypair: null });
+    expect((await controller.check("testnet", entry.address)).available).toBe(false);
+    expect((await controller.check("testnet", OTHER)).available).toBe(false);
+  });
+
+  test("C6 a key that matches its public key reports available true on every path", async () => {
+    const entry = servedRegistry().entries[0]!;
+    const { controller } = await makeController();
+    expect((await controller.check("testnet", entry.address)).available).toBe(true);
+    expect((await controller.check("testnet", OTHER)).available).toBe(true);
+  });
+
+  test("C7 a key that does not match its public key reports available false on every path", async () => {
+    const entry = servedRegistry().entries[0]!;
+    const { controller } = await makeController({ configuredPublic: Keypair.random().publicKey() });
+    expect((await controller.check("testnet", entry.address)).available).toBe(false);
+    expect((await controller.check("testnet", OTHER)).available).toBe(false);
+  });
+
+  test("C8 an unset public key reports available false on every path", async () => {
+    const entry = servedRegistry().entries[0]!;
+    const { controller } = await makeController({ configuredPublic: "" });
     expect((await controller.check("testnet", entry.address)).available).toBe(false);
     expect((await controller.check("testnet", OTHER)).available).toBe(false);
   });
