@@ -162,6 +162,16 @@ describe("the on-chain monitors report", () => {
     expect(raw).toContain("- service accounts are above their balance floor: success\n");
   });
 
+  test("a failed step that wrote no status reads as incomplete, not clean or critical", async () => {
+    const { outputs, raw } = await report({ ...CLEAN, KEYS: "failure", FORWARD: "failure" });
+    expect(raw).toContain("- service keys have not signed anything: failure (incomplete)\n");
+    expect(raw).toContain(
+      "- no service account paid out beyond the forward and the drain: failure (incomplete)\n"
+    );
+    expect(outputs.alert).toBe("finding");
+    expect(outputs.critical).toBe("no");
+  });
+
   test("an hourly incomplete read on an open issue neither alerts nor comments again", async () => {
     const { outputs, calls } = await report(
       { ...CLEAN, KEYS: "failure", KEYS_STATUS: "incomplete" },

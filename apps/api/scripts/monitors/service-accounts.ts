@@ -295,12 +295,11 @@ export async function main(check: string | undefined, options: RunOptions = {}):
     log(`${run.requests} Horizon requests`);
     status = checkStatus(run.findings, run.incomplete);
   } catch (error) {
-    // A configuration problem means the check did not run, which is never clean. Errors inside
-    // a check end at its account, in `each`, so no finding is lost here.
+    // A check that did not finish is never clean, and a finding already made still pages.
     for (const line of (error as Error).message.split("\n")) {
       process.stderr.write(`::error::${line}\n`);
     }
-    status = "incomplete";
+    status = run !== undefined && run.findings.length > 0 ? "finding" : "incomplete";
   }
   for (const finding of run?.findings ?? []) {
     process.stderr.write(`::error::${formatFinding(finding)}\n`);

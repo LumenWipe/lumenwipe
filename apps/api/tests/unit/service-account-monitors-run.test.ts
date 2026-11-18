@@ -60,7 +60,8 @@ const quiet: Route = (path) =>
 async function check(
   name: string,
   route: Route,
-  options?: Parameters<typeof main>[1]
+  options?: Parameters<typeof main>[1],
+  failOn?: string
 ): Promise<{ code: number; status: string | undefined; printed: string }> {
   run++;
   const output = join(dir, `output-${run}`);
@@ -73,6 +74,7 @@ async function check(
   printed = [];
   const capture = (chunk: string | Uint8Array) => {
     printed.push(String(chunk));
+    if (failOn !== undefined && String(chunk).includes(failOn)) throw new Error("stdout closed");
     return true;
   };
   process.stdout.write = capture as typeof process.stdout.write;
@@ -223,6 +225,39 @@ describe("the balances check", () => {
     expect(result.status).toBe("incomplete");
     expect(reads).toContain(`/accounts/${SPONSOR}`);
     expect(result.printed).toContain("could not be read: Horizon testnet returned 503");
+  });
+});
+
+describe("a check that throws after it read", () => {
+  // Printing the request count is the last thing a check does before its status, after every
+  // finding is recorded; making that write throw reaches the outer catch with a finding in hand.
+  test("a finding already made still pages", async () => {
+    const result = await check(
+      "keys",
+      (path) =>
+        path.startsWith(`/accounts/${MEDIATOR}/transactions`)
+          ? page([
+              {
+                hash: "cd".repeat(32),
+                created_at: now(),
+                source_account: MEDIATOR,
+                paging_token: "1",
+              },
+            ])
+          : quiet(path),
+      undefined,
+      "Horizon requests"
+    );
+    expect(result.printed).toContain("::error::stdout closed");
+    expect(result.status).toBe("finding");
+    expect(result.code).toBe(1);
+  });
+
+  test("with nothing found it is incomplete, never clean", async () => {
+    const result = await check("keys", quiet, undefined, "Horizon requests");
+    expect(result.printed).toContain("::error::stdout closed");
+    expect(result.status).toBe("incomplete");
+    expect(result.code).toBe(1);
   });
 });
 
