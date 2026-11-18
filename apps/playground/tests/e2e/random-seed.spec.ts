@@ -1,10 +1,13 @@
 import { type Page, type Response } from "@playwright/test";
 import { expect, test } from "./timed";
 import { appAlerts } from "./alerts";
+import { closeOnScreen } from "./close-with";
+import { nightlySeed, SEED_ENV } from "../../scripts/nightly-seed";
 
 // A random wallet replayed from its code runs the same wallet twice, end to end on testnet: the
 // same code and the same plan before each run, and the plan the browser previews is the one the
-// server regenerates from the code (two JavaScript engines, one generator).
+// server regenerates from the code (two JavaScript engines, one generator). Each night also runs
+// that day's wallet, a combination nobody wrote a test for, under the code the nightly logged.
 
 const BASE = "http://localhost:3002";
 // One of the frozen v1 vectors (tests/fixtures/random-v1-vectors.json): the demo token alone, so
@@ -57,4 +60,17 @@ test("a replay code runs the same wallet twice", async ({ page }) => {
 
   const second = await runOnce(page);
   expect(second).toEqual(first);
+});
+
+test("today's random wallet closes end to end", async ({ page }) => {
+  test.setTimeout(10 * 60_000);
+  const { code } = nightlySeed(new Date(), process.env[SEED_ENV]);
+  test.info().annotations.push({ type: "replay code", description: code });
+  await page.goto("/");
+
+  await page.getByLabel("Replay a seed").fill(code);
+  await page.getByRole("button", { name: "Replay", exact: true }).click();
+  await expect(page.getByText(code, { exact: true })).toBeVisible();
+  await closeOnScreen(page, null);
+  await expect(page.getByText(`Replay code ${code}`)).toBeVisible();
 });

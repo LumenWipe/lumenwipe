@@ -28,6 +28,8 @@ For a protocol exit this works out as follows:
 
 The playground has no verifier of its own to update: it checks every transaction with `@lumenwipe/verify`, the build of `apps/web/lib/stellar/verify.ts`, held to its session record. It passes no DeFi positions, so it refuses every Soroban exit. If the new operation changes what the playground's recipes build, `apps/api/tests/unit/playground-recipe.test.ts` fails until its fixture is regenerated, and the playground's unit tests then run the new transactions through its verifier. The playground never builds a close itself, and every close it runs goes through the real API.
 
+A new exit also needs a playground scenario that seeds its position and closes it on testnet, or a note in the pull request saying why one is not possible. See [add a playground scenario](/contributing/add-a-playground-scenario).
+
 ## Steps
 
 Each step names the files to change. Adding the protocol name to `DefiProtocol` makes the type checker fail in four places: the API registry's `PROTOCOLS` and the API's `PROTOCOL_LABEL` (steps 2 and 4), and the web's `EXIT_FUNCTIONS` and position labels (step 5). Everything else on this list compiles without it, so follow the list rather than the compiler.

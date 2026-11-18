@@ -199,7 +199,11 @@
       },
       {
         "group": "Contributing",
-        "pages": ["contributing/add-a-protocol-exit", "contributing/localization"]
+        "pages": [
+          "contributing/add-a-protocol-exit",
+          "contributing/add-a-playground-scenario",
+          "contributing/localization"
+        ]
       },
       {
         "group": "Design",
