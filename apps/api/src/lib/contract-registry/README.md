@@ -125,22 +125,28 @@ verified the same way as testnet - the protocol's own published addresses (Blend
 Soroswap: `soroswap/core` `public/mainnet.contracts.json`; Aquarius: `docs.aqua.network`
 addresses-and-networks plus the router's own `ConstantPoolHash`/`StableSwapPoolHash`/
 `ConcentratedPoolHash`; Phoenix: the [stellar.expert directory](https://stellar.expert/explorer/public/directory)'s
-`Phoenix Pool` entries, since Phoenix publishes no mainnet address list of its own - each pool's
-own `query_config` gives its `stake_contract`, so the stake entries come from the pools
-themselves, not a second directory search; FxDAO: `fxdao.io/docs/addresses`) against the live
-instance's executable hash - and, as a third opinion, the
+`Phoenix Pool` entries and the mainnet factory's own `query_pools`, since Phoenix publishes no
+mainnet address list of its own - each pool's own `query_config` gives its `stake_contract`, so
+the stake entries come from the pools themselves, not a second directory search; FxDAO:
+`fxdao.io/docs/addresses`) against the live instance's executable hash - and, as a third opinion, the
 [stellar.expert directory](https://stellar.expert/explorer/public/directory): where it names a
 contract, the label agrees (Blend Pool Factory, Blend Backstop, Blend Pool, SoroSwap, SoroSwap
 Router, Aquarius Router, Aquarius Pool, Phoenix Pool), and entries it does not list say so. Pools
 and pairs are code-representative: one per code hash, never a list of every deployment - Phoenix
-has two live pool code hashes among the directory's listed pools, so both are registered. Blend and
+has four live pool code hashes among its factory's pools, so all four are registered. Blend and
 Phoenix pools go further: the web lets an exit move the account's XLM, classic assets or held
 tokens only through a contract this file names, and a Blend repay or a Phoenix withdrawal does, so
 each live mainnet pool is listed by address. A Blend pool is added only when its instance runs the
 registered V1 or V2 pool hash and its factory's `is_pool` returns true (candidates: the V1
 backstop's reward zone, `blend-utils`, and the directory's `Blend Pool` entries); a Phoenix pool
-only when it is a directory `Phoenix Pool` running a registered pool hash, together with the stake
-contract its `CONFIG` names, since `unbond` runs there. Four of those stake contracts run an
+only when it is a directory `Phoenix Pool` or listed by the factory's `query_pools`, runs a
+registered pool hash, and is listed together with the stake contract its `CONFIG` names, since
+`unbond` runs there. The one exception is the `blended` pool code (Phoenix's `pool_blended`): it is
+deployed without staking, names itself as its stake contract and rejects any `auto_unstake`, so it
+has no stake entry, the adapter never reads it as a stake contract or plans an `unbond` against
+it, and the browser never lets `unbond` run on it, since it is not a `stake` entry. Its delegate
+may lend part of each reserve to Blend; the adapter reads what is lent out and builds no
+withdrawal larger than what the pool still holds. Four of those stake contracts run an
 earlier build of the stake code, registered as its own hash after its interface and `BondingInfo`
 layout were confirmed to match. The v2 stake code pays on `unbond` the token under its persistent
 `NEWLP` key, not its `CONFIG.lp_token`; the mainnet registry integration test checks that every

@@ -130,6 +130,7 @@ try {
 | DeFi exit     | `exit_function_not_allowed`             | The exit calls a function LumenWipe does not use to leave that protocol.                                    |
 | DeFi exit     | `exit_foreign_contract`                 | The exit references a contract the account has no position, balance or pool token in.                       |
 | DeFi exit     | `exit_argument_party_mismatch`          | An exit argument acts for, or pays, an address other than the account.                                      |
+| DeFi exit     | `exit_arguments_unexpected`             | A liquidity withdrawal sets a deadline or an auto-unstake, or has another argument shape.                   |
 | DeFi exit     | `exit_request_not_allowed`              | A lending-pool request is not an exit request.                                                              |
 | DeFi exit     | `exit_unverified_spend`                 | The exit spends the account's assets through a contract the registry has not verified.                      |
 | DeFi exit     | `exit_spend_not_repay`                  | The exit spends XLM or a classic asset other than to repay a debt in the analysis.                          |

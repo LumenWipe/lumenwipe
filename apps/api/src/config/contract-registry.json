@@ -187,12 +187,12 @@
       "kind": "pool",
       "address": "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV",
       "wasmHash": "14ed2bb1a025c22bcc730ffc9da3f5aa9f7c653f4be402812c32f249e20dee01",
-      "version": "v1",
-      "label": "Phoenix XYK pool (testnet) - own redeploy of live_xlm_usdc_pool.wasm, genuinely initialized (not just a bytecode reference) with a custom SEP-41 test token so the integration suite can provide and withdraw real liquidity every run; interface confirmed to still expose withdraw_liquidity via stellar contract info interface",
+      "version": "v1-no-auto-unstake",
+      "label": "Phoenix XYK pool (testnet) - own redeploy of live_xlm_usdc_pool.wasm, genuinely initialized (not just a bytecode reference) with a custom SEP-41 test token so the integration suite can provide and withdraw real liquidity every run; interface confirmed to still expose withdraw_liquidity via stellar contract info interface; an older build whose withdraw_liquidity takes five arguments with no auto_unstake, unlike every mainnet pool code, so it is its own version",
       "verifiedLive": true,
       "ownDeployment": true,
-      "verifiedBy": "2026-09-28: initialize()'d directly with native XLM and a fresh admin-mintable token as token_a/token_b, using the real Phoenix LP share-token wasm fetched from a live mainnet pool's own query_share_token_address (the v2.0.0 GitHub release's generic soroban_token_contract.wasm has an incompatible constructor); a real LP position provided and fully withdrawn end to end via withdraw_liquidity; 2026-11-17: live executable hash re-read over public RPC and matched (#1008)",
-      "verifiedAt": "2026-11-17"
+      "verifiedBy": "2026-09-28: initialize()'d with native XLM and a fresh admin-mintable token, using the real Phoenix LP share-token wasm from a live mainnet pool's query_share_token_address; a real LP position provided and fully withdrawn via withdraw_liquidity; 2026-11-17 (#1008) and 2026-11-18 (#1047): live executable hash re-read over public RPC and matched; 2026-11-18: the wasm's contract spec declares withdraw_liquidity with five arguments and no auto_unstake (#1047)",
+      "verifiedAt": "2026-11-18"
     },
     {
       "network": "testnet",
@@ -790,6 +790,45 @@
       "verifiedLive": true,
       "verifiedBy": "2026-09-26: query_config simulated against pool CD5XNKK3... returned this as stake_contract; stellar contract info hash over RPC (mainnet.sorobanrpc.com) confirmed the hash and the bond/unbond interface; 2026-10-10 (#581) and 2026-11-17 (#1008): live hash re-read and matched; 2026-11-18 (#1011): CONFIG.lp_token is stale (CBSM6C6O...), unbond pays the persistent NEWLP token CABCLZXG..., the pool's share_token, per a simulated unbond of a live stake",
       "source": "the stake_contract in pool CD5XNKK3B6BEF2N7ULNHHGAMOKZ7P6456BFNIHRF4WNTEDKBRWAE7IAA's own query_config",
+      "verifiedAt": "2026-11-18"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "phoenix",
+      "kind": "pool",
+      "address": "CCPPPTDWJIWXQUQ2CN64S5JYQ7GYWVZIT7YWUUTH75HKIZX53Z2CE3XI",
+      "wasmHash": "d54d01e0d09005bd7d5267ce9e913a8c52163bfeb82252545351b76e86b41561",
+      "version": "v2",
+      "label": "Phoenix XYK pool, PHO/USDC (mainnet) - a later build of the v2 pool code: the same withdraw_liquidity, CONFIG and reserve storage as CD5XNKK3..., plus a trading switch (swaps are off; withdrawals do not check it); listed by address so its withdraw_liquidity is verified",
+      "verifiedLive": true,
+      "verifiedBy": "2026-11-18 (#1037): listed by the Phoenix factory's query_pools; getLedgerEntries on the instance returned this hash in its Wasm executable (no external reference) and the stellar contract fetch of that hash hashes to it; its spec declares the six-argument withdraw_liquidity; its persistent CONFIG names share token CA3KLIRA... and stake contract CBUS3GWD...; a simulated withdraw_liquidity by its stake contract paid out pro rata",
+      "source": "the mainnet Phoenix factory CB4SVAWJA6TSRNOJZ7W2AWFW46D5VR4ZMFZKDIKXEINZCZEGZCJZCKMI's query_pools",
+      "verifiedAt": "2026-11-18"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "phoenix",
+      "kind": "stake",
+      "address": "CBUS3GWDBJYOLYC7PA3JCFQPPHXCX7U3TBHQSVCSTSNG6GH6WU4L74UE",
+      "wasmHash": "0f770d0d25e6f61477d6eabc86dedab6a898f39aa706bfc83fb3556a84608c81",
+      "version": "v2",
+      "label": "Phoenix stake (mainnet) - the unbond call target for pool CCPPPTDWJIWXQUQ2CN64S5JYQ7GYWVZIT7YWUUTH75HKIZX53Z2CE3XI, read from that pool's own CONFIG stake_contract field; a build of the v2 stake code that adds an admin-only seed_stakes and has no NEWLP, so unbond pays CONFIG.lp_token",
+      "verifiedLive": true,
+      "verifiedBy": "2026-11-18 (#1037): the pool's persistent CONFIG names this stake_contract; getLedgerEntries on the instance returned this hash in its Wasm executable; its spec shows the v2 unbond(sender, stake_amount, stake_timestamp) and BondingInfo, the wasm carries no NEW_LP code, no NEWLP entry exists, and its CONFIG.lp_token is the pool's share_token",
+      "source": "the CONFIG stake_contract of pool CCPPPTDWJIWXQUQ2CN64S5JYQ7GYWVZIT7YWUUTH75HKIZX53Z2CE3XI",
+      "verifiedAt": "2026-11-18"
+    },
+    {
+      "network": "mainnet",
+      "protocol": "phoenix",
+      "kind": "pool",
+      "address": "CBENABXP6C4C7WG6KB7JQOTDS5GIIXF3IX3PIYNZFCDZDWUHITO2HZ4S",
+      "wasmHash": "6fe099b64855bcba2b7fc6f4cd9b0d8e6cc98743eac6cd44042fc7ef0c22e3f7",
+      "version": "blended",
+      "label": "Phoenix blended XYK pool, XLM/USDC (mainnet) - Phoenix's pool_blended code: deployed without staking (its CONFIG names the pool itself as stake_contract, and auto_unstake fails with StakingDisabled), and a delegate may lend reserves to Blend; exits through withdraw_liquidity only, so it has no stake entry",
+      "verifiedLive": true,
+      "verifiedBy": "2026-11-18 (#1037): listed by the Phoenix factory's query_pools; getLedgerEntries on the instance returned this hash in its Wasm executable; its spec declares the six-argument withdraw_liquidity and no bond/unbond; a simulated withdraw_liquidity of the pool's own shares paid out pro rata with auto_unstake None and failed with Error(Contract, #338) with it set",
+      "source": "the mainnet Phoenix factory CB4SVAWJA6TSRNOJZ7W2AWFW46D5VR4ZMFZKDIKXEINZCZEGZCJZCKMI's query_pools",
       "verifiedAt": "2026-11-18"
     },
     {

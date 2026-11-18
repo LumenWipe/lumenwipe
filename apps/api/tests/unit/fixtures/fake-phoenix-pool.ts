@@ -56,6 +56,11 @@ export interface FakePhoenixOptions {
   /** The stake contract's `NEWLP` entry, which the v2 stake code pays on unbond; absent unless set. */
   stakeNewLp?: string;
   stakeConfigMissing?: boolean;
+  /** The pool's `CONFIG.stake_contract`; `STAKE_CONTRACT` unless set. Set to `POOL` for a pool
+   *  deployed without staking, which names itself. */
+  stakeContract?: string;
+  /** A blended pool's `DelegatedOutA`/`DelegatedOutB` (persistent keys 6 and 7); absent unless set. */
+  delegatedOut?: [bigint, bigint];
   /** Which tokens are Stellar Asset Contracts; the rest are wasm tokens. */
   stellarAssets?: string[];
   poolHash?: string;
@@ -180,6 +185,7 @@ export function fakePhoenixRpc(
   const reserves = options.reserves ?? [1_000_000_000n, 2_000_000_000n];
   const totalShares = options.totalShares ?? 1_000_000_000n;
   const stellarAssets = new Set(options.stellarAssets ?? [XLM_SAC, USDC_SAC]);
+  const stakeContract = options.stakeContract ?? STAKE_CONTRACT;
   const entries: Entry[] = [];
 
   // The instance entry (code hash) stays even when `poolMissing`: that flag means the pool's own
@@ -191,14 +197,21 @@ export function fakePhoenixRpc(
       persistentEntry(
         POOL,
         symbol("CONFIG"),
-        configVal(tokens[0]!, tokens[1]!, SHARE_TOKEN, STAKE_CONTRACT)
+        configVal(tokens[0]!, tokens[1]!, SHARE_TOKEN, stakeContract)
       )
     );
     entries.push(persistentEntry(POOL, xdr.ScVal.scvU32(0), i128(totalShares)));
     entries.push(persistentEntry(POOL, xdr.ScVal.scvU32(1), i128(reserves[0]!)));
     entries.push(persistentEntry(POOL, xdr.ScVal.scvU32(2), i128(reserves[1]!)));
+    if (options.delegatedOut) {
+      entries.push(persistentEntry(POOL, xdr.ScVal.scvU32(6), i128(options.delegatedOut[0])));
+      entries.push(persistentEntry(POOL, xdr.ScVal.scvU32(7), i128(options.delegatedOut[1])));
+    }
   }
-  entries.push(instanceEntry(STAKE_CONTRACT, wasm(options.stakeHash ?? PHX_STAKE_HASH)));
+  const selfStaked = stakeContract === POOL;
+  if (!selfStaked) {
+    entries.push(instanceEntry(stakeContract, wasm(options.stakeHash ?? PHX_STAKE_HASH)));
+  }
   if (!options.shareBalanceMissing) {
     entries.push(
       persistentEntry(
@@ -210,21 +223,21 @@ export function fakePhoenixRpc(
   }
   if (!options.bondingInfoMissing) {
     entries.push(
-      persistentEntry(STAKE_CONTRACT, addr(options.account), bondingInfoVal(options.stakes ?? []))
+      persistentEntry(stakeContract, addr(options.account), bondingInfoVal(options.stakes ?? []))
     );
   }
-  if (!options.stakeConfigMissing) {
+  if (!options.stakeConfigMissing && !selfStaked) {
     const lpToken = options.stakeLpToken ?? SHARE_TOKEN;
     entries.push(
       persistentEntry(
-        STAKE_CONTRACT,
+        stakeContract,
         symbol("CONFIG"),
         xdr.ScVal.scvMap([new xdr.ScMapEntry({ key: symbol("lp_token"), val: addr(lpToken) })])
       )
     );
   }
   if (options.stakeNewLp) {
-    entries.push(persistentEntry(STAKE_CONTRACT, symbol("NEWLP"), addr(options.stakeNewLp)));
+    entries.push(persistentEntry(stakeContract, symbol("NEWLP"), addr(options.stakeNewLp)));
   }
   for (const token of new Set(tokens)) {
     entries.push(

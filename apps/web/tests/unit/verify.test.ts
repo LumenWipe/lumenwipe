@@ -1310,6 +1310,8 @@ const exit = (over: Partial<ExitOp> = {}): IntentOperation => ({
   subInvocations: [],
   ...over,
 });
+/** `withdraw_liquidity(sender, share_amount, min_a, min_b, deadline, auto_unstake)` as rendered. */
+const PHOENIX_WITHDRAW_ARGS = [SRC, "1000", "9", "18", "null", "null"];
 const exitOnly = (op: IntentOperation, fee = "100") =>
   intent({
     fee,
@@ -1530,7 +1532,11 @@ test("a Phoenix exit may withdraw_liquidity on its pool and unbond on the regist
     exitContracts: [POOL, STAKE],
     exitFunctions: { [POOL]: ["withdraw_liquidity"], [STAKE]: ["unbond"] },
   });
-  const withdraw = exit({ function: "withdraw_liquidity", contractsReferenced: [POOL] });
+  const withdraw = exit({
+    function: "withdraw_liquidity",
+    args: PHOENIX_WITHDRAW_ARGS,
+    contractsReferenced: [POOL],
+  });
   expect(() => assertCloseIntent(exitOnly(withdraw), expected)).not.toThrow();
   // The stake call names the pool's own contract only through op.contract, not contractsReferenced.
   const unbond = exit({ contract: STAKE, function: "unbond", contractsReferenced: [STAKE] });
@@ -1550,6 +1556,51 @@ test("a Phoenix exit may withdraw_liquidity on its pool and unbond on the regist
     "exit_function_not_allowed",
     /function LumenWipe does not use/
   );
+});
+
+describe("a Phoenix withdraw_liquidity's arguments", () => {
+  const expected = expectation({ exitFunctions: { [POOL]: ["withdraw_liquidity"] } });
+  const withdraw = (args: string[]) =>
+    exitOnly(exit({ function: "withdraw_liquidity", args, contractsReferenced: [POOL] }));
+  const AUTO_UNSTAKE = JSON.stringify({ stake_amount: "1000", stake_timestamp: "1" });
+
+  test("pass in the six-argument shape every mainnet pool code takes, with no deadline and no auto_unstake", () => {
+    expect(() => assertCloseIntent(withdraw(PHOENIX_WITHDRAW_ARGS), expected)).not.toThrow();
+  });
+
+  test("pass in the five-argument shape only because the testnet pool code lacks auto_unstake until #1048", () => {
+    expect(() =>
+      assertCloseIntent(withdraw(PHOENIX_WITHDRAW_ARGS.slice(0, 5)), expected)
+    ).not.toThrow();
+  });
+
+  test("are refused when another account withdraws", () => {
+    expectRefusal(
+      () => assertCloseIntent(withdraw([POOL, ...PHOENIX_WITHDRAW_ARGS.slice(1)]), expected),
+      "exit_argument_party_mismatch",
+      /other than the account being closed/
+    );
+  });
+
+  for (const [name, args] of [
+    [
+      "an auto_unstake that unbonds inside the call",
+      [...PHOENIX_WITHDRAW_ARGS.slice(0, 5), AUTO_UNSTAKE],
+    ],
+    ["a deadline", [...PHOENIX_WITHDRAW_ARGS.slice(0, 4), "1793505387", "null"]],
+    ["a deadline in the five-argument shape", [...PHOENIX_WITHDRAW_ARGS.slice(0, 4), "1793505387"]],
+    ["a seventh argument", [...PHOENIX_WITHDRAW_ARGS, "null"]],
+    ["four arguments", PHOENIX_WITHDRAW_ARGS.slice(0, 4)],
+    ["an amount that is not an integer", [SRC, "1000", "-9", "18", "null", "null"]],
+  ] as const) {
+    test(`are refused with ${name}`, () => {
+      expectRefusal(
+        () => assertCloseIntent(withdraw([...args]), expected),
+        "exit_arguments_unexpected",
+        /arguments LumenWipe does not use/
+      );
+    });
+  }
 });
 
 test("a FxDAO exit may only call pay_debt on its vault", () => {
@@ -3261,7 +3312,12 @@ describe("at a registry contract, XLM and classic assets move only as a repay in
     ["a Blend backstop", "withdraw"],
   ] as const) {
     test(`${protocol}'s ${fn} may not authorize one`, () => {
-      const args = fn === "remove_liquidity" ? [POOL, TOKEN, "1", "1", "1", SRC, "1"] : [];
+      const args =
+        fn === "remove_liquidity"
+          ? [POOL, TOKEN, "1", "1", "1", SRC, "1"]
+          : fn === "withdraw_liquidity"
+            ? PHOENIX_WITHDRAW_ARGS
+            : [];
       const op = paying(transfer, { function: fn, args });
       const expected = { ...repay, exitFunctions: { [POOL]: [fn] } };
       const withoutDebt = { ...expected, repayTokensByPool: {} };

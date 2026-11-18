@@ -12,6 +12,10 @@ import {
   validateContractRegistry,
 } from "@/lib/contract-registry";
 import { FXDAO_REPAY_VERSION } from "@/lib/defi-exits/fxdao";
+import {
+  PHOENIX_BLENDED_VERSION,
+  PHOENIX_FIVE_ARG_WITHDRAW_VERSION,
+} from "@/lib/defi-exits/phoenix";
 import shippedRegistry from "@/config/contract-registry.json";
 import { StrKey } from "@stellar/stellar-sdk";
 import type { CodeIdentity } from "@/lib/stellar/contract-instance";
@@ -115,7 +119,7 @@ test("every protocol with a working exit adapter has verified mainnet entries: t
 test("mainnet Blend and Phoenix pools listed by address all run a pool code already registered for that protocol", () => {
   for (const [protocol, codes] of [
     ["blend", 2],
-    ["phoenix", 2],
+    ["phoenix", 4],
   ] as const) {
     const pools = entriesForProtocol("mainnet", protocol).filter((e) => e.kind === "pool");
     expect(pools.length).toBeGreaterThan(codes);
@@ -125,7 +129,7 @@ test("mainnet Blend and Phoenix pools listed by address all run a pool code alre
 
 test("every mainnet Phoenix pool's stake contract is listed, so a staked position in any of them can unbond", () => {
   const phoenix = entriesForProtocol("mainnet", "phoenix");
-  const pools = phoenix.filter((e) => e.kind === "pool");
+  const pools = phoenix.filter((e) => e.kind === "pool" && e.version !== PHOENIX_BLENDED_VERSION);
   const stakes = phoenix.filter((e) => e.kind === "stake");
   expect(stakes.length).toBe(pools.length);
   expect(new Set(stakes.map((e) => e.address)).size).toBe(stakes.length);
@@ -138,6 +142,31 @@ test("every mainnet Phoenix pool's stake contract is listed, so a staked positio
     (p) => stakes.filter((e) => e.label.includes(p.address)).length === 1
   );
   expect(covered.length).toBe(pools.length - representatives.length);
+});
+
+test("only the testnet Phoenix pool runs the five-argument withdraw_liquidity code; no mainnet entry does", () => {
+  const fiveArg = (network: "mainnet" | "testnet") =>
+    entriesForProtocol(network, "phoenix")
+      .filter((e) => e.version === PHOENIX_FIVE_ARG_WITHDRAW_VERSION)
+      .map((e) => `${e.kind}:${e.address}`);
+  expect(fiveArg("mainnet")).toEqual([]);
+  expect(fiveArg("testnet")).toEqual([
+    "pool:CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV",
+  ]);
+});
+
+test("a blended Phoenix pool has no staking, so no stake entry names it and it is never a stake", () => {
+  const phoenix = entriesForProtocol("mainnet", "phoenix");
+  const blended = phoenix.filter((e) => e.version === PHOENIX_BLENDED_VERSION);
+  expect(blended.map((e) => `${e.kind}:${e.address}`)).toEqual([
+    "pool:CBENABXP6C4C7WG6KB7JQOTDS5GIIXF3IX3PIYNZFCDZDWUHITO2HZ4S",
+  ]);
+  const stakes = phoenix.filter((e) => e.kind === "stake");
+  for (const pool of blended) {
+    expect(
+      stakes.filter((e) => e.address === pool.address || e.label.includes(pool.address))
+    ).toEqual([]);
+  }
 });
 
 test("filters entries by network and protocol", () => {

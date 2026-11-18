@@ -1,15 +1,30 @@
 import { expect, test } from "bun:test";
-import { Address, Contract, scValToNative, xdr } from "@stellar/stellar-sdk";
+import {
+  Account,
+  Address,
+  Contract,
+  Keypair,
+  TransactionBuilder,
+  rpc as stellarRpc,
+  scValToNative,
+  xdr,
+} from "@stellar/stellar-sdk";
+import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { codeMatchesEntry, entriesForNetwork, entriesForProtocol } from "@/lib/contract-registry";
 import { readLiveCodeIdentity, type CodeIdentity } from "@/lib/stellar/contract-instance";
+import { contractDataEntry } from "@/lib/stellar/contract-data";
 import { getRpcServer } from "@/lib/stellar/rpc";
 import { UpstreamError } from "@/lib/stellar/upstream-client";
 import {
+  PHOENIX_BLENDED_VERSION,
+  phoenixConfigKey,
   phoenixNewLpKey,
   phoenixShareToken,
   phoenixStakeConfigKey,
   phoenixStakeContract,
   phoenixUnbondToken,
+  phoenixWithdrawArgCount,
+  phoenixWithdrawArgs,
 } from "@/lib/defi-exits/phoenix";
 
 // Read-only against live mainnet RPC: no account, no transaction, no funds. Every verifiedLive
@@ -94,46 +109,74 @@ test.skipIf(!RUN_INTEGRATION)(
   120_000
 );
 
-/** Ledger entries by key in one request, retried once after a pause if the provider is busy. */
-async function entriesByKey(keys: xdr.LedgerKey[]): Promise<Map<string, xdr.LedgerEntryData>> {
-  const rpc = getRpcServer("mainnet");
-  let res: Awaited<ReturnType<typeof rpc.getLedgerEntries>>;
+/** One provider call, retried once after a pause if the provider is busy, never otherwise. */
+async function onceMoreIfRateLimited<T>(call: () => Promise<T>): Promise<T> {
   try {
-    res = await rpc.getLedgerEntries(...keys);
+    return await call();
   } catch (err) {
     if (!(err instanceof UpstreamError) || err.kind !== "rate_limited") throw err;
     await Bun.sleep(20_000);
-    res = await rpc.getLedgerEntries(...keys);
+    return call();
   }
+}
+
+/** Ledger entries by key in one request, retried once after a pause if the provider is busy. */
+async function entriesByKey(keys: xdr.LedgerKey[]): Promise<Map<string, xdr.LedgerEntryData>> {
+  const rpc = getRpcServer("mainnet");
+  const res = await onceMoreIfRateLimited(() => rpc.getLedgerEntries(...keys));
   return new Map(res.entries.map((e) => [e.key.toXdr("base64"), e.val]));
 }
 
+const poolStorageKey = (pool: string, key: number): xdr.LedgerKey =>
+  xdr.LedgerKey.contractData(
+    new xdr.LedgerKeyContractData({
+      contract: new Address(pool).toScAddress(),
+      key: xdr.ScVal.scvU32(key),
+      durability: xdr.ContractDataDurability.persistent,
+    })
+  );
+
+let phoenixPoolEntries: Promise<Map<string, xdr.LedgerEntryData>> | null = null;
+
+/** Every listed mainnet Phoenix pool's CONFIG and reserves, in one request shared by the tests. */
+function readPhoenixPools(): Promise<Map<string, xdr.LedgerEntryData>> {
+  phoenixPoolEntries ??= entriesByKey(
+    entriesForProtocol("mainnet", "phoenix")
+      .filter((e) => e.kind === "pool")
+      .flatMap((e) => [
+        phoenixConfigKey(e.address),
+        poolStorageKey(e.address, 1),
+        poolStorageKey(e.address, 2),
+      ])
+  );
+  return phoenixPoolEntries;
+}
+
 test.skipIf(!RUN_INTEGRATION)(
-  "every listed mainnet Phoenix pool names, in its own CONFIG, a stake contract the registry lists, and that stake pays the pool's share_token on unbond",
+  "every listed mainnet Phoenix pool names, in its own CONFIG, a stake contract the registry lists, and that stake pays the pool's share_token on unbond; only a blended pool names itself",
   async () => {
     // A stake paying another token would make an unbond-then-withdraw chain hand the pool a token
     // it does not take; the adapter blocks that live, and this catches the registry drifting there.
-    const rpc = getRpcServer("mainnet");
+    // A pool that names itself has no staking: only the blended code is registered that way.
     const phoenix = entriesForProtocol("mainnet", "phoenix");
+    const poolEntries = await readPhoenixPools();
     const stakes = new Set(phoenix.filter((e) => e.kind === "stake").map((e) => e.address));
     const named = new Set<string>();
     const missing: string[] = [];
+    const selfStaked: string[] = [];
     const unbondMismatches: string[] = [];
     const pairs: Array<{ pool: string; stake: string; shareToken: string }> = [];
     for (const pool of phoenix.filter((e) => e.kind === "pool")) {
-      const key = xdr.LedgerKey.contractData(
-        new xdr.LedgerKeyContractData({
-          contract: new Address(pool.address).toScAddress(),
-          key: xdr.ScVal.scvSymbol("CONFIG"),
-          durability: xdr.ContractDataDurability.persistent,
-        })
-      );
-      const data = (await rpc.getLedgerEntries(key)).entries[0]?.val;
+      const data = poolEntries.get(phoenixConfigKey(pool.address).toXdr("base64"));
       const config =
         data?.type === "contractData"
           ? (scValToNative(data.contractData.val) as { stake_contract?: string })
           : {};
       const stake = config.stake_contract ?? "unreadable";
+      if (stake === pool.address) {
+        selfStaked.push(`${pool.version} ${pool.address}`);
+        continue;
+      }
       named.add(stake);
       if (!stakes.has(stake)) missing.push(`${pool.address}: ${stake}`);
       const shareToken = data ? phoenixShareToken(data) : null;
@@ -159,8 +202,70 @@ test.skipIf(!RUN_INTEGRATION)(
       }
     }
     expect(missing).toEqual([]);
+    expect(selfStaked.filter((s) => !s.startsWith(`${PHOENIX_BLENDED_VERSION} `))).toEqual([]);
+    expect(selfStaked.length).toBe(
+      phoenix.filter((e) => e.kind === "pool" && e.version === PHOENIX_BLENDED_VERSION).length
+    );
     expect([...stakes].filter((s) => !named.has(s))).toEqual([]);
     expect(unbondMismatches).toEqual([]);
   },
   120_000
+);
+
+test.skipIf(!RUN_INTEGRATION)(
+  "withdraw_liquidity built with the adapter's own arguments simulates on one listed mainnet Phoenix pool of each code",
+  async () => {
+    // A pool given another argument count than its code declares answers
+    // Error(WasmVm, UnexpectedSize), so every exit from it would fail at simulation. Each pool is
+    // withdrawn from as a real holder of its shares: its stake contract, which holds every bonded
+    // share, or the pool itself when it names itself as its stake contract. Only simulated: the
+    // source is a fresh public key with no secret anywhere, and nothing is submitted.
+    const rpc = getRpcServer("mainnet");
+    const poolEntries = await readPhoenixPools();
+    const byCode = new Map<string, { address: string; version: string }>();
+    for (const pool of entriesForProtocol("mainnet", "phoenix").filter((e) => e.kind === "pool")) {
+      if (pool.wasmHash && !byCode.has(pool.wasmHash)) byCode.set(pool.wasmHash, pool);
+    }
+    expect(byCode.size).toBeGreaterThan(1);
+    const source = new Account(Keypair.random().publicKey(), "0");
+    const results: Record<string, unknown> = {};
+    for (const [hash, { address: pool, version }] of byCode) {
+      const config = poolEntries.get(phoenixConfigKey(pool).toXdr("base64"));
+      const holder = config ? phoenixStakeContract(config) : null;
+      const reserve = (key: number) =>
+        scValToNative(
+          contractDataEntry(poolEntries.get(poolStorageKey(pool, key).toXdr("base64"))!).val
+        ) as bigint;
+      const empty = reserve(1) === 0n && reserve(2) === 0n;
+      const floor = empty ? 0n : 1n;
+      const tx = new TransactionBuilder(source, {
+        fee: "100",
+        networkPassphrase: NETWORK_PASSPHRASES.mainnet,
+      })
+        .addOperation(
+          new Contract(pool).call(
+            "withdraw_liquidity",
+            ...phoenixWithdrawArgs(
+              holder ?? pool,
+              1_000n,
+              floor,
+              floor,
+              phoenixWithdrawArgCount(version)
+            )
+          )
+        )
+        .setTimeout(0)
+        .build();
+      const simulation = await onceMoreIfRateLimited(() => rpc.simulateTransaction(tx));
+      results[`${hash} ${pool}`] = stellarRpc.Api.isSimulationSuccess(simulation)
+        ? (scValToNative(simulation.result!.retval) as bigint[]).map(String)
+        : `error: ${String((simulation as { error?: unknown }).error).split("\n")[0]}`;
+      if (empty) expect(results[`${hash} ${pool}`]).toEqual(["0", "0"]);
+      await Bun.sleep(2_000);
+    }
+    for (const [key, result] of Object.entries(results)) {
+      expect({ [key]: Array.isArray(result) && result.length === 2 }).toEqual({ [key]: true });
+    }
+  },
+  180_000
 );

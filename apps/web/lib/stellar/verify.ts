@@ -394,6 +394,31 @@ function assertSoroswapRemovalArguments(args: string[], source: string): void {
   }
 }
 
+/**
+ * `withdraw_liquidity(sender, share_amount, min_a, min_b, deadline, auto_unstake)`: the account
+ * withdraws its own shares, no deadline is set, and nothing is unbonded inside the call, since
+ * unbonding is its own reviewed step. Five arguments, without `auto_unstake`, are what the
+ * testnet pool's older build takes.
+ */
+function assertPhoenixWithdrawalArguments(args: string[], source: string): void {
+  if (args[0] !== source) {
+    throw new VerificationError(
+      "exit_argument_party_mismatch",
+      "A DeFi exit would act for, or pay, an address other than the account being closed."
+    );
+  }
+  if (
+    (args.length !== 5 && args.length !== 6) ||
+    !args.slice(1, 4).every((amount) => /^\d+$/.test(amount)) ||
+    !args.slice(4).every((arg) => arg === "null")
+  ) {
+    throw new VerificationError(
+      "exit_arguments_unexpected",
+      "A DeFi exit would withdraw liquidity with arguments LumenWipe does not use to leave the pool."
+    );
+  }
+}
+
 interface SwapArgs {
   /** The token being spent. */
   token: string;
@@ -1262,6 +1287,9 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
         if (op.function === "submit") assertBlendSubmitArguments(op.args, expected.source);
         if (op.function === "remove_liquidity") {
           assertSoroswapRemovalArguments(op.args, expected.source);
+        }
+        if (op.function === "withdraw_liquidity") {
+          assertPhoenixWithdrawalArguments(op.args, expected.source);
         }
         // Blend's `claim(from, ids, to)` and Aquarius's `claim(user)` both pay their last argument.
         if (

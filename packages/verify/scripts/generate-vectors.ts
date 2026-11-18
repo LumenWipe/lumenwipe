@@ -19,6 +19,7 @@ import {
   hash,
   Keypair,
   Memo,
+  nativeToScVal,
   Networks,
   Operation,
   TransactionBuilder,
@@ -943,6 +944,76 @@ reject(
 
 // --- Real DeFi exits, built by the API's adapters on testnet --------------------------------
 
+/** The real Phoenix withdrawal with its contract call's arguments, and its authorization's, replaced
+ *  by `edit`'s result. */
+function withPhoenixWithdrawArgs(
+  realXdr: string,
+  edit: (args: xdr.ScVal[], pool: xdr.ScAddress) => xdr.ScVal[]
+): string {
+  const envelope = xdr.TransactionEnvelope.fromXdr(realXdr, "base64");
+  if (envelope.type !== "envelopeTypeTx") throw new Error("the Phoenix withdrawal is not v1");
+  const body = envelope.v1.tx.operations[0]!.body;
+  if (body.type !== "invokeHostFunction") throw new Error("the Phoenix withdrawal is not a call");
+  const host = body.invokeHostFunctionOp.hostFunction;
+  if (host.type !== "hostFunctionTypeInvokeContract") throw new Error("not a contract call");
+  const call = host.invokeContract;
+  const args = edit(call.args, call.contractAddress);
+  (call as { args: xdr.ScVal[] }).args = args;
+  for (const entry of body.invokeHostFunctionOp.auth) {
+    const fn = entry.rootInvocation.function;
+    if (fn.type === "sorobanAuthorizedFunctionTypeContractFn") {
+      (fn.contractFn as { args: xdr.ScVal[] }).args = args;
+    }
+  }
+  return envelope.toXdr("base64");
+}
+
+/**
+ * The real withdrawal ran against the testnet pool's older build, whose `withdraw_liquidity` takes
+ * five arguments. Every mainnet pool code takes a sixth, `auto_unstake`, which LumenWipe always
+ * sends as `None`: the same call in that shape passes, and one that unbonds inside the call, or
+ * withdraws for another address, is refused.
+ */
+function phoenixWithdrawalVectors(real: AcceptVector, realXdr: string): void {
+  const sixArgs = accept(
+    "phoenix-withdraw-liquidity-six-args",
+    "The real testnet Phoenix withdrawal with the sixth argument every mainnet pool code takes, auto_unstake, set to None.",
+    withPhoenixWithdrawArgs(realXdr, (args) => [...args, xdr.ScVal.scvVoid()]),
+    real.input.expected,
+    { nowSeconds: real.nowSeconds }
+  );
+  const autoUnstake = xdr.ScVal.scvMap([
+    new xdr.ScMapEntry({
+      key: xdr.ScVal.scvSymbol("stake_amount"),
+      val: nativeToScVal(BigInt(1000), { type: "i128" }),
+    }),
+    new xdr.ScMapEntry({
+      key: xdr.ScVal.scvSymbol("stake_timestamp"),
+      val: nativeToScVal(BigInt(1), { type: "u64" }),
+    }),
+  ]);
+  reject(
+    sixArgs,
+    "phoenix-withdraw-liquidity-auto-unstake",
+    "Sets the sixth argument, auto_unstake, to a stake, so the withdrawal would unbond inside the call.",
+    withPhoenixWithdrawArgs(realXdr, (args) => [...args, autoUnstake]),
+    "exit_arguments_unexpected",
+    "A DeFi exit would withdraw liquidity with arguments LumenWipe does not use to leave the pool."
+  );
+  reject(
+    sixArgs,
+    "phoenix-withdraw-liquidity-sender-not-source",
+    "Names the pool itself, not the account being closed, as the sender whose shares are withdrawn.",
+    withPhoenixWithdrawArgs(realXdr, (args, pool) => [
+      xdr.ScVal.scvAddress(pool),
+      ...args.slice(1),
+      xdr.ScVal.scvVoid(),
+    ]),
+    "exit_argument_party_mismatch",
+    "A DeFi exit would act for, or pay, an address other than the account being closed."
+  );
+}
+
 for (const fixture of REAL_EXIT_ENVELOPES) {
   const { account } = fixture;
   const slug = fixture.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
@@ -984,6 +1055,7 @@ for (const fixture of REAL_EXIT_ENVELOPES) {
     "fee_above_cap",
     "A DeFi exit would pay a network fee far above what any exit needs."
   );
+  if (fixture.name === "Phoenix withdraw_liquidity") phoenixWithdrawalVectors(real, fixture.xdr);
 }
 
 export function buildVectorFile(): VectorFile {

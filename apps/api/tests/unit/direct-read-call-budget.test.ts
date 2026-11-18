@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { Address, Keypair, StrKey, xdr } from "@stellar/stellar-sdk";
 import * as contractRegistry from "@/lib/contract-registry";
 import { entriesForNetwork, type ContractRegistryEntry } from "@/lib/contract-registry";
+import { PHOENIX_BLENDED_VERSION } from "@/lib/defi-exits/phoenix";
 import {
   aquariusTokensHash,
   detectDefiPositionsViaDirectRead,
@@ -72,7 +73,12 @@ function mainnetShapedLedger() {
         xdr.ScVal.scvSymbol("CONFIG"),
         structVal({
           share_token: addr(randomContract()),
-          stake_contract: addr(stakes[i % stakes.length]!.address),
+          // The blended pool code has no staking and names itself as its stake contract.
+          stake_contract: addr(
+            pool.version === PHOENIX_BLENDED_VERSION
+              ? pool.address
+              : stakes[i % stakes.length]!.address
+          ),
           token_a: addr(randomContract()),
           token_b: addr(randomContract()),
         })
