@@ -20,6 +20,12 @@ release is cut.
   the five-argument shape of the testnet pool's older build are accepted. Three vectors cover
   it: a six-argument withdrawal that passes, and its mutations with an `auto_unstake` and with
   another sender.
+- The bundled contract registry lists two more mainnet Phoenix pools, both from the Phoenix
+  factory's own pool list. PHO/USDC `CCPPPTDW…` runs a later build of the v2 pool code, and its
+  stake contract `CBUS3GWD…` a build of the v2 stake code, so a withdrawal from that pool and an
+  `unbond` on that stake now pass. XLM/USDC `CBENABXP…` runs Phoenix's blended pool code under a
+  new version, `blended`. It has no stake contract of its own, so only its `withdraw_liquidity`
+  passes, and an `unbond` on it is still refused.
 - The bundled contract registry gives the testnet Phoenix pool `CCVEHSVG…` its own version,
   `v1-no-auto-unstake`, since its `withdraw_liquidity` takes no `auto_unstake` argument, unlike
   every mainnet pool code. Its address and code hash are unchanged; its `verifiedBy` and

@@ -9,6 +9,7 @@ import { StrKey, scValToNative, xdr } from "@stellar/stellar-sdk";
 import type { PhoenixLpPosition, PhoenixStakePosition } from "@lumenwipe/types";
 import { EXIT_POSITION_GONE, phoenixExitAdapter, runExitAdapter } from "@/lib/defi-exits";
 import {
+  PHOENIX_BLENDED_VERSION,
   PHOENIX_FIVE_ARG_WITHDRAW_VERSION,
   phoenixNewLpKey,
   phoenixStakeConfigKey,
@@ -74,6 +75,9 @@ const KNOWN = registry([
   entry({}),
   entry({ address: STAKE_CONTRACT, wasmHash: PHX_STAKE_HASH, kind: "stake" }),
 ]);
+
+/** Phoenix's pool_blended code, as mainnet CBENABXP… runs it: no stake contract of its own. */
+const BLENDED = registry([entry({ version: PHOENIX_BLENDED_VERSION })]);
 
 /** Detection overstates on purpose: the harness checks that amounts come from the live read. */
 const lpPosition: PhoenixLpPosition = {
@@ -180,6 +184,20 @@ describeExitAdapterInvariants("phoenix pool", {
       rpc: rpc({ shares: 0n, stakes: [{ amount: 1n, timestamp: 1n }], stakeLpToken: OLD_LP_TOKEN }),
       registry: KNOWN,
       expectCodes: ["phoenix_stake_token_mismatch"],
+    },
+    {
+      name: "a stake position in a pool that names itself as its stake contract",
+      position: stakePosition,
+      rpc: rpc({ stakeContract: POOL }),
+      registry: BLENDED,
+      expectCodes: ["phoenix_pool_has_no_staking"],
+    },
+    {
+      name: "a blended pool that has lent out more than it can pay this withdrawal",
+      position: lpPosition,
+      rpc: rpc({ stakeContract: POOL, delegatedOut: [950_000_000n, 0n] }),
+      registry: BLENDED,
+      expectCodes: ["phoenix_pool_liquidity_delegated"],
     },
   ],
   ctx,
@@ -396,6 +414,67 @@ describe("phoenix exit adapter", () => {
 
   test("plain shares are withdrawn as usual when only the stake contract pays another token", async () => {
     const result = await run({ stakeLpToken: OLD_LP_TOKEN });
+    expect(result.blockers).toEqual([]);
+    expect(result.plan.map((s) => s.kind)).toEqual(["lp_withdraw"]);
+  });
+});
+
+describe("a blended pool, which names itself as its stake contract", () => {
+  async function runBlended(
+    position: PhoenixLpPosition | PhoenixStakePosition,
+    over: Partial<FakePhoenixOptions> = {},
+    lookup: ContractRegistryLookup = BLENDED
+  ) {
+    return runExitAdapter(adapter, position, ctx, {
+      rpc: rpc({ stakeContract: POOL, ...over }),
+      resolveCode: lookup.resolveCode,
+      isRegistryFresh: () => true,
+    });
+  }
+
+  test("withdraws an LP position from the pool and never plans an unbond against it", async () => {
+    // A bonding entry under the account's address in the pool's own storage is not a stake.
+    const result = await runBlended(lpPosition, {
+      stakes: [{ amount: 3_000_000n, timestamp: 1n }],
+    });
+    expect(result.blockers).toEqual([]);
+    expect(result.plan.map((s) => [s.kind, s.contract, s.function])).toEqual([
+      ["lp_withdraw", POOL, "withdraw_liquidity"],
+    ]);
+    expect(invocationArgs(result.next!.simulation.txXdr)).toHaveLength(6);
+  });
+
+  test("a stake position there is refused before anything is read as a stake: leavable", async () => {
+    const result = await runBlended(stakePosition, {
+      stakes: [{ amount: 3_000_000n, timestamp: 1n }],
+    });
+    expect(result.plan).toEqual([]);
+    expect(result.next).toBeNull();
+    expect(result.blockers.map((b) => b.code)).toEqual(["phoenix_pool_has_no_staking"]);
+    expect(result.leaveEligible).toBe(true);
+  });
+
+  test("a withdrawal larger than what the pool holds after lending is not built: leavable", async () => {
+    // 10% of the shares pays 100 XLM-units of reserve A; the pool holds 50 of its 1,000.
+    for (const delegatedOut of [
+      [950_000_000n, 0n],
+      [0n, 1_900_000_000n],
+    ] as [bigint, bigint][]) {
+      const result = await runBlended(lpPosition, { delegatedOut });
+      expect(result.plan).toEqual([]);
+      expect(result.blockers.map((b) => b.code)).toEqual(["phoenix_pool_liquidity_delegated"]);
+      expect(result.leaveEligible).toBe(true);
+    }
+  });
+
+  test("a withdrawal the pool can still pay after lending is built", async () => {
+    const result = await runBlended(lpPosition, { delegatedOut: [900_000_000n, 1_800_000_000n] });
+    expect(result.blockers).toEqual([]);
+    expect(result.plan.map((s) => s.kind)).toEqual(["lp_withdraw"]);
+  });
+
+  test("only the blended code's lending is read: other pool codes ignore keys 6 and 7", async () => {
+    const result = await run({ delegatedOut: [1_000_000_000n, 2_000_000_000n] });
     expect(result.blockers).toEqual([]);
     expect(result.plan.map((s) => s.kind)).toEqual(["lp_withdraw"]);
   });

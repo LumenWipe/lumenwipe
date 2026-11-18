@@ -405,6 +405,9 @@ describe("mainnet exits through every live pool the registry lists, not only its
   const PHOENIX_XLM_USDC = "CBHCRSVX3ZZ7EGTSYMKPEFGZNWRVCSESQR3UABET4MIW52N4EVU6BIZX";
   const PHOENIX_XLM_USDC_SHARE = "CBTCSVZBJFGMW7E2LKFKRIUARUKZK2DTBUC7X5QPQJLXMAH42DB3ALE5";
   const AQUARIUS_UNLISTED_POOL = StrKey.encodeContract(Buffer.alloc(32, 8));
+  /** Mainnet's blended Phoenix pool: deployed without staking, it names itself as its stake. */
+  const PHOENIX_BLENDED = "CBENABXP6C4C7WG6KB7JQOTDS5GIIXF3IX3PIYNZFCDZDWUHITO2HZ4S";
+  const PHOENIX_BLENDED_SHARE = "CBMZ76PQDAKGHWQ22CITGTD4A6YD6XQ5SVNGBG75VAT3BB2KZE36HASJ";
   const AQUARIUS_SHARE = StrKey.encodeContract(Buffer.alloc(32, 9));
 
   function mainnetAccount(
@@ -538,7 +541,7 @@ describe("mainnet exits through every live pool the registry lists, not only its
     const stakes = embeddedRegistry.entries
       .filter((e) => e.network === "mainnet" && e.protocol === "phoenix" && e.kind === "stake")
       .map((e) => e.address);
-    expect(stakes).toHaveLength(11);
+    expect(stakes).toHaveLength(12);
     for (const stake of stakes) {
       expect(() =>
         assertCloseIntent(exitOnly(call(stake, "unbond")), mainnetExpectation(account))
@@ -547,6 +550,35 @@ describe("mainnet exits through every live pool the registry lists, not only its
     expect(() =>
       assertCloseIntent(exitOnly(call(UNLISTED_POOL, "unbond")), mainnetExpectation(account))
     ).toThrow();
+  });
+
+  test("the blended Phoenix pool is withdrawn from, and never unbonded from as a stake", () => {
+    const account = mainnetAccount(
+      [
+        {
+          protocol: "phoenix",
+          positionType: "lp",
+          contractAddress: PHOENIX_BLENDED,
+          shareAmount: "1",
+          usdValue: null,
+        },
+      ] as AccountState["defiPositions"]["positions"],
+      [{ contract: PHOENIX_BLENDED_SHARE, balance: "1000" }]
+    );
+    const withdraw: InvokeOperation = {
+      ...call(PHOENIX_BLENDED, "withdraw_liquidity", [PHOENIX_BLENDED_SHARE]),
+      subInvocations: [
+        {
+          contract: PHOENIX_BLENDED_SHARE,
+          function: "transfer",
+          args: [SRC, PHOENIX_BLENDED, "1000"],
+        },
+      ],
+    };
+    expect(() => assertCloseIntent(exitOnly(withdraw), mainnetExpectation(account))).not.toThrow();
+    expect(() =>
+      assertCloseIntent(exitOnly(call(PHOENIX_BLENDED, "unbond")), mainnetExpectation(account))
+    ).toThrow(/function LumenWipe does not use/);
   });
 
   test("an Aquarius withdraw on an unlisted pool burns only its own share token, so it passes", () => {

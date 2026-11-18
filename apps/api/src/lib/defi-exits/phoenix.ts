@@ -56,6 +56,13 @@ export interface PhoenixStakeEntry {
  *  `auto_unstake` argument. No mainnet entry runs it. */
 export const PHOENIX_FIVE_ARG_WITHDRAW_VERSION = "v1-no-auto-unstake";
 
+/**
+ * The registry version of Phoenix's `pool_blended` code. It is deployed without staking, naming
+ * itself as its own stake contract, and its delegate may lend part of each reserve out (to Blend)
+ * while the stored reserve stays the same; what is lent out is kept under persistent keys 6 and 7.
+ */
+export const PHOENIX_BLENDED_VERSION = "blended";
+
 /** How many arguments `withdraw_liquidity` takes on the pool code the registry names `version`. */
 export const phoenixWithdrawArgCount = (version: string): 5 | 6 =>
   version === PHOENIX_FIVE_ARG_WITHDRAW_VERSION ? 5 : 6;
@@ -72,6 +79,9 @@ export interface PhoenixPoolState {
   unbondToken: string | null;
   reserveA: bigint;
   reserveB: bigint;
+  /** What a blended pool's delegate has lent out of each reserve; 0 for every other pool code. */
+  delegatedOutA: bigint;
+  delegatedOutB: bigint;
   totalShares: bigint;
   /** The account's unstaked LP shares; base units, same decimals as `shareToken`. */
   shares: bigint;
@@ -90,6 +100,8 @@ export type PhoenixLive =
   /** The stake contract reads fine but the account's bonding entry is not on the ledger at all -
    *  only reported when a stake position was detected here, so real stakes are expected. */
   | { status: "stakes_unreadable" }
+  /** A stake position in a pool that names itself as its stake contract: it has no staking. */
+  | { status: "no_staking" }
   | { status: "unreadable" };
 
 export type PhoenixPosition = PhoenixLpPosition | PhoenixStakePosition;
@@ -189,6 +201,8 @@ export function phoenixUnbondToken(
 }
 
 const totalSharesKey = (pool: string): xdr.LedgerKey => persistentKey(pool, xdr.ScVal.scvU32(0));
+const delegatedOutAKey = (pool: string): xdr.LedgerKey => persistentKey(pool, xdr.ScVal.scvU32(6));
+const delegatedOutBKey = (pool: string): xdr.LedgerKey => persistentKey(pool, xdr.ScVal.scvU32(7));
 const reserveAKey = (pool: string): xdr.LedgerKey => persistentKey(pool, xdr.ScVal.scvU32(1));
 const reserveBKey = (pool: string): xdr.LedgerKey => persistentKey(pool, xdr.ScVal.scvU32(2));
 
@@ -290,8 +304,16 @@ export function phoenixExitAdapter(): ExitAdapter<PhoenixPosition, PhoenixLive> 
           return { status: "unreadable" };
         }
 
+        // A pool naming itself as its stake contract has no staking: nothing is read from it as a
+        // stake contract, and no unbond can ever be planned against it.
+        const selfStaked = stakeContract === pool;
+        if (selfStaked && position.positionType === "stake") return { status: "no_staking" };
+        const blended = code.version === PHOENIX_BLENDED_VERSION;
+
         const reserveAK = reserveAKey(pool);
         const reserveBK = reserveBKey(pool);
+        const delegatedAK = delegatedOutAKey(pool);
+        const delegatedBK = delegatedOutBKey(pool);
         const shareBalanceKey = balanceKey(shareToken, ctx.account);
         const bondingKey = bondingInfoKey(stakeContract, ctx.account);
         const stakeConfigKey = phoenixStakeConfigKey(stakeContract);
@@ -302,15 +324,22 @@ export function phoenixExitAdapter(): ExitAdapter<PhoenixPosition, PhoenixLive> 
           reserveAK,
           reserveBK,
           shareBalanceKey,
-          bondingKey,
-          stakeConfigKey,
-          newLpKey,
+          ...(selfStaked ? [] : [bondingKey, stakeConfigKey, newLpKey]),
+          ...(blended ? [delegatedAK, delegatedBK] : []),
           tokenAKey,
           tokenBKey,
         ]);
         const reserveA = asUnsigned(entryVal(second.get(reserveAK.toXdr("base64"))));
         const reserveB = asUnsigned(entryVal(second.get(reserveBK.toXdr("base64"))));
         if (reserveA === null || reserveB === null) return { status: "unreadable" };
+        // The pool writes these only once its delegate first lends something out.
+        const delegated = (key: xdr.LedgerKey): bigint | null => {
+          const val = second.get(key.toXdr("base64"));
+          return val ? asUnsigned(contractDataEntry(val).val) : 0n;
+        };
+        const delegatedOutA = blended ? delegated(delegatedAK) : 0n;
+        const delegatedOutB = blended ? delegated(delegatedBK) : 0n;
+        if (delegatedOutA === null || delegatedOutB === null) return { status: "unreadable" };
 
         // The share token writes a zero balance on a full withdrawal and keeps the entry (SEP-41
         // convention); a present-but-empty stake entry behaves the same way. An archived entry is
@@ -321,7 +350,7 @@ export function phoenixExitAdapter(): ExitAdapter<PhoenixPosition, PhoenixLive> 
         const shares = shareEntry ? asUnsigned(contractDataEntry(shareEntry).val) : 0n;
         if (shares === null) return { status: "unreadable" };
 
-        const bondingEntry = second.get(bondingKey.toXdr("base64"));
+        const bondingEntry = selfStaked ? undefined : second.get(bondingKey.toXdr("base64"));
         if (!bondingEntry && position.positionType === "stake") {
           return { status: "stakes_unreadable" };
         }
@@ -346,12 +375,16 @@ export function phoenixExitAdapter(): ExitAdapter<PhoenixPosition, PhoenixLive> 
           tokenB,
           shareToken,
           stakeContract,
-          unbondToken: phoenixUnbondToken(
-            second.get(stakeConfigKey.toXdr("base64")),
-            second.get(newLpKey.toXdr("base64"))
-          ),
+          unbondToken: selfStaked
+            ? null
+            : phoenixUnbondToken(
+                second.get(stakeConfigKey.toXdr("base64")),
+                second.get(newLpKey.toXdr("base64"))
+              ),
           reserveA,
           reserveB,
+          delegatedOutA,
+          delegatedOutB,
           totalShares,
           shares,
           stakes,
@@ -385,6 +418,13 @@ export function phoenixExitAdapter(): ExitAdapter<PhoenixPosition, PhoenixLive> 
           `This account's staked position in Phoenix pool ${pool} is not on the ledger, although ` +
             "the stake was detected there. No exit was built so the stake is not left behind; " +
             "retry the analysis, and if it persists unbond through Phoenix before continuing."
+        );
+      }
+      if (live.status === "no_staking") {
+        return manualReview(
+          "phoenix_pool_has_no_staking",
+          `Phoenix pool ${pool} has no staking, so this account cannot hold a stake in it and ` +
+            "nothing was unbonded. No exit was built; this position needs manual review."
         );
       }
       if (live.status === "unreadable") {
@@ -446,6 +486,22 @@ export function phoenixExitAdapter(): ExitAdapter<PhoenixPosition, PhoenixLive> 
         return { steps, blockers: [] };
       }
 
+      // A blended pool pays withdrawals from what it holds; reserves its delegate lent out are not
+      // there until they come back, and a larger withdrawal would fail at the ledger.
+      const payoutA = (live.shares * live.reserveA) / live.totalShares;
+      const payoutB = (live.shares * live.reserveB) / live.totalShares;
+      if (
+        payoutA > live.reserveA - live.delegatedOutA ||
+        payoutB > live.reserveB - live.delegatedOutB
+      ) {
+        return manualReview(
+          "phoenix_pool_liquidity_delegated",
+          `Phoenix pool ${pool} has lent part of its reserves out, and what it holds right now is ` +
+            "less than this withdrawal would pay. No exit was built; retry once the pool holds " +
+            "enough, or withdraw through Phoenix."
+        );
+      }
+
       const native = Asset.native().contractId(NETWORK_PASSPHRASES[ctx.network]);
       const needsTrustline = (token: string): boolean =>
         token !== native && live.stellarAssetTokens.has(token) && !(token in ctx.tokenBalances);
@@ -463,14 +519,8 @@ export function phoenixExitAdapter(): ExitAdapter<PhoenixPosition, PhoenixLive> 
       }
       if (blockers.length > 0) return { steps: [], blockers };
 
-      const minA = minReceivedFromQuote(
-        ((live.shares * live.reserveA) / live.totalShares).toString(),
-        ctx.slippageBps
-      );
-      const minB = minReceivedFromQuote(
-        ((live.shares * live.reserveB) / live.totalShares).toString(),
-        ctx.slippageBps
-      );
+      const minA = minReceivedFromQuote(payoutA.toString(), ctx.slippageBps);
+      const minB = minReceivedFromQuote(payoutB.toString(), ctx.slippageBps);
       if (minA === "0" || minB === "0") {
         return manualReview(
           "phoenix_position_too_small",

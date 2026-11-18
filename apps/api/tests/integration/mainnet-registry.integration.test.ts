@@ -16,6 +16,7 @@ import { contractDataEntry } from "@/lib/stellar/contract-data";
 import { getRpcServer } from "@/lib/stellar/rpc";
 import { UpstreamError } from "@/lib/stellar/upstream-client";
 import {
+  PHOENIX_BLENDED_VERSION,
   phoenixConfigKey,
   phoenixNewLpKey,
   phoenixShareToken,
@@ -152,15 +153,17 @@ function readPhoenixPools(): Promise<Map<string, xdr.LedgerEntryData>> {
 }
 
 test.skipIf(!RUN_INTEGRATION)(
-  "every listed mainnet Phoenix pool names, in its own CONFIG, a stake contract the registry lists, and that stake pays the pool's share_token on unbond",
+  "every listed mainnet Phoenix pool names, in its own CONFIG, a stake contract the registry lists, and that stake pays the pool's share_token on unbond; only a blended pool names itself",
   async () => {
     // A stake paying another token would make an unbond-then-withdraw chain hand the pool a token
     // it does not take; the adapter blocks that live, and this catches the registry drifting there.
+    // A pool that names itself has no staking: only the blended code is registered that way.
     const phoenix = entriesForProtocol("mainnet", "phoenix");
     const poolEntries = await readPhoenixPools();
     const stakes = new Set(phoenix.filter((e) => e.kind === "stake").map((e) => e.address));
     const named = new Set<string>();
     const missing: string[] = [];
+    const selfStaked: string[] = [];
     const unbondMismatches: string[] = [];
     const pairs: Array<{ pool: string; stake: string; shareToken: string }> = [];
     for (const pool of phoenix.filter((e) => e.kind === "pool")) {
@@ -170,6 +173,10 @@ test.skipIf(!RUN_INTEGRATION)(
           ? (scValToNative(data.contractData.val) as { stake_contract?: string })
           : {};
       const stake = config.stake_contract ?? "unreadable";
+      if (stake === pool.address) {
+        selfStaked.push(`${pool.version} ${pool.address}`);
+        continue;
+      }
       named.add(stake);
       if (!stakes.has(stake)) missing.push(`${pool.address}: ${stake}`);
       const shareToken = data ? phoenixShareToken(data) : null;
@@ -195,6 +202,10 @@ test.skipIf(!RUN_INTEGRATION)(
       }
     }
     expect(missing).toEqual([]);
+    expect(selfStaked.filter((s) => !s.startsWith(`${PHOENIX_BLENDED_VERSION} `))).toEqual([]);
+    expect(selfStaked.length).toBe(
+      phoenix.filter((e) => e.kind === "pool" && e.version === PHOENIX_BLENDED_VERSION).length
+    );
     expect([...stakes].filter((s) => !named.has(s))).toEqual([]);
     expect(unbondMismatches).toEqual([]);
   },
