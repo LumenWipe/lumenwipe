@@ -36,7 +36,7 @@ export XDG_CONFIG_HOME="$(mktemp -d)"
 stellar keys add operator --secret-key
 ```
 
-`operator` is the operator account that funds the new relay account and receives the old one's balance; paste its secret at the prompt. It must not be either relay account.
+`operator` is the operator account that funds the new relay account and receives the old one's balance; paste its secret at the prompt. It must not be either relay account, and it must be the address in the `Rotation operator (<net>)` row of the [inventory table](/monitoring-plan#1-what-are-we-monitoring) and the `OPERATOR_ADDRESS_<NET>` repository variable: the forward check recognises the drain in step 9 only as a merge into that address.
 
 1. **Compromise only: pause exchange closes.**
 
@@ -99,7 +99,7 @@ stellar keys add operator --secret-key
    gh workflow run onchain-monitors.yml && gh run watch "$(gh run list --workflow onchain-monitors.yml --limit 1 --json databaseId -q '.[0].databaseId')"
    ```
 
-   Expected: every job succeeds, and the config step lists both `mediator (<net>): <new>` and `mediator (retired) (<net>): <old>`. Check for the retired line: a misspelled variable name is never passed to the workflow and would leave the old address unwatched without an error.
+   Expected: every job succeeds, and the config step lists both `mediator (<net>): <new>` and `mediator (retired) (<net>): <old>, drained into <operator address>`. Check for the retired line: a misspelled variable name is never passed to the workflow and would leave the old address unwatched without an error.
 
 8. **Wait 6 minutes** from the switch in step 5. A signed close is valid for at most 330 seconds (`MAX_SIGNED_VALIDITY_SECONDS`), so after this no close co-signed by the old key can still land.
 
@@ -115,7 +115,7 @@ stellar keys add operator --secret-key
    curl -s -o /dev/null -w '%{http_code}\n' https://horizon-testnet.stellar.org/accounts/<old>
    ```
 
-   Expected: `stellar tx send` exits with status 0 and prints the transaction result, and Horizon answers `404` for `<old>`. The `bump-sequence` to 0 is a no-op that lets the operator be the source; the fee covers its two operations. In a compromise, whoever holds the old key can make the merge fail first (`op_has_sub_entries`, by adding a trustline or a signer): the most that costs is the old account's 1 XLM, and the retired monitor reports the transaction that did it.
+   Expected: `stellar tx send` exits with status 0 and prints the transaction result, and Horizon answers `404` for `<old>`. The next monitor run stays green: the keys check sees no transaction sourced from `<old>`, and the forward check reads this merge into the operator as the drain. For the rest of the 24 hours, any other transaction the old key signs, or any merge or payment out of `<old>` to another address, is reported as a suspected key compromise. The `bump-sequence` to 0 is a no-op that lets the operator be the source; the fee covers its two operations. In a compromise, whoever holds the old key can make the merge fail first (`op_has_sub_entries`, by adding a trustline or a signer): the most that costs is the old account's 1 XLM, and the keys check reports the transaction that did it, whoever sourced it.
 
 10. **After 24 hours, stop watching the old account** and clean up:
 

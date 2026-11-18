@@ -34,6 +34,11 @@ env:
   FEE_ACCOUNT_ADDRESS_TESTNET_RETIRED: ${{ vars.FEE_ACCOUNT_ADDRESS_TESTNET_RETIRED }}
   MEDIATOR_ADDRESS_MAINNET_RETIRED: ${{ vars.MEDIATOR_ADDRESS_MAINNET_RETIRED }}
   FEE_ACCOUNT_ADDRESS_MAINNET_RETIRED: ${{ vars.FEE_ACCOUNT_ADDRESS_MAINNET_RETIRED }}
+  # The account a rotation drains a retired address into, held to its row of the plan like the
+  # addresses above. The forward check reads that merge, in a transaction the operator sourced,
+  # as the drain rather than a payout.
+  OPERATOR_ADDRESS_TESTNET: ${{ vars.OPERATOR_ADDRESS_TESTNET }}
+  OPERATOR_ADDRESS_MAINNET: ${{ vars.OPERATOR_ADDRESS_MAINNET }}
   # How many hours of history the keys and forward checks read; unset means 168.
   MONITOR_HISTORY_HOURS: ${{ vars.MONITOR_HISTORY_HOURS }}
 
@@ -69,7 +74,8 @@ jobs:
     permissions:
       contents: read
     # The report reads each check from these. Anything but `success`, an empty value included,
-    # is a finding there.
+    # is a finding there. A failing check fails its step and this job, so the run shows it red;
+    # each check still runs after another one failed, and none runs after a config failure.
     outputs:
       config: ${{ steps.config.outcome }}
       keys: ${{ steps.keys.outcome }}
@@ -93,19 +99,19 @@ jobs:
 
       - name: Service keys have not signed anything
         id: keys
-        continue-on-error: true
+        if: ${{ !cancelled() && steps.config.outcome == 'success' }}
         working-directory: apps/api
         run: bun run scripts/monitors/service-accounts.ts keys
 
       - name: Service accounts are above their balance floor
         id: balances
-        continue-on-error: true
+        if: ${{ !cancelled() && steps.config.outcome == 'success' }}
         working-directory: apps/api
         run: bun run scripts/monitors/service-accounts.ts balances
 
-      - name: The mediator never paid out more than a merge delivered
+      - name: No relay or retired account paid out more than a merge delivered
         id: forward
-        continue-on-error: true
+        if: ${{ !cancelled() && steps.config.outcome == 'success' }}
         working-directory: apps/api
         run: bun run scripts/monitors/service-accounts.ts forward
 
@@ -152,7 +158,7 @@ jobs:
             "- variables, monitoring plan and stellar.toml agree: $CONFIG" \
             "- service keys have not signed anything: $KEYS" \
             "- service accounts are above their balance floor: $BALANCES" \
-            "- the mediator never paid out more than a merge delivered: $FORWARD")
+            "- no relay or retired account paid out more than a merge delivered: $FORWARD")
 
           # The registry's `cancelled` and `skipped` are a superseded run, a human stopping a job,
           # or the hourly run leaving it to the daily one: not findings.
@@ -193,9 +199,9 @@ jobs:
             "stellar.toml disagree, or one the plan expects is unset: the checks did not run." \
             "Fix the variable or the plan; the run log names which." \
             "" \
-            "A service-key or mediator-forward failure is different. It means a key the API holds" \
-            "signed a transaction this codebase did not build, or the mediator paid out of its own" \
-            "balance. Treat it as a suspected key compromise: rotate the key and audit every" \
+            "A service-key or forward failure is different. It means a key the API holds signed a" \
+            "transaction this codebase did not build, or the mediator or a retired account paid out" \
+            "of its own balance. Treat it as a suspected key compromise: rotate the key and audit every" \
             "transaction it signed or paid for." \
             "" \
             "This issue closes itself on the next clean daily run, including a manual one from the" \

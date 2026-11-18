@@ -70,11 +70,11 @@ The steps follow the [relay account rotation](/runbooks/rotate-relay-account), w
 
    Expected: `<new>` as `fee_account`, and the closed account, never `<new>`, as `source_account`.
 
-7. **Monitors**, before the drain: set `FEE_ACCOUNT_ADDRESS_<NET>` to `<new>` and `FEE_ACCOUNT_ADDRESS_<NET>_RETIRED` to `<old>`, merge the change to the `Fee-bump sponsor (<net>)` row of the inventory table in the same hour, and run the workflow. Expected: the config step lists `sponsor (<net>): <new>` and `sponsor (retired) (<net>): <old>`, every job succeeds, and the balances step reports only `<new>`.
+7. **Monitors**, before the drain: set `FEE_ACCOUNT_ADDRESS_<NET>` to `<new>` and `FEE_ACCOUNT_ADDRESS_<NET>_RETIRED` to `<old>`, merge the change to the `Fee-bump sponsor (<net>)` row of the inventory table in the same hour, and run the workflow. Expected: the config step lists `sponsor (<net>): <new>` and `sponsor (retired) (<net>): <old>, drained into <operator address>`, every job succeeds, and the balances step reports only `<new>`.
 
 8. **Wait 6 minutes** after the new revision took traffic, so no fee bump signed by the old key can still land.
 
-9. **Drain the old account** with the operator as the transaction source, exactly as in [the relay runbook, step 9](/runbooks/rotate-relay-account#steps), using an `old-sponsor` identity piped from the previous secret version. Expected: Horizon answers `404` for `<old>` and the float is back with the operator.
+9. **Drain the old account** with the operator as the transaction source, exactly as in [the relay runbook, step 9](/runbooks/rotate-relay-account#steps), using an `old-sponsor` identity piped from the previous secret version. Expected: Horizon answers `404` for `<old>` and the float is back with the operator. The next monitor run stays green: the keys check sees no transaction sourced from `<old>`, and the forward check reads this merge into the operator as the drain, while fee bumps `<old>` paid for before the switch raise nothing. Until the drain and for the rest of the 24 hours, any transaction the old key sources, and any merge or payment out of `<old>` to another address, is reported as a suspected key compromise.
 
 10. **After 24 hours**: `gh variable delete FEE_ACCOUNT_ADDRESS_<NET>_RETIRED`, disable the previous secret version, and `rm -rf "$XDG_CONFIG_HOME"`.
 

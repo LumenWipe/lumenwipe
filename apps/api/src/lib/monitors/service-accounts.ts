@@ -20,6 +20,8 @@ export interface ServiceAccount {
   floorXlm: string;
   /** A rotated-out address, still watched for use of its key after it was drained. */
   retired?: true;
+  /** The rotation operator a retired address is drained into: the one merge that is no payout. */
+  drainTo?: string;
 }
 
 export interface HorizonAccount {
@@ -37,10 +39,31 @@ export interface HorizonTransactionPage {
   _embedded: { records: HorizonTransaction[] };
 }
 
+/** One operation from an account's operations, with `join=transactions` embedding its transaction. */
+export interface HorizonOperation {
+  type: string;
+  /** The operation's source: its own when set, the transaction's otherwise. */
+  source_account: string;
+  transaction_hash: string;
+  created_at: string;
+  paging_token: string;
+  /** account_merge: the destination. */
+  into?: string;
+  /** payment: the asset paid. */
+  asset_type?: string;
+  transaction?: { source_account: string };
+}
+
+export interface HorizonOperationPage {
+  _embedded: { records: HorizonOperation[] };
+}
+
 export interface HorizonEffect {
   type: string;
   account?: string;
   amount?: string;
+  /** `<operation id>-<index>`: the operation that produced the effect. */
+  paging_token?: string;
 }
 
 /** A condition that fired, in the form the workflow prints and the alert carries. */
@@ -59,9 +82,10 @@ const NETWORKS: readonly ServiceNetwork[] = ["testnet", "mainnet"];
 const FLOOR_XLM: Record<ServiceRole, string> = { mediator: "1", sponsor: "50" };
 
 /** The row labels of the inventory table in docs/monitoring-plan.md section 1. */
-const PLAN_LABEL: Record<ServiceRole, string> = {
+const PLAN_LABEL: Record<PlannedRole, string> = {
   mediator: "Mediator account",
   sponsor: "Fee-bump sponsor",
+  operator: "Rotation operator",
 };
 
 const NOT_DEPLOYED = "not yet deployed";
@@ -79,12 +103,20 @@ export function retiredVariable(role: ServiceRole, network: ServiceNetwork): str
   return `${addressVariable(role, network)}_RETIRED`;
 }
 
-/** Each service account's address as the plan lists it, or null where it says not yet deployed. */
-export type PlannedAccounts = Record<ServiceNetwork, Record<ServiceRole, string | null>>;
+/** The variable that holds the account a rotation drains a retired address into. */
+export function operatorVariable(network: ServiceNetwork): string {
+  return `OPERATOR_ADDRESS_${network.toUpperCase()}`;
+}
+
+/** The service accounts and the rotation operator, each a row of the plan's inventory. */
+export type PlannedRole = ServiceRole | "operator";
+
+/** Each address as the plan lists it, or null where it says not yet deployed. */
+export type PlannedAccounts = Record<ServiceNetwork, Record<PlannedRole, string | null>>;
 
 export function plannedAccounts(markdown: string): PlannedAccounts {
   const lines = markdown.split("\n");
-  const cell = (role: ServiceRole, network: ServiceNetwork): string | null => {
+  const cell = (role: PlannedRole, network: ServiceNetwork): string | null => {
     const label = `${PLAN_LABEL[role]} (${network})`;
     const row = lines.find((line) => line.split("|")[1]?.trim() === label);
     if (!row) throw new Error(`${PLAN_PATH} has no "${label}" row in its inventory table`);
@@ -98,10 +130,12 @@ export function plannedAccounts(markdown: string): PlannedAccounts {
     }
     return address;
   };
-  return {
-    testnet: { mediator: cell("mediator", "testnet"), sponsor: cell("sponsor", "testnet") },
-    mainnet: { mediator: cell("mediator", "mainnet"), sponsor: cell("sponsor", "mainnet") },
-  };
+  const network = (n: ServiceNetwork) => ({
+    mediator: cell("mediator", n),
+    sponsor: cell("sponsor", n),
+    operator: cell("operator", n),
+  });
+  return { testnet: network("testnet"), mainnet: network("mainnet") };
 }
 
 /**
@@ -118,33 +152,53 @@ export function loadServiceAccounts(
   const problems: string[] = [];
   const accounts: ServiceAccount[] = [];
 
+  /** The variable's account id, held to the plan's row; null when unset or not an account id. */
+  const agreed = (name: string, what: string, planned: string | null): string | null => {
+    const value = env[name] ?? "";
+    if (value === "") {
+      if (planned !== null) {
+        problems.push(
+          `${name} is not set, but ${PLAN_PATH} lists the ${what} account. ` +
+            "Set it as a repository variable."
+        );
+      }
+      return null;
+    }
+    if (!StrKey.isValidEd25519PublicKey(value)) {
+      problems.push(`${name} is not a Stellar account id`);
+      return null;
+    }
+    if (value !== planned) {
+      problems.push(
+        `${name} is ${value}, but ${PLAN_PATH} lists the ${what} account as ` +
+          `${planned ?? NOT_DEPLOYED}. A rotation updates both.`
+      );
+    }
+    return value;
+  };
+
   for (const network of NETWORKS) {
     for (const role of ROLES) {
       const name = addressVariable(role, network);
-      const value = env[name] ?? "";
-      const planned = plan[network][role];
-      if (value === "") {
-        if (planned !== null) {
-          problems.push(
-            `${name} is not set, but ${PLAN_PATH} lists the ${role} (${network}) account. ` +
-              "Set it as a repository variable."
-          );
-        }
-        continue;
+      const value = agreed(name, `${role} (${network})`, plan[network][role]);
+      if (value !== null) {
+        accounts.push({ role, network, address: value, floorXlm: FLOOR_XLM[role] });
       }
-      if (!StrKey.isValidEd25519PublicKey(value)) {
-        problems.push(`${name} is not a Stellar account id`);
-        continue;
-      }
-      if (value !== planned) {
-        problems.push(
-          `${name} is ${value}, but ${PLAN_PATH} lists the ${role} (${network}) account as ` +
-            `${planned ?? NOT_DEPLOYED}. A rotation updates both.`
-        );
-      }
-      accounts.push({ role, network, address: value, floorXlm: FLOOR_XLM[role] });
     }
   }
+
+  const operators: Record<ServiceNetwork, string | null> = {
+    testnet: agreed(
+      operatorVariable("testnet"),
+      "rotation operator (testnet)",
+      plan.testnet.operator
+    ),
+    mainnet: agreed(
+      operatorVariable("mainnet"),
+      "rotation operator (mainnet)",
+      plan.mainnet.operator
+    ),
+  };
 
   const listed = (stellarToml as { ACCOUNTS?: unknown } | null)?.ACCOUNTS ?? [];
   if (!Array.isArray(listed) || !listed.every((a) => typeof a === "string")) {
@@ -179,7 +233,36 @@ export function loadServiceAccounts(
         );
         continue;
       }
-      accounts.push({ role, network, address: value, floorXlm: FLOOR_XLM[role], retired: true });
+      const drainTo = operators[network];
+      if (drainTo === null) {
+        problems.push(
+          `${name} is set, but ${operatorVariable(network)} is not: the forward check could not ` +
+            "tell the rotation's drain from a payout. Set it, and its row in " +
+            `${PLAN_PATH}, to the account the rotation drains into.`
+        );
+        continue;
+      }
+      accounts.push({
+        role,
+        network,
+        address: value,
+        floorXlm: FLOOR_XLM[role],
+        retired: true,
+        drainTo,
+      });
+    }
+  }
+
+  // A drain into a service account would read as that account's own credit, and the runbooks
+  // drain into an account that is neither relay nor sponsor.
+  for (const network of NETWORKS) {
+    const operator = operators[network];
+    const clash = accounts.find((a) => a.network === network && a.address === operator);
+    if (clash) {
+      problems.push(
+        `${operatorVariable(network)} is the ${roleLabel(clash)} (${network}) account. ` +
+          "The rotation operator must be neither relay nor sponsor."
+      );
     }
   }
 
@@ -213,6 +296,12 @@ export function historyWindowHours(raw: string | undefined): number {
 export const HORIZON_PAGE_LIMIT = 200;
 export const MAX_HISTORY_PAGES = 25;
 
+export interface History<T> {
+  records: T[];
+  /** False when the page cap was reached before the window start: the rest went unread. */
+  complete: boolean;
+}
+
 export interface TransactionHistory {
   transactions: HorizonTransaction[];
   /** False when the page cap was reached before the window start: the rest went unread. */
@@ -220,37 +309,84 @@ export interface TransactionHistory {
 }
 
 /**
- * Every transaction touching `address` created at or after `since`, newest first, paging
- * through Horizon with the last record's paging token as the cursor.
+ * Every record of one of an account's Horizon lists created at or after `since`, newest first,
+ * paging with the last record's paging token as the cursor.
  */
+async function recordsInWindow<T extends { created_at: string; paging_token: string }>(
+  get: (path: string) => Promise<{ _embedded: { records: T[] } }>,
+  path: string,
+  params: Record<string, string>,
+  since: Date,
+  maxPages: number
+): Promise<History<T>> {
+  const found: T[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < maxPages; page++) {
+    const query = new URLSearchParams({
+      ...params,
+      limit: String(HORIZON_PAGE_LIMIT),
+      order: "desc",
+    });
+    if (cursor !== undefined) query.set("cursor", cursor);
+    const records = (await get(`${path}?${query}`))._embedded.records;
+    for (const record of records) {
+      if (Date.parse(record.created_at) < since.getTime())
+        return { records: found, complete: true };
+      found.push(record);
+    }
+    if (records.length < HORIZON_PAGE_LIMIT) return { records: found, complete: true };
+    cursor = records[records.length - 1].paging_token;
+  }
+  return { records: found, complete: false };
+}
+
+/** Every transaction touching `address` created at or after `since`, newest first. */
 export async function transactionsInWindow(
   get: (path: string) => Promise<HorizonTransactionPage>,
   address: string,
   since: Date,
   maxPages = MAX_HISTORY_PAGES
 ): Promise<TransactionHistory> {
-  const transactions: HorizonTransaction[] = [];
-  let cursor: string | undefined;
-  for (let page = 0; page < maxPages; page++) {
-    const query = new URLSearchParams({ limit: String(HORIZON_PAGE_LIMIT), order: "desc" });
-    if (cursor !== undefined) query.set("cursor", cursor);
-    const records = (await get(`/accounts/${address}/transactions?${query}`))._embedded.records;
-    for (const tx of records) {
-      if (Date.parse(tx.created_at) < since.getTime()) return { transactions, complete: true };
-      transactions.push(tx);
-    }
-    if (records.length < HORIZON_PAGE_LIMIT) return { transactions, complete: true };
-    cursor = records[records.length - 1].paging_token;
-  }
-  return { transactions, complete: false };
+  const { records, complete } = await recordsInWindow(
+    get,
+    `/accounts/${address}/transactions`,
+    {},
+    since,
+    maxPages
+  );
+  return { transactions: records, complete };
+}
+
+/**
+ * Every operation `address` takes part in created at or after `since`, newest first, each with
+ * its transaction's source, failed transactions included: a failed transaction still carries a
+ * valid signature of every key it needed.
+ */
+export async function operationsInWindow(
+  get: (path: string) => Promise<HorizonOperationPage>,
+  address: string,
+  since: Date,
+  maxPages = MAX_HISTORY_PAGES
+): Promise<History<HorizonOperation>> {
+  return recordsInWindow(
+    get,
+    `/accounts/${address}/operations`,
+    { join: "transactions", include_failed: "true" },
+    since,
+    maxPages
+  );
 }
 
 /** The finding for a history the page cap cut short: the check did not see the whole window. */
-export function incompleteHistoryFinding(account: ServiceAccount, hours: number): Finding {
+export function incompleteHistoryFinding(
+  account: ServiceAccount,
+  hours: number,
+  records = "transactions"
+): Finding {
   return {
     account,
     message:
-      `more than ${MAX_HISTORY_PAGES * HORIZON_PAGE_LIMIT} transactions in the last ${hours} h; ` +
+      `more than ${MAX_HISTORY_PAGES * HORIZON_PAGE_LIMIT} ${records} in the last ${hours} h; ` +
       "the older ones were not checked. Lower MONITOR_HISTORY_HOURS.",
   };
 }
@@ -267,6 +403,79 @@ export function sourcedFinding(account: ServiceAccount, tx: HorizonTransaction):
     account,
     message: `transaction ${tx.hash} (${tx.created_at}) is sourced from the account. Expected none.`,
   };
+}
+
+/**
+ * The operations the account may source in a transaction it did not: the mediator's forward, a
+ * native payment in a transaction that also merges an account into the mediator (the forward
+ * check bounds its amount), and a retired account's drain.
+ */
+function isExpectedOperation(
+  account: ServiceAccount,
+  operation: HorizonOperation,
+  transaction: HorizonOperation[]
+): boolean {
+  const txSource = operation.transaction?.source_account;
+  if (operation.type === "account_merge") {
+    return isRotationDrain(account, txSource, operation.into);
+  }
+  return (
+    account.role === "mediator" &&
+    operation.type === "payment" &&
+    operation.asset_type === "native" &&
+    txSource !== undefined &&
+    txSource !== account.address &&
+    transaction.some((op) => op.type === "account_merge" && op.into === account.address)
+  );
+}
+
+/**
+ * S4a.Information.1.M.1 and S4b.Information.1.M.1 for operation sources: a transaction someone
+ * else sourced in which the account sourced an operation the API never builds, such as a
+ * `set_options` adding a signer or a `change_trust` that blocks the drain. `transaction` is every
+ * operation of one transaction that the account's operations list returned.
+ */
+export function operationSourceFinding(
+  account: ServiceAccount,
+  transaction: HorizonOperation[]
+): Finding | null {
+  const unexpected = transaction.filter(
+    (op) => op.source_account === account.address && !isExpectedOperation(account, op, transaction)
+  );
+  if (unexpected.length === 0) return null;
+  const { transaction_hash: hash, created_at: createdAt } = unexpected[0];
+  return {
+    account,
+    message:
+      `transaction ${hash} (${createdAt}) has operations sourced from the account: ` +
+      `${unexpected.map((op) => op.type).join(", ")}. Expected none but the forward and the drain.`,
+  };
+}
+
+/**
+ * The keys check for one account: each transaction it sourced, and each other transaction in which
+ * it sourced an unexpected operation, reported once.
+ */
+export function keysFindings(
+  account: ServiceAccount,
+  transactions: HorizonTransaction[],
+  operations: HorizonOperation[]
+): Finding[] {
+  const findings = new Map<string, Finding>();
+  for (const tx of transactions) {
+    const finding = sourcedFinding(account, tx);
+    if (finding) findings.set(tx.hash, finding);
+  }
+  const byTransaction = new Map<string, HorizonOperation[]>();
+  for (const op of operations) {
+    byTransaction.set(op.transaction_hash, [...(byTransaction.get(op.transaction_hash) ?? []), op]);
+  }
+  for (const [hash, transaction] of byTransaction) {
+    if (findings.has(hash)) continue;
+    const finding = operationSourceFinding(account, transaction);
+    if (finding) findings.set(hash, finding);
+  }
+  return [...findings.values()];
 }
 
 export function nativeBalanceStroops(account: HorizonAccount): bigint | null {
@@ -288,21 +497,88 @@ export function balanceFinding(account: ServiceAccount, horizon: HorizonAccount)
   };
 }
 
+/** The operation an effect belongs to, from its `<operation id>-<index>` paging token. */
+function operationOf(effect: HorizonEffect): string | undefined {
+  const parts = effect.paging_token?.split("-");
+  return parts?.length === 2 ? parts[0] : undefined;
+}
+
+/**
+ * The rotation's own drain of a retired account: a merge of the account into the operator it was
+ * configured with, in a transaction the operator sourced. Holding the old key alone cannot
+ * produce it: the transaction source needs the operator's signature, and the balance lands with
+ * the operator.
+ */
+function isRotationDrain(
+  account: ServiceAccount,
+  txSource: string | undefined,
+  mergedInto: string | undefined
+): boolean {
+  const drainTo = account.drainTo;
+  return (
+    account.retired === true &&
+    drainTo !== undefined &&
+    txSource === drainTo &&
+    mergedInto === drainTo
+  );
+}
+
+/**
+ * The operations of `tx` that are the rotation's drain, read from effects: the merge is the only
+ * operation that removes the account, and the operator is what it credited.
+ */
+function drainOperations(
+  account: ServiceAccount,
+  tx: HorizonTransaction,
+  effects: HorizonEffect[]
+): Set<string> {
+  const removed = new Set<string>();
+  const credited = new Set<string>();
+  for (const effect of effects) {
+    const operation = operationOf(effect);
+    if (operation === undefined) continue;
+    if (effect.type === "account_removed" && effect.account === account.address) {
+      removed.add(operation);
+    }
+    if (
+      effect.type === "account_credited" &&
+      isRotationDrain(account, tx.source_account, effect.account)
+    ) {
+      credited.add(operation);
+    }
+  }
+  return new Set([...removed].filter((operation) => credited.has(operation)));
+}
+
 /**
  * S4a.Elevation.1.M.1's other signal: in one transaction the mediator paid out more than the merge
  * delivered to it, so the difference came from its own balance. Horizon's effects carry what the
  * merge credited and what the forward debited; the API bounds the forward by the merge at co-sign
  * time, so any transaction where the debit exceeds the credit is one that got past that bound.
+ * A retired account's drain counts what it delivered to the operator as delivered, in that
+ * operation only, so any other debit in the same transaction still fires. A retired sponsor is
+ * read the same way: its fee bumps are fees, not effects, so only a payout or a merge debits it.
  */
 export function forwardFinding(
   account: ServiceAccount,
   tx: HorizonTransaction,
   effects: HorizonEffect[]
 ): Finding | null {
+  const drain = drainOperations(account, tx, effects);
   let credited = 0n;
   let debited = 0n;
   for (const effect of effects) {
-    if (effect.account !== account.address || effect.amount === undefined) continue;
+    if (effect.amount === undefined) continue;
+    const operation = operationOf(effect);
+    if (
+      effect.type === "account_credited" &&
+      effect.account === account.drainTo &&
+      operation !== undefined &&
+      drain.has(operation)
+    ) {
+      credited += BigInt(xlmToStroops(effect.amount));
+    }
+    if (effect.account !== account.address) continue;
     if (effect.type === "account_credited") credited += BigInt(xlmToStroops(effect.amount));
     if (effect.type === "account_debited") debited += BigInt(xlmToStroops(effect.amount));
   }
@@ -317,7 +593,10 @@ export function forwardFinding(
 
 export type ServiceCheck = "keys" | "balances" | "forward";
 
-/** The accounts one check reads: a retired account has no balance left to floor. */
+/**
+ * The accounts one check reads. A retired account has no balance left to floor, and any payout
+ * from one, sponsor included, is read by the forward check until it is drained.
+ */
 export function accountsFor(accounts: ServiceAccount[], check: ServiceCheck): ServiceAccount[] {
   switch (check) {
     case "keys":
@@ -325,7 +604,7 @@ export function accountsFor(accounts: ServiceAccount[], check: ServiceCheck): Se
     case "balances":
       return accounts.filter((a) => !a.retired);
     case "forward":
-      return accounts.filter((a) => a.role === "mediator");
+      return accounts.filter((a) => a.role === "mediator" || a.retired);
   }
 }
 
