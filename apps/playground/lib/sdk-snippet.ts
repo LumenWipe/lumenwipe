@@ -1,5 +1,7 @@
 import { StrKey } from "@stellar/stellar-sdk";
-import type { PlaygroundCloseExpectation } from "./verify";
+import type { DecisionAnswer } from "@lumenwipe/sdk";
+import { sessionTokenAnswers } from "./demolish";
+import { sharedExpectation, type PlaygroundCloseExpectation } from "./verify";
 
 /** A classic asset, by its code and the issuer it returns to. */
 export interface SnippetAsset {
@@ -16,7 +18,9 @@ export type SnippetDecision =
   | { kind: "convert_to_xlm"; asset: SnippetAsset; minAmountOut: string }
   | { kind: "transfer"; asset: SnippetAsset; to: string; amount: string }
   | { kind: "claim"; balanceId: string; addTrustline: SnippetAsset | null }
-  | { kind: "forfeit"; balanceId: string };
+  | { kind: "forfeit"; balanceId: string }
+  | { kind: "token_transfer"; contract: string; to: string; amount: string }
+  | { kind: "token_residue"; contract: string };
 
 /** A signer the account holds besides its master key, by its public strkey. */
 export interface SnippetSigner {
@@ -62,12 +66,20 @@ export class SdkSnippetInputError extends Error {
 const destinationId = (address: string): string => `destination:${address}`;
 const assetId = ({ code, issuer }: SnippetAsset): string => `asset:${code}-${issuer}`;
 const claimId = (balanceId: string): string => `claim:${balanceId}`;
+const tokenId = (contract: string): string => `token:${contract}`;
 const FORFEITED_BLOCKER = "claimable_balance_forfeited";
+const TRANSFER_CHOICE = "transfer_to_account";
+const LEAVE_TOKEN_CHOICE = "acknowledge_residue";
 
 const UINT64_MAX = BigInt("18446744073709551615");
 
 function publicKey(value: string, field: string): string {
   if (!StrKey.isValidEd25519PublicKey(value)) throw new SdkSnippetInputError(field);
+  return value;
+}
+
+function contract(value: string): string {
+  if (!StrKey.isValidContract(value)) throw new SdkSnippetInputError("token contract");
   return value;
 }
 
@@ -92,6 +104,7 @@ function idMemo(value: string): string {
 const STROOPS = /^[1-9][0-9]*$/;
 const AMOUNT = /^[0-9]+(\.[0-9]{1,7})?$/;
 const BALANCE_ID = /^[0-9a-f]{72}$/;
+const BASE_UNITS = /^(0|[1-9][0-9]*)$/;
 
 function decision(value: SnippetDecision): SnippetDecision {
   switch (value.kind) {
@@ -118,6 +131,15 @@ function decision(value: SnippetDecision): SnippetDecision {
       };
     case "forfeit":
       return { kind: value.kind, balanceId: matching(value.balanceId, BALANCE_ID, "balance id") };
+    case "token_transfer":
+      return {
+        kind: value.kind,
+        contract: contract(value.contract),
+        to: publicKey(value.to, "token transfer destination"),
+        amount: matching(value.amount, BASE_UNITS, "token transfer amount"),
+      };
+    case "token_residue":
+      return { kind: value.kind, contract: contract(value.contract) };
     default:
       throw new SdkSnippetInputError("decision");
   }
@@ -251,8 +273,19 @@ function answerFields(d: SnippetDecision): Field[] {
     case "transfer":
       return [
         ["id", str(assetId(d.asset))],
-        ["choice", str("transfer_to_account")],
+        ["choice", str(TRANSFER_CHOICE)],
         ["params", `{ destination: ${str(d.to)} }`],
+      ];
+    case "token_transfer":
+      return [
+        ["id", str(tokenId(d.contract))],
+        ["choice", str(TRANSFER_CHOICE)],
+        ["params", `{ destination: ${str(d.to)} }`],
+      ];
+    case "token_residue":
+      return [
+        ["id", str(tokenId(d.contract))],
+        ["choice", str(LEAVE_TOKEN_CHOICE)],
       ];
     case "claim":
       return [
@@ -272,7 +305,7 @@ const memoFields = (memo: string): Field[] => [
   ["memoType", str("id")],
 ];
 
-/** A `CODE:ISSUER`-keyed record as the lines of the property `name`. */
+/** A record keyed by asset (`CODE:ISSUER`) or token contract, as the lines of the property `name`. */
 function recordLines(
   indent: string,
   name: string,
@@ -323,6 +356,19 @@ function closeBody(close: SnippetClose, envPrefix = ""): string[] {
     }
     return [];
   });
+  const tokenTransfers = decisions.flatMap((d): [string, Field[]][] =>
+    d.kind === "token_transfer"
+      ? [
+          [
+            d.contract,
+            [
+              ["destination", str(d.to)],
+              ["amount", str(d.amount)],
+            ],
+          ],
+        ]
+      : []
+  );
   const conversions = decisions.flatMap((d): [string, Field[]][] =>
     d.kind === "convert_to_xlm"
       ? [[canonical(d.asset), [["minAmountOut", str(d.minAmountOut)]]]]
@@ -495,7 +541,7 @@ function closeBody(close: SnippetClose, envPrefix = ""): string[] {
     "        accountSigners: account.signers,",
     "        accountThresholds: account.thresholds,",
     ...recordLines("        ", "transfers", transfers),
-    "        tokenTransfers: {},",
+    ...recordLines("        ", "tokenTransfers", tokenTransfers),
     ...recordLines("        ", "classicConversions", conversions),
     "        tokenConversions: {},",
     "      },",
@@ -600,7 +646,7 @@ function parseFunction(network: SdkSnippetInput["network"]): string[] {
 /**
  * A playground session's close as the snippet shows it, from the same expectation its demolish
  * answers every decision from (lib/demolish.ts): the destination, the memo of an exchange session,
- * each asset's and claimable balance's answer, and the signers the session added.
+ * each asset's, claimable balance's and Soroban token's answer, and the signers the session added.
  */
 export function snippetInputFromExpectation(expected: PlaygroundCloseExpectation): SdkSnippetInput {
   const { exchange } = expected;
@@ -623,6 +669,10 @@ export function snippetInputFromExpectation(expected: PlaygroundCloseExpectation
       addTrustline: claim.addTrustline ? assetOf(claim.asset) : null,
     });
   }
+  const { tokenTransfers } = sharedExpectation(expected);
+  for (const { contract, answer } of sessionTokenAnswers(expected)) {
+    decisions.push(tokenDecision(contract, answer, tokenTransfers));
+  }
   for (const balanceId of expected.forfeits) decisions.push({ kind: "forfeit", balanceId });
   return {
     network: "testnet",
@@ -636,4 +686,27 @@ export function snippetInputFromExpectation(expected: PlaygroundCloseExpectation
       sponsored: expected.sponsored,
     },
   };
+}
+
+/**
+ * The session's answer for one Soroban token, as `lib/demolish.ts` gives it, with the amount the
+ * verifier's token transfer holds it to (`sharedExpectation`). An answer either does not know is
+ * refused rather than printed as something else.
+ */
+function tokenDecision(
+  contract: string,
+  answer: DecisionAnswer,
+  tokenTransfers: Readonly<Record<string, { destination: string; amount: string }>>
+): SnippetDecision {
+  if (answer.id !== tokenId(contract)) throw new SdkSnippetInputError("token answer");
+  if (answer.choice === LEAVE_TOKEN_CHOICE) return { kind: "token_residue", contract };
+  const transfer = tokenTransfers[contract];
+  if (
+    answer.choice !== TRANSFER_CHOICE ||
+    !transfer ||
+    answer.params?.destination !== transfer.destination
+  ) {
+    throw new SdkSnippetInputError("token answer");
+  }
+  return { kind: "token_transfer", contract, to: transfer.destination, amount: transfer.amount };
 }

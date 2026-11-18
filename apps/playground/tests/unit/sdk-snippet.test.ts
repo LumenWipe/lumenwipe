@@ -3,6 +3,8 @@ import { randomBytes } from "node:crypto";
 import path from "node:path";
 import ts from "typescript";
 import { Keypair, StrKey, hash } from "@stellar/stellar-sdk";
+import type { DecisionPoint } from "@lumenwipe/sdk";
+import { buildDemolishDecisions, planAnswers } from "@/lib/demolish";
 import {
   buildBatchSdkSnippet,
   buildSdkSnippet,
@@ -15,8 +17,10 @@ import {
 } from "@/lib/sdk-snippet";
 import { handleSdkSnippet } from "@/lib/route-handlers";
 import { resolvePlan, EXCHANGE_STAND_IN, type ScenarioSelection } from "@/lib/scenarios";
+import { PHOENIX, PLAYGROUND_TOKEN } from "@/lib/scenarios/pinned";
 import type { NewSessionData } from "@/lib/session-store";
-import { expectationFromSession } from "@/lib/verify";
+import { expectationFromSession, sharedExpectation } from "@/lib/verify";
+import { LWPHX_DECISION } from "./phoenix-fixtures";
 import { memoryStore, newSessionData } from "./session-fixtures";
 
 // The snippet is held to the SDK's public entry and to @lumenwipe/verify's public types by the
@@ -506,6 +510,140 @@ describe("a playground session's snippet", () => {
 
     const unconfigured = await handleSdkSnippet(session.id, { store, publicAccounts: () => null });
     expect(unconfigured.status).toBe(503);
+  });
+});
+
+/** A literal the snippet prints (strings, arrays and objects of them) as its value. */
+function literalValue(node: ts.Expression): unknown {
+  if (ts.isStringLiteral(node)) return node.text;
+  if (ts.isArrayLiteralExpression(node)) return node.elements.map(literalValue);
+  if (ts.isObjectLiteralExpression(node)) {
+    return Object.fromEntries(
+      node.properties.map((p) => {
+        if (
+          !ts.isPropertyAssignment(p) ||
+          !(ts.isIdentifier(p.name) || ts.isStringLiteral(p.name))
+        ) {
+          throw new Error("not a plain property");
+        }
+        return [p.name.text, literalValue(p.initializer)];
+      })
+    );
+  }
+  throw new Error(`not a literal: ${ts.SyntaxKind[node.kind]}`);
+}
+
+/** The value the snippet gives `name`, as a variable or an object property. */
+function printed(text: string, name: string): unknown {
+  const source = ts.createSourceFile("snippet.ts", text, ts.ScriptTarget.ES2022);
+  let found: ts.Expression | undefined;
+  const visit = (node: ts.Node): void => {
+    if (
+      (ts.isVariableDeclaration(node) || ts.isPropertyAssignment(node)) &&
+      ts.isIdentifier(node.name) &&
+      node.name.text === name
+    ) {
+      found = node.initializer;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  if (!found) throw new Error(`the snippet gives no ${name}`);
+  return literalValue(found);
+}
+
+describe("a session's Soroban tokens in its snippet", () => {
+  const tokenPoint = (contract: string): DecisionPoint =>
+    ({
+      id: `token:${contract}`,
+      type: "asset_disposition",
+      subject: { kind: "soroban_token", contract },
+      options: [{ id: "transfer_to_account" }, { id: "acknowledge_residue" }],
+      default: "transfer_to_account",
+      required: true,
+    }) as DecisionPoint;
+
+  const sessions: [string, ScenarioSelection["scenarios"], DecisionPoint[]][] = [
+    [
+      "sends the playground token back",
+      [{ id: "soroban-token", params: { disposition: 0 } }],
+      [tokenPoint(PLAYGROUND_TOKEN.contract)],
+    ],
+    [
+      "leaves the playground token as residue",
+      [{ id: "soroban-token", params: { disposition: 1 } }],
+      [tokenPoint(PLAYGROUND_TOKEN.contract)],
+    ],
+    [
+      "leaves the Phoenix LWPHX as residue",
+      [{ id: "phoenix-lp", params: { variant: 0 } }],
+      [LWPHX_DECISION],
+    ],
+    ["holds no token", [], []],
+  ];
+
+  for (const [label, scenarios, points] of sessions) {
+    test(`a session that ${label} prints the answers and token transfers its close uses, and compiles`, () => {
+      const selection = resolvePlan({
+        scenarios: [{ id: "lwdemo-holding", params: {} }, ...scenarios],
+      }).selection;
+      const expected = expectationFromSession(
+        {
+          demoPublic: account(),
+          ephemeralIssuers: resolvePlan(selection).ephemeralAssets.map((assetCode) => ({
+            assetCode,
+            publicKey: account(),
+            encSecret: "enc:fixture",
+          })),
+          recordedSigners: [],
+          selection,
+          transferRecipient: null,
+          helperAccounts: [],
+          claimableBalances: [],
+        },
+        account(),
+        account(),
+        null
+      );
+      const text = buildSdkSnippet(snippetInputFromExpectation(expected));
+      const isToken = (a: { id: string }): boolean => a.id.startsWith("token:");
+
+      const decisions = printed(text, "decisions") as { id: string }[];
+      const demolished = buildDemolishDecisions(points, expected);
+      expect(demolished.unanswerable).toEqual([]);
+      expect(decisions.filter(isToken)).toEqual(demolished.answers.filter(isToken));
+      const answered = new Set(decisions.map((d) => d.id));
+      for (const { id } of planAnswers(expected).filter(isToken)) expect(answered).toContain(id);
+
+      expect(printed(text, "tokenTransfers")).toEqual(sharedExpectation(expected).tokenTransfers);
+      expect(diagnostics([text])).toEqual([[]]);
+    });
+  }
+
+  test("a token answer that would not print as a plain literal is refused", () => {
+    const hostile = 'C"; process.exit(1); //</script>';
+    const bad = [
+      close({ decisions: [{ kind: "token_residue", contract: hostile }] }),
+      close({ decisions: [{ kind: "token_residue", contract: account() }] }),
+      close({
+        decisions: [
+          { kind: "token_transfer", contract: PHOENIX.tokenA, to: account(), amount: "1.5" },
+        ],
+      }),
+      close({
+        decisions: [
+          {
+            kind: "token_transfer",
+            contract: PHOENIX.tokenA,
+            to: Keypair.random().secret(),
+            amount: "1",
+          },
+        ],
+      }),
+    ];
+    for (const c of bad) {
+      expect(() => buildSdkSnippet({ network: "testnet", close: c })).toThrow(SdkSnippetInputError);
+    }
   });
 });
 

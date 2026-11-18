@@ -28,6 +28,7 @@ import {
   loadSignerState,
   type SignerState,
 } from "./horizon-submit";
+import { PHOENIX } from "./scenarios/pinned";
 import { logEntryOf, type DemolishLogEntry, type PendingDemolishTx } from "./session-store";
 import { requiredWeight, signForWeight, type SigningKey } from "./signing";
 import {
@@ -259,6 +260,24 @@ function tokenAnswer(id: string, expected: PlaygroundCloseExpectation): Decision
     return { id, choice: TRANSFER_CHOICE, params: { destination: token.destination } };
   }
   return { id, choice: LEAVE_TOKEN_CHOICE };
+}
+
+/**
+ * The Soroban tokens a session's close is known to answer, each with the answer
+ * `buildDemolishDecisions` gives it: the playground token the plan mints, and the LWPHX a Phoenix
+ * withdrawal pays back, which the close leaves with the throwaway key.
+ */
+export function sessionTokenAnswers(
+  expected: PlaygroundCloseExpectation
+): { contract: string; answer: DecisionAnswer }[] {
+  const contracts = [
+    ...(expected.token ? [expected.token.contract] : []),
+    ...(expected.sorobanSeeded.some((s) => s.protocol === "phoenix") ? [PHOENIX.tokenA] : []),
+  ];
+  return contracts.map((contract) => ({
+    contract,
+    answer: tokenAnswer(tokenDecisionId(contract), expected),
+  }));
 }
 
 /**
