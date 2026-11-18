@@ -1,0 +1,67 @@
+---
+title: "Add a playground scenario"
+description: "When a change needs a playground scenario, the three parts every scenario has, and how the nightly testnet run exercises it."
+icon: "flask"
+---
+
+The playground seeds a testnet demo account with a closing state, such as stale offers, a forgotten signer or a liquidity position, and closes it through the real LumenWipe API. That is how it catches API drift. It can only catch drift in states it knows how to seed, so it falls behind every closing flow that ships without a scenario.
+
+## When one is required
+
+A pull request that adds any of the following also adds a playground scenario, in the same pull request or in a follow-up opened with it:
+
+- a new closeable account state
+- a new close operation
+- a new protocol exit
+
+When a scenario is not possible, for example because testnet has no instance of the protocol, the pull request description says why. The pull request template has a checklist line for this.
+
+This complements the rule in the [protocol exit guide](/contributing/add-a-protocol-exit): a new close operation goes into both the API's builder and the verifier. The scenario then shows the operation working end to end.
+
+## The three parts
+
+Each part ships with its tests. All paths are under `apps/playground`.
+
+### 1. Registry definition
+
+Add a `ScenarioDefinition` to `lib/scenarios/definitions.ts` and list it in `SCENARIOS`. A definition declares:
+
+- `id`, `label` and `description`: the label is the toggle's name in the picker.
+- `featureSet`: `classic`, `protocol` or `api`. This decides which preset the scenario joins.
+- `params`: integer settings with a minimum, maximum and default.
+- `requiresAnyOf` and `conflicts`: other scenarios it needs or cannot run with.
+- `build`: the steps that seed the state, each with an `ORDER` slot, a `StepAction` and the scene nodes it adds. It also returns the `cost` (XLM, transactions, sub-entries, seconds) and the `expectation`, which says what closing the state must contain.
+
+A new kind of seeding step adds a `StepAction` variant in `lib/scenarios/types.ts` and its executor in `executeMessStep` in `lib/mess-builders.ts`. A scenario that depends on deployment configuration (a key, a contract that must exist) reports itself unavailable, with a reason, from `lib/scenario-availability.ts`.
+
+Tests: `tests/unit/scenario-registry.test.ts` runs every definition through the same checks: a label and sane parameter ranges, an executor for each step, a declared cost, a close expectation the verifier allows, one scene node per entry created, unique ids and real requirements. Add the new scenario's cases to `scenario-validator.test.ts` and `mess-consistency.test.ts`. A new step kind also needs a seeding test like `phoenix-seed.test.ts`.
+
+### 2. Verification rule
+
+The playground never builds a close. It checks every close transaction the API returns against what the session seeded, using `@lumenwipe/verify`. The scenario's `expectation` feeds `expectationFromSession` in `lib/verify.ts`. A protocol position also needs its exit contracts and functions in `seededProtocols` and `sorobanExitExpectations`.
+
+Tests: one test where the verifier accepts the real close for the scenario, and one where it refuses a changed close (another contract, function, destination or amount). They go in `tests/unit/verify.test.ts`, or in `verify-soroban.test.ts` for a Soroban exit.
+
+### 3. Scene node
+
+The nodes the steps add are drawn in the orbit around the demo account. Add a handler in `lib/scene-actions.ts` that removes or pulses those nodes when the close operation that clears them confirms. A new node kind is added to `SCENE_NODE_KINDS` in `lib/scenarios/types.ts`, with its icon in `components/scene/KindIcon.tsx` and its entry in `components/scene/SceneLegend.tsx`.
+
+Tests: `tests/unit/scene-actions.test.ts` maps the close operation to the nodes it destroys.
+
+## End to end
+
+Add a spec in `tests/e2e/` that runs the scenario from a shared link with `closeWith` in `tests/e2e/close-with.ts`, then reads back from Horizon what landed. If the scenario needs a live testnet market (a DEX route, a pool's depth), check the market before the run and `test.skip()` with the reason when it is missing. Never fail the test because testnet is thin. A protocol scenario can add a manual test in `tests/integration/` behind `LUMENWIPE_RUN_INTEGRATION`, using `runCycle` from `tests/integration/cycle.ts`.
+
+## What runs every night
+
+`.github/workflows/e2e-nightly.yml` runs the playground suite against testnet every day at 07:00 UTC, with one retry. A failure opens an issue.
+
+- **Every spec**, including the new scenario's.
+- **The presets.** `tests/e2e/presets.spec.ts` runs the protocol and API presets as this deployment offers them, minus any scenario whose market the night cannot seed. The classic preset is the standard recipe, which `full-cycle.spec.ts` runs. A new `protocol` or `api` scenario joins its preset with no change to the spec. If it needs a live market, add the same check to `marketGaps` in `presets.spec.ts`. The run fails if every preset would be skipped.
+- **One random wallet.** The replay code is derived from the UTC date by `scripts/nightly-seed.ts`. It is logged as a notice with the generator version and named in the failure issue. To replay a failed night, run the workflow from the Actions tab with that code as the `seed` input, or paste it into the playground's replay box. The version 1 generator is frozen, so a new scenario is never drawn by an existing code.
+
+`tests/integration/presets.integration.test.ts` runs every preset, including the classic one, against a local playground when `LUMENWIPE_RUN_INTEGRATION` is set.
+
+## Measured durations
+
+The picker's duration ranges come from `lib/scenarios/measured-durations.ts`. `bun run durations` (`scripts/durations.ts`) writes that file from the nightly reports. Regenerate it from recent runs when a new step kind changes how long a demo takes, and review the diff in the pull request.

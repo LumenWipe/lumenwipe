@@ -1,7 +1,7 @@
 import { expect, test } from "./timed";
-import { Keypair, Networks, Transaction, TransactionBuilder } from "@stellar/stellar-sdk";
+import { Networks, Transaction, TransactionBuilder } from "@stellar/stellar-sdk";
 import { EXCHANGE_STAND_IN } from "../../lib/scenarios";
-import { closeWith } from "./close-with";
+import { closeWith, relay } from "./close-with";
 import { HORIZON } from "./testnet";
 
 // The exchange close end to end on testnet: the demo's data entries are removed in a cleanup
@@ -27,12 +27,6 @@ interface HorizonPayment {
   amount?: string;
   transaction_hash: string;
 }
-
-const relay = (): string => {
-  const secret = process.env.PLAYGROUND_E2E_MEDIATOR_SECRET;
-  if (!secret) throw new Error("playwright.config.ts sets the run's mediator");
-  return Keypair.fromSecret(secret).publicKey();
-};
 
 test("a demo closes into the testnet exchange through the relay, with its memo", async ({
   page,

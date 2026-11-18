@@ -11,6 +11,13 @@ on:
     # 07:00 UTC daily - after Europe's morning, before the Americas start.
     - cron: "0 7 * * *"
   workflow_dispatch:
+    inputs:
+      seed:
+        # Replays a failed night's random wallet: paste the replay code from its issue or log.
+        description: Replay code for the playground's random wallet (empty for today's)
+        required: false
+        default: ""
+        type: string
 
 concurrency:
   group: e2e-testnet
@@ -99,11 +106,13 @@ jobs:
     environment: testnet-funded
     outputs:
       suite: ${{ steps.suite.outcome }}
+      seed: ${{ steps.seed.outputs.code }}
     # Run 42844639885 (23 tests) ran into Playwright's globalTimeout (80 minutes in CI) at 1.3 h:
     # six failures each spent their 6-minute wait twice under `retries: 1`, about 72 minutes, and
-    # 13 tests never ran. A healthy run has not been measured yet. The globalTimeout ends the run
-    # before this limit, so a slow night is a failure with a report, not a kill here that the
-    # report job below reads as cancelled and never files.
+    # 13 tests never ran. A healthy run took 21 minutes (run 44345461599), before the protocol and
+    # API presets and the day's random wallet added an estimated 8 to 12. The globalTimeout ends
+    # the run before this limit, so a slow night is a failure with a report, not a kill here that
+    # the report job below reads as cancelled and never files.
     timeout-minutes: 90
     # Chromium, its system libraries and fonts come in the image, so a run never depends on the
     # Ubuntu package mirrors, which failed every install on 2026-11-11.
@@ -125,10 +134,21 @@ jobs:
         run: bunx playwright install chromium
         working-directory: apps/playground
 
+      # The day's replay code, or a manual run's once it reads as one: logged as a notice and
+      # carried into the failure issue, so the night's random wallet can be replayed. The input
+      # reaches the script only as an environment variable, and only the code it rebuilds goes on.
+      - name: Choose the random wallet
+        id: seed
+        working-directory: apps/playground
+        env:
+          LUMENWIPE_SEED: ${{ inputs.seed }}
+        run: bun run nightly-seed
+
       - name: Run the suite
         id: suite
         working-directory: apps/playground
         env:
+          LUMENWIPE_SEED: ${{ steps.seed.outputs.code }}
           # Gateway first: SDF's endpoint stalls for seconds on a share of calls. SDF stays as the failover.
           STELLAR_RPC_TESTNET: https://soroban-rpc.testnet.stellar.gateway.fm,https://soroban-testnet.stellar.org
           PATH_ROUTING_API_TESTNET: https://horizon-testnet.stellar.org
@@ -237,6 +257,7 @@ jobs:
           REPO: ${{ github.repository }}
           RESULT: ${{ needs[matrix.job].result }}
           SUITE: ${{ needs[matrix.job].outputs.suite }}
+          REPLAY: ${{ needs[matrix.job].outputs.seed }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           NAME: ${{ matrix.name }}
           ASSIGNEE: ${{ matrix.assignee }}
@@ -273,10 +294,18 @@ jobs:
             exit 0
           fi
 
+          # Only the playground's suite has a random wallet; its code was rebuilt by the seed step.
+          REPLAY_NOTE=""
+          if [ -n "${REPLAY:-}" ]; then
+            REPLAY_NOTE=$(printf '\n\n%s\n%s' \
+              "Random wallet replay code: $REPLAY. Replay it by running this workflow from the" \
+              "Actions tab with that code as its seed, or in the playground's Replay a seed box.")
+          fi
+
           BODY=$(printf '%s\n' \
             "$FAILED" \
             "" \
-            "Run: $RUN_URL" \
+            "Run: $RUN_URL$REPLAY_NOTE" \
             "" \
             "$MEANING" \
             "" \
@@ -284,7 +313,9 @@ jobs:
             "Actions tab - so a fix can be confirmed without waiting for 07:00 UTC.")
 
           if [ -n "$EXISTING" ]; then
-            gh issue comment "$EXISTING" --repo "$REPO" --body "Still failing: $RUN_URL"
+            STILL="Still failing: $RUN_URL"
+            if [ -n "${REPLAY:-}" ]; then STILL="$STILL (random wallet replay code: $REPLAY)"; fi
+            gh issue comment "$EXISTING" --repo "$REPO" --body "$STILL"
           else
             # Assigned, not just labelled: an unassigned issue in the backlog is the same
             # "nobody is looking" failure this workflow exists to fix, one level removed.

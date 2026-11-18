@@ -207,18 +207,19 @@ chore/registry-kraken-address
 2. **Fork** the repository and work on a branch, not directly on `main`.
 3. **Keep PRs focused.** One logical change per PR. A PR that adds a new protocol exit should not also refactor unrelated code.
 4. **Write tests.** New protocol adapters require integration tests against testnet. Bug fixes require a unit test reproducing the bug. See [Testing requirements](#8-testing-requirements).
-5. **Pass all checks locally** before pushing:
+5. **Add a playground scenario** when the PR adds a new closeable account state, a new close operation or a new protocol exit, in the same PR or a follow-up opened with it, or say in the description why one is not possible. See [Playground scenarios](#playground-scenarios).
+6. **Pass all checks locally** before pushing:
    ```bash
    bun type-check && bun lint && bun test
    ```
-6. **Fill in the PR description** completely:
+7. **Fill in the PR description** completely:
    - What the change does and why
    - How it was tested
    - Any risk or edge cases the reviewer should pay attention to
    - For protocol changes: which invariants in [Section 9.9](docs/architecture.md#99-exit-adapter-invariants) are satisfied and how
-7. **Security-sensitive changes** (key handling, transaction construction, confirmation flows, mediator flow, CSP) require extra description and will receive closer review. Flag them explicitly. The [security scope](docs/security-scope.md) lists the paths this covers, the owner role of each, and the closer-review rule those changes follow. A new close operation, signing key, adapter, surface or app boundary also updates the [threat model](docs/threat-model.md) and its row in the [invariant register](docs/invariants.mdx); run `bun run check:docs`, which CI runs on every pull request, to confirm every file, symbol and test it names still exists.
-8. A maintainer will review your PR. Be prepared for back-and-forth - the review is thorough because the operations are irreversible.
-9. Squash commits if requested before merge.
+8. **Security-sensitive changes** (key handling, transaction construction, confirmation flows, mediator flow, CSP) require extra description and will receive closer review. Flag them explicitly. The [security scope](docs/security-scope.md) lists the paths this covers, the owner role of each, and the closer-review rule those changes follow. A new close operation, signing key, adapter, surface or app boundary also updates the [threat model](docs/threat-model.md) and its row in the [invariant register](docs/invariants.mdx); run `bun run check:docs`, which CI runs on every pull request, to confirm every file, symbol and test it names still exists.
+9. A maintainer will review your PR. Be prepared for back-and-forth - the review is thorough because the operations are irreversible.
+10. Squash commits if requested before merge.
 
 ### Checks on a pull request
 
@@ -309,6 +310,30 @@ At minimum:
 - Unknown `wasmHash`: adapter flags the position for manual review instead of building an exit
 - Clamp to balance: exit does not over-withdraw (amount larger than position is clamped)
 - Repay before withdraw (for lending protocols): debt is repaid before collateral is touched
+
+### Playground scenarios
+
+The playground exists to catch API drift: it seeds a testnet demo account with a closing state and
+closes it through the real API. It falls behind every closing flow that ships without a scenario,
+so a pull request that adds a new closeable account state, a new close operation or a new protocol
+exit also adds a playground scenario, in the same pull request or a follow-up opened with it. When
+one is not possible (testnet has no instance of the protocol, for example), the PR description says
+why. A scenario needs three things, each with its tests:
+
+1. **A registry definition** in `apps/playground/lib/scenarios/definitions.ts`: its parameters,
+   requirements and conflicts, the steps that seed it, its cost, and what its close must contain.
+   `tests/unit/scenario-registry.test.ts` checks every definition.
+2. **A verification rule**: what `apps/playground/lib/verify.ts` holds the close to for this
+   scenario, with a test that accepts the real close and one that refuses a changed one.
+3. **A scene node**: the nodes its steps add, and the handler in `apps/playground/lib/scene-actions.ts`
+   that removes them when the close operation confirms, tested in `tests/unit/scene-actions.test.ts`.
+
+The [add a playground scenario guide](docs/contributing/add-a-playground-scenario.mdx) walks through
+each file and the end-to-end spec. The nightly testnet run (`e2e-nightly.yml`) runs every playground
+spec, the protocol and API presets as testnet can seed them that night, and one random wallet from
+a code derived from the date. That code is logged as a notice and named in the failure issue; run
+the workflow by hand with it as the `seed` input, or paste it in the playground's replay box, to
+replay the same wallet.
 
 ### Integration tests (`tests/integration/`)
 

@@ -1,4 +1,5 @@
 import { expect, type Page, type Response } from "@playwright/test";
+import { Keypair } from "@stellar/stellar-sdk";
 import { encodeSelection, type ScenarioSelection } from "../../lib/scenarios";
 import { appAlerts } from "./alerts";
 import { HORIZON } from "./testnet";
@@ -54,6 +55,15 @@ export async function closeWith(
 ): Promise<{ session: CreatedSession; ops: HorizonOperation[] }> {
   await page.goto(`/?selection=${encodeSelection(selection)}`);
   await expect(page.getByRole("button", { name: scenario, pressed: true })).toBeVisible();
+  return closeOnScreen(page, blocker, mergeInto);
+}
+
+/** Runs the selection already on screen to the merge, from "Create & trash a demo account". */
+export async function closeOnScreen(
+  page: Page,
+  blocker: RegExp | null,
+  mergeInto: (session: CreatedSession) => string = (session) => session.accounts.mm
+): Promise<{ session: CreatedSession; ops: HorizonOperation[] }> {
   const created = page.waitForResponse(isCreateSession, { timeout: 90_000 });
   await page.getByRole("button", { name: "Create & trash a demo account" }).click();
   const response = await created;
@@ -86,6 +96,13 @@ export async function closeWith(
   );
   return { session, ops };
 }
+
+/** The API's relay for this run, which an exchange close merges into (playwright.config.ts). */
+export const relay = (): string => {
+  const secret = process.env.PLAYGROUND_E2E_MEDIATOR_SECRET;
+  if (!secret) throw new Error("playwright.config.ts sets the run's mediator");
+  return Keypair.fromSecret(secret).publicKey();
+};
 
 export const count = (ops: HorizonOperation[], type: string): number =>
   ops.filter((op) => op.type === type).length;

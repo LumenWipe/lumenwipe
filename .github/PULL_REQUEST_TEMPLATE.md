@@ -22,6 +22,9 @@ and how this PR satisfies each one.
 - [ ] `bun lint` - passes
 - [ ] `bun test` - passes, note any new test files/counts
 - [ ] `bun test:e2e` (if UI-facing or a new protocol integration) - passes against testnet
+- [ ] Playground scenario, if this adds a closeable account state, a close operation or a protocol
+      exit (CONTRIBUTING.md, "Playground scenarios"): added here, or in the follow-up linked here,
+      or not applicable, because ...
 - [ ] Manual verification (describe what you did, or state why automated coverage above is
       sufficient on its own)
 
