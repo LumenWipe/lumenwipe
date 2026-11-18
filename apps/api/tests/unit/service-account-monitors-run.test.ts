@@ -313,7 +313,7 @@ describe("the whole budget", () => {
       expect(elapsed).toBeLessThan(400 + 150);
       expect(result.status).toBe("incomplete");
       for (const address of [MEDIATOR, SPONSOR]) {
-          expect(result.printed).toMatch(new RegExp(`\\(testnet, ${address}\\): none of the`));
+        expect(result.printed).toMatch(new RegExp(`\\(testnet, ${address}\\): none of the`));
       }
     }
   );
