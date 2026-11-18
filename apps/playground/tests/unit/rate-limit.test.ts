@@ -3,6 +3,7 @@ import { createHash, createHmac, randomBytes } from "node:crypto";
 import { NextRequest } from "next/server";
 import {
   createRateLimiter,
+  LIMITER_TIMEOUT_MS,
   MIN_HASH_KEY_LENGTH,
   type DailyCounter,
   type RateLimiterDeps,
@@ -199,6 +200,61 @@ describe("rate limit", () => {
   test("a count that is not a number is treated as over the limit", async () => {
     const limit = limiter(async () => "OK");
     expect((await limit(request({ "x-real-ip": IP }), "session", 5))?.status).toBe(429);
+  });
+
+  test("a counter that never settles lets the request through once the timeout passes", async () => {
+    const limit = limiter(() => new Promise<never>(() => {}), { timeoutMs: 20 });
+    const started = performance.now();
+    expect(await limit(request({ "x-real-ip": IP }), "session", 1)).toBeNull();
+    expect(performance.now() - started).toBeLessThan(500);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    const logged = errorSpy.mock.calls[0]!.map(String);
+    expect(logged).toContain("session");
+    expect(logged).toContain("LimiterTimeout");
+    for (const arg of logged) {
+      for (const leak of [IP, ipHash("session", "2026-11-09"), HASH_KEY]) {
+        expect(arg).not.toContain(leak);
+      }
+    }
+  });
+
+  test("the limiter waits one second on the counter by default", () => {
+    expect(LIMITER_TIMEOUT_MS).toBe(1000);
+  });
+
+  test("a counter that answers clears the timer", async () => {
+    const setSpy = spyOn(globalThis, "setTimeout");
+    const clearSpy = spyOn(globalThis, "clearTimeout");
+    try {
+      const { counter } = memoryCounter();
+      expect(await limiter(counter)(request({ "x-real-ip": IP }), "session", 1)).toBeNull();
+      expect(setSpy).toHaveBeenCalledTimes(1);
+      expect(setSpy.mock.calls[0]![1]).toBe(LIMITER_TIMEOUT_MS);
+      expect(clearSpy).toHaveBeenCalledWith(setSpy.mock.results[0]!.value);
+    } finally {
+      setSpy.mockRestore();
+      clearSpy.mockRestore();
+    }
+  });
+
+  test("a counter that fails after the timeout never becomes an unhandled rejection", async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      let fail: (err: Error) => void = () => {};
+      const late = new Promise<never>((_, reject) => {
+        fail = reject;
+      });
+      const limit = limiter(() => late, { timeoutMs: 5 });
+      expect(await limit(request({ "x-real-ip": IP }), "session", 1)).toBeNull();
+      fail(new TypeError("ECONNRESET after the timeout"));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(unhandled).toEqual([]);
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
   });
 
   test("with no counter configured every request passes", async () => {
