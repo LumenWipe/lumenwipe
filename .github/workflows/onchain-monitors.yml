@@ -70,7 +70,13 @@ jobs:
   service-accounts:
     name: service accounts
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Each check ends on its own and reports what it could not read (scripts/monitors): keys reads
+    # every account record at once (30 s at most) and then history within a 4-minute budget,
+    # forward reads within 4 minutes, and balances is one request per current account (30 s each,
+    # 2 minutes for four, also capped at 4). With about 2 minutes of setup, the worst case is about
+    # 2 + 4.5 + 2 + 4 = 12.5 minutes. A job timeout loses the statuses and reads as an incomplete
+    # read, so the limit leaves room above that.
+    timeout-minutes: 20
     permissions:
       contents: read
     # The report reads each check from these. Anything but `success`, an empty value included,

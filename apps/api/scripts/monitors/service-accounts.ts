@@ -58,9 +58,10 @@ const REQUEST_TIMEOUT_MS = 30_000;
 
 /**
  * Each check stops reading after this long and reports what it did not read, so every step ends
- * on its own inside the job's 15 minutes: keys and forward 5 each, balances a few requests.
+ * on its own well inside the job's timeout (the sum is in onchain-monitors.yml). Every account
+ * gets an equal share, so a flood on one cannot spend another's.
  */
-const CHECK_BUDGET_MS = 5 * 60_000;
+const CHECK_BUDGET_MS = 4 * 60_000;
 
 const ROOT = new URL("../../../../", import.meta.url);
 
@@ -74,15 +75,15 @@ class Run {
   readonly findings: Finding[] = [];
   readonly incomplete: Finding[] = [];
   requests = 0;
-  private readonly deadline: AbortSignal;
+  /** The current account's share of the budget, while `each` reads it. */
+  private deadline: AbortSignal | null = null;
+  private shareMs = 0;
 
   constructor(
     readonly hours: number,
     readonly maxPages: number,
     private readonly budgetMs: number
-  ) {
-    this.deadline = AbortSignal.timeout(budgetMs);
-  }
+  ) {}
 
   get since(): Date {
     return new Date(Date.now() - this.hours * 3_600_000);
@@ -95,8 +96,27 @@ class Run {
     return (await res.json()) as T;
   }
 
+  /**
+   * Every account's record at once, before any history and outside the budget, with only the
+   * per-request timeout: the sequence read is what a flood of history cannot crowd out. Undefined
+   * for an account whose record could not be read, which is reported unread.
+   */
+  async records(accounts: ServiceAccount[]): Promise<Map<ServiceAccount, HorizonAccount | null>> {
+    const read = await Promise.all(
+      accounts.map(async (account) => {
+        try {
+          return [account, await this.account(account)] as const;
+        } catch (error) {
+          this.unreadable(account, `its sequence could not be read: ${(error as Error).message}`);
+          return null;
+        }
+      })
+    );
+    return new Map(read.filter((entry) => entry !== null));
+  }
+
   /** The account record, or null for a retired account its drain already removed. */
-  async account(account: ServiceAccount): Promise<HorizonAccount | null> {
+  private async account(account: ServiceAccount): Promise<HorizonAccount | null> {
     const path = `/accounts/${account.address}`;
     const res = await this.fetch(account.network, path);
     if (account.retired === true && res.status === 404) return null;
@@ -105,15 +125,17 @@ class Run {
   }
 
   private async fetch(network: ServiceNetwork, path: string): Promise<Response> {
-    if (this.deadline.aborted) throw new Error(this.budgetSpent());
+    const deadline = this.deadline;
+    if (deadline?.aborted) throw new Error(this.budgetSpent());
     this.requests++;
+    const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
     try {
       return await fetch(`${HORIZON[network]}${path}`, {
-        signal: AbortSignal.any([AbortSignal.timeout(REQUEST_TIMEOUT_MS), this.deadline]),
+        signal: deadline === null ? timeout : AbortSignal.any([timeout, deadline]),
       });
     } catch {
       throw new Error(
-        this.deadline.aborted
+        deadline?.aborted
           ? this.budgetSpent()
           : `Horizon ${network} did not answer ${path} within ${REQUEST_TIMEOUT_MS / 1000} s`
       );
@@ -121,16 +143,26 @@ class Run {
   }
 
   private budgetSpent(): string {
-    return `the check's ${this.budgetMs / 1000} s time budget ran out`;
+    return (
+      `its ${this.shareMs / 1000} s share of the check's ${this.budgetMs / 1000} s time budget ` +
+      "ran out"
+    );
   }
 
-  /** Reads each account in turn; one that fails is reported unread and the next one still runs. */
+  /**
+   * Reads each account in turn, each within an equal share of the budget; one that fails is
+   * reported unread and the next one still runs.
+   */
   async each(accounts: ServiceAccount[], read: (account: ServiceAccount) => Promise<void>) {
+    this.shareMs = this.budgetMs / Math.max(accounts.length, 1);
     for (const account of accounts) {
+      this.deadline = AbortSignal.timeout(this.shareMs);
       try {
         await read(account);
       } catch (error) {
         this.unreadable(account, `could not be read: ${(error as Error).message}`);
+      } finally {
+        this.deadline = null;
       }
     }
   }
@@ -158,14 +190,11 @@ function log(line: string) {
 }
 
 async function keys(run: Run, accounts: ServiceAccount[]) {
-  await run.each(accountsFor(accounts, "keys"), async (account) => {
+  const watched = accountsFor(accounts, "keys");
+  const records = await run.records(watched);
+  await run.each(watched, async (account) => {
     const since = run.since;
-    let record: HorizonAccount | null = null;
-    try {
-      record = await run.account(account);
-    } catch (error) {
-      run.unreadable(account, `its sequence could not be read: ${(error as Error).message}`);
-    }
+    const record = records.get(account) ?? null;
     const transactions = await transactionsInWindow(
       (path) => run.horizon<HorizonTransactionPage>(account.network, path),
       account.address,

@@ -561,6 +561,7 @@ const inTransaction = (
   createdAt = tx.created_at
 ): HorizonAccountEffect[] =>
   effects.map((effect, i) => ({
+    asset_type: "native",
     created_at: createdAt,
     paging_token: `${base + 1n}-${i + 1}`,
     ...effect,
@@ -612,6 +613,24 @@ describe("forwardFindings", () => {
     expect(forwardFindings(mediator, effects, [])).toHaveLength(1);
   });
 
+  test("a credit of another asset does not cover an XLM debit", () => {
+    const effects = inTransaction([
+      { ...merge("100"), asset_type: "credit_alphanum4", asset_code: "USDC" },
+      forward("100"),
+    ]);
+    const [finding] = forwardFindings(mediator, effects, []);
+    expect(finding?.message).toContain("paid out 100 XLM but the merge delivered 0 XLM");
+  });
+
+  test("a debit of another asset is not counted as XLM paid out", () => {
+    const effects = inTransaction([
+      merge("10"),
+      forward("10"),
+      { ...forward("5"), asset_type: "credit_alphanum4", asset_code: "USDC" },
+    ]);
+    expect(forwardFindings(mediator, effects, [])).toEqual([]);
+  });
+
   test("a credit-only flood is quiet however long", () => {
     const flood = Array.from({ length: 300 }, (_, i) =>
       inTransaction([merge("0.0000001")], FORWARD_TX - BigInt(i) * 4096n)
@@ -651,6 +670,7 @@ describe("forwardFindings on a rotation's drain", () => {
       type: "account_debited",
       account: RETIRED_RELAY,
       amount: "10000.0000000",
+      asset_type: "native",
       created_at: CREATED,
       paging_token: `${op}-1`,
     },
@@ -711,6 +731,7 @@ describe("forwardFindings on a rotation's drain", () => {
         type: "account_debited",
         account: RETIRED_RELAY,
         amount: "5",
+        asset_type: "native",
         created_at: CREATED,
         paging_token: `${BigInt(DRAIN_OP) + 1n}-2`,
       },
@@ -745,6 +766,7 @@ describe("a retired fee sponsor", () => {
       type: "account_debited",
       account: RETIRED_SPONSOR,
       amount: "9999.9998600",
+      asset_type: "native",
       created_at: CREATED,
       paging_token: `${DRAIN_OP}-1`,
     },
@@ -1184,6 +1206,29 @@ describe("the current sponsor's debits", () => {
   });
 });
 
+describe("the order accounts are read in", () => {
+  test("mainnet first, each network in its configured order", () => {
+    const mainnetRelay: ServiceAccount = { ...mediator, network: "mainnet", address: OTHER };
+    const mainnetSponsor: ServiceAccount = { ...sponsor, network: "mainnet", address: USER };
+    const accounts = [mediator, sponsor, mainnetRelay, mainnetSponsor, retiredRelay];
+    for (const check of ["keys", "forward"] as const) {
+      expect(accountsFor(accounts, check)).toEqual([
+        mainnetRelay,
+        mainnetSponsor,
+        mediator,
+        sponsor,
+        retiredRelay,
+      ]);
+    }
+    expect(accountsFor(accounts, "balances")).toEqual([
+      mainnetRelay,
+      mainnetSponsor,
+      mediator,
+      sponsor,
+    ]);
+  });
+});
+
 describe("checkStatus", () => {
   const finding = { account: mediator, message: "fired" };
   const unread = { account: mediator, message: "stopped" };
@@ -1268,6 +1313,7 @@ describe("a read that stopped inside a transaction", () => {
     type: "account_debited",
     account: MEDIATOR,
     amount: "9999.9999800",
+    asset_type: "native",
     created_at: "2026-11-17T15:24:51Z",
     paging_token: "24829588190277634-2",
   };

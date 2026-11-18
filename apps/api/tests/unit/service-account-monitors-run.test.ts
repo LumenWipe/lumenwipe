@@ -52,6 +52,8 @@ afterAll(() => {
 const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200 });
 const page = (records: unknown[] = []) => json({ _embedded: { records } });
 const now = () => new Date().toISOString();
+/** A Horizon that never answers, as a page of several megabytes behind a flood can look. */
+const hang = () => new Promise<Response>(() => {});
 
 /** Every list empty and no sequence ever moved: the clean shape of the testnet accounts. */
 const quiet: Route = (path) =>
@@ -67,9 +69,14 @@ async function check(
   const output = join(dir, `output-${run}`);
   writeFileSync(output, "");
   process.env.GITHUB_OUTPUT = output;
-  globalThis.fetch = (async (input: string | URL | Request) => {
+  globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(typeof input === "string" ? input : input.toString());
-    return route(`${url.pathname}${url.search}`);
+    const signal = init?.signal;
+    // Like fetch, a request ends when its signal aborts, even if Horizon never answers.
+    return new Promise<Response>((resolve, reject) => {
+      signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+      Promise.resolve(route(`${url.pathname}${url.search}`)).then(resolve, reject);
+    });
   }) as typeof fetch;
   printed = [];
   const capture = (chunk: string | Uint8Array) => {
@@ -85,6 +92,15 @@ async function check(
   const status = /^status=(.*)$/m.exec(readFileSync(output, "utf8"))?.[1];
   return { code, status, printed: printed.join("") };
 }
+
+const debit = (amount: string, token: string) => ({
+  type: "account_debited",
+  account: MEDIATOR,
+  amount,
+  asset_type: "native",
+  created_at: now(),
+  paging_token: token,
+});
 
 describe("the keys check", () => {
   test("nothing signed and everything read: clean, exit 0", async () => {
@@ -162,14 +178,6 @@ describe("the keys check", () => {
 });
 
 describe("the forward check", () => {
-  const debit = (amount: string, token: string) => ({
-    type: "account_debited",
-    account: MEDIATOR,
-    amount,
-    created_at: now(),
-    paging_token: token,
-  });
-
   test("a forward equal to its merge: clean", async () => {
     const result = await check("forward", (path) =>
       path.startsWith(`/accounts/${MEDIATOR}/effects`)
@@ -212,6 +220,81 @@ describe("the forward check", () => {
     );
     expect(result.status).toBe("incomplete");
     expect(reads.filter((p) => p.startsWith(`/accounts/${MEDIATOR}/`))).toHaveLength(2);
+  });
+});
+
+describe("one account's flood", () => {
+  // The relay is read first; its history never answers, so it spends its whole share of the
+  // budget. Before each account had its own share, nothing after it was read at all.
+  test("keys: cannot keep the sequence read of another account from paging", async () => {
+    const moved = String(Math.floor(Date.now() / 1000));
+    const result = await check(
+      "keys",
+      (path) => {
+        if (path === `/accounts/${SPONSOR}`) return json({ balances: [], sequence_time: moved });
+        if (path.startsWith(`/accounts/${MEDIATOR}/`)) return hang();
+        return quiet(path);
+      },
+      { budgetMs: 300 }
+    );
+    expect(result.status).toBe("finding");
+    expect(result.printed).toContain("its sequence number moved");
+    expect(result.printed).toContain("share of the check's 0.3 s time budget ran out");
+  });
+
+  test("keys: a slow account record is still read, outside the history budget", async () => {
+    const moved = String(Math.floor(Date.now() / 1000));
+    const result = await check(
+      "keys",
+      (path) =>
+        path === `/accounts/${MEDIATOR}`
+          ? new Promise<Response>((resolve) =>
+              setTimeout(() => resolve(json({ balances: [], sequence_time: moved })), 250)
+            )
+          : quiet(path),
+      { budgetMs: 300 }
+    );
+    expect(result.status).toBe("finding");
+    expect(result.printed).toContain("its sequence number moved");
+  });
+
+  test("keys: cannot spend another account's share of the history budget", async () => {
+    const result = await check(
+      "keys",
+      (path) => {
+        if (path.startsWith(`/accounts/${MEDIATOR}/`)) return hang();
+        if (path.startsWith(`/accounts/${SPONSOR}/transactions`)) {
+          return page([
+            {
+              hash: "ef".repeat(32),
+              created_at: now(),
+              source_account: SPONSOR,
+              paging_token: "1",
+            },
+          ]);
+        }
+        return quiet(path);
+      },
+      { budgetMs: 300 }
+    );
+    expect(result.status).toBe("finding");
+    expect(result.printed).toContain("is sourced from the account");
+  });
+
+  test("forward: cannot keep another account's payout from paging", async () => {
+    const result = await check(
+      "forward",
+      (path) => {
+        if (path.startsWith(`/accounts/${MEDIATOR}/`)) return hang();
+        if (path.startsWith(`/accounts/${SPONSOR}/effects`)) {
+          return page([{ ...debit("40", "24829588190277634-1"), account: SPONSOR }]);
+        }
+        return quiet(path);
+      },
+      { budgetMs: 300 }
+    );
+    expect(result.status).toBe("finding");
+    expect(result.printed).toContain("debited 40 XLM from the account");
   });
 });
 

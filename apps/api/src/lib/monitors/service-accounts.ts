@@ -721,7 +721,8 @@ export function removalOperations(
  * bounds the forward by the merge at co-sign time, so any transaction where the debit exceeds the
  * credit is one that got past that bound. A retired account's drain counts what it delivered to
  * the operator as delivered, in that operation only, so any other debit in the same transaction
- * still fires. `removals` holds the operation record of each of `removalOperations`; a
+ * still fires. Only native amounts count: the merge and the forward move XLM, and a credit of
+ * another asset must not cover an XLM debit. `removals` holds the operation record of each of `removalOperations`; a
  * transaction with a removal whose record is missing is not judged, and the caller reports it
  * unread. A retired sponsor is read the same way: its fee bumps are fees, not effects, so only a
  * payout or a merge debits it.
@@ -757,7 +758,7 @@ export function forwardFindings(
     let credited = 0n;
     let debited = 0n;
     for (const effect of transaction) {
-      if (typeof effect.amount !== "string") continue;
+      if (typeof effect.amount !== "string" || effect.asset_type !== "native") continue;
       const amount = BigInt(xlmToStroops(effect.amount));
       if (effect.type === "account_credited") credited += amount;
       if (effect.type !== "account_debited") continue;
@@ -811,18 +812,21 @@ export function sponsorDebitFindings(
 export type ServiceCheck = "keys" | "balances" | "forward";
 
 /**
- * The accounts one check reads. A retired account has no balance left to floor. The forward check
+ * The accounts one check reads, mainnet first. A retired account has no balance left to floor. The forward check
  * reads every account's own effects: the relay and a retired account against the merge and the
  * drain, the current sponsor for any debit at all.
  */
 export function accountsFor(accounts: ServiceAccount[], check: ServiceCheck): ServiceAccount[] {
+  const mainnetFirst = [...accounts].sort(
+    (a, b) => Number(a.network !== "mainnet") - Number(b.network !== "mainnet")
+  );
   switch (check) {
     case "keys":
-      return accounts;
+      return mainnetFirst;
     case "balances":
-      return accounts.filter((a) => !a.retired);
+      return mainnetFirst.filter((a) => !a.retired);
     case "forward":
-      return accounts;
+      return mainnetFirst;
   }
 }
 

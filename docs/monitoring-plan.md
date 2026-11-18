@@ -156,8 +156,10 @@ Each of those checks ends in one of three statuses, which it writes as a step ou
 - **finding**: a key was used or an account paid out. Only this pages `@everyone`, and it does so on every
   hourly run it persists, whatever else in the same check could not be read.
 - **incomplete**: nothing fired, but something was not read: a list hit the 25-page cap inside the window, a
-  Horizon request failed or did not answer within 30 seconds, or the check ran out of its 5-minute budget.
-  The records read before the stop are still judged, and an account that fails does not stop the next one.
+  Horizon request failed or did not answer within 30 seconds, or an account ran out of its share of the
+  check's 4-minute budget. Each account gets an equal share and mainnet is read first, so a flood on one
+  account, a free testnet one included, cannot spend the time another account needs. The records read
+  before the stop are still judged, and an account that fails does not stop the next one.
   A read that stopped inside a transaction leaves that transaction out rather than judging half of it (a
   forward's payment read without the merge before it would read as a payout). An incomplete read opens or
   updates the issue and alerts the channel without the mention, like a balance finding; it is never clean.
@@ -193,8 +195,9 @@ the relay never pays a fee. The current sponsor as `fee_account` is every sponso
 reported once. This costs one more Horizon request per watched account and run (an operations page of 200), up
 to the same 25-page cap, which is an incomplete read when it is reached. The keys check also reads the account
 record: its `sequence_time` moves only when the account sources a transaction, failed or not, or bumps its
-own sequence, so one inside the window is a finding even when the history read was incomplete, and no flood can
-push it out of reach. Neither the relay's forward nor a fee bump the sponsor pays moves it: on testnet on
+own sequence, so one inside the window is a finding even when the history read was incomplete. Every
+account's record is read first, all at once and outside the history budget, with only the 30-second request
+timeout, so a flood of one account's history, or of another's, cannot keep it from being read. Neither the relay's forward nor a fee bump the sponsor pays moves it: on testnet on
 2026-11-18 the relay and the sponsor both had none, after forward `6065aa4a…` and fee bump `52cb1ed3…`, and the
 operator, which sources its own transactions, had one. A retired account its drain removed has no record left
 to read. Measured on the testnet sponsor on 2026-09-18: 8
@@ -206,8 +209,8 @@ floor reads each account's native balance from Horizon and compares it to its ro
 `service-accounts.ts`: the mediator's base reserve, and a provisional top-up level for the sponsor that stands
 in for `S4b.Denial.1.M.1`'s balance half until real usage sets one. The forward check reads the mediator's own
 effects list inside the history window, and any retired account's, groups the effects by transaction (an
-effect's operation id carries its transaction), and fires when a transaction debited the account more than
-it credited it, which is the only way the mediator can pay out of its own balance. That is one request per 200
+effect's operation id carries its transaction), and fires when a transaction debited the account more XLM
+than it credited it (a credit of another asset does not count against an XLM debit), which is the only way the mediator can pay out of its own balance. That is one request per 200
 effects, so a flood of credits fills the cap and reads as incomplete rather than pushing the check past its
 time. Measured on the testnet mediator on 2026-10-07: 6 transactions, forward equal to the
 merge in every one. The current sponsor has no forward and no drain, and pays fees, which Horizon reports as no
