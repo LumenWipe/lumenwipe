@@ -24,7 +24,7 @@ import {
 const RUN_INTEGRATION =
   !!process.env.LUMENWIPE_RUN_INTEGRATION && !!process.env.LUMENWIPE_INTEGRATION_FUNDED;
 // Set by CI from the event, never inferred from a missing secret: that must still fail below.
-const FORK_PR_WITHOUT_SECRETS = process.env.LUMENWIPE_FORK_PR === "true";
+const ADMIN_KEYS_WITHHELD = process.env.LUMENWIPE_ADMIN_KEYS_WITHHELD === "true";
 
 const FRIENDBOT = "https://friendbot.stellar.org";
 const HORIZON_URL = "https://horizon-testnet.stellar.org";
@@ -35,7 +35,7 @@ async function fund(publicKey: string): Promise<void> {
   if (!res.ok) throw new Error(`friendbot funding failed for ${publicKey}: ${res.status}`);
 }
 
-test.skipIf(!RUN_INTEGRATION || FORK_PR_WITHOUT_SECRETS)(
+test.skipIf(!RUN_INTEGRATION || ADMIN_KEYS_WITHHELD)(
   "a self-provided, partially staked Phoenix LP position closes end to end through the real adapter",
   async () => {
     const tokenAdminSecret = process.env.PHOENIX_TESTNET_TOKEN_ADMIN_SECRET;
@@ -102,7 +102,7 @@ test.skipIf(!RUN_INTEGRATION || FORK_PR_WITHOUT_SECRETS)(
   120_000
 );
 
-test.skipIf(!RUN_INTEGRATION || FORK_PR_WITHOUT_SECRETS)(
+test.skipIf(!RUN_INTEGRATION || ADMIN_KEYS_WITHHELD)(
   "a Phoenix account that bonded every share is detected by its stake and closes through unbond, then withdraw",
   async () => {
     const tokenAdminSecret = process.env.PHOENIX_TESTNET_TOKEN_ADMIN_SECRET;

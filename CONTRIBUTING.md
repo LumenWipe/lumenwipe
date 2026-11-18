@@ -220,6 +220,28 @@ chore/registry-kraken-address
 8. A maintainer will review your PR. Be prepared for back-and-forth - the review is thorough because the operations are irreversible.
 9. Squash commits if requested before merge.
 
+### Checks on a pull request
+
+A first-time contributor's workflows start only after a maintainer approves the run. After that,
+every PR, fork or not, must pass the same nine required checks. No required check depends on a
+secret, so a fork PR can go green on its own.
+
+| Required check                             | What it covers                                                                                                                                                                                                                                                      |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `api`, `web`, `sdk`, `types`, `playground` | That package's type-check, lint and tests (and, for the SDK, its API report, pack and release checks)                                                                                                                                                               |
+| `prettier`                                 | `bun run format:check`                                                                                                                                                                                                                                              |
+| `api image`                                | The API image builds, boots, keeps its pins and passes its vulnerability scan                                                                                                                                                                                       |
+| `web vercel build (adapter)`               | The web app built the way Vercel builds it, with its CSP checked                                                                                                                                                                                                    |
+| `type-check · lint · test`                 | The aggregate: every package row, both accessibility gates, the read-only and funded integration tiers, the api image, prettier, the changelog and release agreement, CodeQL, Semgrep, gitleaks, the dependency audit, workflow lint, docs and the docs claim check |
+
+These run only for maintainers, and never block a PR:
+
+| Maintainer-only check                                                     | When it runs                                                                                                                     |
+| ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `integration (funded)` with the testnet admin keys (Phoenix, FxDAO tests) | On every push to `main`. On a PR, a maintainer runs it on a reviewed commit with `integration-funded-review.yml` and an approval |
+| End-to-end, SDK example, provider contract and on-chain monitors          | On a schedule (`e2e-nightly.yml`, `sdk-example-nightly.yml`, `provider-contract.yml`, `onchain-monitors.yml`) or by hand         |
+| API deploy, migration check, SDK and verifier publish                     | On push to `main`, by hand, or on a release tag                                                                                  |
+
 ---
 
 ## 8. Testing requirements
@@ -292,7 +314,10 @@ At minimum:
 
 Run with `bun run test:integration` from `apps/api`. It is not part of `bun test`, but CI
 runs it on every PR and every push to `main`: the read-only tests in the `integration (live RPC)`
-job, and the tests that fund testnet accounts in the `integration (funded)` job. For
+job, and the tests that fund testnet accounts in the funded tier. On a PR the funded tier runs as
+`integration (funded, no admin keys)`, where the Phoenix and FxDAO tests skip because the testnet
+admin keys they need live only in the `testnet-funded` environment, which only `main` can use; a
+push to `main` runs the whole tier as `integration (funded)`. For
 server-side-only logic with no UI to drive through Playwright (e.g. account-state enumeration),
 this is the tier that actually touches testnet, matching the integration tier
 docs/architecture.md §17 describes.
