@@ -15,9 +15,13 @@ import {
   operationsInWindow,
   plannedAccounts,
   operatorVariable,
+  readsOwnEffects,
   retiredVariable,
   sourcedFinding,
+  sponsorDebitFindings,
+  effectsInWindow,
   transactionsInWindow,
+  type HorizonAccountEffect,
   type HorizonEffect,
   type HorizonOperation,
   type HorizonTransaction,
@@ -272,7 +276,7 @@ describe("a retired address", () => {
   test("is read by the keys and forward checks but has no balance floor", () => {
     const accounts = loadServiceAccounts(retiredEnv, testnetOnly, {});
     expect(accountsFor(accounts, "keys")).toContainEqual(retired);
-    expect(accountsFor(accounts, "forward")).toEqual([mediator, retired]);
+    expect(accountsFor(accounts, "forward")).toContainEqual(retired);
     expect(accountsFor(accounts, "balances")).not.toContainEqual(retired);
     expect(accountsFor(accounts, "balances")).toHaveLength(2);
   });
@@ -648,13 +652,20 @@ describe("a retired fee sponsor", () => {
     { type: "account_removed", account: RETIRED_SPONSOR, paging_token: `${DRAIN_OP}-3` },
   ];
 
-  test("is read by the forward check, and a current sponsor is not", () => {
+  test("is read by the forward check through its transactions, the current sponsor through its effects", () => {
     const accounts = loadServiceAccounts(
       { ...testnetEnv, FEE_ACCOUNT_ADDRESS_TESTNET_RETIRED: RETIRED_SPONSOR },
       testnetOnly,
       {}
     );
-    expect(accountsFor(accounts, "forward")).toEqual([mediator, retiredSponsor]);
+    const current: ServiceAccount = {
+      role: "sponsor",
+      network: "testnet",
+      address: SPONSOR,
+      floorXlm: "50",
+    };
+    expect(accountsFor(accounts, "forward")).toEqual([mediator, current, retiredSponsor]);
+    expect(accountsFor(accounts, "forward").map(readsOwnEffects)).toEqual([false, true, false]);
   });
 
   test("the runbook's drain into the operator is quiet", () => {
@@ -843,5 +854,248 @@ describe("keysFindings on operation sources", () => {
     expect(params.get("join")).toBe("transactions");
     expect(params.get("include_failed")).toBe("true");
     expect(params.get("order")).toBe("desc");
+  });
+});
+
+// A native asset contract transfer out of a G account, sourced by another account and authorized by
+// the debited account's Soroban auth entry, as Horizon returned it on testnet on 2026-11-18
+// (2cc82275…be05, between throwaway accounts). Here the debited account is a service account.
+const SAC_TX = "2cc8227570c45b043d6e1a3d20d8df3e80e7819214eaed2ed97e509f019ebe05";
+const SAC_OP = "24867761859633153";
+const CALLER = "GCSZJYLNOWJQ2SLQHJFLP2CSYO5X2N64BZEUPTHDMBM6PMDJLXT3VHRD";
+const contractTransfer = (from: string, to = CALLER): HorizonOperation => ({
+  type: "invoke_host_function",
+  source_account: CALLER,
+  transaction_hash: SAC_TX,
+  created_at: "2026-11-18T03:45:31Z",
+  paging_token: SAC_OP,
+  transaction: { source_account: CALLER },
+  asset_balance_changes: [
+    { asset_type: "native", type: "transfer", from, to, amount: "1.0000000" },
+  ],
+});
+
+const sponsor: ServiceAccount = {
+  role: "sponsor",
+  network: "testnet",
+  address: SPONSOR,
+  floorXlm: "50",
+};
+const retiredRelay: ServiceAccount = {
+  role: "mediator",
+  network: "testnet",
+  address: RETIRED_RELAY,
+  floorXlm: "1",
+  retired: true,
+  drainTo: OPERATOR,
+};
+const retiredSponsor: ServiceAccount = {
+  role: "sponsor",
+  network: "testnet",
+  address: RETIRED_SPONSOR,
+  floorXlm: "50",
+  retired: true,
+  drainTo: OPERATOR,
+};
+
+describe("keysFindings on Soroban authorization", () => {
+  test.each([
+    ["relay", mediator],
+    ["sponsor", sponsor],
+    ["retired relay", retiredRelay],
+    ["retired sponsor", retiredSponsor],
+  ] as const)("an asset contract transfer out of the %s fires", (_, account) => {
+    const findings = keysFindings(account, [], [contractTransfer(account.address)]);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].message).toBe(
+      `transaction ${SAC_TX} (2026-11-18T03:45:31Z) moved 1.0000000 XLM out of the account ` +
+        `through a contract call sourced by ${CALLER}, authorized by its key. Expected none.`
+    );
+  });
+
+  test("a transfer_from after an approve fires: the debited account is still `from`", () => {
+    // ad6a830b…343c: the spender sources the call, the approve before it named no account.
+    const spent = {
+      ...contractTransfer(SPONSOR),
+      transaction_hash: "ad6a830b0ef4107fda8f952f55a468e65d4ac61dbb117fecb88d0a22522d343c",
+    };
+    expect(keysFindings(sponsor, [], [spent])).toHaveLength(1);
+  });
+
+  test("a transfer into the account is quiet", () => {
+    expect(keysFindings(sponsor, [], [contractTransfer(CALLER, SPONSOR)])).toEqual([]);
+    expect(keysFindings(mediator, [], [contractTransfer(CALLER, MEDIATOR)])).toEqual([]);
+  });
+
+  test("a contract call that moved nothing is quiet", () => {
+    const call = { ...contractTransfer(SPONSOR), asset_balance_changes: null };
+    expect(keysFindings(sponsor, [], [call])).toEqual([]);
+  });
+
+  test("names every asset the call moved out of the account", () => {
+    const call = contractTransfer(SPONSOR);
+    call.asset_balance_changes!.push({
+      asset_type: "credit_alphanum4",
+      asset_code: "USDC",
+      type: "transfer",
+      from: SPONSOR,
+      to: CALLER,
+      amount: "3.0000000",
+    });
+    expect(keysFindings(sponsor, [], [call])[0].message).toContain(
+      "moved 1.0000000 XLM, 3.0000000 USDC out of the account"
+    );
+  });
+
+  test("a transaction with an operation the account sourced is reported once", () => {
+    const own: HorizonOperation = {
+      ...contractTransfer(CALLER),
+      type: "set_options",
+      source_account: SPONSOR,
+      asset_balance_changes: undefined,
+    };
+    const findings = keysFindings(sponsor, [], [own, contractTransfer(SPONSOR)]);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].message).toContain("operations sourced from the account: set_options");
+  });
+});
+
+describe("keysFindings on the fee account", () => {
+  // 7eb757ae…c7c4 and its failed twin 16038283…ac88 on testnet, 2026-11-18: a fee bump lists the
+  // inner transaction's source as source_account and the payer as fee_account.
+  const INNER = "GB6UNK7IIYB2J2CTM2IHEKDIB3D6IMWMPTOA4J63E6XVAC7OOSGNAT5I";
+  const feeBump = (payer: string): HorizonTransaction => ({
+    hash: "7eb757ae47403531b980ef13f539dbe61c22437ba072097c44bf7c678101c7c4",
+    created_at: "2026-11-18T03:45:56Z",
+    source_account: INNER,
+    fee_account: payer,
+    paging_token: "24867817935101952",
+  });
+  const failedFeeBump = (payer: string): HorizonTransaction => ({
+    ...feeBump(payer),
+    hash: "16038283958ea4554074a682e803622ec714353d787878f936da1454ac50ac88",
+  });
+
+  test.each([
+    ["relay", mediator],
+    ["retired relay", retiredRelay],
+  ] as const)("a fee bump the %s paid for fires, failed or not", (_, account) => {
+    const findings = keysFindings(
+      account,
+      [feeBump(account.address), failedFeeBump(account.address)],
+      []
+    );
+    expect(findings.map((f) => f.message)).toEqual([
+      `transaction ${feeBump("").hash} (2026-11-18T03:45:56Z) is a fee bump the account paid ` +
+        `for, sourced by ${INNER}. Expected none: the relay never pays a fee.`,
+      expect.stringContaining(failedFeeBump("").hash),
+    ]);
+  });
+
+  test("the sponsor's own fee bumps, failed or not, are quiet", () => {
+    expect(keysFindings(sponsor, [feeBump(SPONSOR), failedFeeBump(SPONSOR)], [])).toEqual([]);
+  });
+
+  test("a retired sponsor's fee bumps are not judged: the window holds the ones before the switch", () => {
+    expect(keysFindings(retiredSponsor, [feeBump(RETIRED_SPONSOR)], [])).toEqual([]);
+  });
+
+  test("a transaction the relay sourced and paid for is reported once, as sourced", () => {
+    const own = { ...feeBump(MEDIATOR), source_account: MEDIATOR };
+    const findings = keysFindings(mediator, [own], []);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].message).toContain("is sourced from the account");
+  });
+
+  test("a transaction the relay only takes part in is quiet", () => {
+    expect(keysFindings(mediator, [{ ...tx, fee_account: USER }], [])).toEqual([]);
+  });
+
+  test("transactionsInWindow keeps failed transactions only when asked", async () => {
+    const paths: string[] = [];
+    const get = async (path: string): Promise<HorizonTransactionPage> => {
+      paths.push(path);
+      return { _embedded: { records: [] } };
+    };
+    await transactionsInWindow(get, MEDIATOR, new Date(0));
+    await transactionsInWindow(get, MEDIATOR, new Date(0), 25, true);
+    expect(new URLSearchParams(paths[0].split("?")[1]).has("include_failed")).toBe(false);
+    expect(new URLSearchParams(paths[1].split("?")[1]).get("include_failed")).toBe("true");
+  });
+});
+
+describe("the current sponsor's debits", () => {
+  const effect = (fields: Partial<HorizonAccountEffect>): HorizonAccountEffect => ({
+    type: "account_debited",
+    account: SPONSOR,
+    amount: "1.0000000",
+    asset_type: "native",
+    created_at: "2026-11-18T03:45:31Z",
+    paging_token: `${SAC_OP}-1`,
+    ...fields,
+  });
+
+  test("an asset contract transfer out of it fires, named by its operation", () => {
+    expect(sponsorDebitFindings(sponsor, [effect({})]).map((f) => f.message)).toEqual([
+      `operation ${SAC_OP} (2026-11-18T03:45:31Z) debited 1.0000000 XLM from the account. ` +
+        "Expected none: the sponsor only pays fees, and a fee is not an effect.",
+    ]);
+  });
+
+  test("one finding per operation", () => {
+    const effects = [
+      effect({ paging_token: "5-1" }),
+      effect({ paging_token: "5-3", asset_type: "credit_alphanum4", asset_code: "USDC" }),
+      effect({ paging_token: "6-1" }),
+    ];
+    const findings = sponsorDebitFindings(sponsor, effects);
+    expect(findings).toHaveLength(2);
+    expect(findings[0].message).toContain("operation 5 ");
+    expect(findings[0].message).toContain("debited 1.0000000 XLM, 1.0000000 USDC");
+  });
+
+  test("its creation, a top-up and effects on other accounts are quiet", () => {
+    // The testnet sponsor's whole effects list, plus an operator top-up and someone else's debit.
+    const effects = [
+      effect({ type: "account_created", amount: undefined, paging_token: "9-1" }),
+      effect({ type: "signer_created", amount: undefined, paging_token: "9-2" }),
+      effect({ type: "account_credited", amount: "100.0000000", paging_token: "10-1" }),
+      effect({ account: OPERATOR, paging_token: "10-2" }),
+    ];
+    expect(sponsorDebitFindings(sponsor, effects)).toEqual([]);
+  });
+
+  test("effectsInWindow reads the account's own effects list in the window", async () => {
+    const paths: string[] = [];
+    const records = [
+      effect({ created_at: "2026-11-18T03:45:31Z" }),
+      effect({ created_at: "2026-11-01T00:00:00Z", paging_token: "1-1" }),
+    ];
+    const result = await effectsInWindow(
+      async (path) => {
+        paths.push(path);
+        return { _embedded: { records } };
+      },
+      SPONSOR,
+      new Date("2026-11-11T00:00:00Z")
+    );
+    expect(paths).toEqual([`/accounts/${SPONSOR}/effects?limit=200&order=desc`]);
+    expect(result).toEqual({ records: [records[0]], complete: true });
+  });
+
+  test("the relay's forward check fires on the same transfer: no merge delivered it", () => {
+    const debit: HorizonEffect = {
+      type: "account_debited",
+      account: MEDIATOR,
+      amount: "1.0000000",
+    };
+    const credit: HorizonEffect = {
+      type: "account_credited",
+      account: CALLER,
+      amount: "1.0000000",
+    };
+    expect(forwardFinding(mediator, { ...tx, hash: SAC_TX }, [debit, credit])?.message).toContain(
+      "paid out 1 XLM but the merge delivered 0 XLM"
+    );
   });
 });
