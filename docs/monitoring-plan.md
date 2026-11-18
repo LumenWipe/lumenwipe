@@ -140,8 +140,9 @@ exemption. A retired fee sponsor is read by the forward check too, because it ke
 drain: a fee bump it paid for before the switch is a fee, which Horizon reports as no effect, so any debit
 other than the drain is a payout by the old key. While a retired sponsor is set, the forward check reads one
 effects page for each transaction it was part of in the window, its sponsored fee bumps included; on a busy
-sponsor, lower `MONITOR_HISTORY_HOURS` for the rotation. The runbook deletes the variable once the 24 hours are
-over.
+sponsor, lower `MONITOR_HISTORY_HOURS` for the rotation. A retired sponsor as `fee_account` is not judged: the
+window still holds the fee bumps it paid for before the switch, and the monitor has no on-chain mark of the
+switch to tell them from later ones. The runbook deletes the variable once the 24 hours are over.
 
 The source-account and forward checks read the transactions of the last `MONITOR_HISTORY_HOURS` hours (an
 optional repository variable from 2 to 720; 168, one week, when unset), paging through Horizon 200 at a time.
@@ -161,9 +162,17 @@ account is the source of any operation, because a key can sign an operation insi
 sources: a `set_options` adding a signer, a `change_trust` that blocks a drain, a payment. Two shapes are not
 findings. The mediator's forward is a native payment sourced by the mediator in a transaction that also merges
 an account into it, which the forward check bounds by that merge. A retired account's drain is the merge into
-the operator described above, in a transaction the operator sourced. Each transaction is reported once. This
-costs one more Horizon request per watched account and run (an operations page of 200), up to the same 25-page
-cap, which is a finding naming the operations when it is reached. Measured on the testnet sponsor on 2026-09-18: 8
+the operator described above, in a transaction the operator sourced. The same operations list carries Soroban
+authorization: a contract call sourced by anyone that moved an asset out of the account, which Horizon lists in
+the account's operations as an `invoke_host_function` whose `asset_balance_changes` name the account as `from`,
+is reported, because an asset contract debits a G account only on that account's own authorization (a
+`transfer`, or a `transfer_from` after an `approve`). A move into the account is not, so nobody can raise the
+alert by sending to it. The transactions read includes failed ones, and the relay, current or retired, as the
+`fee_account` of a transaction it did not source is reported, failed or not: Horizon lists a fee bump in its
+payer's transactions with the inner source as `source_account`, the payer as `fee_account` and no effect, and
+the relay never pays a fee. The current sponsor as `fee_account` is every sponsored close. Each transaction is
+reported once. This costs one more Horizon request per watched account and run (an operations page of 200), up
+to the same 25-page cap, which is a finding naming the operations when it is reached. Measured on the testnet sponsor on 2026-09-18: 8
 transactions touching the account, 0 sourced from it. The mediator: 0 as well. The threshold is that
 measurement, not a guess.
 
@@ -174,7 +183,24 @@ in for `S4b.Denial.1.M.1`'s balance half until real usage sets one. The forward 
 every transaction touching the mediator, and any retired account, inside the history window, one transaction at a time, and fires when
 it debited more than the merge credited in the same transaction, which is the only way the mediator can pay
 out of its own balance. Measured on the testnet mediator on 2026-10-07: 6 transactions, forward equal to the
-merge in every one.
+merge in every one. The current sponsor has no forward and no drain, and pays fees, which Horizon reports as no
+effect, so any debit of it is a payout: the forward check reads its own effects list in the window and reports
+each operation with an `account_debited` on it, whatever the operation and whoever sourced it. That is one
+request per run while the sponsor has fewer than 200 effects in the window, up to the same 25-page cap; reading
+the effects of each fee bump it paid for instead would cost one request per sponsored close in the window on
+every hourly run. Measured on the testnet sponsor on 2026-11-18: 2 effects in its life (its creation), none of
+them a debit, and the API never makes it the sponsor of a reserve.
+
+What these checks do not see, verified on testnet on 2026-11-18:
+
+- An `approve` or any other Soroban authorization signed by a service key that moves no balance. Horizon lists
+  it in neither the account's transactions nor its operations, and it has no effect. It stays invisible until
+  it is spent: a `transfer_from` against the allowance is a debit, reported by the keys check and, for the
+  relay and the sponsor, by the forward check.
+- A retired sponsor paying the fee of a fee bump between the switch and the drain. It spends the float on
+  fees only, and ends with the drain: after it the account no longer exists and cannot pay.
+- A fee is not an effect, so the current sponsor's fee bumps for something that is not a close are not judged
+  here: `S4b.Elevation.1.M.1` is not yet a live check.
 
 A finding opens a GitHub issue, assigned rather than merely labelled, and posts to the team channels the
 maintainers watch. A check that did not report success, whether it failed, was skipped behind a failed config

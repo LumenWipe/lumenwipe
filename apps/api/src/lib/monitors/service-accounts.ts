@@ -4,8 +4,8 @@ import { xlmToStroops, stroopsToXlm } from "@/lib/utils/amounts";
 /**
  * The service-account monitors of docs/monitoring-plan.md section 4: the account as transaction
  * source (S4a.Information.1.M.1, S4b.Information.1.M.1), the balance floor (S4a.Elevation.1.M.1,
- * S4b.Denial.1.M.1) and the forward that pays out more than the merge delivered
- * (S4a.Elevation.1.M.1). Pure over Horizon's JSON and the repository files so the workflow can
+ * S4b.Denial.1.M.1) and the forward that pays out more than the merge delivered, or any debit of the
+ * sponsor (S4a.Elevation.1.M.1). Pure over Horizon's JSON and the repository files so the workflow can
  * run them against any network and the unit tests can feed them fixtures.
  */
 
@@ -32,6 +32,8 @@ export interface HorizonTransaction {
   hash: string;
   created_at: string;
   source_account: string;
+  /** Who paid the fee: the outer fee account of a fee bump, the source otherwise. */
+  fee_account?: string;
   paging_token: string;
 }
 
@@ -51,7 +53,18 @@ export interface HorizonOperation {
   into?: string;
   /** payment: the asset paid. */
   asset_type?: string;
+  /** invoke_host_function: the asset contract moves it made, each with the address debited. */
+  asset_balance_changes?: AssetBalanceChange[] | null;
   transaction?: { source_account: string };
+}
+
+export interface AssetBalanceChange {
+  type: string;
+  asset_type: string;
+  asset_code?: string;
+  from?: string;
+  to?: string;
+  amount: string;
 }
 
 export interface HorizonOperationPage {
@@ -64,6 +77,18 @@ export interface HorizonEffect {
   amount?: string;
   /** `<operation id>-<index>`: the operation that produced the effect. */
   paging_token?: string;
+  asset_type?: string;
+  asset_code?: string;
+}
+
+/** One record of an account's own effects list, which always carries its time and position. */
+export interface HorizonAccountEffect extends HorizonEffect {
+  created_at: string;
+  paging_token: string;
+}
+
+export interface HorizonAccountEffectPage {
+  _embedded: { records: HorizonAccountEffect[] };
 }
 
 /** A condition that fired, in the form the workflow prints and the alert carries. */
@@ -340,17 +365,21 @@ async function recordsInWindow<T extends { created_at: string; paging_token: str
   return { records: found, complete: false };
 }
 
-/** Every transaction touching `address` created at or after `since`, newest first. */
+/**
+ * Every transaction touching `address` created at or after `since`, newest first. Failed ones only
+ * when `includeFailed`: a failed fee bump still charged its fee account, which signed it.
+ */
 export async function transactionsInWindow(
   get: (path: string) => Promise<HorizonTransactionPage>,
   address: string,
   since: Date,
-  maxPages = MAX_HISTORY_PAGES
+  maxPages = MAX_HISTORY_PAGES,
+  includeFailed = false
 ): Promise<TransactionHistory> {
   const { records, complete } = await recordsInWindow(
     get,
     `/accounts/${address}/transactions`,
-    {},
+    includeFailed ? { include_failed: "true" } : {},
     since,
     maxPages
   );
@@ -375,6 +404,16 @@ export async function operationsInWindow(
     since,
     maxPages
   );
+}
+
+/** Every effect on `address` itself created at or after `since`, newest first. */
+export async function effectsInWindow(
+  get: (path: string) => Promise<HorizonAccountEffectPage>,
+  address: string,
+  since: Date,
+  maxPages = MAX_HISTORY_PAGES
+): Promise<History<HorizonAccountEffect>> {
+  return recordsInWindow(get, `/accounts/${address}/effects`, {}, since, maxPages);
 }
 
 /** The finding for a history the page cap cut short: the check did not see the whole window. */
@@ -402,6 +441,54 @@ export function sourcedFinding(account: ServiceAccount, tx: HorizonTransaction):
   return {
     account,
     message: `transaction ${tx.hash} (${tx.created_at}) is sourced from the account. Expected none.`,
+  };
+}
+
+/**
+ * The relay paying a fee: it never does, so a transaction with the relay as `fee_account` that it
+ * did not source (that one is reported as sourced) is its key signing a fee bump. The sponsor pays
+ * every sponsored close's fee, and a retired sponsor the ones from before the switch, which the
+ * history window still holds, so neither is judged here.
+ */
+export function feeAccountFinding(account: ServiceAccount, tx: HorizonTransaction): Finding | null {
+  if (account.role !== "mediator") return null;
+  if (tx.fee_account !== account.address || tx.source_account === account.address) return null;
+  return {
+    account,
+    message:
+      `transaction ${tx.hash} (${tx.created_at}) is a fee bump the account paid for, ` +
+      `sourced by ${tx.source_account}. Expected none: the relay never pays a fee.`,
+  };
+}
+
+function assetLabel(asset: { asset_type?: string; asset_code?: string }): string {
+  return asset.asset_type === "native" ? "XLM" : (asset.asset_code ?? asset.asset_type ?? "asset");
+}
+
+/**
+ * S4a.Information.1.M.1 and S4b.Information.1.M.1 for Soroban authorization: a contract call that
+ * moved an asset out of the account. The call and its transaction are sourced by someone else, but
+ * an asset contract debits a G account only on that account's own authorization (a `transfer`, or
+ * a `transfer_from` after an `approve`), and the API never builds one. A move into the account is
+ * not judged, so nobody can raise this by sending to it.
+ */
+export function contractDebitFinding(
+  account: ServiceAccount,
+  transaction: HorizonOperation[]
+): Finding | null {
+  const moves = transaction.flatMap((op) =>
+    (op.asset_balance_changes ?? [])
+      .filter((change) => change.from === account.address)
+      .map((change) => ({ op, change }))
+  );
+  if (moves.length === 0) return null;
+  const { transaction_hash: hash, created_at: createdAt, source_account: caller } = moves[0].op;
+  const moved = moves.map(({ change }) => `${change.amount} ${assetLabel(change)}`).join(", ");
+  return {
+    account,
+    message:
+      `transaction ${hash} (${createdAt}) moved ${moved} out of the account through a contract ` +
+      `call sourced by ${caller}, authorized by its key. Expected none.`,
   };
 }
 
@@ -453,8 +540,9 @@ export function operationSourceFinding(
 }
 
 /**
- * The keys check for one account: each transaction it sourced, and each other transaction in which
- * it sourced an unexpected operation, reported once.
+ * The keys check for one account: each transaction it sourced or, as the relay, paid the fee for,
+ * and each other transaction in which it sourced an unexpected operation or a contract call
+ * debited it, reported once.
  */
 export function keysFindings(
   account: ServiceAccount,
@@ -463,7 +551,7 @@ export function keysFindings(
 ): Finding[] {
   const findings = new Map<string, Finding>();
   for (const tx of transactions) {
-    const finding = sourcedFinding(account, tx);
+    const finding = sourcedFinding(account, tx) ?? feeAccountFinding(account, tx);
     if (finding) findings.set(tx.hash, finding);
   }
   const byTransaction = new Map<string, HorizonOperation[]>();
@@ -472,7 +560,8 @@ export function keysFindings(
   }
   for (const [hash, transaction] of byTransaction) {
     if (findings.has(hash)) continue;
-    const finding = operationSourceFinding(account, transaction);
+    const finding =
+      operationSourceFinding(account, transaction) ?? contractDebitFinding(account, transaction);
     if (finding) findings.set(hash, finding);
   }
   return [...findings.values()];
@@ -591,11 +680,45 @@ export function forwardFinding(
   };
 }
 
+/**
+ * The current sponsor has no forward and no drain: it pays fees, which are not effects, so the
+ * forward check reads its own effects list, one page for the whole window, rather than the effects
+ * of every fee bump it paid for.
+ */
+export function readsOwnEffects(account: ServiceAccount): boolean {
+  return account.role === "sponsor" && account.retired !== true;
+}
+
+/**
+ * S4a.Elevation.1.M.1 for the current sponsor: any debit of it, by any operation, is a payout of
+ * its float. One finding per operation, named by the operation id Horizon resolves to its
+ * transaction.
+ */
+export function sponsorDebitFindings(
+  account: ServiceAccount,
+  effects: HorizonAccountEffect[]
+): Finding[] {
+  const debits = new Map<string, HorizonAccountEffect[]>();
+  for (const effect of effects) {
+    if (effect.type !== "account_debited" || effect.account !== account.address) continue;
+    const operation = operationOf(effect) ?? effect.paging_token;
+    debits.set(operation, [...(debits.get(operation) ?? []), effect]);
+  }
+  return [...debits].map(([operation, debited]) => ({
+    account,
+    message:
+      `operation ${operation} (${debited[0].created_at}) debited ` +
+      `${debited.map((e) => `${e.amount ?? "?"} ${assetLabel(e)}`).join(", ")} from the account. ` +
+      "Expected none: the sponsor only pays fees, and a fee is not an effect.",
+  }));
+}
+
 export type ServiceCheck = "keys" | "balances" | "forward";
 
 /**
- * The accounts one check reads. A retired account has no balance left to floor, and any payout
- * from one, sponsor included, is read by the forward check until it is drained.
+ * The accounts one check reads. A retired account has no balance left to floor. The forward check
+ * reads every account: the relay and a retired account against the merge and the drain, the
+ * current sponsor for any debit at all.
  */
 export function accountsFor(accounts: ServiceAccount[], check: ServiceCheck): ServiceAccount[] {
   switch (check) {
@@ -604,7 +727,7 @@ export function accountsFor(accounts: ServiceAccount[], check: ServiceCheck): Se
     case "balances":
       return accounts.filter((a) => !a.retired);
     case "forward":
-      return accounts.filter((a) => a.role === "mediator" || a.retired);
+      return accounts;
   }
 }
 

@@ -14,6 +14,7 @@ import { readFileSync } from "node:fs";
 import {
   accountsFor,
   balanceFinding,
+  effectsInWindow,
   forwardFinding,
   formatFinding,
   historyWindowHours,
@@ -22,10 +23,14 @@ import {
   loadServiceAccounts,
   operationsInWindow,
   plannedAccounts,
+  readsOwnEffects,
   roleLabel,
+  sponsorDebitFindings,
   transactionsInWindow,
+  MAX_HISTORY_PAGES,
   type Finding,
   type HorizonAccount,
+  type HorizonAccountEffectPage,
   type HorizonEffect,
   type HorizonOperationPage,
   type HorizonTransactionPage,
@@ -41,24 +46,36 @@ const HORIZON: Record<ServiceNetwork, string> = {
 /** Effects are read one transaction at a time, this far apart, so a busy account cannot burst Horizon. */
 const EFFECTS_DELAY_MS = 100;
 
+/** A Horizon request that hangs fails the check rather than the job's timeout. */
+const REQUEST_TIMEOUT_MS = 30_000;
+
 const ROOT = new URL("../../../../", import.meta.url);
 
 let requests = 0;
 
 async function horizon<T>(network: ServiceNetwork, path: string): Promise<T> {
   requests++;
-  const res = await fetch(`${HORIZON[network]}${path}`);
+  const res = await fetch(`${HORIZON[network]}${path}`, {
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
   // An endpoint problem must fail loudly, never read as "nothing to report".
   if (!res.ok) throw new Error(`Horizon ${network} returned ${res.status} for ${path}`);
   return (await res.json()) as T;
 }
 
-async function history(account: ServiceAccount, hours: number, findings: Finding[]) {
+async function history(
+  account: ServiceAccount,
+  hours: number,
+  findings: Finding[],
+  includeFailed = false
+) {
   const since = new Date(Date.now() - hours * 3_600_000);
   const result = await transactionsInWindow(
     (path) => horizon<HorizonTransactionPage>(account.network, path),
     account.address,
-    since
+    since,
+    MAX_HISTORY_PAGES,
+    includeFailed
   );
   if (!result.complete) findings.push(incompleteHistoryFinding(account, hours));
   return result.transactions;
@@ -67,7 +84,7 @@ async function history(account: ServiceAccount, hours: number, findings: Finding
 async function keys(accounts: ServiceAccount[], hours: number): Promise<Finding[]> {
   const findings: Finding[] = [];
   for (const account of accountsFor(accounts, "keys")) {
-    const transactions = await history(account, hours, findings);
+    const transactions = await history(account, hours, findings, true);
     const operations = await operationsInWindow(
       (path) => horizon<HorizonOperationPage>(account.network, path),
       account.address,
@@ -78,7 +95,8 @@ async function keys(accounts: ServiceAccount[], hours: number): Promise<Finding[
     findings.push(...found);
     console.log(
       `${roleLabel(account)} (${account.network}): ${found.length} transactions in the last ${hours} h ` +
-        "sourced from it or carrying an operation it sourced, beyond the forward and the drain " +
+        "signed by its key beyond the forward and the drain: as source, operation source, " +
+        "contract debit or relay fee account " +
         `(${transactions.length} transactions and ${operations.records.length} operations read)`
     );
   }
@@ -102,6 +120,21 @@ async function balances(accounts: ServiceAccount[]): Promise<Finding[]> {
 async function forward(accounts: ServiceAccount[], hours: number): Promise<Finding[]> {
   const findings: Finding[] = [];
   for (const account of accountsFor(accounts, "forward")) {
+    if (readsOwnEffects(account)) {
+      const effects = await effectsInWindow(
+        (path) => horizon<HorizonAccountEffectPage>(account.network, path),
+        account.address,
+        new Date(Date.now() - hours * 3_600_000)
+      );
+      if (!effects.complete) findings.push(incompleteHistoryFinding(account, hours, "effects"));
+      const found = sponsorDebitFindings(account, effects.records);
+      findings.push(...found);
+      console.log(
+        `${roleLabel(account)} (${account.network}): ${effects.records.length} effects in the last ` +
+          `${hours} h checked, ${found.length} debits`
+      );
+      continue;
+    }
     const transactions = await history(account, hours, findings);
     for (const tx of transactions) {
       await Bun.sleep(EFFECTS_DELAY_MS);
