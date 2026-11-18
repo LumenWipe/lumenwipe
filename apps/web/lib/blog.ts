@@ -138,7 +138,11 @@ function readPublishedPosts(): Post[] {
 export function getAllPostMetas(): PostMeta[] {
   return readPublishedPosts()
     .map(({ content: _content, cta: _cta, ...meta }) => meta)
-    .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+    .sort(
+      (a, b) =>
+        new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime() ||
+        a.slug.localeCompare(b.slug)
+    );
 }
 
 /** A published post by slug. The slug is matched against the posts on disk, never joined into a

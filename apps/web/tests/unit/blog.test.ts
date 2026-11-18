@@ -1,4 +1,4 @@
-import { test, expect, beforeAll, afterAll } from "bun:test";
+import { test, expect, beforeAll, afterAll, spyOn } from "bun:test";
 import fs from "fs";
 import readingTime from "reading-time";
 import { BLOG } from "@/lib/i18n/messages/blog";
@@ -47,6 +47,27 @@ test("getAllSlugs › excludes draft posts", () => {
 test("getAllPostMetas › excludes draft posts", () => {
   const slugs = getAllPostMetas().map((post) => post.slug);
   expect(slugs).not.toContain(DRAFT_SLUG);
+});
+
+test("getAllPostMetas › posts of the same day keep one order whatever order the directory lists them in", () => {
+  const listed = getAllPostMetas().map((post) => post.slug);
+  const readdir = fs.readdirSync.bind(fs);
+  const spy = spyOn(fs, "readdirSync").mockImplementation(((dir: fs.PathLike) =>
+    (readdir(dir) as string[]).reverse()) as typeof fs.readdirSync);
+  try {
+    expect(getAllPostMetas().map((post) => post.slug)).toEqual(listed);
+  } finally {
+    spy.mockRestore();
+  }
+  const sameDay = getAllPostMetas().filter((post, i, all) =>
+    all.some((other, j) => j !== i && other.publishedAt === post.publishedAt)
+  );
+  expect(sameDay.length).toBeGreaterThan(1);
+  for (let i = 1; i < sameDay.length; i++) {
+    if (sameDay[i].publishedAt === sameDay[i - 1].publishedAt) {
+      expect(sameDay[i - 1].slug < sameDay[i].slug).toBe(true);
+    }
+  }
 });
 
 test("getPost › throws for a draft post instead of returning unpublished content", () => {
