@@ -34,9 +34,9 @@ const PERMISSIONS_POLICY = [
 /**
  * The response headers every route carries, pages and `/api/*` alike.
  *
- * - HSTS: two years, matching what Vercel sends, plus includeSubDomains. Not preload: the apex is
- *   a host-level redirect this app never serves, and a preload entry binds every subdomain for
- *   months after removal.
+ * - HSTS: two years, matching what Vercel sends, plus includeSubDomains. The apex's redirect to
+ *   www (config/apex-redirect.mjs) carries it too, which is what extends it to every subdomain.
+ *   Not preload: a preload entry binds every subdomain for months after removal.
  * - COOP `same-origin-allow-popups`, not `same-origin`: Albedo and the xBull web wallet sign in a
  *   popup that answers through `window.opener`, which `same-origin` would sever.
  * - Referrer: other origins see the origin only, never a path that names an account.
