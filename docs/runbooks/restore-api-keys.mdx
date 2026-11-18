@@ -5,8 +5,8 @@ icon: "box-archive"
 ---
 
 <Note>
-  Not yet rehearsed. The recovery time below is a placeholder until the first restore drill records
-  it.
+  The point-in-time path was rehearsed on the production project on 2026-11-17, and the times below
+  are from that drill. Restoring from the daily export is not yet rehearsed.
 </Note>
 
 Self-serve API keys are stored only as hashes in the `apiKeys` Firestore collection, so a raw key can never be read back or reissued from the hash. If the collection is lost or corrupted, every self-serve key stops working at once and the only way back is a backup. Static keys in `API_KEYS` are not in Firestore and keep working ([Firestore outage](/runbooks/firestore-outage) has the full blast radius).
@@ -15,10 +15,12 @@ The API reads the database named by `FIRESTORE_DATABASE_ID` in the project named
 
 ## Recovery objective
 
-| Path                         | Point-in-time window       | Elapsed time (restore to key resolving) | Rehearsed on       |
-| ---------------------------- | -------------------------- | --------------------------------------- | ------------------ |
-| Point-in-time clone          | Last 7 days, by the minute | `<rehearsed elapsed time>`              | `<rehearsal date>` |
-| Import from the daily export | Daily, kept 30 days        | `<rehearsed elapsed time>`              | `<rehearsal date>` |
+| Path                         | Point-in-time window       | Elapsed time (restore to key resolving)                                     | Rehearsed on |
+| ---------------------------- | -------------------------- | --------------------------------------------------------------------------- | ------------ |
+| Point-in-time clone          | Last 7 days, by the minute | About 10 minutes (2026-11-17), of which the clone operation took 7 min 45 s | 2026-11-17   |
+| Import from the daily export | Daily, kept 30 days        | Not yet measured                                                            | Not yet      |
+
+The 2026-11-17 time includes one failed staging boot, from before the staging command below passed the mainnet endpoints.
 
 ## Backup configuration
 
@@ -31,7 +33,7 @@ Run once per project, and again after any project move. Placeholders: `<project>
    gcloud firestore databases describe --database='(default)' --project=<project> --format='value(pointInTimeRecoveryEnablement,versionRetentionPeriod)'
    ```
 
-   Expected: `POINT_IN_TIME_RECOVERY_ENABLED` and `604800s`.
+   Expected: `POINT_IN_TIME_RECOVERY_ENABLED` and `604800s`. The oldest readable minute is `earliestVersionTime`, from the same `describe` with `--format='value(earliestVersionTime)'`; on 2026-11-17 it was seven days back.
 
 2. **Create the export bucket**, private and in the same project, so only the project's own Firestore service agent writes to it:
 
@@ -40,6 +42,13 @@ Run once per project, and again after any project move. Placeholders: `<project>
      --uniform-bucket-level-access --public-access-prevention
    echo '{"rule":[{"action":{"type":"Delete"},"condition":{"age":30}}]}' > lifecycle.json
    gcloud storage buckets update gs://<export bucket> --lifecycle-file=lifecycle.json
+   ```
+
+   On gcloud 586.0.0 (2026-11-17), both `gcloud storage buckets` commands crashed with `module 'ssl' has no attribute 'PROTOCOL_TLSv1'`. The same bucket with `gsutil`:
+
+   ```bash
+   gsutil mb -p <project> -l <location> -b on --pap enforced gs://<export bucket>
+   gsutil lifecycle set lifecycle.json gs://<export bucket>
    ```
 
    Grant nobody else access to the bucket. Expected from `gcloud storage buckets describe gs://<export bucket>`: `public_access_prevention: enforced`, `uniform_bucket_level_access: true`, and the 30 day delete rule.
@@ -108,25 +117,36 @@ Expected: the import operation ends `SUCCESSFUL`. Only `apiKeys` is in the expor
 
 ### Point a staging service at it
 
-A separate service, so production's configuration and traffic are not touched. Use the image production serves now and the same runtime service account:
+A separate service, so production's configuration and traffic are not touched. Use the image production serves now and the same runtime service account. A production boot refuses to start without explicit mainnet endpoints (`STELLAR_RPC_MAINNET is not set ... A production boot requires an explicit mainnet endpoint.`), so the staging service gets production's `STELLAR_RPC_MAINNET` and `PATH_ROUTING_API_MAINNET`. They go through a file, not `--set-env-vars`, because `STELLAR_RPC_MAINNET` can be a comma-separated list. Their URLs can carry provider keys: create the file readable only by you, never paste its contents anywhere, and delete it after the deploy:
 
 ```bash
 gcloud run services describe lumenwipe-api --region us-central1 --format='value(spec.template.spec.containers[0].image,spec.template.spec.serviceAccountName)'
+umask 077
+{
+  echo 'FIRESTORE_PROJECT_ID: "<project>"'
+  echo 'FIRESTORE_DATABASE_ID: "<restore id>"'
+  gcloud run services describe lumenwipe-api --region us-central1 --format=json \
+    | jq -r '.spec.template.spec.containers[0].env[] | select(.name == "STELLAR_RPC_MAINNET" or .name == "PATH_ROUTING_API_MAINNET") | "\(.name): \(.value | @json)"'
+} > restore-env.yaml
+grep -c MAINNET restore-env.yaml
 gcloud run deploy lumenwipe-api-restore --region us-central1 --image <image> \
   --service-account <runtime account> --no-allow-unauthenticated --max-instances=1 \
-  --set-env-vars FIRESTORE_PROJECT_ID=<project>,FIRESTORE_DATABASE_ID=<restore id> \
-  --set-secrets API_KEYS=<API_KEYS secret>:latest
+  --env-vars-file restore-env.yaml --set-secrets API_KEYS=<API_KEYS secret>:latest
+rm restore-env.yaml
 gcloud run services proxy lumenwipe-api-restore --region us-central1 --port 8081
 ```
 
-In a second terminal, with `$KEY` a testnet test key created before the restore point, never an integrator's key:
+Expected: `grep` prints `2` (if it prints less, production binds the endpoint from a secret: pass it with `--set-secrets` instead), and the deploy ends with the service ready.
+
+The proof that staging reads the restore, not production's database, is a pair of testnet test keys, never an integrator's: `$KEY_BEFORE` created before the restore point and `$KEY_AFTER` created after it. In a second terminal:
 
 ```bash
-curl -s -H "Authorization: Bearer $KEY" http://localhost:8081/v1/testnet/close/status
-gcloud logging read 'resource.labels.service_name="lumenwipe-api-restore" AND textPayload:"Firestore database"' --freshness=15m --limit=1 --format='value(textPayload,jsonPayload.message)'
+curl -s -H "Authorization: Bearer $KEY_BEFORE" http://localhost:8081/v1/testnet/close/status
+curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $KEY_AFTER" http://localhost:8081/v1/testnet/close/status
+gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="lumenwipe-api-restore" AND jsonPayload.message:"Firestore database"' --freshness=15m --limit=1 --format='value(jsonPayload.message)'
 ```
 
-Expected: `{"error":{"code":"invalid_source",...}}`, which the API only answers once the key has resolved (an unknown key answers `401`), and `Firestore database: <restore id>`. Stop the timer and record the elapsed time in the [recovery objective](#recovery-objective).
+Expected: `{"error":{"code":"invalid_source",...}}` for the key from before, which the API only answers once the key has resolved, and `401` for the key from after, which still resolves on production. The boot log line is `Firestore database: <restore id>`; the API writes it as JSON, so the filter reads `jsonPayload.message`, not `textPayload`. Stop the timer and record the elapsed time and the date in the [recovery objective](#recovery-objective).
 
 ### Point production at it
 
@@ -140,8 +160,11 @@ If traffic is pinned to one revision, this does not reach users until traffic fo
 
 ### Clean up after a drill
 
+The clone inherits delete protection from `(default)`, so a delete alone fails with `FAILED_PRECONDITION ... DELETE_PROTECTION_ENABLED`. Turn it off on the restore database only, then delete:
+
 ```bash
 gcloud run services delete lumenwipe-api-restore --region us-central1
+gcloud firestore databases update --database=<restore id> --no-delete-protection --project=<project>
 gcloud firestore databases delete --database=<restore id> --project=<project>
 ```
 

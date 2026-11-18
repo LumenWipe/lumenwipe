@@ -174,11 +174,21 @@ A value other than `true` or `false` refuses the boot. A failed update, that one
 the previous revision serving with the previous value, so read the value back rather than assume
 it took.
 
-**Time to effect**: a configuration update creates a new revision. In six revision rollouts of the
-API on 2026-11-08 (`deploy-api.yml` runs 42463701811, 42472457028, 42473699224, 42475705017,
-42486620587 and 42492993210) the new revision served all traffic 36 to 54 seconds after the
-update began, median about 42 seconds. Requests already in flight on the old revision finish with
-the old value. Environment variables are set on the service and inherited by every revision
+**Time to effect**: a configuration update creates a new revision. A switch flipped on the
+production service on 2026-11-17 (`FXDAO_EXIT_ENABLED` off, then back on, each an env-only
+`gcloud run services update`) had the new revision serving 100 percent 21 seconds and 20 seconds
+after the update began. For comparison, in six image rollouts of the API on 2026-11-08
+(`deploy-api.yml` runs 42463701811, 42472457028, 42473699224, 42475705017, 42486620587 and 42492993210) the new revision served all traffic 36 to 54 seconds after the update began, median
+about 42 seconds. Requests already in flight on the old revision finish with the old value.
+
+Do not flip a switch while a deploy run is in progress. The run deploys its candidate with the
+environment the service has at that moment, so a flip made during the run can be carried into the
+candidate or undone by it, and the first flip on 2026-11-17, which overlapped a deploy run, took
+131 seconds. Check first, and if a run is in progress, let it finish and then set the switch:
+
+````bash
+gh run list --workflow deploy-api.yml --status in_progress
+``` Environment variables are set on the service and inherited by every revision
 (`deploy-api.yml` sets none), so a switch stays as set across later deploys. This holds while traffic
 follows the latest revision, which is the state every deploy run ends in unless its restore fails;
 see "While traffic is pinned" above.
@@ -221,7 +231,8 @@ the changelog.
    git checkout main && git pull
    git tag sdk-vX.Y.Z
    git push origin sdk-vX.Y.Z
-   ```
+````
+
 7. `.github/workflows/publish-sdk.yml` picks up the tag. It checks the tag is exactly
    `sdk-vX.Y.Z`, that its commit is on `main` and agrees with `package.json`, `SDK_VERSION`,
    the changelog and the docs pin (`bun scripts/package-release.ts sdk publish`), and that npm does not
