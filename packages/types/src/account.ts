@@ -201,7 +201,7 @@ export interface MediatorCheckResult {
   requiresMemo: boolean;
   memoType: "text" | "id" | "hash" | null;
   exchangeName: string | null;
-  /** Whether the server can actually perform the mediator flow (secret configured). */
+  /** Whether the server can actually perform the mediator flow: its key is configured and matches its configured public key. */
   available: boolean;
   /** Whether the exchange registry is inside its verification window; false means exchange closes are refused. */
   registryFresh: boolean;

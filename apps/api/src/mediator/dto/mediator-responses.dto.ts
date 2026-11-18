@@ -37,7 +37,9 @@ export class MediatorCheckResultDto implements MediatorCheckResult {
   exchangeName!: string | null;
 
   @ApiProperty({
-    description: "Whether the server can actually perform the mediator flow (secret configured).",
+    description:
+      "Whether the server can actually perform the mediator flow: its key is configured and matches " +
+      "its configured public key.",
   })
   available!: boolean;
 

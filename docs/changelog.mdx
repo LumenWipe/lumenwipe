@@ -14,6 +14,7 @@ As of 2026-11-14, the mediator flow (exchange closes) and sponsored fees are ava
 
 ### 2026-11-18
 
+- **API:** `/mediator/check` and the close plan now report the exchange flow unavailable when the mediator key does not match `MEDIATOR_PUBLIC_<NETWORK>`, instead of reporting it available and having `/mediator/sign` refuse with `503 mediator_key_misconfiguration` after the user signed. With the public key unset, `/mediator/check` reports `available: false` and `/mediator/sign` answers `503 mediator_not_configured`, as the close plan already did.
 - **API:** A mediator secret that is not a valid secret seed no longer fails `/mediator/sign` and `/mediator/check` with `500 internal_error`: `/mediator/sign` answers `503 mediator_not_configured` and `/mediator/check` reports `available: false`, as when no secret is set. The mediator and fee-bump sponsor secrets are now trimmed before use, so surrounding whitespace such as a trailing newline no longer makes a valid secret unusable.
 
 ### 2026-11-17
