@@ -1,6 +1,7 @@
-import { Keypair } from "@stellar/stellar-sdk";
+import type { Keypair } from "@stellar/stellar-sdk";
 import { Logger } from "@nestjs/common";
 import type { Network } from "@/config/networks";
+import { keypairFromEnv } from "@/lib/stellar/secret-keypair";
 
 const logger = new Logger("fee-account");
 
@@ -24,12 +25,5 @@ const SECRET_ENV: Record<Network, string> = {
  * unhandled 500 (CLAUDE.md's "never surface raw SDK codes or stack traces").
  */
 export function getFeeAccountKeypair(network: Network): Keypair | null {
-  const secret = process.env[SECRET_ENV[network]];
-  if (!secret) return null;
-  try {
-    return Keypair.fromSecret(secret);
-  } catch {
-    logger.error(`${SECRET_ENV[network]} is set but is not a valid Stellar secret seed`);
-    return null;
-  }
+  return keypairFromEnv(SECRET_ENV[network], logger);
 }
