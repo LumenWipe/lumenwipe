@@ -160,13 +160,13 @@ test("a contract account sees why it cannot sign in and what to do instead", asy
   await expectNoAxeViolations(page, "api keys, contract account");
 });
 
-test("Google and GitHub sign-in loads only once it is chosen, and every Pollar call stays local", async ({
+test("account sign-in loads only once it is chosen, and every Pollar call stays local", async ({
   page,
 }) => {
   await installIntegratorFixtures(page);
   const pollar = watchPollar(page);
   await page.goto("/api-keys");
-  const choice = page.getByRole("button", { name: "Continue with Google or GitHub" });
+  const choice = page.getByRole("button", { name: "Continue with Google, GitHub or email" });
   await expect(choice).toBeEnabled();
   await page.waitForLoadState("networkidle");
   expect(await pollar.scripts()).toEqual([]);
@@ -199,7 +199,89 @@ test("a session Pollar kept in this browser loads its sign-in with the page", as
   await page.goto("/api-keys");
   await expect(page.getByRole("button", { name: "Continue with Google" })).toBeVisible();
   expect((await pollar.scripts()).length).toBeGreaterThan(0);
-  await expect(page.getByRole("button", { name: "Continue with Google or GitHub" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Continue with Google, GitHub or email" })
+  ).toHaveCount(0);
+});
+
+const POLLAR_API = "https://sdk.api.pollar.xyz";
+const EMAIL = "a11y-owner@example.test";
+
+/** The only Pollar calls an email sign-in makes up to the code step, answered here. */
+const POLLAR_REPLIES: Record<string, unknown> = {
+  "GET /v3/applications/config": {
+    code: "SDK_APPLICATION_CONFIG",
+    success: true,
+    content: {
+      application: { name: "LumenWipe a11y", network: "testnet", chains: ["STELLAR"] },
+      styles: { emailEnabled: true, providers: { google: true, github: true } },
+    },
+  },
+  "POST /v3/auth/session": { success: true, content: { clientSessionId: "a11y-session" } },
+  "POST /v3/auth/email": { code: "SDK_EMAIL_CODE_SENT", success: true, content: {} },
+};
+
+/** Answers Pollar's email calls locally and records any other call to its API, which a test fails
+ *  on, so an SDK that starts calling something new shows up here. */
+async function installPollarEmailStub(page: Page): Promise<{ unexpected: string[] }> {
+  const unexpected: string[] = [];
+  await page.route(`${POLLAR_API}/**`, (route) => {
+    const request = route.request();
+    const headers = request.headers();
+    const cors = {
+      "Access-Control-Allow-Origin": headers["origin"] ?? "*",
+      "Access-Control-Allow-Credentials": "true",
+      "Access-Control-Allow-Headers": headers["access-control-request-headers"] ?? "*",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    };
+    if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
+    const key = `${request.method()} ${new URL(request.url()).pathname}`;
+    if (!Object.hasOwn(POLLAR_REPLIES, key)) {
+      unexpected.push(key);
+      return route.abort();
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: cors,
+      body: JSON.stringify(POLLAR_REPLIES[key]),
+    });
+  });
+  return { unexpected };
+}
+
+test("email sign-in asks for the address, then the code, and the address stays with Pollar", async ({
+  page,
+}) => {
+  await installIntegratorFixtures(page);
+  const pollar = await installPollarEmailStub(page);
+  const leaks: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.origin === POLLAR_API) return;
+    if (`${request.url()}\n${request.postData() ?? ""}`.includes(EMAIL)) leaks.push(request.url());
+  });
+
+  await page.goto("/api-keys");
+  await page.getByRole("button", { name: "Continue with Google, GitHub or email" }).click();
+  const email = page.getByRole("textbox", { name: "Email" });
+  await expect(email).toBeVisible();
+  await expectNoAxeViolations(page, "api keys, email sign-in address");
+
+  await email.fill(EMAIL);
+  await page.getByRole("button", { name: "Continue with email" }).click();
+  const code = page.getByRole("textbox", { name: "Code" });
+  await expect(code).toBeVisible();
+  await expect(
+    page.getByText(`Enter the 6-digit code we sent to ${EMAIL}.`, { exact: false })
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: /Send a new code in \d+s/ })).toBeDisabled();
+  await expectNoAxeViolations(page, "api keys, email sign-in code");
+
+  expect(page.url()).not.toContain(EMAIL);
+  expect(page.url()).not.toContain(encodeURIComponent(EMAIL));
+  expect(leaks).toEqual([]);
+  expect(pollar.unexpected).toEqual([]);
 });
 
 async function signInAs(page: Page, options: IntegratorOptions) {

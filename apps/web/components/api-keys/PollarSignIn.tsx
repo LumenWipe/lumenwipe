@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, type ReactElement } from "react";
 import { PollarProvider, usePollar } from "@pollar/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
+import EmailSignIn from "./EmailSignIn";
 
 /** An account Pollar signed in, with a way to sign the API's challenge as it. */
 export interface PollarAccount {
@@ -27,7 +28,7 @@ export interface PollarSignInProps {
 
 const POLLAR_CLIENT = { apiKey: process.env.NEXT_PUBLIC_POLLAR_PUBLISHABLE_KEY ?? "" };
 
-/** Google and GitHub sign-in through Pollar, loaded only through pollar-loader.ts. */
+/** Google, GitHub and email sign-in through Pollar, loaded only through pollar-loader.ts. */
 export default function PollarSignIn(props: PollarSignInProps): ReactElement {
   return (
     <PollarProvider client={POLLAR_CLIENT}>
@@ -43,7 +44,7 @@ function PollarSignInCard({
   onLogoutChange,
   focusHeading,
 }: PollarSignInProps): ReactElement | null {
-  const { isAuthenticated, wallet, login, logout, getClient, configStatus } = usePollar();
+  const { isAuthenticated, wallet, login, logout, getClient, configStatus, styles } = usePollar();
   const handled = useRef<string | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const address = wallet?.address ?? null;
@@ -100,22 +101,33 @@ function PollarSignInCard({
             </Button>
           </div>
         ) : (
-          <div className="flex flex-wrap gap-3">
-            <Button
-              variant="secondary"
-              disabled={disabled || configStatus !== "ready"}
-              onClick={() => login({ provider: "google" })}
-            >
-              Continue with Google
-            </Button>
-            <Button
-              variant="secondary"
-              disabled={disabled || configStatus !== "ready"}
-              onClick={() => login({ provider: "github" })}
-            >
-              Continue with GitHub
-            </Button>
-          </div>
+          <>
+            <div className="flex flex-wrap gap-3">
+              <Button
+                variant="secondary"
+                disabled={disabled || configStatus !== "ready"}
+                onClick={() => login({ provider: "google" })}
+              >
+                Continue with Google
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={disabled || configStatus !== "ready"}
+                onClick={() => login({ provider: "github" })}
+              >
+                Continue with GitHub
+              </Button>
+            </div>
+            {configStatus === "ready" && styles.emailEnabled === true && (
+              <EmailSignIn client={getClient()} disabled={disabled} />
+            )}
+            {configStatus === "error" && (
+              <p className="text-sm text-white/65">
+                Account sign-in is not available right now. Sign in with a Stellar wallet above
+                instead.
+              </p>
+            )}
+          </>
         )}
       </CardBody>
     </Card>

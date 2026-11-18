@@ -14,7 +14,7 @@ import { fakeFetch } from "./fixtures/fetch";
 import { expectFocused } from "./fixtures/focus";
 import { installIndexedDb, removeIndexedDb } from "./fixtures/indexed-db";
 
-const CHOOSE = "Continue with Google or GitHub";
+const CHOOSE = "Continue with Google, GitHub or email";
 const SESSION_KEY = "pollar:h:session";
 
 let rendered: PollarSignInProps[];

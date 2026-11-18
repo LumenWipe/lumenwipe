@@ -71,7 +71,7 @@ type Notice =
   | null;
 
 export interface ApiKeysPanelProps {
-  /** Google and GitHub sign-in, present only when Pollar is configured. */
+  /** Google, GitHub and email sign-in, present only when Pollar is configured. */
   pollar?: ComponentType<PollarSignInProps>;
 }
 
@@ -373,7 +373,7 @@ export default function ApiKeysPanel({ pollar: PollarSlot }: ApiKeysPanelProps) 
                 Signing in needs a signed message, and {walletName(notice.walletId)} cannot sign
                 one. Choose {WALLETS} instead, or WalletConnect with a phone wallet that signs
                 messages.
-                {PollarSlot ? " You can also continue with Google or GitHub below." : ""}
+                {PollarSlot ? " You can also continue with Google, GitHub or email below." : ""}
               </Callout>
             )}
 
@@ -383,15 +383,15 @@ export default function ApiKeysPanel({ pollar: PollarSlot }: ApiKeysPanelProps) 
                 wallets do). Signing in needs a signature from a single account key, which a
                 contract account does not have. Sign in with a regular account (its address starts
                 with G) from {WALLETS}
-                {PollarSlot ? ", or continue with Google or GitHub" : ""}. The key it owns works for
-                every account you analyze or close, not only its own.
+                {PollarSlot ? ", or continue with Google, GitHub or email" : ""}. The key it owns
+                works for every account you analyze or close, not only its own.
               </Callout>
             )}
 
             {!PollarSlot && (
               <Callout announce={false}>
-                Google and GitHub sign-in are not set up here. Sign in with a Stellar wallet above
-                instead: {WALLETS} can sign the sign-in message.
+                Google, GitHub and email sign-in are not set up here. Sign in with a Stellar wallet
+                above instead: {WALLETS} can sign the sign-in message.
               </Callout>
             )}
             {busy === "pollar" && (

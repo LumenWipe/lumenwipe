@@ -162,7 +162,8 @@ describe("wallet kit imports", () => {
 });
 
 describe("pollar imports", () => {
-  const LAZY = /Load the Google and GitHub sign-in through components\/api-keys\/pollar-loader\.ts/;
+  const LAZY =
+    /Load the Google, GitHub and email sign-in through components\/api-keys\/pollar-loader\.ts/;
   const pollarCode = [
     `import { usePollar } from "@pollar/react";\nexport const b = usePollar;\n`,
     `import { PollarClient } from "@pollar/core";\nexport const b = PollarClient;\n`,

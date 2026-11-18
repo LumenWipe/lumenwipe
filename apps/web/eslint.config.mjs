@@ -196,10 +196,10 @@ const walletKitImports = {
 };
 
 // Pollar's code loads only through components/api-keys/pollar-loader.ts, once the visitor chooses
-// the Google or GitHub sign-in or Pollar kept a session to restore.
+// the Google, GitHub or email sign-in or Pollar kept a session to restore.
 const POLLAR_SIGN_IN = "components/api-keys/PollarSignIn.tsx";
 const POLLAR_LOADER =
-  "Load the Google and GitHub sign-in through components/api-keys/pollar-loader.ts.";
+  "Load the Google, GitHub and email sign-in through components/api-keys/pollar-loader.ts.";
 const pollarImports = [
   { regex: "^@pollar/", allowTypeImports: true, message: POLLAR_LOADER },
   { regex: "(?:^|/)PollarSignIn(?:\\.tsx?)?$", allowTypeImports: true, message: POLLAR_LOADER },

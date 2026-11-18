@@ -9,6 +9,7 @@ import ApiKeysPanel, {
   SESSION_ENDED,
   SIGNED_OUT,
 } from "@/components/api-keys/ApiKeysPanel";
+import type { PollarAccount, PollarSignInProps } from "@/components/api-keys/PollarSignIn";
 import { fakeFetch } from "./fixtures/fetch";
 import { expectFocused } from "./fixtures/focus";
 
@@ -172,11 +173,11 @@ describe("the API keys panel", () => {
     expect(status().textContent).toBe(SESSION_ENDED);
   });
 
-  test("names the wallet as the next step when Google and GitHub are not set up", async () => {
+  test("names the wallet as the next step when Google, GitHub and email are not set up", async () => {
     routes = { "GET auth/session": unauthorized };
     render(<ApiKeysPanel />);
     await signInButton();
-    expect(screen.getByText(/Google and GitHub sign-in are not set up here/)).toBeTruthy();
+    expect(screen.getByText(/Google, GitHub and email sign-in are not set up here/)).toBeTruthy();
     expect(screen.getByRole("link", { name: "SDK quickstart" })).toBeTruthy();
   });
 
@@ -246,6 +247,70 @@ describe("the API keys panel", () => {
     expect(requests).not.toContain("POST auth/session");
     await waitFor(() => expect(button.getAttribute("aria-describedby")).toBe("api-keys-error"));
     expect(error.closest("#api-keys-error")).toBeTruthy();
+  });
+
+  describe("an account from the email sign-in", () => {
+    const EMAIL = "owner@example.test";
+
+    /** Stands in for the loaded Pollar card: the account an email login hands over, with the
+     *  address and a signer only, as the real card does. */
+    function emailSlot(account: PollarAccount) {
+      return function EmailSlot({ signedIn: done, onAccount }: PollarSignInProps) {
+        if (done) return null;
+        return (
+          <button type="button" onClick={() => onAccount(account)}>
+            Finish email sign-in
+          </button>
+        );
+      };
+    }
+
+    const finish = async () =>
+      fireEvent.click(await screen.findByRole("button", { name: "Finish email sign-in" }));
+
+    test("goes through the same challenge and cookie session, and sends no email", async () => {
+      const session = signedIn();
+      routes = {
+        "GET auth/session": unauthorized,
+        "POST auth/challenge": { status: 200, body: { message: "challenge text" } },
+        "POST auth/session": session["GET auth/session"],
+        "GET keys": session["GET keys"],
+      };
+      const sign = mock(async (message: string) =>
+        Buffer.from(owner.signMessage(message)).toString("base64")
+      );
+      const Slot = emailSlot({ address: owner.publicKey(), smart: false, sign });
+      render(<ApiKeysPanel pollar={Slot} />);
+      await finish();
+      expect(await screen.findByText(`Signed in as ${owner.publicKey()}`)).toBeTruthy();
+      expect(sign).toHaveBeenCalledWith("challenge text");
+      expect(bodies["POST auth/challenge"]).toEqual([{ address: owner.publicKey() }]);
+      expect(bodies["POST auth/session"]).toHaveLength(1);
+      const [sent] = bodies["POST auth/session"] as Record<string, unknown>[];
+      expect(Object.keys(sent).sort()).toEqual(["address", "message", "signature"]);
+      expect(sent.address).toBe(owner.publicKey());
+      expect(sent.message).toBe("challenge text");
+      expect(JSON.stringify(bodies)).not.toContain(EMAIL);
+      expect(status().textContent).toBe("Signed in.");
+    });
+
+    test("refuses a signature from another key before any session is asked for", async () => {
+      routes = {
+        "GET auth/session": unauthorized,
+        "POST auth/challenge": { status: 200, body: { message: "challenge text" } },
+      };
+      const other = Keypair.random();
+      const Slot = emailSlot({
+        address: owner.publicKey(),
+        smart: false,
+        sign: async (message) => Buffer.from(other.signMessage(message)).toString("base64"),
+      });
+      render(<ApiKeysPanel pollar={Slot} />);
+      await finish();
+      expect(await screen.findByText(/could not verify your wallet's signature/)).toBeTruthy();
+      expect(requests).toContain("POST auth/challenge");
+      expect(requests).not.toContain("POST auth/session");
+    });
   });
 
   describe("creating a key with a label and a scope", () => {
