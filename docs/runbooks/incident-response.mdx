@@ -48,7 +48,7 @@ The maintainer who acts says so in the team channel at once, with what they chan
    gcloud run services describe lumenwipe-api --region us-central1 --format='value(spec.template.spec.containers[0].env)'
    ```
 
-   Expected: the update ends with `Done.` and the new revision serving 100 percent of traffic, about 40 seconds after it began; the read-back lists `MEDIATOR_FORWARD_ENABLED` with value `false`. The full list and the pinned-traffic case are in [RELEASING.md, Kill switches](https://github.com/LumenWipe/lumenwipe/blob/main/RELEASING.md#kill-switches). For a deploy that went bad, follow [Bad deploy](/runbooks/bad-deploy) instead.
+   Expected: the update ends with `Done.` and the new revision serving 100 percent of traffic, about 20 seconds after it began (measured on 2026-11-17); the read-back lists `MEDIATOR_FORWARD_ENABLED` with value `false`. Do not flip a switch while a deploy run is in progress: check with `gh run list --workflow deploy-api.yml --status in_progress`, and if one is running, let it finish first, since the run can carry the flip into its candidate or undo it. The full list and the pinned-traffic case are in [RELEASING.md, Kill switches](https://github.com/LumenWipe/lumenwipe/blob/main/RELEASING.md#kill-switches). For a deploy that went bad, follow [Bad deploy](/runbooks/bad-deploy) instead.
 
 3. **Confirm the path is off** from outside. For the relay account:
 

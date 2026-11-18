@@ -19,6 +19,7 @@
     "backfill:expire-at": "bun scripts/backfill-expire-at.ts",
     "setup:mediator": "bun scripts/setup-mediator.ts",
     "test:mediator": "bun scripts/test-mediator-flow.ts",
+    "test:sponsor": "bun scripts/test-sponsor-flow.ts",
     "mutation": "stryker run"
   },
   "dependencies": {

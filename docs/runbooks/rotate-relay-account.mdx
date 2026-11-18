@@ -5,9 +5,9 @@ icon: "rotate"
 ---
 
 <Note>
-  Not yet rehearsed end to end on the deployed service. The testnet rehearsal will record the time
-  of each step and correct this page. The key handling and the drain in steps 2 and 9 were run on
-  testnet with Stellar CLI 30.0.1, and
+  Rehearsed end to end for testnet on the deployed service on 2026-11-17, together with the [fee
+  sponsor rotation](/runbooks/rotate-fee-sponsor), with step 10 on 2026-11-18; the [measured
+  times](#measured-times) are from that rehearsal. Not yet rehearsed on mainnet.
   `apps/api/tests/integration/relay-rotation.integration.test.ts` runs the same sequence against a
   local API on every pull request.
 </Note>
@@ -24,7 +24,7 @@ The relay account (the code calls it the mediator) co-signs the forward of an [e
 - Only exchange closes. Closes into a wallet the user controls never touch the relay account.
 - A close built against the old account but not yet co-signed is refused once the new revision serves, with `400 transaction_structure_not_allowed`, because its forward names the old account. Nothing has been submitted, so the client builds it again and gets the new account.
 - A close co-signed before the switch still lands while the old account exists, which is why step 8 waits before the drain. One submitted after the drain fails as a whole (`op_no_account` on the merge, `op_no_source_account` on the forward): no XLM moves, the account pays one fee and stays open, and building again succeeds.
-- At most the old account's minimum balance, 1 XLM, is ever at risk, because it holds nothing else.
+- On mainnet, at most the old account's minimum balance, 1 XLM, is ever at risk, because it holds nothing else. A testnet account created through friendbot holds far more: the testnet accounts retired on 2026-11-17 held about 10,000 XLM each, which the drain in step 9 returned to the operator.
 
 ## Steps
 
@@ -35,6 +35,8 @@ set -o pipefail
 export XDG_CONFIG_HOME="$(mktemp -d)"
 stellar keys add operator --secret-key
 ```
+
+Each step that changes the service is an env-only revision. A deploy run that starts in between deploys its candidate with the environment the service has at that moment, so it can carry a half-done rotation forward or undo a step. Hold merges that deploy the API from step 4 until the last env-only revision of the rotation serves (step 5 here, or the sponsor's switch when both rotate), and check that no run is in progress (`gh run list --workflow deploy-api.yml --status in_progress`) before each `gcloud run services update`.
 
 `operator` is the operator account that funds the new relay account and receives the old one's balance; paste its secret at the prompt. It must not be either relay account, and it must be the address in the `Rotation operator (<net>)` row of the [inventory table](/monitoring-plan#1-what-are-we-monitoring) and the `OPERATOR_ADDRESS_<NET>` repository variable: the forward check recognises the drain in step 9 only as a merge into that address.
 
@@ -64,14 +66,17 @@ stellar keys add operator --secret-key
 
    Expected: `1.0000000` (use `https://horizon.stellar.org` on mainnet).
 
-4. **Check the bindings, then add the secret as a new version.** An entry with `valueFrom.secretKeyRef` comes from Secret Manager. If the relay secret is bound to `latest`, a new version would reach a fresh instance of the current revision before the public key changes, and that instance would answer `503 mediator_key_misconfiguration`: pin the current version number first.
+4. **Check the bindings, pin them, then add the secret as a new version.** An entry with `valueFrom.secretKeyRef` comes from Secret Manager. If the relay secret is bound to `latest`, a new version would reach a fresh instance of the current revision before the public key changes, and that instance would answer `503 mediator_key_misconfiguration`: pin the current version number first. On the production service both the relay and the sponsor secret were bound to `latest` at the 2026-11-17 rehearsal, so expect to pin. When the [fee sponsor rotation](/runbooks/rotate-fee-sponsor) runs in the same session, pin both secrets in one revision (23 seconds on 2026-11-17):
 
    ```bash
    gcloud run services describe lumenwipe-api --region us-central1 --format='yaml(spec.template.spec.containers[0].env)'
+   gcloud secrets versions list <relay-secret> --filter='state=ENABLED' --format='value(name)' --limit=1
+   gcloud run services update lumenwipe-api --region us-central1 \
+     --update-secrets=MEDIATOR_SECRET_<NET>=<relay-secret>:<current n>,FEE_ACCOUNT_SECRET_<NET>=<sponsor-secret>:<current sponsor n>
    stellar keys secret new-relay | tr -d '\n' | gcloud secrets versions add <relay-secret> --data-file=-
    ```
 
-   Expected: the binding names a version number, and `Created version [<n>] of the secret [<relay-secret>].` The `tr` matters: a trailing newline makes the key unreadable. With `pipefail` set, a failed `keys secret` stops here instead of storing an empty version.
+   Drop the `FEE_ACCOUNT_SECRET_<NET>` binding from the update when only the relay rotates, and skip the update when the binding already names a version. Expected: the binding names a version number, and `Created version [<n>] of the secret [<relay-secret>].` The `tr` matters: a trailing newline makes the key unreadable. With `pipefail` set, a failed `keys secret` stops here instead of storing an empty version.
 
 5. **Switch the API in one revision.** The secret and the public key must change together; a revision where they disagree answers `503 mediator_key_misconfiguration`.
 
@@ -86,12 +91,15 @@ stellar keys add operator --secret-key
 6. **Confirm the new account co-signs.** On testnet, run the full exchange flow through the deployed web app:
 
    ```bash
-   APP_URL=https://lumenwipe.com MEDIATOR_PUBLIC_TESTNET=<new> bun run --filter @lumenwipe/api test:mediator
+   APP_URL=https://www.lumenwipe.com MEDIATOR_PUBLIC_TESTNET=<new> bun run --filter @lumenwipe/api test:mediator
    ```
 
    Expected: it ends with `E2E PASS`, and its forward shows on Horizon as a payment from `<new>`. On mainnet there is no scripted check, because it would close a real account: confirm instead with the first real exchange close, whose forward must be a payment from `<new>`. In a compromise, turn `MEDIATOR_FORWARD_ENABLED` back to `true` once this passes.
 
-7. **Point the monitors at the new account and keep the old one watched**, before the drain, so the new account is watched from now on and no check reads a drained current address. Edit the repository variables and, in the same hour, merge a pull request that changes the `Mediator account (<net>)` row of the [inventory table](/monitoring-plan#1-what-are-we-monitoring) to `<new>` (on mainnet, also `ACCOUNTS` in `apps/web/public/.well-known/stellar.toml`). The config step fails until the variable and the table agree.
+7. **Point the monitors at the new account and keep the old one watched**, before the drain, so the new account is watched from now on and no check reads a drained current address. Edit the repository variables and, in the same hour, merge a pull request that changes the `Mediator account (<net>)` row of the [inventory table](/monitoring-plan#1-what-are-we-monitoring) to `<new>` (on mainnet, also `ACCOUNTS` in `apps/web/public/.well-known/stellar.toml`). The config step fails until the variable and the table agree. Two more places hold the address:
+
+   - `apps/api/tests/unit/service-account-monitors.test.ts` pins the current testnet addresses as `MEDIATOR` and `SPONSOR`; change them in the same pull request. That makes the pull request deploy the API, so merge it only once the last env-only revision of the rotation serves.
+   - On testnet, the playground's Vercel variable `PLAYGROUND_EXPECTED_MEDIATOR_TESTNET` (and `PLAYGROUND_EXPECTED_FEE_ACCOUNT_TESTNET` for the sponsor). After changing it, deploy the playground with `vercel deploy --prod` from a clean checkout of `main` linked to the playground project: a plain `vercel redeploy` is cancelled by the playground's ignored build step when no playground file changed.
 
    ```bash
    gh variable set MEDIATOR_ADDRESS_<NET> --body <new>
@@ -122,10 +130,26 @@ stellar keys add operator --secret-key
     ```bash
     gh variable delete MEDIATOR_ADDRESS_<NET>_RETIRED
     gcloud secrets versions disable <previous n> --secret=<relay-secret>
+    curl -s -o /dev/null -w '%{http_code}\n' https://api.lumenwipe.com/health
+    curl -s "https://api.lumenwipe.com/v1/<net>/mediator/check/<an exchange address>" -H "Authorization: Bearer $KEY" | jq .available
     rm -rf "$XDG_CONFIG_HOME"
     ```
 
-    Expected: the next monitor run lists only `<new>`. The new key now lives only in Secret Manager; keep a copy where the team keeps keys before removing the throwaway configuration, if the team's policy asks for one.
+    Use the address of an exchange that requires the relay. Expected: `200` and `true`, since the service binds version `<n>`, not the disabled one; `false` means the key the API holds does not match `MEDIATOR_PUBLIC_<NET>`. The next monitor run lists only `<new>`. The new key now lives only in Secret Manager; keep a copy where the team keeps keys before removing the throwaway configuration, if the team's policy asks for one.
+
+## Measured times
+
+From the testnet rehearsal on the production service, run together with the [fee sponsor rotation](/runbooks/rotate-fee-sponsor):
+
+| Step                                                                          | Time and result                                                                                                                                                                                                                                 |
+| ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2 and 3, two new keys and two `create-account` (relay 1 XLM, sponsor 100 XLM) | About 10 seconds for the two creates (2026-11-17)                                                                                                                                                                                               |
+| 4, pin both secrets from `latest` to version 1 in one revision                | 23 seconds (2026-11-17)                                                                                                                                                                                                                         |
+| 5, switch the relay (secret version 2 and `MEDIATOR_PUBLIC_TESTNET`)          | 22 seconds (2026-11-17)                                                                                                                                                                                                                         |
+| 6, `test:mediator` through `www.lumenwipe.com`                                | 18 seconds, `E2E PASS`, transaction `6065aa4a…4267` (2026-11-17)                                                                                                                                                                                |
+| 7, repository variables, then the pull request for the monitoring plan        | Merged within 9 minutes of the switch (2026-11-17); `onchain-monitors.yml` succeeded with the new and the retired addresses                                                                                                                     |
+| 9, drain of each old account                                                  | About 6 seconds each; Horizon answered `404` for both afterwards (2026-11-17)                                                                                                                                                                   |
+| 10, `_RETIRED` variables removed, version 1 of both secrets disabled          | Done 2026-11-18 at 15:41 UTC; the service binds version 2 of `MEDIATOR_SECRET_TESTNET` and `FEE_ACCOUNT_SECRET_TESTNET`, `/health` answered afterwards, and `mediator/check` for an exchange that requires the relay answered `available: true` |
 
 ## Confirm the fix
 
