@@ -298,6 +298,27 @@ describe("one account's flood", () => {
   });
 });
 
+describe("the whole budget", () => {
+  // Every history read hangs. Shares of the budget add up to the budget, so the check still
+  // ends inside it and the workflow's job timeout keeps its margin; the records read first sit
+  // outside it and answer at once here.
+  test.each(["keys", "forward"])(
+    "%s ends within its budget with every account unread",
+    async (name) => {
+      const started = performance.now();
+      const result = await check(name, (path) => (path.includes("?") ? hang() : quiet(path)), {
+        budgetMs: 400,
+      });
+      const elapsed = performance.now() - started;
+      expect(elapsed).toBeLessThan(400 + 150);
+      expect(result.status).toBe("incomplete");
+      for (const address of [MEDIATOR, SPONSOR]) {
+          expect(result.printed).toMatch(new RegExp(`\\(testnet, ${address}\\): none of the`));
+      }
+    }
+  );
+});
+
 describe("the balances check", () => {
   test("an account Horizon cannot return is incomplete, and the next account is still read", async () => {
     const reads: string[] = [];
