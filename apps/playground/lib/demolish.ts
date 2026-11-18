@@ -120,6 +120,10 @@ const CONVERT_CHOICE = "convert_to_xlm";
 const TRANSFER_CHOICE = "transfer_to_account";
 /** The API's `LEAVE_CHOICE`: a Soroban token balance stays with the closed address. */
 const LEAVE_TOKEN_CHOICE = "acknowledge_residue";
+/** The API's `tokenDecisionId` and `TOKEN_DISCOVERED_CHOICE`: an answer that only names a token,
+ *  so the API's read looks for it without the analysis's event scan. */
+const tokenDecisionId = (contract: string): string => `token:${contract}`;
+const TOKEN_DISCOVERED_CHOICE = "discovered";
 
 /** Required decision points the playground has no answer for, which stop the close before it builds. */
 export class DemolishDecisionUnanswerableError extends Error {
@@ -188,13 +192,17 @@ function claimChoice(balanceId: string, expected: PlaygroundCloseExpectation): s
 
 /**
  * The answers the plan itself needs to see the account as the close will leave it: the destination
- * acknowledgement and a choice for every balance the session recorded, so a balance claimed
- * through a new trustline already has its asset's disposition asked for.
+ * acknowledgement, a choice for every balance the session recorded, so a balance claimed through a
+ * new trustline already has its asset's disposition asked for, and the playground token named when
+ * the plan minted it, so its disposition is asked for too.
  */
 export function planAnswers(expected: PlaygroundCloseExpectation): DecisionAnswer[] {
   const ids = [...expected.claims.map((c) => c.id), ...expected.forfeits];
   return [
     ...destinationAnswers(expected),
+    ...(expected.token
+      ? [{ id: tokenDecisionId(expected.token.contract), choice: TOKEN_DISCOVERED_CHOICE }]
+      : []),
     ...ids.flatMap((id) => {
       const choice = claimChoice(id, expected);
       return choice ? [{ id: claimDecisionId(id), choice }] : [];
@@ -241,11 +249,25 @@ function assetAnswer(
 }
 
 /**
+ * The answer to a Soroban token's disposition: the playground token sent to its configured admin
+ * when the session chose to send it back, and any other token, or the playground token in a
+ * session that chose to leave it, left with the throwaway key.
+ */
+function tokenAnswer(id: string, expected: PlaygroundCloseExpectation): DecisionAnswer {
+  const { token } = expected;
+  if (token?.disposition === "transfer" && id === tokenDecisionId(token.contract)) {
+    return { id, choice: TRANSFER_CHOICE, params: { destination: token.destination } };
+  }
+  return { id, choice: LEAVE_TOKEN_CHOICE };
+}
+
+/**
  * Turns the plan's decision points into the answer set `close/transactions` requires.
  *
  * Every answer comes from the session's expectation, never from the plan's recommendation: a
  * trustline is converted, transferred to the session's recipient, or returned to its issuer as the
- * session chose, and a Soroban token someone dusted the demo with is left with the throwaway key.
+ * session chose, the playground token is sent back or left as the session chose, and a Soroban
+ * token someone dusted the demo with is left with the throwaway key.
  * A required point anything else asks for (an asset the session never planned, a claimable
  * balance, a confirmation the API added) is listed as unanswerable rather than guessed, so the
  * round stops and the page names it.
@@ -269,7 +291,7 @@ export function buildDemolishDecisions(
     } else if (dp.type === "asset_disposition") {
       // The point's own id already carries the API's encoding, so it is echoed back verbatim.
       const { kind, asset } = dp.subject;
-      if (kind === "soroban_token") answer = { id: dp.id, choice: LEAVE_TOKEN_CHOICE };
+      if (kind === "soroban_token") answer = tokenAnswer(dp.id, expected);
       else if (kind === "trustline" && typeof asset === "string") {
         answer = assetAnswer(dp.id, asset, expected);
       }

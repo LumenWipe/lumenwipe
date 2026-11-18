@@ -1,8 +1,11 @@
 import "server-only";
+import { rpc } from "@stellar/stellar-sdk";
 import { LumenWipeClient, type MediatorCheckResult } from "@lumenwipe/sdk";
+import { SOROBAN_RPC_TESTNET_URL } from "./horizon-submit";
 import { EXCHANGE_STAND_IN, isScenarioId, type ScenarioId } from "./scenarios";
 import { EXPECTED_FEE_ACCOUNT_ENV, parseExpectedFeeAccount } from "./verify-feebump";
 import { EXPECTED_MEDIATOR_ENV, parseExpectedMediator } from "./verify-mediator";
+import { playgroundTokenDeployed, TOKEN_ADMIN_SECRET_ENV, tokenAdminKeypair } from "./token-deploy";
 
 export const SWITCHED_OFF_REASON = "Switched off on this deployment for now.";
 export const FEE_ACCOUNT_MISSING_REASON =
@@ -17,11 +20,18 @@ export const EXCHANGE_NOT_ROUTED_REASON =
   "The LumenWipe API does not route the test exchange through its relay account with an id memo.";
 export const MEDIATOR_UNAVAILABLE_REASON =
   "The LumenWipe API cannot co-sign an exchange close on the test network right now.";
+export const TOKEN_ADMIN_MISSING_REASON =
+  "Not set up on this deployment: it has no key for the admin of the playground's token.";
+export const TOKEN_NOT_DEPLOYED_REASON = "The playground's token is not on testnet yet.";
+export const TOKEN_CHECK_FAILED_REASON =
+  "The playground could not read its token on testnet right now.";
 export const REGISTRY_STALE_REASON =
   "The LumenWipe API's exchange registry is past its verification window, so it refuses exchange closes.";
 
 /** How long the availability read waits for the API's mediator check. */
 const MEDIATOR_CHECK_TIMEOUT_MS = 5_000;
+/** How long it waits for the token's ledger read. */
+const TOKEN_CHECK_TIMEOUT_MS = 5_000;
 
 /**
  * Reads PLAYGROUND_DISABLED_SCENARIOS, a comma-separated list of scenario ids, so a flaky one can
@@ -87,13 +97,45 @@ export async function withMediatorCheck(
   return unavailable;
 }
 
+/**
+ * Adds the Soroban token, with its reason, unless this deployment holds its pinned admin's key and
+ * the token is on testnet: it is not between a deployment and the operator's one-off token
+ * deployment, or when the ledger read fails. The ledger is read only when nothing else has ruled
+ * it out.
+ */
+export async function withTokenCheck(
+  unavailable: Map<ScenarioId, string>,
+  adminConfigured: boolean,
+  deployed: () => Promise<boolean>
+): Promise<Map<ScenarioId, string>> {
+  if (unavailable.has("soroban-token")) return unavailable;
+  if (!adminConfigured) {
+    unavailable.set("soroban-token", TOKEN_ADMIN_MISSING_REASON);
+    return unavailable;
+  }
+  let reason: string | null;
+  try {
+    reason = (await deployed()) ? null : TOKEN_NOT_DEPLOYED_REASON;
+  } catch {
+    reason = TOKEN_CHECK_FAILED_REASON;
+  }
+  if (reason !== null) unavailable.set("soroban-token", reason);
+  return unavailable;
+}
+
 /** The scenarios this deployment cannot run, read on each request. */
 export async function unavailableScenarios(): Promise<Map<ScenarioId, string>> {
-  const unavailable = unavailableFrom({
+  const configured = unavailableFrom({
     disabled: process.env.PLAYGROUND_DISABLED_SCENARIOS,
     feeAccount: process.env[EXPECTED_FEE_ACCOUNT_ENV],
     mediatorKey: process.env[EXPECTED_MEDIATOR_ENV],
   });
+  const adminConfigured = tokenAdminKeypair(process.env[TOKEN_ADMIN_SECRET_ENV]) !== null;
+  const unavailable = await withTokenCheck(configured, adminConfigured, () =>
+    playgroundTokenDeployed(
+      new rpc.Server(SOROBAN_RPC_TESTNET_URL, { timeout: TOKEN_CHECK_TIMEOUT_MS })
+    )
+  );
   const apiUrl = process.env.LUMENWIPE_API_URL;
   const apiKey = process.env.LUMENWIPE_API_KEY;
   if (!apiUrl || !apiKey) {

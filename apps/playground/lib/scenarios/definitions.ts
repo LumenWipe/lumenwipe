@@ -33,6 +33,8 @@ import {
   AQUARIUS_SEED,
   BLEND_SEED,
   PHOENIX_SEED,
+  PLAYGROUND_TOKEN,
+  PLAYGROUND_TOKEN_SEED,
   SOROSWAP_SEED,
 } from "./pinned";
 import {
@@ -53,6 +55,7 @@ import {
   type ScenarioDefinition,
   type ScenarioId,
   type StepAction,
+  type TokenDisposition,
 } from "./types";
 
 export const MESS_STEP_SECONDS = 5;
@@ -1259,6 +1262,81 @@ const allowances: ScenarioDefinition = {
   },
 };
 
+const TOKEN_DISPOSITIONS: readonly TokenDisposition[] = ["transfer", "residue"];
+
+/**
+ * A balance of the playground's own SEP-41 token (pinned.ts `PLAYGROUND_TOKEN`), which needs no
+ * trustline: its admin mints it to the demo, so the demo signs and pays for nothing to get it. The
+ * close names the token to the API and answers its disposition from the selection: a transfer back
+ * to the admin, a contract call of its own before the merge, or the balance left with the closed
+ * address on record. No converting it: no route source the API uses indexes testnet.
+ */
+const sorobanToken: ScenarioDefinition = {
+  id: "soroban-token",
+  featureSet: "protocol",
+  label: "Soroban token",
+  description: `${PLAYGROUND_TOKEN.symbol}, a Soroban token with no trustline, minted to the demo by the playground. The close sends it back to the playground, or leaves it with the closed address.`,
+  params: {
+    disposition: {
+      label: "Close",
+      min: 0,
+      max: TOKEN_DISPOSITIONS.length - 1,
+      default: 0,
+      choices: ["Send it back to the playground", "Leave it with the closed address"],
+    },
+  },
+  heldAssets: () => [],
+  requiresAnyOf: [],
+  conflicts: [],
+  build: ({ disposition: index }) => {
+    const disposition = TOKEN_DISPOSITIONS[index ?? 0];
+    if (!disposition) return { ok: false, message: "Soroban token has no such disposition." };
+    const exits = disposition === "transfer" ? 1 : 0;
+    const nodeId = "token:playground";
+    return {
+      ok: true,
+      build: {
+        steps: [
+          {
+            order: ORDER.protocol,
+            step: {
+              id: "MINT_TOKEN",
+              label: `Mint ${PLAYGROUND_TOKEN_SEED.amount} ${PLAYGROUND_TOKEN.symbol} to the demo`,
+              nodes: [{ id: nodeId, kind: "token", label: PLAYGROUND_TOKEN.symbol }],
+              balances: [{ nodeId, balance: PLAYGROUND_TOKEN_SEED.amount }],
+              action: { kind: "mint_token", amount: PLAYGROUND_TOKEN_SEED.amount, disposition },
+            },
+          },
+        ],
+        ephemeralAssets: [],
+        expectation: {
+          assets: [],
+          offers: 0,
+          dataEntries: 0,
+          signers: 0,
+          // The transfer is a transaction of its own, and the token needs no trustline.
+          closeOperations: 0,
+          operationTypes: exits > 0 ? ["invokeHostFunction"] : [],
+          dispositions: [],
+          arrivingAssets: [],
+          sponsoredEntries: [],
+          resolutions: [],
+        },
+        cost: {
+          // The admin pays for the mint; the demo pays only the transfer's fee ceiling.
+          xlm: exits * SOROBAN_FEE_CAP_XLM,
+          classicTransactions: 0,
+          sorobanTransactions: 1,
+          seconds: (1 + exits) * SOROBAN_STEP_SECONDS,
+          subEntries: 0,
+          closeGroups: 0,
+          sorobanExits: exits,
+        },
+      },
+    };
+  },
+};
+
 /**
  * The close the API's fee sponsor pays for: the last mess step leaves the demo less than one
  * close fee above its reserve floor, so the API builds the close with its own fee at zero and the
@@ -1291,6 +1369,7 @@ const feeBump: ScenarioDefinition = {
     "blend-supply",
     "phoenix-lp",
     "allowances",
+    "soroban-token",
   ],
   build: () => ({
     ok: true,
@@ -1393,6 +1472,7 @@ export const SCENARIOS: readonly ScenarioDefinition[] = [
   blendSupply,
   phoenixLp,
   allowances,
+  sorobanToken,
   feeBump,
   exchangeClose,
 ];

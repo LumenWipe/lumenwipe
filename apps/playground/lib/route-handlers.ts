@@ -129,6 +129,8 @@ export interface MessDeps extends PlaygroundKeys {
   decrypt: (payload: string) => string;
   /** The step's transaction hash, or null when it had nothing to send. */
   executeMessStep: (step: MessStepDef, ctx: MessContext) => Promise<string | null>;
+  /** The playground token's admin, from configuration; null when none is configured. */
+  tokenAdmin: () => Keypair | null;
   /** The clock the session's expiry is held to; tests set it. */
   now?: () => number;
 }
@@ -560,6 +562,7 @@ export async function handleMess(
         recordClaimableBalances,
         allowances: session.allowances,
         recordAllowance,
+        tokenAdmin: deps.tokenAdmin(),
       }),
   });
   return actionResponse(result);

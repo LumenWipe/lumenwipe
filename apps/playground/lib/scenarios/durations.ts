@@ -34,6 +34,7 @@ const SOROBAN_STEP_KINDS: ReadonlySet<StepAction["kind"]> = new Set([
   "phoenix_provide",
   "phoenix_bond",
   "approve_allowance",
+  "mint_token",
 ]);
 
 /** A mess step sent as a contract call rather than a classic transaction. */

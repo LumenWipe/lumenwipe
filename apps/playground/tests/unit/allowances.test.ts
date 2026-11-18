@@ -64,6 +64,7 @@ function harness(existing: RecordedAllowance[] = []): {
       run.events.push(`record ${index}`);
       run.recorded[index - 1] = allowance;
     },
+    tokenAdmin: null,
   };
   const deps: BuildSignSubmitDeps = {
     ledgerTtl: async () => TTL,

@@ -199,6 +199,7 @@ describe("the setup step sends only what it has to do", () => {
     recordClaimableBalances: async () => {},
     allowances: [],
     recordAllowance: async () => {},
+    tokenAdmin: null,
   };
   /** Runs the step against a demo holding `balance`, capturing what it would send. */
   async function run(step: MessStepDef, balance: string) {
@@ -328,6 +329,7 @@ describe("claimable balances are recorded before each attempt is sent", () => {
       },
       allowances: [],
       recordAllowance: async () => {},
+      tokenAdmin: null,
     };
   }
 

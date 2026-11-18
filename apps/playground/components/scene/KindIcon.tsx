@@ -1,6 +1,7 @@
 import {
   ArrowLeftRight,
   CircleDot,
+  Coins,
   Database,
   Gem,
   Gift,
@@ -20,6 +21,7 @@ const KIND_ICON: Record<SceneNodeKind, typeof Gem> = {
   offer: ArrowLeftRight,
   generic: CircleDot,
   position: Layers,
+  token: Coins,
   allowance: HandCoins,
   claimable: Gift,
   sponsorship: Handshake,

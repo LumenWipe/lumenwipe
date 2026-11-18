@@ -7,7 +7,15 @@ import {
   type SceneAction,
 } from "@/lib/scene-actions";
 import type { IntentOperation } from "@lumenwipe/sdk";
-import { AQUARIUS, BLEND, PHOENIX, PINNED_ASSETS, SOROSWAP, XLM_SAC } from "@/lib/scenarios";
+import {
+  AQUARIUS,
+  BLEND,
+  PHOENIX,
+  PINNED_ASSETS,
+  PLAYGROUND_TOKEN,
+  SOROSWAP,
+  XLM_SAC,
+} from "@/lib/scenarios";
 
 const SOURCE = "GDEMO";
 const live = (...ids: string[]): LiveNode[] => ids.map((id) => ({ id }));
@@ -354,5 +362,30 @@ describe("claimable balances and sponsored reserves", () => {
       "sponsorship:data",
     ]);
     expect(nodesResolvedBy("some_other_blocker", scene)).toEqual([]);
+  });
+});
+
+describe("the playground token", () => {
+  const scene = live("token:playground", "lp:phoenix");
+  const call = (contract: string, fn: string) => ({
+    ...SAMPLES.invoke_host_function,
+    contract,
+    function: fn,
+    args: [SOURCE, PLAYGROUND_TOKEN.admin, "1000000000"],
+  });
+
+  test("its transfer back empties the token's node", () => {
+    expect(operationToSceneAction(call(PLAYGROUND_TOKEN.contract, "transfer"), scene)).toEqual({
+      type: "destroy",
+      nodeIds: ["token:playground"],
+    });
+  });
+
+  test("another function, another token's transfer, or no node in the scene changes nothing", () => {
+    expect(operationToSceneAction(call(PLAYGROUND_TOKEN.contract, "burn"), scene)).toBeNull();
+    expect(operationToSceneAction(call(PHOENIX.tokenA, "transfer"), scene)).toBeNull();
+    expect(
+      operationToSceneAction(call(PLAYGROUND_TOKEN.contract, "transfer"), live("lp:phoenix"))
+    ).toBeNull();
   });
 });

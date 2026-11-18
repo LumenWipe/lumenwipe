@@ -1,7 +1,11 @@
 import { NextRequest } from "next/server";
 import { decryptSecret, encryptSecret } from "@/lib/crypto";
 import { sessionStore } from "@/lib/session-store";
-import { getPlaygroundIssuerKeypair, getPlaygroundMmKeypair } from "@/lib/accounts";
+import {
+  getPlaygroundIssuerKeypair,
+  getPlaygroundMmKeypair,
+  getPlaygroundTokenAdminKeypair,
+} from "@/lib/accounts";
 import { executeMessStep } from "@/lib/mess-builders";
 import { handleMess } from "@/lib/route-handlers";
 
@@ -16,5 +20,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     encrypt: encryptSecret,
     decrypt: decryptSecret,
     executeMessStep,
+    tokenAdmin: getPlaygroundTokenAdminKeypair,
   });
 }

@@ -5,6 +5,7 @@ import {
   BLEND,
   BLEND_REQUEST,
   PHOENIX,
+  PLAYGROUND_TOKEN,
   SOROSWAP,
   type BlendVariant,
   type PhoenixVariant,
@@ -24,18 +25,19 @@ import {
 //   the session's selection seeds;
 // - the function is in that protocol's allowlist, made to the one contract it is bound to and only
 //   for a seeded variant its rule lists, with exactly the arguments the protocol's exit
-//   uses: every argument that names the account paid or acted for equals the demo, every
-//   minimum-out and every amount moved is greater than zero (a floor given as a list holds exactly
-//   one per pool token), the tokens named are exactly the pinned pool's, and a lending pool's
-//   requests are a non-empty list naming only the pinned reserve, each moving a positive amount,
-//   of only the request types the seeded variant's exit needs;
+//   uses: every argument that names the account paid or acted for equals the demo, every argument
+//   that names where funds go is the one address the configuration pins, every minimum-out and
+//   every amount moved is greater than zero (a floor given as a list holds exactly one per pool
+//   token), the tokens named are exactly the pinned pool's, and a lending pool's requests are a
+//   non-empty list naming only the pinned reserve, each moving a positive amount, of only the
+//   request types the seeded variant's exit needs;
 // - every authorization entry is satisfied by the transaction's own signature (source-account
 //   credentials, never a separate address signature), and every invocation in its tree stays in
 //   the protocol's family: the contracts its row pins, the call targets and the pool, pair or
-//   share token.
+//   share token. A row that allows no sub-invocation admits the call itself and nothing below it.
 //
-// Every contract is a pinned public testnet instance (lib/scenarios/pinned.ts): a session never
-// creates one, so there is nothing per session to record beyond which protocols it seeded.
+// Every contract is a pinned testnet instance (lib/scenarios/pinned.ts): a session never creates
+// one, so there is nothing per session to record beyond which protocols it seeded.
 
 export class SorobanVerificationError extends Error {
   constructor(message: string) {
@@ -44,14 +46,16 @@ export class SorobanVerificationError extends Error {
   }
 }
 
-export type SorobanProtocol = "soroswap" | "aquarius" | "blend" | "phoenix";
+export type SorobanProtocol = "soroswap" | "aquarius" | "blend" | "phoenix" | "playground-token";
 
 /** A protocol the session's selection seeds on testnet, and the variant of its position. */
 export type SeededProtocol =
   | { protocol: "soroswap"; variant: "lp" }
   | { protocol: "aquarius"; variant: "lp" }
   | { protocol: "blend"; variant: BlendVariant }
-  | { protocol: "phoenix"; variant: PhoenixVariant };
+  | { protocol: "phoenix"; variant: PhoenixVariant }
+  /** Seeded only when the session chose to send the token back: a residue session makes no call. */
+  | { protocol: "playground-token"; variant: "transfer" };
 
 /** What a session's Soroban calls may do: everything here comes from the session record. */
 export interface SorobanExpectation {
@@ -68,6 +72,9 @@ interface FunctionRule {
   arity: number;
   /** Positions of arguments that name the account paid or acted for: each must be the demo. */
   accountArgs: readonly number[];
+  /** Positions of arguments that name where the call sends funds: each must be `address`, which
+   *  comes from the playground's configuration, never from the session or the API. */
+  recipientArgs: { at: readonly number[]; address: string } | null;
   /** The integer type every amount below must have: the protocol's own, never another. */
   amountType: "scvI128" | "scvU128";
   /** Positions of minimum-out amounts: each must be greater than zero. */
@@ -95,6 +102,8 @@ interface ProtocolPins {
   entry: readonly string[];
   /** The other contracts its authorization tree may reach, such as the pool or pair. */
   family: readonly string[];
+  /** Whether an authorized call may reach any contract below itself. */
+  subInvocations: boolean;
   functions: Readonly<Record<string, FunctionRule>>;
 }
 
@@ -126,16 +135,24 @@ interface ProtocolPins {
  * min_a, min_b, deadline)` on the pool, which authorizes moving the demo's shares, and before it,
  * only when the selection bonded, `unbond(sender, stake_amount, stake_timestamp)` on the stake,
  * which the stake pays out of its own balance.
+ *
+ * The playground token: its own pinned contract, and nothing else. Its one call is the plain
+ * SEP-41 `transfer(from, to, amount)` apps/api/src/lib/close-api/token-transfer-round.ts builds,
+ * from the demo to the token's pinned admin, for a positive amount, and it authorizes that call
+ * alone: a transfer to any other address, or one whose authorization reaches anything below it, is
+ * refused.
  */
 export const PINNED_SOROBAN_PROTOCOLS: Readonly<Record<SorobanProtocol, ProtocolPins>> = {
   soroswap: {
     entry: [SOROSWAP.router],
     family: [SOROSWAP.pair],
+    subInvocations: true,
     functions: {
       remove_liquidity: {
         on: SOROSWAP.router,
         variants: null,
         arity: 7,
+        recipientArgs: null,
         accountArgs: [5],
         amountType: "scvI128",
         minOutArgs: [3, 4],
@@ -149,11 +166,13 @@ export const PINNED_SOROBAN_PROTOCOLS: Readonly<Record<SorobanProtocol, Protocol
   aquarius: {
     entry: [AQUARIUS.pool],
     family: [AQUARIUS.shareToken],
+    subInvocations: true,
     functions: {
       withdraw: {
         on: AQUARIUS.pool,
         variants: null,
         arity: 3,
+        recipientArgs: null,
         accountArgs: [0],
         amountType: "scvU128",
         minOutArgs: [],
@@ -167,11 +186,13 @@ export const PINNED_SOROBAN_PROTOCOLS: Readonly<Record<SorobanProtocol, Protocol
   blend: {
     entry: [BLEND.pool],
     family: [BLEND.reserve],
+    subInvocations: true,
     functions: {
       submit: {
         on: BLEND.pool,
         variants: null,
         arity: 4,
+        recipientArgs: null,
         accountArgs: [0, 1, 2],
         amountType: "scvI128",
         minOutArgs: [],
@@ -192,11 +213,13 @@ export const PINNED_SOROBAN_PROTOCOLS: Readonly<Record<SorobanProtocol, Protocol
   phoenix: {
     entry: [PHOENIX.pool, PHOENIX.stake],
     family: [PHOENIX.shareToken],
+    subInvocations: true,
     functions: {
       withdraw_liquidity: {
         on: PHOENIX.pool,
         variants: null,
         arity: 5,
+        recipientArgs: null,
         accountArgs: [0],
         amountType: "scvI128",
         minOutArgs: [2, 3],
@@ -209,11 +232,32 @@ export const PINNED_SOROBAN_PROTOCOLS: Readonly<Record<SorobanProtocol, Protocol
         on: PHOENIX.stake,
         variants: ["bonded"],
         arity: 3,
+        recipientArgs: null,
         accountArgs: [0],
         amountType: "scvI128",
         minOutArgs: [],
         minOutVec: null,
         positiveArgs: [1],
+        tokenArgs: null,
+        requests: null,
+      },
+    },
+  },
+  "playground-token": {
+    entry: [PLAYGROUND_TOKEN.contract],
+    family: [],
+    subInvocations: false,
+    functions: {
+      transfer: {
+        on: PLAYGROUND_TOKEN.contract,
+        variants: null,
+        arity: 3,
+        recipientArgs: { at: [1], address: PLAYGROUND_TOKEN.admin },
+        accountArgs: [0],
+        amountType: "scvI128",
+        minOutArgs: [],
+        minOutVec: null,
+        positiveArgs: [2],
         tokenArgs: null,
         requests: null,
       },
@@ -267,7 +311,8 @@ function assertRequests(
 
 function assertAuthTree(
   invocation: xdr.SorobanAuthorizedInvocation,
-  family: ReadonlySet<string>
+  family: ReadonlySet<string>,
+  subInvocations: boolean
 ): void {
   const fn = invocation.function;
   if (fn.type !== "sorobanAuthorizedFunctionTypeContractFn") {
@@ -275,7 +320,10 @@ function assertAuthTree(
   }
   const contract = Address.fromScAddress(fn.contractFn.contractAddress).toString();
   if (!family.has(contract)) throw new SorobanVerificationError("soroban_auth_outside_family");
-  for (const sub of invocation.subInvocations) assertAuthTree(sub, family);
+  if (!subInvocations && invocation.subInvocations.length > 0) {
+    throw new SorobanVerificationError("soroban_auth_sub_invocation");
+  }
+  for (const sub of invocation.subInvocations) assertAuthTree(sub, family, subInvocations);
 }
 
 /** Throws a SorobanVerificationError unless the transaction is one allowed Soroban exit call. */
@@ -314,6 +362,11 @@ export function assertSorobanTransaction(tx: Transaction, expected: SorobanExpec
   for (const i of rule.accountArgs) {
     if (addressOf(args[i]) !== expected.demoPublic) {
       throw new SorobanVerificationError("soroban_account_argument_mismatch");
+    }
+  }
+  for (const i of rule.recipientArgs?.at ?? []) {
+    if (addressOf(args[i]) !== rule.recipientArgs?.address) {
+      throw new SorobanVerificationError("soroban_recipient_not_pinned");
     }
   }
   for (const i of rule.minOutArgs) {
@@ -357,6 +410,6 @@ export function assertSorobanTransaction(tx: Transaction, expected: SorobanExpec
     if (entry.credentials.type !== "sorobanCredentialsSourceAccount") {
       throw new SorobanVerificationError("soroban_auth_credentials_not_source");
     }
-    assertAuthTree(entry.rootInvocation, family);
+    assertAuthTree(entry.rootInvocation, family, pins.subInvocations);
   }
 }

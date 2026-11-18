@@ -49,6 +49,7 @@ const ctx = (): MessContext => ({
   recordClaimableBalances: async () => {},
   allowances: [],
   recordAllowance: async () => {},
+  tokenAdmin: null,
 });
 
 const plan = resolvePlan({ scenarios: [{ id: "soroswap-lp", params: {} }] });

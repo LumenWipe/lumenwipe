@@ -60,6 +60,12 @@ export const KIND_META: Record<SceneNodeKind, KindMeta> = {
     radius: 240,
     durationSec: 64,
   },
+  token: {
+    name: "Soroban token",
+    meaning: "A contract token balance, with no trustline",
+    radius: 240,
+    durationSec: 76,
+  },
   allowance: {
     name: "Token allowance",
     meaning: "A spender allowed to move the demo's tokens",

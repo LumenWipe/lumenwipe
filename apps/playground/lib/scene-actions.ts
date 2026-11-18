@@ -1,5 +1,13 @@
 import type { IntentOperation } from "@lumenwipe/sdk";
-import { AQUARIUS, BLEND, BLEND_REQUEST, PHOENIX, pinnedAssetOf, SOROSWAP } from "./scenarios";
+import {
+  AQUARIUS,
+  BLEND,
+  BLEND_REQUEST,
+  PHOENIX,
+  pinnedAssetOf,
+  PLAYGROUND_TOKEN,
+  SOROSWAP,
+} from "./scenarios";
 
 /** What a confirmed close operation does to the orbital scene. */
 export type SceneAction =
@@ -22,13 +30,15 @@ type Handler<T extends OperationType> = (
 const trustlineNodeId = (asset: string): string =>
   `tl:${pinnedAssetOf(asset) ?? asset.split(":")[0]}`;
 
-/** The position node each protocol's exit calls act on, by the contract and function called. */
+/** The node each protocol's exit calls act on, by the contract and function called; the token's
+ *  transfer back to its admin empties the demo's balance of it. */
 const POSITION_NODE_BY_EXIT: ReadonlyMap<string, { fn: string; nodeId: string }> = new Map([
   [SOROSWAP.router, { fn: "remove_liquidity", nodeId: "lp:soroswap" }],
   [AQUARIUS.pool, { fn: "withdraw", nodeId: "lp:aquarius" }],
   [BLEND.pool, { fn: "submit", nodeId: "lend:blend" }],
   [PHOENIX.pool, { fn: "withdraw_liquidity", nodeId: "lp:phoenix" }],
   [PHOENIX.stake, { fn: "unbond", nodeId: "lp:phoenix" }],
+  [PLAYGROUND_TOKEN.contract, { fn: "transfer", nodeId: "token:playground" }],
 ]);
 
 /**

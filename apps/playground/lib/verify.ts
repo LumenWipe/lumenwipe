@@ -18,10 +18,12 @@ import {
   MULTISIG_THRESHOLD,
   PHOENIX,
   PINNED_ASSETS,
+  PLAYGROUND_TOKEN,
   resolvePlan,
   SOROSWAP,
   type CloseOperationType,
   type MessStepDef,
+  type TokenDisposition,
 } from "./scenarios";
 import type { PlaygroundSession, SignerType } from "./session-store";
 import { parseStroops } from "./stroops";
@@ -58,6 +60,10 @@ import {
 //   contracts, functions and tokens, filled from the selection and lib/scenarios/pinned.ts (the
 //   way the web fills them from the account read the user reviewed), so both must pass. An exit
 //   is a transaction of its own, never beside the merge;
+// - the playground token moves only in a session that chose to send it back, only to its pinned
+//   admin and for at least what the admin minted, through lib/verify-soroban.ts's token row and
+//   the shared verifier's token transfer rule; a session that chose to leave it makes no call to
+//   it at all;
 // - a transaction may leave its own fee at zero only in a session that selected the sponsored fee
 //   with a fee account configured, and the envelope the API's sponsor wraps it in must then pass
 //   lib/verify-feebump.ts before it is sent;
@@ -146,6 +152,16 @@ export type PlaygroundSponsoredEntry =
   | { kind: "trustline"; owner: string; asset: string }
   | { kind: "data_entry"; owner: string; name: string };
 
+/** The playground token a session's plan mints, and what its close does with it. */
+export interface PlaygroundToken {
+  contract: string;
+  disposition: TokenDisposition;
+  /** Where a transfer sends it: the token's admin, from the playground's configuration. */
+  destination: string;
+  /** What the admin minted, in base units: a transfer moves at least this. */
+  amount: string;
+}
+
 /** A signer the session recorded adding, which the close may remove. */
 export interface PlaygroundSigner {
   type: SignerType;
@@ -170,6 +186,8 @@ export interface PlaygroundCloseExpectation {
   sponsoredEntries: PlaygroundSponsoredEntry[];
   /** The Soroban protocols the session's selection seeds; a call to any other is refused. */
   sorobanSeeded: SeededProtocol[];
+  /** The playground token the selection mints, or null when it mints none. */
+  token: PlaygroundToken | null;
   /** The session selected the sponsored fee, so its plan drains the demo below its own fee. */
   sponsored: boolean;
   /** The configured fee account, for a sponsored session: only with one may a transaction leave
@@ -273,6 +291,7 @@ export function expectationFromSession(
     forfeits,
     sponsoredEntries,
     sorobanSeeded: seededProtocols(plan.steps),
+    token: playgroundToken(plan.steps),
     sponsored,
     sponsorFeeAccount: sponsored ? feeAccount : null,
     exchange,
@@ -318,6 +337,18 @@ function exchangeExpectation(
   };
 }
 
+/** The token the plan's mint step seeds, with its destination and contract from configuration. */
+function playgroundToken(steps: readonly MessStepDef[]): PlaygroundToken | null {
+  const mint = steps.find((s) => s.action.kind === "mint_token")?.action;
+  if (mint?.kind !== "mint_token") return null;
+  return {
+    contract: PLAYGROUND_TOKEN.contract,
+    disposition: mint.disposition,
+    destination: PLAYGROUND_TOKEN.admin,
+    amount: amountToStroops(mint.amount).toString(),
+  };
+}
+
 /** The address the close goes to: the session's stand-in, or the market maker. */
 export function closeDestination(expected: PlaygroundCloseExpectation): string {
   return expected.exchange?.destination ?? expected.sinkPublic;
@@ -347,11 +378,16 @@ export function seededProtocols(steps: readonly MessStepDef[]): SeededProtocol[]
   const phoenix: SeededProtocol[] = seeds("phoenix_provide")
     ? [{ protocol: "phoenix", variant: seeds("phoenix_bond") ? "bonded" : "lp" }]
     : [];
+  // The token's transfer only when the session chose to send it back; leaving it makes no call.
+  const token = steps.some(
+    (s) => s.action.kind === "mint_token" && s.action.disposition === "transfer"
+  );
   return [
     ...(seeds("soroswap_deposit") ? [{ protocol: "soroswap", variant: "lp" } as const] : []),
     ...(seeds("aquarius_deposit") ? [{ protocol: "aquarius", variant: "lp" } as const] : []),
     ...blend,
     ...phoenix,
+    ...(token ? [{ protocol: "playground-token", variant: "transfer" } as const] : []),
   ];
 }
 
@@ -373,8 +409,9 @@ type SorobanExitFields = Pick<
  * fills from the account read, filled here from what the playground itself seeded.
  *
  * - `heldTokenContracts` / `protectedTokenContracts`: XLM and the Stellar Asset Contract of every
- *   asset the session holds a trustline for. The playground holds no Soroban-only balance, so the
- *   two are the same list.
+ *   asset the session holds a trustline for. The held list also names the playground token when
+ *   the selection mints it, as the web lists a Soroban balance its read confirmed, so no exit may
+ *   move it.
  * - Soroswap: the router is the call target and the pair the position, with the router's one exit
  *   function and none on the pair (the shared verifier lets the router move the LP share into the
  *   pair only when the pair has no exit function of its own); the pair's two tokens are what the
@@ -401,7 +438,9 @@ export function sorobanExitExpectations(expected: PlaygroundCloseExpectation): S
   const fields: SorobanExitFields = {
     exitContracts: [],
     exitFunctions: {},
-    heldTokenContracts: [...new Set(held)],
+    heldTokenContracts: [
+      ...new Set([...held, ...(expected.token ? [expected.token.contract] : [])]),
+    ],
     positionTokenContracts: [],
     protectedTokenContracts: [...new Set(held)],
     ownTokensByContract: {},
@@ -513,10 +552,16 @@ export function sharedExpectation(expected: PlaygroundCloseExpectation): CloseEx
     ].map(({ key, type }) => ({ key, type, weight: 1 })),
     accountThresholds: sessionThresholds(expected),
     transfers,
-    tokenTransfers: {},
+    tokenTransfers: tokenTransfers(expected.token),
     classicConversions,
     tokenConversions: {},
   };
+}
+
+/** The token transfer a session that chose to send the playground token back allows, if any. */
+function tokenTransfers(token: PlaygroundToken | null): Record<string, TransferChoice> {
+  if (token?.disposition !== "transfer") return {};
+  return { [token.contract]: { destination: token.destination, amount: token.amount } };
 }
 
 /** A decimal amount as the SDK prints one (at most seven decimals), in stroops. */

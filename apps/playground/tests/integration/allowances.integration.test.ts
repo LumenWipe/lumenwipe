@@ -109,6 +109,7 @@ test.skipIf(!RUN_INTEGRATION)(
       recordAllowance: async (index, allowance) => {
         recorded[index - 1] = allowance;
       },
+      tokenAdmin: null,
     };
     const ttl = await readLedgerTtl();
     console.log(`latest ledger ${ttl.latestLedger}, max entry TTL ${ttl.maxEntryTtl}`);

@@ -83,6 +83,7 @@ async function runVariant(variant: 0 | 1): Promise<void> {
     recordClaimableBalances: async () => {},
     allowances: [],
     recordAllowance: async () => {},
+    tokenAdmin: null,
   };
   for (const step of resolvePlan(selection).steps.filter((s) => s.id !== "SETUP")) {
     console.log(`${step.id} (variant ${variant}): ${await executeMessStep(step, ctx)}`);

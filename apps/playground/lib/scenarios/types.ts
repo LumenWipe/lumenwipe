@@ -35,6 +35,7 @@ export const MESS_STEP_IDS = [
   "APPROVE_ALLOWANCE_1",
   "APPROVE_ALLOWANCE_2",
   "APPROVE_ALLOWANCE_3",
+  "MINT_TOKEN",
   "DRAIN_TO_FEE_FLOOR",
 ] as const;
 
@@ -100,6 +101,9 @@ export type StepAction =
    * session records before the call is sent, and no one holds its secret.
    */
   | { kind: "approve_allowance"; index: number; amountXlm: string; farExpiry: boolean }
+  /** The playground token's admin mints `amount` of it to the demo; the demo signs nothing. How
+   *  the close disposes of it is the scenario's `disposition`. */
+  | { kind: "mint_token"; amount: string; disposition: TokenDisposition }
   /**
    * Pays the market maker everything the demo holds above its reserve floor, read live, except
    * less than the fee of a one-operation close transaction, so the close cannot pay its own fee.
@@ -108,6 +112,10 @@ export type StepAction =
 
 /** supply: XLM supplied as collateral. supply_and_borrow: the same, with XLM borrowed against it. */
 export type BlendVariant = "supply" | "supply_and_borrow";
+
+/** transfer: the close sends the playground token back to its admin. residue: the close leaves it
+ *  with the closed address. */
+export type TokenDisposition = "transfer" | "residue";
 
 /** lp: Phoenix pool shares held. bonded: the same, with half of them bonded in its stake. */
 export type PhoenixVariant = "lp" | "bonded";
@@ -175,14 +183,16 @@ export const SCENE_NODE_KINDS = [
   "signer",
   "multisig",
   "position",
+  "token",
   "allowance",
   "claimable",
   "sponsorship",
 ] as const;
 
 /** The kinds that are entries of the account itself, each holding a base reserve. A protocol
- *  position or an allowance lives in a contract's storage, a claimable balance is an entry of its
- *  own, and a sponsorship node is another account's entry whose reserve the demo pays. */
+ *  position, a Soroban token balance or an allowance lives in a contract's storage, a claimable
+ *  balance is an entry of its own, and a sponsorship node is another account's entry whose
+ *  reserve the demo pays. */
 export const SUB_ENTRY_NODE_KINDS: readonly SceneNodeKind[] = [
   "trustline",
   "offer",
@@ -316,6 +326,7 @@ export type ScenarioId =
   | "blend-supply"
   | "phoenix-lp"
   | "allowances"
+  | "soroban-token"
   | "fee-bump"
   | "exchange-close";
 

@@ -53,6 +53,7 @@ test.skipIf(!RUN_INTEGRATION)(
       recordClaimableBalances: async () => {},
       allowances: [],
       recordAllowance: async () => {},
+      tokenAdmin: null,
     };
     for (const step of resolvePlan(selection).steps.filter((s) => s.id !== "SETUP")) {
       console.log(`${step.id}: ${await executeMessStep(step, ctx)}`);

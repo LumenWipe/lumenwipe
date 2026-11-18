@@ -34,6 +34,8 @@ import {
   PHOENIX,
   PHOENIX_SEED,
   PINNED_ASSETS,
+  PLAYGROUND_TOKEN,
+  PLAYGROUND_TOKEN_SEED,
   SCENARIOS,
   SOROSWAP,
   SOROSWAP_SEED,
@@ -73,6 +75,8 @@ interface Posted {
 
 const issuer = Keypair.random();
 const mm = Keypair.random();
+/** Stands in for the token's admin: the mint's signer, which these steps never send. */
+const tokenAdmin = Keypair.random();
 const CRON_SECRET = randomBytes(16).toString("hex");
 
 function setupFunding(plan: ReturnType<typeof resolvePlan>): string {
@@ -123,6 +127,7 @@ async function runAndCheck(selection: ScenarioSelection): Promise<void> {
         mm: () => mm,
         encrypt,
         decrypt,
+        tokenAdmin: () => tokenAdmin,
         executeMessStep: (planned, ctx) =>
           executeMessStep(planned, ctx, {
             loadAccount: async () => ({ sequenceNumber: () => "100" }),
@@ -242,6 +247,8 @@ async function runAndCheck(selection: ScenarioSelection): Promise<void> {
 
 const CIRCLE_USDC = PINNED_ASSETS["circle-usdc"];
 
+const stroops7 = (amount: string): string => networkStroops(amount).toString();
+
 /** An asset as the scene names its trustline: a pinned asset by its id, any other by its code. */
 const label = (asset: Asset): string => {
   if (asset.isNative()) return "native";
@@ -291,6 +298,7 @@ function assertConsistent({
   let signersAdded = 0;
   const positions: string[] = [];
   const approved: string[] = [];
+  const minted: string[] = [];
 
   for (const { stepId, tx } of posted) {
     for (const op of tx.operations) {
@@ -343,14 +351,25 @@ function assertConsistent({
           if (op.signer) signersAdded++;
           break;
         case "invokeHostFunction": {
-          // A seeding call: the demo pairs the USDC it bought with XLM in a pinned pool, through
-          // that protocol's pinned router, and the share is the demo's own.
-          expect(source).toBe(demoPublic);
           if (op.func.type !== "hostFunctionTypeInvokeContract") throw new Error("not a call");
           const call = op.func.invokeContract;
           const args = call.args.map((a) => scValToNative(a) as unknown);
           const contract = Address.fromScAddress(call.contractAddress).toString();
           const stroops = (amount: string): bigint => BigInt(Number(amount) * 10_000_000);
+          if (contract === PLAYGROUND_TOKEN.contract) {
+            // The token's admin mints it to the demo, which signs nothing for it.
+            expect([stepId, source, call.functionName.toString()]).toEqual([
+              "MINT_TOKEN",
+              tokenAdmin.publicKey(),
+              "mint",
+            ]);
+            expect(args).toEqual([demoPublic, stroops(PLAYGROUND_TOKEN_SEED.amount)]);
+            minted.push("token:playground");
+            break;
+          }
+          // Any other seeding call is the demo's own: it pairs the USDC it bought with XLM in a
+          // pinned pool through that protocol's pinned router, supplies to it, or approves.
+          expect(source).toBe(demoPublic);
           if (contract === BLEND.pool) {
             // XLM supplied as collateral, and borrowed against it when the plan says so; the
             // demo on every side, and nothing bought for it.
@@ -457,8 +476,25 @@ function assertConsistent({
   // One recorded allowance per approval, and an allowance node for each.
   expect(approved).toEqual(nodes("allowance"));
   expect(allowances).toHaveLength(approved.length);
-  // A seeded protocol is one the verifier admits an exit for, and only then.
-  expect(expected.sorobanSeeded.length).toBe(positions.length);
+  // One token node per mint, and the verifier's expectation holds the token exactly then.
+  expect(minted).toEqual(nodes("token"));
+  const mint = plan.steps.find((s) => s.action.kind === "mint_token")?.action;
+  const disposition = mint?.kind === "mint_token" ? mint.disposition : null;
+  expect(expected.token).toEqual(
+    disposition === null
+      ? null
+      : {
+          contract: PLAYGROUND_TOKEN.contract,
+          disposition,
+          destination: PLAYGROUND_TOKEN.admin,
+          amount: stroops7(PLAYGROUND_TOKEN_SEED.amount),
+        }
+  );
+  // A seeded protocol is one the verifier admits an exit for, and only then; the token's transfer
+  // only when the session sends it back.
+  expect(expected.sorobanSeeded.length).toBe(
+    positions.length + (disposition === "transfer" ? 1 : 0)
+  );
   const fundRare = plan.steps.find((s) => s.id === "FUND_RARE");
   expect(airdrops).toEqual(fundRare ? fundRare.balances.map((b) => b.nodeId) : []);
   expect(createdIssuers).toEqual(issuers.map((i) => i.publicKey));
@@ -561,22 +597,45 @@ const DESTINATION_ONLY_MASK = SCENARIOS.reduce((mask, def, i) => {
 }, 0);
 
 /**
+ * The scenarios whose every step another key signs, onto no entry of the demo's (today the
+ * Soroban token, which its admin mints). Nothing another scenario builds depends on them, so like
+ * the destination-only ones they are joined to each largest selection rather than multiplying the
+ * largest selections; every single, pair and triple still runs with them.
+ */
+const SEPARATE_MASK = SCENARIOS.reduce((mask, def, i) => {
+  const builds = (["min", "max"] as const).map((end) =>
+    def.build(
+      Object.fromEntries(Object.entries(def.params).map(([name, spec]) => [name, spec[end]])),
+      { heldAssets: [] }
+    )
+  );
+  const separate = builds.every(
+    (b) =>
+      b.ok &&
+      b.build.steps.length > 0 &&
+      b.build.steps.every(({ step }) => step.action.kind === "mint_token")
+  );
+  return separate ? mask | (1 << i) : mask;
+}, 0);
+
+const JOINED_MASK = DESTINATION_ONLY_MASK | SEPARATE_MASK;
+
+/**
  * Every accepted single scenario, pair and triple, and every largest accepted selection, each with
  * every parameter at its minimum and then its maximum. Only validation sweeps every subset; the
  * cases actually run grow polynomially with the registry.
  *
  * A destination-only scenario (DESTINATION_ONLY_MASK) changes only the close's destination and
- * memo, which the singles, pairs and triples already exercise beside every other scenario. The
- * largest selections exist to reach the cost caps, and these scenarios cost nothing, so as members
- * they would only double that sweep for each one the registry gains. They are left out of it:
- * a largest selection is one no other scenario can join, and each is then run once more with
- * every destination-only scenario added that still fits it.
+ * memo, and a separate one (SEPARATE_MASK) only adds what another key signs; the singles, pairs
+ * and triples already exercise both beside every other scenario. The largest selections exist to
+ * reach the cost caps, and these scenarios cost nothing or next to it, so as members they would
+ * only double that sweep for each one the registry gains. They are left out of it: a largest
+ * selection is one no other scenario can join, and each is then run once more with every such
+ * scenario added that still fits it.
  */
 function* registrySelections(): Generator<ScenarioSelection> {
   const all = 1 << SCENARIOS.length;
-  const destinationOnly = SCENARIOS.map((_, i) => 1 << i).filter(
-    (bit) => DESTINATION_ONLY_MASK & bit
-  );
+  const joinable = SCENARIOS.map((_, i) => 1 << i).filter((bit) => JOINED_MASK & bit);
   for (const end of ["min", "max"] as const) {
     const valid = new Uint8Array(all);
     for (let mask = 1; mask < all; mask++) {
@@ -592,15 +651,15 @@ function* registrySelections(): Generator<ScenarioSelection> {
       if (valid[mask] && popcount(mask) <= 3) yield emit(mask)!;
     }
     for (let mask = 1; mask < all; mask++) {
-      if (!valid[mask] || mask & DESTINATION_ONLY_MASK) continue;
+      if (!valid[mask] || mask & JOINED_MASK) continue;
       const largest = SCENARIOS.every(
-        (_, i) => mask & (1 << i) || DESTINATION_ONLY_MASK & (1 << i) || !valid[mask | (1 << i)]
+        (_, i) => mask & (1 << i) || JOINED_MASK & (1 << i) || !valid[mask | (1 << i)]
       );
       if (!largest) continue;
       const alone = emit(mask);
       if (alone) yield alone;
       let joined = mask;
-      for (const bit of destinationOnly) if (valid[joined | bit]) joined |= bit;
+      for (const bit of joinable) if (valid[joined | bit]) joined |= bit;
       if (joined !== mask) {
         const withDestination = emit(joined);
         if (withDestination) yield withDestination;
@@ -653,6 +712,8 @@ describe("the plan, the chain and the close expectation agree", () => {
   test("the destination-only scenarios are read from the registry", () => {
     const ids = SCENARIOS.filter((_, i) => DESTINATION_ONLY_MASK & (1 << i)).map((d) => d.id);
     expect(ids).toEqual(["exchange-close"]);
+    const separate = SCENARIOS.filter((_, i) => SEPARATE_MASK & (1 << i)).map((d) => d.id);
+    expect(separate).toEqual(["soroban-token"]);
   });
 
   test("every pair and triple of scenarios and every largest accepted selection, at their smallest and largest parameters", async () => {
@@ -664,6 +725,6 @@ describe("the plan, the chain and the close expectation agree", () => {
     // The accepted singles, pairs, triples and largest selections at both parameter extremes, each
     // largest one also with the destination-only scenarios that fit it; pinned so a change to the
     // registry or its rules shows up here.
-    expect(cases).toBe(7000);
+    expect(cases).toBe(7244);
   }, 240_000);
 });

@@ -57,6 +57,8 @@ export default defineConfig({
         FEE_ACCOUNT_SECRET_TESTNET: feeAccount.secret(),
         MEDIATOR_SECRET_TESTNET: mediator.secret(),
         MEDIATOR_PUBLIC_TESTNET: mediator.publicKey(),
+        // The playground's own key, which the API never needs: blanked over the inherited one.
+        PLAYGROUND_TOKEN_ADMIN_SECRET_TESTNET: "",
       },
       // The API's Nest logger writes to stdout, which Playwright drops by default; kept in CI so
       // a throttled upstream is named in the nightly's log (see apps/web/playwright.config.ts).
