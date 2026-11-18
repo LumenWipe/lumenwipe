@@ -19,16 +19,21 @@
  *    not cover, or a file not shaped as expected exits 1 and names the page.
  * 4. In a Build Output config, `/` must carry the discovery Link header (config/discovery-links.mjs)
  *    from a header route, and no other marketing or nonce path any Link header.
+ * 5. In a Build Output config, the apex host must get the 308 to www (config/apex-redirect.mjs)
+ *    from one route before the first `handle`, under a header route that sets the app's HSTS.
  */
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
+import { APEX_REDIRECT, CANONICAL_ORIGIN } from "../config/apex-redirect.mjs";
 import { HOMEPAGE_LINK } from "../config/discovery-links.mjs";
 import { marketingPolicy } from "../config/marketing-csp.mjs";
+import { SECURITY_HEADERS } from "../config/security-headers.mjs";
 
 const GROUP = "/(marketing)/";
 const CSP = "Content-Security-Policy";
 const LINK = "Link";
+const HSTS = "Strict-Transport-Security";
 const SCRIPT_TYPES = new Set(["", "text/javascript", "application/javascript", "module"]);
 // Prerendered paths come from our own route names; anything else would be read as a pattern by
 // the manifest's `source` matcher.
@@ -319,6 +324,7 @@ export function verifyRoutes(config, htmlByPath) {
     (route) => typeof route.src === "string" && typeof route.middlewarePath === "string"
   );
   verifyHomepageLink(routes, headerRoutes, [...htmlByPath.keys(), ...NONCE_PATHS]);
+  verifyApexRedirect(routes, firstHandle, [...htmlByPath.keys(), ...NONCE_PATHS, "/api/v1/x"]);
   for (const path of NONCE_PATHS) {
     if (cspRoutes.some((route) => routeRegex(route.src, "the Build Output config", "i").test(path)))
       fail(`${path} is matched by a marketing CSP route`);
@@ -353,6 +359,66 @@ function verifyHomepageLink(routes, headerRoutes, paths) {
   for (const path of paths) {
     if (path !== "/" && linksFor(routes, path).length > 0) fail(`${path} has a Link header route`);
   }
+}
+
+/**
+ * Fails unless exactly one route before the first `handle` matches on the host, and it is the
+ * apex redirect: exactly the host value Next was given (Vercel's router reads it as an anchored
+ * regex, so an unescaped dot would also match look-alike hosts), a final 308 to the same path on
+ * www for every path, and the app's HSTS set on each path by a header route ahead of it.
+ *
+ * @param {Array<Record<string, any>>} routes every config route
+ * @param {number} firstHandle index of the first `handle` route, -1 for none
+ * @param {string[]} paths the paths to check
+ */
+function verifyApexRedirect(routes, firstHandle, paths) {
+  const end = firstHandle === -1 ? routes.length : firstHandle;
+  const hostRoutes = routes
+    .map((route, index) => ({ route, index }))
+    .filter(({ route }) => (route.has ?? []).some((/** @type {any} */ h) => h?.type === "host"));
+  if (hostRoutes.length !== 1 || hostRoutes[0].index >= end) {
+    fail(`${hostRoutes.length} host-matched routes, expected the apex redirect before handle`);
+  }
+  const { route, index } = hostRoutes[0];
+  const expected = JSON.stringify(APEX_REDIRECT.has);
+  if (JSON.stringify(route.has) !== expected) {
+    fail(`the apex redirect matches hosts ${JSON.stringify(route.has)}, expected ${expected}`);
+  }
+  if (route.status !== 308 || route.continue || typeof route.src !== "string") {
+    fail(`the apex redirect is not a final 308: ${JSON.stringify(route)}`);
+  }
+  const src = routeRegex(route.src, "the Build Output config", "i");
+  const location = headerValues(route, "Location");
+  for (const path of paths) {
+    const target = src.test(path) && location.length === 1 && path.replace(src, location[0]);
+    if (target !== `${CANONICAL_ORIGIN}${path}`) {
+      fail(`the apex redirect sends ${path} to ${target || "nowhere"}`);
+    }
+    const hsts = continueHeaderValues(routes.slice(0, index), path, HSTS);
+    if (hsts.length !== 1 || hsts[0] !== SECURITY_HEADERS.find((h) => h.key === HSTS)?.value) {
+      fail(`the apex redirect for ${path} carries HSTS ${JSON.stringify(hsts)}`);
+    }
+  }
+}
+
+/**
+ * @param {Array<Record<string, any>>} routes
+ * @param {string} path
+ * @param {string} name
+ * @returns {string[]} the values of one header the unconditional `continue` routes matching path
+ *   set.
+ */
+function continueHeaderValues(routes, path, name) {
+  return routes
+    .filter(
+      (route) =>
+        route.continue === true &&
+        typeof route.src === "string" &&
+        !route.has &&
+        !route.missing &&
+        routeRegex(route.src, "the Build Output config", "i").test(path)
+    )
+    .flatMap((route) => headerValues(route, name));
 }
 
 /** @param {string} path @returns {string} the file name a page is written under, without extension. */

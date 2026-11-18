@@ -1,4 +1,5 @@
 import { PHASE_PRODUCTION_BUILD } from "next/constants.js";
+import { APEX_REDIRECT } from "./config/apex-redirect.mjs";
 import { SECURITY_HEADERS } from "./config/security-headers.mjs";
 import { HOMEPAGE_LINK } from "./config/discovery-links.mjs";
 import { appUrlBuildError } from "./config/app-url-build.mjs";
@@ -25,6 +26,7 @@ const nextConfig = {
   },
   async redirects() {
     return [
+      APEX_REDIRECT,
       { source: "/public", destination: "/mainnet", permanent: true },
       { source: "/public/:path*", destination: "/mainnet/:path*", permanent: true },
     ];

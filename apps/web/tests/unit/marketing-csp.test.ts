@@ -220,15 +220,30 @@ describe("run", () => {
 
 describe("under a build adapter, as on Vercel", () => {
   const CSP = "Content-Security-Policy";
+  const HSTS = "Strict-Transport-Security";
   const PROXY_ROUTE = {
     src: "^/(?!_next/static|api/|(?:faq|blog/a-post|index)?(?:\\.rsc)?$).*$",
     middlewarePath: "/_middleware",
     continue: true,
   };
   const LINK_ROUTE = { src: "^\\/(?:\\/)?$", headers: { Link: HOMEPAGE_LINK }, continue: true };
+  const HSTS_VALUE = "max-age=63072000; includeSubDomains";
+  // Both copied verbatim from .vercel/output/config.json of `vercel build --prod` (CLI 65.16.0).
+  const HEADERS_ROUTE = {
+    src: "^(?:\\/((?:[^\\/]+?)(?:\\/(?:[^\\/]+?))*))?(?:\\/)?$",
+    headers: { "Strict-Transport-Security": HSTS_VALUE, "X-Content-Type-Options": "nosniff" },
+    continue: true,
+  };
+  const APEX_ROUTE = {
+    src: "^(?:\\/((?:[^\\/]+?)(?:\\/(?:[^\\/]+?))*))?(?:\\/)?$",
+    headers: { Location: "https://www.lumenwipe.com/$1" },
+    status: 308,
+    has: [{ type: "host", value: "lumenwipe\\.com" }],
+  };
   const BASE_ROUTES = [
-    { src: "^(?:/(.*))?$", headers: { "X-Content-Type-Options": "nosniff" }, continue: true },
+    HEADERS_ROUTE,
     LINK_ROUTE,
+    APEX_ROUTE,
     PROXY_ROUTE,
     { handle: "filesystem" },
     { src: "^/faq-elsewhere$", dest: "/faq" },
@@ -396,6 +411,57 @@ describe("under a build adapter, as on Vercel", () => {
       write("output/config.json", c);
       expect(() => run(dir, false)).toThrow("has a Link header route");
     }
+  });
+
+  type ApexRoute = Route & { status?: number; has?: Array<Record<string, string>> };
+  const withApex = (change: (apex: ApexRoute, routes: ApexRoute[]) => void) => {
+    const routes: ApexRoute[] = structuredClone(BASE_ROUTES);
+    change(routes[2], routes);
+    write("output/config.json", { version: 3, routes });
+  };
+
+  test("the apex redirect from the real build passes, with the app's HSTS ahead of it", () => {
+    expect(run(dir, true)).toHaveLength(3);
+  });
+
+  test("an apex host value with an unescaped dot fails", () => {
+    withApex((apex) => (apex.has = [{ type: "host", value: "lumenwipe.com" }]));
+    expect(() => run(dir, true)).toThrow("the apex redirect matches hosts");
+  });
+
+  test("an apex redirect that also matches www or a preview fails", () => {
+    withApex((apex) => (apex.has = [{ type: "host", value: "(?:www\\.)?lumenwipe\\.com" }]));
+    expect(() => run(dir, true)).toThrow("the apex redirect matches hosts");
+    withApex((apex) => (apex.has = [{ type: "host", value: ".*" }]));
+    expect(() => run(dir, true)).toThrow("the apex redirect matches hosts");
+  });
+
+  test("a missing apex redirect, or one after the first handle, fails", () => {
+    withApex((_, routes) => routes.splice(2, 1));
+    expect(() => run(dir, true)).toThrow("0 host-matched routes");
+    withApex((_, routes) => routes.push(...routes.splice(2, 1)));
+    expect(() => run(dir, true)).toThrow("1 host-matched routes");
+  });
+
+  test("an apex redirect that is not a final 308 fails", () => {
+    withApex((apex) => (apex.status = 307));
+    expect(() => run(dir, true)).toThrow("the apex redirect is not a final 308");
+    withApex((apex) => (apex.continue = true));
+    expect(() => run(dir, true)).toThrow("the apex redirect is not a final 308");
+  });
+
+  test("an apex redirect that drops the path or leaves the canonical origin fails", () => {
+    withApex((apex) => (apex.headers = { Location: "https://www.lumenwipe.com/" }));
+    expect(() => run(dir, true)).toThrow("the apex redirect sends /blog/a-post to");
+    withApex((apex) => (apex.headers = { Location: "https://lumenwipe.com/$1" }));
+    expect(() => run(dir, true)).toThrow("the apex redirect sends / to https://lumenwipe.com/");
+  });
+
+  test("an apex redirect without includeSubDomains HSTS ahead of it fails", () => {
+    withApex((_, routes) => (routes[0].headers![HSTS] = "max-age=63072000"));
+    expect(() => run(dir, true)).toThrow("carries HSTS");
+    withApex((_, routes) => routes.splice(3, 0, ...routes.splice(0, 1)));
+    expect(() => run(dir, true)).toThrow("carries HSTS []");
   });
 
   test("check-output verifies the finished deployment output, not the build's copy", () => {
