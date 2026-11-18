@@ -2,7 +2,7 @@ import "server-only";
 import { createHmac } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { isDeployedEnv } from "./session-store";
-import { isRedisConfigured, redis } from "./upstash-redis";
+import { isRedisConfigured, limiterRedis } from "./upstash-redis";
 
 // Per-IP daily limiter for the playground's public routes.
 //
@@ -30,6 +30,9 @@ export const RECEIPTS_PER_DAY_PER_IP = 500;
 
 /** The shortest `RATE_LIMIT_HASH_KEY` accepted; a shorter one counts as unset. */
 export const MIN_HASH_KEY_LENGTH = 32;
+
+/** How long a request waits on the counter before the limiter fails open. */
+export const LIMITER_TIMEOUT_MS = 1000;
 
 // Keyed, so no raw IP is ever written to Redis and the hash cannot be reversed by enumerating
 // addresses; the namespace and the UTC day in the message link no two routes or days.
@@ -64,6 +67,25 @@ export interface RateLimiterDeps {
   hashKey: () => string | undefined;
   /** Whether this process is a deployment, where a missing hash key is an error, not a warning. */
   deployed: () => boolean;
+  /** How long a request waits on the counter, `LIMITER_TIMEOUT_MS` unless given. */
+  timeoutMs?: number;
+}
+
+class LimiterTimeout extends Error {
+  constructor() {
+    super("The rate-limit counter did not answer in time");
+    this.name = "LimiterTimeout";
+  }
+}
+
+/** `work`, or a `LimiterTimeout` once `ms` pass first. The timer is cleared either way, and the
+ *  race handles the losing promise's settlement, so a late failure is never unhandled. */
+function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new LimiterTimeout()), ms);
+  });
+  return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
 }
 
 export type RateLimit = (
@@ -108,7 +130,10 @@ export function createRateLimiter(deps: RateLimiterDeps): RateLimit {
     try {
       const day = deps.today();
       const key = `playground:${namespace}:ratelimit:${hashIp(hashKey, namespace, day, ip)}:${day}`;
-      const rawCount = await counter(key, 86_400);
+      const rawCount = await withTimeout(
+        counter(key, 86_400),
+        deps.timeoutMs ?? LIMITER_TIMEOUT_MS
+      );
       const count = typeof rawCount === "number" ? rawCount : limitPerDay + 1;
       return count <= limitPerDay;
     } catch (err) {
@@ -131,7 +156,7 @@ export function createRateLimiter(deps: RateLimiterDeps): RateLimit {
 }
 
 const upstashCounter: DailyCounter = async (key, ttlSeconds) => {
-  const pipeline = redis().pipeline();
+  const pipeline = limiterRedis().pipeline();
   pipeline.incr(key);
   pipeline.expire(key, ttlSeconds);
   const [rawCount] = await pipeline.exec();
