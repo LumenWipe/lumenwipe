@@ -1527,7 +1527,7 @@ test("a Blend exit may claim emissions on its pool and withdraw a queued deposit
 });
 
 test("a Phoenix exit may withdraw_liquidity on its pool and unbond on the registry's stake contract, nothing else", () => {
-  const STAKE = "CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP";
+  const STAKE = "CBYFZPJ2DP5IK74JOXUPUM2RAM7N42OVOLK7K5UOIK7QQQKQTN2PZJWU";
   const expected = expectation({
     exitContracts: [POOL, STAKE],
     exitFunctions: { [POOL]: ["withdraw_liquidity"], [STAKE]: ["unbond"] },
@@ -1568,12 +1568,6 @@ describe("a Phoenix withdraw_liquidity's arguments", () => {
     expect(() => assertCloseIntent(withdraw(PHOENIX_WITHDRAW_ARGS), expected)).not.toThrow();
   });
 
-  test("pass in the five-argument shape only because the testnet pool code lacks auto_unstake until #1048", () => {
-    expect(() =>
-      assertCloseIntent(withdraw(PHOENIX_WITHDRAW_ARGS.slice(0, 5)), expected)
-    ).not.toThrow();
-  });
-
   test("are refused when another account withdraws", () => {
     expectRefusal(
       () => assertCloseIntent(withdraw([POOL, ...PHOENIX_WITHDRAW_ARGS.slice(1)]), expected),
@@ -1588,6 +1582,7 @@ describe("a Phoenix withdraw_liquidity's arguments", () => {
       [...PHOENIX_WITHDRAW_ARGS.slice(0, 5), AUTO_UNSTAKE],
     ],
     ["a deadline", [...PHOENIX_WITHDRAW_ARGS.slice(0, 4), "1793505387", "null"]],
+    ["five arguments, without auto_unstake", PHOENIX_WITHDRAW_ARGS.slice(0, 5)],
     ["a deadline in the five-argument shape", [...PHOENIX_WITHDRAW_ARGS.slice(0, 4), "1793505387"]],
     ["a seventh argument", [...PHOENIX_WITHDRAW_ARGS, "null"]],
     ["four arguments", PHOENIX_WITHDRAW_ARGS.slice(0, 4)],
@@ -1707,7 +1702,7 @@ test("rejects a Soroswap router exit whose remove_liquidity call hides a transfe
 });
 
 test("rejects a Phoenix unbond whose call hides a transfer of the share token to a third party", () => {
-  const STAKE = "CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP";
+  const STAKE = "CBYFZPJ2DP5IK74JOXUPUM2RAM7N42OVOLK7K5UOIK7QQQKQTN2PZJWU";
   const SHARE_TOKEN = "CAN7DMIQH7FGKNYCUQMWECJJ74EKN5JATVVUOVTXOWLQGZCWAFWANG5P";
   const op = exit({
     contract: STAKE,

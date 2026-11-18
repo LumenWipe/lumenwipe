@@ -14,22 +14,23 @@ release is cut.
 ### Changed
 
 - `verify()` checks the arguments of a Phoenix `withdraw_liquidity`: the sender must be the
-  account being closed (`exit_argument_party_mismatch`), the amounts must be integers, and the
-  deadline and the `auto_unstake` argument, when present, must be unset
-  (`exit_arguments_unexpected`). Both the six-argument shape every mainnet pool code takes and
-  the five-argument shape of the testnet pool's older build are accepted. Three vectors cover
-  it: a six-argument withdrawal that passes, and its mutations with an `auto_unstake` and with
-  another sender.
+  account being closed (`exit_argument_party_mismatch`), and there must be exactly the six
+  arguments every registered pool code takes, with integer amounts and the deadline and the
+  `auto_unstake` argument unset (`exit_arguments_unexpected`). The real testnet Phoenix
+  withdrawal vector is recaptured from the new testnet pool, so it is a six-argument call with a
+  new envelope, source and share token, and three vectors mutate it: without `auto_unstake`, with
+  an `auto_unstake`, and with another sender.
 - The bundled contract registry lists two more mainnet Phoenix pools, both from the Phoenix
   factory's own pool list. PHO/USDC `CCPPPTDW…` runs a later build of the v2 pool code, and its
   stake contract `CBUS3GWD…` a build of the v2 stake code, so a withdrawal from that pool and an
   `unbond` on that stake now pass. XLM/USDC `CBENABXP…` runs Phoenix's blended pool code under a
   new version, `blended`. It has no stake contract of its own, so only its `withdraw_liquidity`
   passes, and an `unbond` on it is still refused.
-- The bundled contract registry gives the testnet Phoenix pool `CCVEHSVG…` its own version,
-  `v1-no-auto-unstake`, since its `withdraw_liquidity` takes no `auto_unstake` argument, unlike
-  every mainnet pool code. Its address and code hash are unchanged; its `verifiedBy` and
-  `verifiedAt` record the new check.
+- The bundled contract registry's testnet Phoenix pool and stake are replaced: pool `CA4V7YVU…`
+  runs the mainnet v1 pool code and stake `CBYFZPJ2…` the mainnet v1 stake code, both version
+  `v1`, in place of `CCVEHSVG…` and `CCELNFRX…`, whose older pool build took a five-argument
+  `withdraw_liquidity`. The pool's tokens are a new test token `CBQP4F36…` and XLM, and its share
+  token is `CDZPFQQU…`. A withdrawal or `unbond` on the old testnet contracts is now refused.
 
 - The bundled exchange and contract registries are re-verified and restamped: `lastVerified`
   2026-11-17 and `validUntil` 2027-02-15. No entry is added, removed or re-pinned; contract

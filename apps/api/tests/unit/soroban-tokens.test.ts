@@ -139,8 +139,8 @@ describe("Soroban token discovery", () => {
   // The tokens of the real exits in apps/web/tests/unit/fixtures/real-exit-envelopes.ts, with the
   // credit older than the event window: the position itself is what names the token.
   describe("with nothing in the event window", () => {
-    const PHOENIX_POOL = "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV";
-    const PHOENIX_SHARE = "CC53IRMBHWTXE4BWPD5N4LH2L43YSYBMOFD6UARPMZBTWPSODFFKW2EG";
+    const PHOENIX_POOL = "CA4V7YVUC3EE2EFVTEYJ47ZD34K4DCAKEYV6AHRR73KTKO5GDGNZLLMT";
+    const PHOENIX_SHARE = "CDZPFQQU6EZVRKC7CJD6I6KIBKTBI76TLC75HA72PWLTCJ446ZNLNRGR";
     const FXDAO_VAULT = "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N";
     const FXDAO_USD = "CAEGVALLV7CA2SIFEDJNA52RKGUWRQWQXM5YNFUH7TH5G6X6QXMRQM4L";
     const phoenix: PhoenixLpPosition = {

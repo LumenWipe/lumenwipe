@@ -152,6 +152,34 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
 
+  # The project's testnet Phoenix pool, its stake, both tokens and their code archive once their
+  # TTL runs out, and the funded integration tests and the playground's Phoenix scenario stop
+  # working with them. Each night extends them back to about 30 days. Extending needs no
+  # authorization, so the job holds no secret: a Friendbot throwaway pays.
+  phoenix-ttl:
+    name: keep the testnet Phoenix pool live
+    runs-on: ubuntu-latest
+    outputs:
+      suite: ${{ steps.suite.outcome }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.4.4"
+
+      - run: bun install --frozen-lockfile
+
+      - name: Extend the pool's TTLs
+        id: suite
+        working-directory: apps/api
+        env:
+          STELLAR_RPC_TESTNET: https://soroban-rpc.testnet.stellar.gateway.fm,https://soroban-testnet.stellar.org
+        run: bun run phoenix:testnet-pool --extend-only
+
   # A red run in the Actions tab is the same as no signal at all if nobody is looking, which is
   # the state this workflow exists to fix. A failure becomes an issue; a later green run closes
   # it, so a flaky night does not leave a stale one behind. One tracker per suite, so a playground
@@ -159,7 +187,7 @@ jobs:
   # are the ones this job has always used.
   report:
     name: open an issue on failure (${{ matrix.suite }})
-    needs: [e2e, playground]
+    needs: [e2e, playground, phoenix-ttl]
     # Manual runs report too. Gating this on `schedule` meant the run you would actually use to
     # confirm a fix could not close the issue, and left the whole reporting path impossible to
     # exercise except by waiting for a 07:00 UTC failure.
@@ -192,6 +220,16 @@ jobs:
               its plain-language error copy is broken, so the demo may be failing for visitors.
               Testnet flakiness is possible; download the playground-playwright-report artifact
               from the run above before assuming either.
+          - suite: phoenix-ttl
+            job: phoenix-ttl
+            name: Nightly testnet Phoenix TTL extension
+            assignee: salazarsebas
+            failed: The nightly TTL extension of the testnet Phoenix pool failed.
+            meaning: |-
+              The project's testnet Phoenix pool, its stake and its tokens were not extended, and
+              they archive about 30 days after the last good run, which breaks the funded Phoenix
+              integration tests and the playground's Phoenix scenario. The job's log names the
+              reason; after a testnet reset, rerun `bun run phoenix:testnet-pool` with the admin key.
     steps:
       - name: Open or close the tracking issue
         env:

@@ -969,18 +969,18 @@ function withPhoenixWithdrawArgs(
 }
 
 /**
- * The real withdrawal ran against the testnet pool's older build, whose `withdraw_liquidity` takes
- * five arguments. Every mainnet pool code takes a sixth, `auto_unstake`, which LumenWipe always
- * sends as `None`: the same call in that shape passes, and one that unbonds inside the call, or
- * withdraws for another address, is refused.
+ * The real withdrawal passes the six arguments every registered pool code takes, with no deadline
+ * and `auto_unstake` set to `None`. The same call without `auto_unstake`, one that unbonds inside
+ * the call, and one that withdraws for another address are each refused.
  */
 function phoenixWithdrawalVectors(real: AcceptVector, realXdr: string): void {
-  const sixArgs = accept(
-    "phoenix-withdraw-liquidity-six-args",
-    "The real testnet Phoenix withdrawal with the sixth argument every mainnet pool code takes, auto_unstake, set to None.",
-    withPhoenixWithdrawArgs(realXdr, (args) => [...args, xdr.ScVal.scvVoid()]),
-    real.input.expected,
-    { nowSeconds: real.nowSeconds }
+  reject(
+    real,
+    "phoenix-withdraw-liquidity-five-args",
+    "Drops the sixth argument, auto_unstake, the shape of an older pool build no registered code runs.",
+    withPhoenixWithdrawArgs(realXdr, (args) => args.slice(0, 5)),
+    "exit_arguments_unexpected",
+    "A DeFi exit would withdraw liquidity with arguments LumenWipe does not use to leave the pool."
   );
   const autoUnstake = xdr.ScVal.scvMap([
     new xdr.ScMapEntry({
@@ -993,21 +993,20 @@ function phoenixWithdrawalVectors(real: AcceptVector, realXdr: string): void {
     }),
   ]);
   reject(
-    sixArgs,
+    real,
     "phoenix-withdraw-liquidity-auto-unstake",
     "Sets the sixth argument, auto_unstake, to a stake, so the withdrawal would unbond inside the call.",
-    withPhoenixWithdrawArgs(realXdr, (args) => [...args, autoUnstake]),
+    withPhoenixWithdrawArgs(realXdr, (args) => [...args.slice(0, 5), autoUnstake]),
     "exit_arguments_unexpected",
     "A DeFi exit would withdraw liquidity with arguments LumenWipe does not use to leave the pool."
   );
   reject(
-    sixArgs,
+    real,
     "phoenix-withdraw-liquidity-sender-not-source",
     "Names the pool itself, not the account being closed, as the sender whose shares are withdrawn.",
     withPhoenixWithdrawArgs(realXdr, (args, pool) => [
       xdr.ScVal.scvAddress(pool),
       ...args.slice(1),
-      xdr.ScVal.scvVoid(),
     ]),
     "exit_argument_party_mismatch",
     "A DeFi exit would act for, or pay, an address other than the account being closed."

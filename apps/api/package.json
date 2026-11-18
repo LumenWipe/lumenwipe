@@ -15,6 +15,7 @@
     "test:integration": "LUMENWIPE_RUN_INTEGRATION=1 bun test --preload ./tests/setup-env.ts tests/integration",
     "test:adversarial": "bun test tests/adversarial",
     "openapi:generate": "bun run scripts/generate-openapi.ts",
+    "phoenix:testnet-pool": "bun scripts/phoenix-testnet-pool.ts",
     "registry:staleness": "bun scripts/registry-staleness.ts",
     "backfill:expire-at": "bun scripts/backfill-expire-at.ts",
     "setup:mediator": "bun scripts/setup-mediator.ts",

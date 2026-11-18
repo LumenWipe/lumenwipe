@@ -12,10 +12,7 @@ import {
   validateContractRegistry,
 } from "@/lib/contract-registry";
 import { FXDAO_REPAY_VERSION } from "@/lib/defi-exits/fxdao";
-import {
-  PHOENIX_BLENDED_VERSION,
-  PHOENIX_FIVE_ARG_WITHDRAW_VERSION,
-} from "@/lib/defi-exits/phoenix";
+import { PHOENIX_BLENDED_VERSION } from "@/lib/defi-exits/phoenix";
 import shippedRegistry from "@/config/contract-registry.json";
 import { StrKey } from "@stellar/stellar-sdk";
 import type { CodeIdentity } from "@/lib/stellar/contract-instance";
@@ -144,15 +141,17 @@ test("every mainnet Phoenix pool's stake contract is listed, so a staked positio
   expect(covered.length).toBe(pools.length - representatives.length);
 });
 
-test("only the testnet Phoenix pool runs the five-argument withdraw_liquidity code; no mainnet entry does", () => {
-  const fiveArg = (network: "mainnet" | "testnet") =>
-    entriesForProtocol(network, "phoenix")
-      .filter((e) => e.version === PHOENIX_FIVE_ARG_WITHDRAW_VERSION)
-      .map((e) => `${e.kind}:${e.address}`);
-  expect(fiveArg("mainnet")).toEqual([]);
-  expect(fiveArg("testnet")).toEqual([
-    "pool:CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV",
-  ]);
+test("the testnet Phoenix pool and stake run a code a verifiedLive mainnet pool and stake run, under the same version", () => {
+  const mainnet = entriesForProtocol("mainnet", "phoenix").filter((e) => e.verifiedLive);
+  const testnet = entriesForProtocol("testnet", "phoenix").filter(
+    (e) => e.kind === "pool" || e.kind === "stake"
+  );
+  expect(testnet.map((e) => e.kind).sort()).toEqual(["pool", "stake"]);
+  for (const entry of testnet) {
+    const same = mainnet.filter((e) => e.kind === entry.kind && e.wasmHash === entry.wasmHash);
+    expect(same.length, entry.address).toBeGreaterThan(0);
+    expect(new Set(same.map((e) => e.version)), entry.address).toEqual(new Set([entry.version]));
+  }
 });
 
 test("a blended Phoenix pool has no staking, so no stake entry names it and it is never a stake", () => {
@@ -251,8 +250,8 @@ test("the testnet contracts LumenWipe deployed itself are marked, and only those
       "testnet:fxdao:vault:CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
       "testnet:phoenix:factory:CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
       "testnet:phoenix:router:CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
-      "testnet:phoenix:pool:CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV",
-      "testnet:phoenix:stake:CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP",
+      "testnet:phoenix:pool:CA4V7YVUC3EE2EFVTEYJ47ZD34K4DCAKEYV6AHRR73KTKO5GDGNZLLMT",
+      "testnet:phoenix:stake:CBYFZPJ2DP5IK74JOXUPUM2RAM7N42OVOLK7K5UOIK7QQQKQTN2PZJWU",
     ].sort()
   );
 });

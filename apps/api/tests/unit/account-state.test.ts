@@ -294,7 +294,7 @@ test("the rejection names every field that was missing, not just the first", asy
 // ─── issue #150: resolveDefiPositions is actually wired into the account read ───────────────
 
 const PHOENIX_POOL = "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD";
-const PHOENIX_SHARE = "CC53IRMBHWTXE4BWPD5N4LH2L43YSYBMOFD6UARPMZBTWPSODFFKW2EG";
+const PHOENIX_SHARE = "CDZPFQQU6EZVRKC7CJD6I6KIBKTBI76TLC75HA72PWLTCJ446ZNLNRGR";
 const PHOENIX_WASM_HASH = "2".repeat(64);
 
 function phoenixRegistryEntry(): ContractRegistryEntry {

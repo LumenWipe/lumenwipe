@@ -131,11 +131,11 @@ const shapeOf = (call: ContractCall): [string, unknown][] =>
 describe("the pinned pool", () => {
   test("is the registry's testnet Phoenix pool, its stake, its tokens and its share token", () => {
     expect(PHOENIX).toEqual({
-      pool: "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV",
-      stake: "CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP",
-      tokenA: "CDI3UIVKFNJAFBWOUMWQ6AO34BQ5JMFBHG4EUB3ZVKCKH5FINXE6QGGZ",
+      pool: "CA4V7YVUC3EE2EFVTEYJ47ZD34K4DCAKEYV6AHRR73KTKO5GDGNZLLMT",
+      stake: "CBYFZPJ2DP5IK74JOXUPUM2RAM7N42OVOLK7K5UOIK7QQQKQTN2PZJWU",
+      tokenA: "CBQP4F36A7N4QAOEM6MAWBWU52WN6RBN2CIS5EO7H542CX2AFXP5VL4Y",
       tokenB: XLM_SAC,
-      shareToken: "CC53IRMBHWTXE4BWPD5N4LH2L43YSYBMOFD6UARPMZBTWPSODFFKW2EG",
+      shareToken: "CDZPFQQU6EZVRKC7CJD6I6KIBKTBI76TLC75HA72PWLTCJ446ZNLNRGR",
     });
   });
 
@@ -231,7 +231,7 @@ describe("the swap", () => {
 });
 
 describe("the deposit", () => {
-  test("pairs the whole live LWPHX balance with the XLM its ratio needs, plus 2%", async () => {
+  test("pairs the whole live LWPHX balance with the XLM its ratio needs, plus 2%, staking nothing", async () => {
     const { run, deps } = harness();
     await executeMessStep(stepOf(0, "PHOENIX_PROVIDE"), ctx(), deps);
     expect(run.reads).toEqual(["reserves", `balance:${PHOENIX.tokenA}:${demo.publicKey()}`]);
@@ -248,6 +248,7 @@ describe("the deposit", () => {
       ["scvI128", BigInt(1)],
       ["scvI64", BigInt(500)],
       ["scvVoid", null],
+      ["scvBool", false],
     ]);
     expect(run.signed).toBe(0);
   });

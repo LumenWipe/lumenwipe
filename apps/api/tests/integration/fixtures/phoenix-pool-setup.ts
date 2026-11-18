@@ -21,11 +21,11 @@ import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { getRpcServer } from "@/lib/stellar/rpc";
 import { submitAndWait } from "@/lib/stellar/submit";
 
-export const PHOENIX_POOL = "CCVEHSVGFYL5SKLO3BSRZCWRHDWKVB5KX6LYT66GX6QNCRJEPYHF6FIV";
-export const PHOENIX_STAKE = "CCELNFRXYUDJ5545AM7KIMHDHII5PQEGDVYHA3HSR7HXWUNH67EWBFXP";
+export const PHOENIX_POOL = "CA4V7YVUC3EE2EFVTEYJ47ZD34K4DCAKEYV6AHRR73KTKO5GDGNZLLMT";
+export const PHOENIX_STAKE = "CBYFZPJ2DP5IK74JOXUPUM2RAM7N42OVOLK7K5UOIK7QQQKQTN2PZJWU";
 /** The pool's token_a: a fresh, admin-mintable SEP-41 test token (not a classic-asset SAC, so no
  *  trustline is ever needed to receive it back). */
-export const PHOENIX_TOKEN_A = "CDI3UIVKFNJAFBWOUMWQ6AO34BQ5JMFBHG4EUB3ZVKCKH5FINXE6QGGZ";
+export const PHOENIX_TOKEN_A = "CBQP4F36A7N4QAOEM6MAWBWU52WN6RBN2CIS5EO7H542CX2AFXP5VL4Y";
 /** token_b: the native XLM Stellar Asset Contract. */
 export const PHOENIX_TOKEN_B = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC";
 
@@ -85,8 +85,8 @@ async function readPhoenixReserves(): Promise<{ a: bigint; b: bigint }> {
   return { a: info.asset_a.amount, b: info.asset_b.amount };
 }
 
-/** Deposits at the pool's live ratio, spending up to `maxA` and `maxB`: the pool refuses a deposit
- *  whose sides do not match its reserves. */
+/** Deposits at the pool's live ratio, spending up to `maxA` and `maxB`, with nothing staked inside
+ *  the call (`auto_stake` false): the pool refuses a deposit whose sides do not match its reserves. */
 export async function providePhoenixLiquidity(
   account: Keypair,
   maxA: bigint,
@@ -107,7 +107,8 @@ export async function providePhoenixLiquidity(
     i128Val(desiredB),
     i128Val(1n),
     xdr.ScVal.scvVoid(),
-    xdr.ScVal.scvVoid()
+    xdr.ScVal.scvVoid(),
+    xdr.ScVal.scvBool(false)
   );
   await buildSignSubmit(account, op);
 }

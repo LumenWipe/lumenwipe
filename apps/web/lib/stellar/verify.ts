@@ -397,8 +397,7 @@ function assertSoroswapRemovalArguments(args: string[], source: string): void {
 /**
  * `withdraw_liquidity(sender, share_amount, min_a, min_b, deadline, auto_unstake)`: the account
  * withdraws its own shares, no deadline is set, and nothing is unbonded inside the call, since
- * unbonding is its own reviewed step. Five arguments, without `auto_unstake`, are what the
- * testnet pool's older build takes.
+ * unbonding is its own reviewed step. Every registered pool code takes exactly these six.
  */
 function assertPhoenixWithdrawalArguments(args: string[], source: string): void {
   if (args[0] !== source) {
@@ -408,7 +407,7 @@ function assertPhoenixWithdrawalArguments(args: string[], source: string): void 
     );
   }
   if (
-    (args.length !== 5 && args.length !== 6) ||
+    args.length !== 6 ||
     !args.slice(1, 4).every((amount) => /^\d+$/.test(amount)) ||
     !args.slice(4).every((arg) => arg === "null")
   ) {
