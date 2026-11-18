@@ -587,7 +587,7 @@ export const ENVIRONMENT: Record<EnvApp, Record<string, EnvironmentFacts>> = {
       purpose: "Public site origin; a production build fails without it",
     },
     NEXT_PUBLIC_POLLAR_PUBLISHABLE_KEY: optional(
-      "Pollar publishable key for the `/api-keys` social login"
+      "Pollar publishable key for the `/api-keys` Google, GitHub and email sign-in"
     ),
     NEXT_PUBLIC_STELLAR_WALLET_CONNECT_PROJECT_ID: {
       required: "Production",
