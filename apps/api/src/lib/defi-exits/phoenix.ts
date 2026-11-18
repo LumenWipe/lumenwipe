@@ -56,6 +56,8 @@ export interface PhoenixPoolState {
   tokenB: string;
   shareToken: string;
   stakeContract: string;
+  /** The token the stake contract pays on `unbond`, or null when its configuration is unreadable. */
+  unbondToken: string | null;
   reserveA: bigint;
   reserveB: bigint;
   totalShares: bigint;
@@ -150,6 +152,30 @@ export function phoenixStakeContract(configEntry: xdr.LedgerEntryData): string |
   }
 }
 
+/** The ledger key of a Phoenix stake contract's `CONFIG`, which holds its `lp_token`. */
+export const phoenixStakeConfigKey = (stakeContract: string): xdr.LedgerKey =>
+  persistentKey(stakeContract, xdr.ScVal.scvSymbol("CONFIG"));
+
+/** The ledger key the v2 stake code (wasm 3cda0d78…) reads the token it pays on `unbond` from. */
+export const phoenixNewLpKey = (stakeContract: string): xdr.LedgerKey =>
+  persistentKey(stakeContract, xdr.ScVal.scvSymbol("NEWLP"));
+
+/** The token a stake contract pays on `unbond`, or null, never a throw. The v2 stake code
+ *  transfers its `NEWLP` address and leaves `CONFIG.lp_token` stale; earlier code has no `NEWLP`
+ *  and pays `CONFIG.lp_token`. */
+export function phoenixUnbondToken(
+  stakeConfig: xdr.LedgerEntryData | undefined,
+  newLp: xdr.LedgerEntryData | undefined
+): string | null {
+  try {
+    if (newLp) return contractAddressOf(contractDataEntry(newLp).val);
+    if (!stakeConfig) return null;
+    return contractAddressOf(mapView(contractDataEntry(stakeConfig).val).get("lp_token"));
+  } catch {
+    return null;
+  }
+}
+
 const totalSharesKey = (pool: string): xdr.LedgerKey => persistentKey(pool, xdr.ScVal.scvU32(0));
 const reserveAKey = (pool: string): xdr.LedgerKey => persistentKey(pool, xdr.ScVal.scvU32(1));
 const reserveBKey = (pool: string): xdr.LedgerKey => persistentKey(pool, xdr.ScVal.scvU32(2));
@@ -235,6 +261,8 @@ export function phoenixExitAdapter(): ExitAdapter<PhoenixPosition, PhoenixLive> 
         const reserveBK = reserveBKey(pool);
         const shareBalanceKey = balanceKey(shareToken, ctx.account);
         const bondingKey = bondingInfoKey(stakeContract, ctx.account);
+        const stakeConfigKey = phoenixStakeConfigKey(stakeContract);
+        const newLpKey = phoenixNewLpKey(stakeContract);
         const tokenAKey = new Contract(tokenA).getFootprint();
         const tokenBKey = new Contract(tokenB).getFootprint();
         const second = await readEntries(rpc, [
@@ -242,6 +270,8 @@ export function phoenixExitAdapter(): ExitAdapter<PhoenixPosition, PhoenixLive> 
           reserveBK,
           shareBalanceKey,
           bondingKey,
+          stakeConfigKey,
+          newLpKey,
           tokenAKey,
           tokenBKey,
         ]);
@@ -282,6 +312,10 @@ export function phoenixExitAdapter(): ExitAdapter<PhoenixPosition, PhoenixLive> 
           tokenB,
           shareToken,
           stakeContract,
+          unbondToken: phoenixUnbondToken(
+            second.get(stakeConfigKey.toXdr("base64")),
+            second.get(newLpKey.toXdr("base64"))
+          ),
           reserveA,
           reserveB,
           totalShares,
@@ -341,10 +375,28 @@ export function phoenixExitAdapter(): ExitAdapter<PhoenixPosition, PhoenixLive> 
         );
       }
 
+      // An empty pool pays nothing for its shares, so neither an unbond nor a withdrawal is built.
+      if (live.reserveA === 0n || live.reserveB === 0n) {
+        return manualReview(
+          "phoenix_pool_empty",
+          `The Phoenix pool ${pool} has nothing left of one or both of its tokens, so withdrawing ` +
+            "this position would pay nothing back. No exit was built; this position needs manual " +
+            "review."
+        );
+      }
+
       // Every stake unbonds before anything is withdrawn: only once the account holds its shares
       // plainly can `withdraw_liquidity` see the full balance. One step per stake, oldest first,
       // matching what the ledger actually holds - never a projection of a future balance.
       if (live.stakes.length > 0) {
+        if (live.unbondToken !== live.shareToken) {
+          return manualReview(
+            "phoenix_stake_token_mismatch",
+            `The stake contract of Phoenix pool ${pool} does not pay back this pool's own LP token ` +
+              "when unbonding, so its stake cannot be followed by a withdrawal from this pool. No " +
+              "exit was built; this position needs manual review through Phoenix."
+          );
+        }
         const steps: ExitStep[] = live.stakes.map((stake) => ({
           kind: "unstake",
           contract: live.stakeContract,

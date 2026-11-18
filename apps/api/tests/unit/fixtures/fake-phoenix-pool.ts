@@ -51,6 +51,11 @@ export interface FakePhoenixOptions {
   /** The account's individual stakes; `bondingInfoMissing` leaves the whole entry out. */
   stakes?: FakePhoenixStake[];
   bondingInfoMissing?: boolean;
+  /** The stake contract's `CONFIG.lp_token`; the pool's share token unless set. */
+  stakeLpToken?: string;
+  /** The stake contract's `NEWLP` entry, which the v2 stake code pays on unbond; absent unless set. */
+  stakeNewLp?: string;
+  stakeConfigMissing?: boolean;
   /** Which tokens are Stellar Asset Contracts; the rest are wasm tokens. */
   stellarAssets?: string[];
   poolHash?: string;
@@ -207,6 +212,19 @@ export function fakePhoenixRpc(
     entries.push(
       persistentEntry(STAKE_CONTRACT, addr(options.account), bondingInfoVal(options.stakes ?? []))
     );
+  }
+  if (!options.stakeConfigMissing) {
+    const lpToken = options.stakeLpToken ?? SHARE_TOKEN;
+    entries.push(
+      persistentEntry(
+        STAKE_CONTRACT,
+        symbol("CONFIG"),
+        xdr.ScVal.scvMap([new xdr.ScMapEntry({ key: symbol("lp_token"), val: addr(lpToken) })])
+      )
+    );
+  }
+  if (options.stakeNewLp) {
+    entries.push(persistentEntry(STAKE_CONTRACT, symbol("NEWLP"), addr(options.stakeNewLp)));
   }
   for (const token of new Set(tokens)) {
     entries.push(

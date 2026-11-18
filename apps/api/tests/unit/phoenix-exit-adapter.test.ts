@@ -5,9 +5,14 @@
  * argument encoding `withdraw_liquidity` and `unbond` actually need.
  */
 import { describe, expect, test } from "bun:test";
-import { scValToNative, xdr } from "@stellar/stellar-sdk";
+import { StrKey, scValToNative, xdr } from "@stellar/stellar-sdk";
 import type { PhoenixLpPosition, PhoenixStakePosition } from "@lumenwipe/types";
 import { EXIT_POSITION_GONE, phoenixExitAdapter, runExitAdapter } from "@/lib/defi-exits";
+import {
+  phoenixNewLpKey,
+  phoenixStakeConfigKey,
+  phoenixUnbondToken,
+} from "@/lib/defi-exits/phoenix";
 import {
   createContractRegistryLookup,
   validateContractRegistry,
@@ -32,6 +37,8 @@ import { invokeContractArgs, v1TransactionFromXdr } from "../support/v1-transact
 import { ARCHIVED } from "./fixtures/entry-archival";
 
 const ACCOUNT = randomAccount();
+/** A pool's former share token, still named by a v2 stake contract's stale `CONFIG.lp_token`. */
+const OLD_LP_TOKEN = StrKey.encodeContract(Buffer.alloc(32, 7));
 const SHARES = 100_000_000n; // 10% of the 1_000_000_000 total: 10% of each reserve
 const RESERVES = [1_000_000_000n, 2_000_000_000n] as const; // 100 XLM, 200 USDC
 
@@ -158,6 +165,20 @@ describeExitAdapterInvariants("phoenix pool", {
       registry: KNOWN,
       expectCodes: ["phoenix_position_too_small"],
     },
+    {
+      name: "a pool with no reserves left",
+      position: lpPosition,
+      rpc: rpc({ reserves: [0n, 0n] }),
+      registry: KNOWN,
+      expectCodes: ["phoenix_pool_empty"],
+    },
+    {
+      name: "a stake contract that pays another token than the pool's share token on unbond",
+      position: stakePosition,
+      rpc: rpc({ shares: 0n, stakes: [{ amount: 1n, timestamp: 1n }], stakeLpToken: OLD_LP_TOKEN }),
+      registry: KNOWN,
+      expectCodes: ["phoenix_stake_token_mismatch"],
+    },
   ],
   ctx,
 });
@@ -276,5 +297,99 @@ describe("phoenix exit adapter", () => {
     });
     expect(result.blockers).toEqual([]);
     expect(result.plan[0]!.minReceived[0]!.asset).toBe(SOROBAN_TOKEN);
+  });
+
+  // Mainnet pool CD5XNKK3… and its stake CDOXQONP…: the stake's CONFIG.lp_token still names the
+  // old share token while its v2 code pays NEWLP, the pool's share token, and the pool is empty.
+  test("a v2 stake paying its NEWLP token, the pool's share token, unbonds despite a stale lp_token", async () => {
+    const stakes = [{ amount: 3_000_000n, timestamp: 100n }];
+    const result = await run({
+      shares: 0n,
+      stakes,
+      stakeLpToken: OLD_LP_TOKEN,
+      stakeNewLp: SHARE_TOKEN,
+    });
+    expect(result.blockers).toEqual([]);
+    expect(result.plan).toHaveLength(1);
+    expect(result.plan[0]).toMatchObject({ kind: "unstake", contract: STAKE_CONTRACT });
+    expect(result.plan[0]!.asset).toBe(SHARE_TOKEN);
+  });
+
+  test("a stake in an empty pool is never unbonded nor withdrawn: phoenix_pool_empty, leavable", async () => {
+    const result = await run({
+      reserves: [0n, 0n],
+      shares: 0n,
+      stakes: [{ amount: 3_000_000n, timestamp: 100n }],
+      stakeLpToken: OLD_LP_TOKEN,
+      stakeNewLp: SHARE_TOKEN,
+    });
+    expect(result.plan).toEqual([]);
+    expect(result.next).toBeNull();
+    expect(result.blockers.map((b) => b.code)).toEqual(["phoenix_pool_empty"]);
+    expect(result.leaveEligible).toBe(true);
+  });
+
+  test("plain shares of an empty pool are not withdrawn either", async () => {
+    const result = await run({ reserves: [0n, 0n] });
+    expect(result.plan).toEqual([]);
+    expect(result.blockers.map((b) => b.code)).toEqual(["phoenix_pool_empty"]);
+    expect(result.leaveEligible).toBe(true);
+  });
+
+  test("one empty reserve is enough to build nothing", async () => {
+    const result = await run({ reserves: [1_000_000_000n, 0n] });
+    expect(result.plan).toEqual([]);
+    expect(result.blockers.map((b) => b.code)).toEqual(["phoenix_pool_empty"]);
+  });
+
+  test("a stake paying another token than the share token is never unbonded: leavable blocker", async () => {
+    for (const over of [
+      { stakeLpToken: OLD_LP_TOKEN },
+      { stakeNewLp: OLD_LP_TOKEN },
+      { stakeConfigMissing: true },
+    ]) {
+      const result = await run({ shares: 0n, stakes: [{ amount: 1n, timestamp: 1n }], ...over });
+      expect(result.plan).toEqual([]);
+      expect(result.next).toBeNull();
+      expect(result.blockers.map((b) => b.code)).toEqual(["phoenix_stake_token_mismatch"]);
+      expect(result.leaveEligible).toBe(true);
+    }
+  });
+
+  test("plain shares are withdrawn as usual when only the stake contract pays another token", async () => {
+    const result = await run({ stakeLpToken: OLD_LP_TOKEN });
+    expect(result.blockers).toEqual([]);
+    expect(result.plan.map((s) => s.kind)).toEqual(["lp_withdraw"]);
+  });
+});
+
+describe("phoenixUnbondToken", () => {
+  async function stakeEntries(over: Partial<FakePhoenixOptions>) {
+    const configKey = phoenixStakeConfigKey(STAKE_CONTRACT);
+    const newLpKey = phoenixNewLpKey(STAKE_CONTRACT);
+    const res = await rpc(over).getLedgerEntries(configKey, newLpKey);
+    const byKey = new Map(res.entries.map((e) => [e.key.toXdr("base64"), e.val]));
+    return [byKey.get(configKey.toXdr("base64")), byKey.get(newLpKey.toXdr("base64"))] as const;
+  }
+
+  test("pays NEWLP when the stake has one, whatever CONFIG.lp_token says", async () => {
+    const [config, newLp] = await stakeEntries({
+      stakeLpToken: OLD_LP_TOKEN,
+      stakeNewLp: SHARE_TOKEN,
+    });
+    expect(phoenixUnbondToken(config, newLp)).toBe(SHARE_TOKEN);
+  });
+
+  test("pays CONFIG.lp_token when there is no NEWLP", async () => {
+    const [config, newLp] = await stakeEntries({ stakeLpToken: OLD_LP_TOKEN });
+    expect(newLp).toBeUndefined();
+    expect(phoenixUnbondToken(config, newLp)).toBe(OLD_LP_TOKEN);
+  });
+
+  test("is null when the stake's CONFIG is absent or names no contract", async () => {
+    const [config] = await stakeEntries({ stakeConfigMissing: true });
+    expect(phoenixUnbondToken(config, undefined)).toBeNull();
+    const [accountLp] = await stakeEntries({ stakeLpToken: ACCOUNT });
+    expect(phoenixUnbondToken(accountLp, undefined)).toBeNull();
   });
 });
