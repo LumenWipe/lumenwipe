@@ -222,7 +222,7 @@ chore/registry-kraken-address
 
 ### Checks on a pull request
 
-A first-time contributor's workflows start only after a maintainer approves the run. After that,
+Every workflow run from an outside contributor waits for a maintainer to approve it. Once it runs,
 every PR, fork or not, must pass the same nine required checks. No required check depends on a
 secret, so a fork PR can go green on its own.
 
