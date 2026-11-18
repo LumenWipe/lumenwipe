@@ -309,16 +309,8 @@ signing path's dependencies, and neither copy ships: `next build` output has no 
 the API does not depend on them. It is allowlisted in `scripts/audit-allowlist.json` until 2027-01-28, which forces a
 re-check.
 
-`picomatch` GHSA-fc5q-39xc-vjpf (published 2026-10-19, a ReDoS through single-branch repeated extglobs such as `+(*)`) is
-accepted on 2026-11-17. It affects every release through 4.0.7, the latest, so there is no version to move to. The copies
-are 4.0.7 under `@nestjs/cli` (through `@angular-devkit/core`) and `tinyglobby` (typescript-eslint, `eslint-config-next`,
-`tsup`), and 2.3.2 under `anymatch`, `micromatch` and `readdirp` (`tsc-alias`, the `fast-glob` in
-`@next/eslint-plugin-next`, and `unstorage` through the wallet kit's `@walletconnect/keyvaluestorage`). All are build or
-lint tooling except the `unstorage` path, and `unstorage` imports `anymatch` only from its `drivers/fs` module, which the
-wallet kit never loads (it uses the core and `drivers/fs-lite`). None ships: the API's production install has no
-`picomatch`, `next build` output for the web and the playground contains no `picomatch`, `anymatch` or `micromatch` code
-in its client or server chunks, and no LumenWipe code passes a pattern to `picomatch`, which the ReDoS needs. It is
-allowlisted until 2026-12-17, a short window so a patched release is picked up quickly.
+`picomatch` GHSA-fc5q-39xc-vjpf, accepted on 2026-11-17, was withdrawn by GitHub on 2026-11-18 and no longer
+appears in the audit, so its allowlist entry is gone.
 
 `braces` GHSA-vfj7-8cjw-p6xm from Section 8 no longer appears in the audit, so its allowlist entry is gone.
 
