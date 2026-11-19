@@ -203,8 +203,8 @@ const esItems = (ctx: FaqFacts): readonly FaqItem[] => [
     a: (
       <>
         Todo lo que se puede recuperar. Stellar exige un saldo mínimo de {xlm(ctx.minimumBalance)}{" "}
-        (dos base reserves, reserva mínima por elemento) más {xlm(ctx.perItem)} por cada subentry
-        (elemento que bloquea reserva): cada trustline (línea de confianza con un emisor de
+        (dos base reserves, la unidad de reserva que fija la red) más {xlm(ctx.perItem)} por cada
+        subentry (elemento que bloquea reserva): cada trustline (línea de confianza con un emisor de
         activos), offer abierta (orden abierta en el libro de órdenes), data entry (dato guardado en
         la cuenta) y signer extra (firmante adicional de la cuenta). LumenWipe los deshace todos
         para liberar esas reservas, convierte los tokens sobrantes a XLM y envía el saldo completo a
