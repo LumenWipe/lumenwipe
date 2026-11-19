@@ -84,7 +84,10 @@ export interface SpanishPage {
 }
 
 /** The English pages that have a Spanish version under `/es` (docs/contributing/localization.mdx). */
-export const SPANISH_PAGES: readonly SpanishPage[] = [{ path: "/", translated: true }];
+export const SPANISH_PAGES: readonly SpanishPage[] = [
+  { path: "/", translated: true },
+  { path: "/faq", translated: true },
+];
 
 /** Whether the page at English `path` reads in `locale`: always in English, and in Spanish once
  *  its entry is translated. */

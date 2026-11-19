@@ -105,7 +105,7 @@ test("plan accordion › reopening a panel removes inert", () => {
 });
 
 test("faq › every header controls a labelled region that is inert only when closed", () => {
-  const { container } = render(<Faq />);
+  const { container } = render(<Faq locale="en" />);
   expectWired(container);
   const second = screen.getByText("Is closing an account reversible?").closest("button");
   fireEvent.click(second as HTMLButtonElement);
@@ -114,7 +114,7 @@ test("faq › every header controls a labelled region that is inert only when cl
 });
 
 test("every expanding group shows a chevron that turns over, not a plus that becomes a cross", () => {
-  for (const renderGroup of [renderPlan, () => render(<Faq />)]) {
+  for (const renderGroup of [renderPlan, () => render(<Faq locale="en" />)]) {
     const { container } = renderGroup();
     for (const header of Array.from(container.querySelectorAll("button[aria-expanded]"))) {
       const icon = header.querySelector(".lucide-chevron-down");

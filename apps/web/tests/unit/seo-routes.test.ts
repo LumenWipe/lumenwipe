@@ -84,6 +84,7 @@ const PAGE_TITLES: Record<string, Metadata["title"]> = {
   "/blog": "Blog",
   "/content": "Content",
   "/es": { absolute: SITE.es.metadata.homeTitle },
+  "/es/faq": "Preguntas frecuentes",
   "/faq": "FAQ",
   "/how-it-works": "How it works",
   "/playground": "Playground",
@@ -243,6 +244,17 @@ describe("the sitemap", () => {
     const entry = (url: string) => SITEMAP.find((e) => e.url === url);
     expect(entry(siteUrl("/es"))).toMatchObject({ priority: 1, alternates: { languages: pair } });
     expect(entry(siteUrl("/"))).toMatchObject({ alternates: { languages: pair } });
+  });
+
+  test("lists the Spanish FAQ with the FAQ's rank and both languages", () => {
+    const pair = { en: siteUrl("/faq"), es: siteUrl("/es/faq"), "x-default": siteUrl("/faq") };
+    const entry = (url: string) => SITEMAP.find((e) => e.url === url);
+    expect(entry(siteUrl("/es/faq"))).toMatchObject({
+      priority: 0.8,
+      changeFrequency: "monthly",
+      alternates: { languages: pair },
+    });
+    expect(entry(siteUrl("/faq"))).toMatchObject({ alternates: { languages: pair } });
   });
 
   test("ranks the app entry below the pages that explain it and leaves testnet out", () => {

@@ -590,7 +590,8 @@ export function blendExitAdapter(
       // Every queued entry still listed is locked: the read already moved the unlocked ones out.
       if (backstop.queued.length > 0) {
         const amount = backstop.queued.reduce((sum, q) => sum + q.amount, 0n);
-        const remaining = Math.max(...backstop.queued.map((q) => q.unlocksAt)) - now;
+        const lastUnlock = backstop.queued.reduce((latest, q) => Math.max(latest, q.unlocksAt), 0);
+        const remaining = lastUnlock - now;
         blockers.push({
           code: "backstop_withdrawal_cooling_down",
           message:

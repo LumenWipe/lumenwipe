@@ -162,12 +162,20 @@ async function expectHydrated(page: Page, path: string, lang: keyof typeof NAV_N
   await expect(developers, `${path} hydrated`).toHaveAttribute("aria-expanded", "true");
 }
 
-for (const path of ["/", "/faq", "/registry", "/blog", "/blog/account-merge-on-stellar"]) {
+for (const [path, lang] of [
+  ["/", "en"],
+  ["/faq", "en"],
+  ["/es/faq", "es-419"],
+  ["/registry", "en"],
+  ["/blog", "en"],
+  ["/blog/account-merge-on-stellar", "en"],
+] as const) {
   test(`${path} runs under its hash policy with no violation`, async ({ page }) => {
     const violations = await watchViolations(page);
     const res = await page.goto(path);
     expect(res?.status()).toBe(200);
-    await expectHydrated(page, path);
+    await expect(page.locator("html")).toHaveAttribute("lang", lang);
+    await expectHydrated(page, path, lang);
     expect(await violations()).toEqual([]);
   });
 }

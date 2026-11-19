@@ -137,9 +137,17 @@ exports[`English marketing copy faq metadata is the recorded metadata 1`] = `
 {
   "alternates": {
     "canonical": "https://www.lumenwipe.com/faq",
+    "languages": {
+      "en": "https://www.lumenwipe.com/faq",
+      "es": "https://www.lumenwipe.com/es/faq",
+      "x-default": "https://www.lumenwipe.com/faq",
+    },
   },
   "description": "Answers to the common questions about closing a Stellar account with LumenWipe: non-custodial signing, irreversibility, exchange merges, Soroban DeFi, supported wallets and resumable sessions.",
   "openGraph": {
+    "alternateLocale": [
+      "es_LA",
+    ],
     "description": "Answers to the common questions about closing a Stellar account with LumenWipe: non-custodial signing, irreversibility, exchange merges, Soroban DeFi, supported wallets and resumable sessions.",
     "images": [
       {

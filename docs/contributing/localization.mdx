@@ -4,7 +4,7 @@ description: "How the marketing site holds its copy per locale, how a Spanish lo
 icon: "language"
 ---
 
-The marketing site renders in English, and its landing page, navigation, footer and 404 also render in Spanish under `/es`. Its copy is held in a typed dictionary keyed by locale, so a second locale is a set of translated entries plus routing, not a rewrite of every page. This page records how the copy is held today, how the Spanish locale is routed, and the language rules for the translation. The app flow (`/mainnet`, `/testnet` and their pages) is out of scope.
+The marketing site renders in English, and its landing page, FAQ, navigation, footer and 404 also render in Spanish under `/es`. Its copy is held in a typed dictionary keyed by locale, so a second locale is a set of translated entries plus routing, not a rewrite of every page. This page records how the copy is held today, how the Spanish locale is routed, and the language rules for the translation. The app flow (`/mainnet`, `/testnet` and their pages) is out of scope.
 
 ## How the copy is held
 
@@ -12,7 +12,7 @@ The marketing site renders in English, and its landing page, navigation, footer 
 - `SITE_LOCALE` is a build-time constant. Nothing reads a header or a cookie to choose the locale, so every page under `app/(marketing)` and `app/(marketing-es)` stays prerendered and keeps its per-page hash policy (`apps/web/scripts/marketing-csp.mjs`).
 - `apps/web/lib/i18n/messages/` holds one module per surface (`nav`, `footer`, `not-found`, `landing`, `faq`, `security`, `how-it-works`, `hero`, `stats`, `registry`, `playground`, `content`, `blog`, `site`, `common`), each a `Record<Locale, Copy>`. A client component imports only its own section, so the browser never downloads the whole dictionary.
 - A post's title and description come from the post, and a video's title and description from the video, each in its own language. The planned article titles on `/content` are titles of posts to come, so they stay with the post list in `lib/site/content-status.ts`. The page around them (headings, labels, and the units of a reading time or a video's length) is dictionary copy.
-- A sentence built from data is a function of that data, never a frozen string. The status registry (`lib/site/status.ts`) keeps each feature's id, status and link; its title, noun and summary come from the dictionary, and the sentences that list testnet-only features or live protocol exits are dictionary functions called with the registry's names. The FAQ answers are a function of the registry facts and the trust statements (`lib/site/trust.ts`), and the FAQ structured data reads the same answers.
+- A sentence built from data is a function of that data, never a frozen string. The status registry (`lib/site/status.ts`) keeps each feature's id, status and link; its title, noun and summary come from the dictionary, and the sentences that list testnet-only features or live protocol exits are dictionary functions called with the registry's names. The FAQ answers are a function of the registry facts, the trust statements (`lib/site/trust.ts`) and the base reserve (`lib/site/reserve.ts`), built per locale by `faqItems()` (`components/marketing/Faq.tsx`), and the FAQ structured data reads the same answers.
 - A sentence with a link or other markup inside it is a function that takes the element, so a translation can move the link within its sentence.
 - `apps/web/lib/i18n/format.ts` formats every date and number on these pages with the locale's tag. It also picks a noun's plural form (`plural`, `pluralForm`) and joins lists (`formatList`) by the locale's rules.
 - Messages the landing's components share with the app flow are reason codes: `addressProblem()` (`lib/utils/validation.ts`) and `EstimateError.reason` (`lib/api/estimate-client.ts`). Each component reads the sentence for its locale from the `address` and `hero` sections; the app keeps the English. Nothing in this scope calls `toLocaleString`, `toLocaleDateString` or `Intl` directly.
@@ -46,11 +46,11 @@ The App Router has no configuration-based locale routing: the `i18n` option in `
   - an untranslated Spanish page is marked `noindex` and left out of the sitemap; a translated one is indexed and listed in the sitemap with its English page's rank;
   - the language switch (`components/marketing/LanguageSwitch.tsx`) links a page to its other version only when that entry is translated, in both directions, so no link leads to English text under `lang="es-419"`;
   - the `hreflang` set, `og:locale:alternate` and the sitemap alternates are declared only for a translated pair, so no indexed page names a `noindex` page as its alternate.
-- Today the list holds only the landing page, translated: `/es` renders `components/marketing/LandingPage.tsx` in Spanish, is indexed and listed in the sitemap, and the switch links `/` and `/es`. Links from a Spanish page lead to the Spanish version of a page only once it is translated (`localeHref()`), and to the English page until then.
-- The landing page embeds the FAQ. Its questions show on `/es` only once `/faq` has a translated entry (`isTranslated()`), so the Spanish landing carries no English answers; translating the FAQ (#936) brings them back.
+- Today the list holds the landing page and the FAQ, both translated: `/es` renders `components/marketing/LandingPage.tsx` and `/es/faq` renders `components/marketing/FaqPage.tsx` in Spanish, each is indexed and listed in the sitemap, and the switch links `/` with `/es` and `/faq` with `/es/faq`. Links from a Spanish page lead to the Spanish version of a page only once it is translated (`localeHref()`), and to the English page until then.
+- The landing page embeds the FAQ. Its questions show in a locale only while `/faq` has a translated entry there (`isTranslated()`), so a Spanish landing never carries English answers.
 - The Proxy matcher skips `es` (and its RSC payloads) literally, and `tests/unit/proxy-matcher.test.ts` walks both route groups, so a Spanish page without its matcher line fails the test. `marketing-csp.mjs` requires both groups to be prerendered, hashes each Spanish page like an English one, and checks that `/es/nope` keeps the nonce policy.
 - An unknown path gets the 404 from `app/global-not-found.tsx` in the language of its path. The Proxy already runs on every unknown path for the nonce, and it also writes `x-lumenwipe-locale` (`localeOfPath()`: `es` for `/es` and every path under it, matched case-sensitively as the routes are, `en` for anything else) on every request it forwards, overwriting any value the client sent. The 404 reads it with `headers()`, accepts only a value in `LOCALES` and falls back to English. It was already rendered per request, so this adds no dynamic route and no route under `(marketing-es)`.
-- `/` and `/es` declare their `hreflang` set and `og:locale:alternate`, and their sitemap entries list both URLs. Translating another page and setting its flag turns all three on for that pair.
+- `/` with `/es` and `/faq` with `/es/faq` declare their `hreflang` set and `og:locale:alternate`, and their sitemap entries list both URLs. Translating another page and setting its flag turns all three on for that pair.
 
 ### `hreflang`, canonical and Open Graph
 
@@ -83,11 +83,12 @@ The App Router has no configuration-based locale routing: the `i18n` option in `
 | data entry           | dato guardado en la cuenta                     |
 | signer               | firmante adicional de la cuenta                |
 | subentry             | elemento que bloquea reserva                   |
-| base reserve         | reserva mínima por elemento                    |
+| base reserve         | unidad de reserva que fija la red              |
 | claimable balance    | saldo reclamable                               |
 | fee bump             | sobre que paga la comisión de otra transacción |
 | memo                 | memo que identifica el depósito                |
 | relay account        | cuenta intermedia que reenvía el saldo         |
+| pool shares          | participaciones en un pool de liquidez AMM     |
 
 Product names (LumenWipe, Stellar, Soroban, the protocol names), asset codes (XLM) and code identifiers are never translated.
 

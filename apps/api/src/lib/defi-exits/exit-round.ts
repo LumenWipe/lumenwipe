@@ -15,6 +15,10 @@ import {
 } from "./plan-exits";
 import { runExitAdapter, type ExitRunResult } from "./run-exit";
 import { sorobanTokenBalancesFor, tokenBalancesFor } from "./token-balances";
+import { mapConcurrent } from "@/lib/utils/concurrency";
+
+/** How many exit targets the plan's preflight runs at once; each simulates against RPC. */
+export const EXIT_PREFLIGHT_CONCURRENCY = 4;
 
 /**
  * The exit round of a close: before any classic cleanup, every DeFi position leaves its protocol
@@ -207,7 +211,9 @@ export async function preflightExitTargets(
   if (targets.length === 0) return report;
   const ctx = exitContext(accountState, network, accountState.sequence, deps.now);
   const run = deps.runExitAdapter ?? runExitAdapter;
-  const outcomes = await Promise.all(targets.map((t) => assessTarget(t, ctx, run, deps.rpc)));
+  const outcomes = await mapConcurrent(targets, EXIT_PREFLIGHT_CONCURRENCY, (t) =>
+    assessTarget(t, ctx, run, deps.rpc)
+  );
   outcomes.forEach((outcome, i) => {
     const contract = targets[i]!.contract;
     if (outcome.kind === "blocked") {

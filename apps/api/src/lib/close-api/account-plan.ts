@@ -81,6 +81,10 @@ import type {
   PlanResponse,
   TokenUnquotedReason,
 } from "@lumenwipe/types";
+import { mapConcurrent } from "@/lib/utils/concurrency";
+
+/** How many conversion-path lookups one plan runs at once. */
+export const PATH_FINDING_CONCURRENCY = 8;
 
 /** Quotes per plan are bounded like discovery candidates; a token past this is offered no swap. */
 const MAX_TOKEN_QUOTES = 20;
@@ -225,8 +229,10 @@ export async function buildAccountPlan(
   // An asset priced at the exit probe amount gets none: its real amount is unknown until it lands.
   const classicQuotes: Record<string, ClassicConversionQuote> = {};
   const findPath = deps.fetchConversionPath ?? fetchConversionPath;
-  const convertibilityPromise = Promise.all(
-    pricedAssets.map(async ({ asset, amount, probe }) => {
+  const convertibilityPromise = mapConcurrent(
+    pricedAssets,
+    PATH_FINDING_CONCURRENCY,
+    async ({ asset, amount, probe }) => {
       const result = await findPath(asset, amount, network);
       if (result.kind === "unavailable") priceSourceUnavailable.add(asset);
       else {
@@ -239,7 +245,7 @@ export async function buildAccountPlan(
         }
         if (result.kind === "none" && result.reason === "dust_below_minimum") dustAssets.add(asset);
       }
-    })
+    }
   );
   const sponsorshipAffordabilityPromise: Promise<SponsorshipAffordability> =
     accountState.sponsorshipEnumerationIncomplete

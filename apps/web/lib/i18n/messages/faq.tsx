@@ -16,7 +16,13 @@ export interface FaqFacts {
   /** The protocols whose exits run on testnet only, as a list; "" when there are none. */
   testnetOnlyExits: string;
   testnetOnlySentence: string;
+  /** The minimum balance and the reserve per subentry in XLM, each formatted for the reader. */
+  minimumBalance: string;
+  perItem: string;
 }
+
+/** An amount of XLM as the answers show it, in one text node. */
+const xlm = (amount: string) => <span className="text-value">{`${amount} XLM`}</span>;
 
 const items = (ctx: FaqFacts): readonly FaqItem[] => [
   {
@@ -57,11 +63,10 @@ const items = (ctx: FaqFacts): readonly FaqItem[] => [
     q: "How much XLM will I actually get back?",
     a: (
       <>
-        Everything recoverable. Stellar requires a <span className="text-value">1 XLM</span> minimum
-        balance (two base reserves) plus <span className="text-value">0.5 XLM</span> for each
-        subentry: every trustline, open offer, data entry, and extra signer. LumenWipe unwinds all
-        of them to release those reserves, converts leftover tokens to XLM, and sweeps the full
-        balance to your destination.
+        Everything recoverable. Stellar requires a {xlm(ctx.minimumBalance)} minimum balance (two
+        base reserves) plus {xlm(ctx.perItem)} for each subentry: every trustline, open offer, data
+        entry, and extra signer. LumenWipe unwinds all of them to release those reserves, converts
+        leftover tokens to XLM, and sweeps the full balance to your destination.
       </>
     ),
   },
@@ -158,4 +163,145 @@ const en = {
 
 export type FaqCopy = typeof en;
 
-export const FAQ: Record<Locale, FaqCopy> = { en, es: en };
+const esItems = (ctx: FaqFacts): readonly FaqItem[] => [
+  {
+    q: "¿LumenWipe es realmente no custodial?",
+    a: (
+      <>
+        Sí. {ctx.keyStatement} {ctx.checkStatement} {ctx.serverKeysIntro}{" "}
+        {ctx.serverKeys.map((key) => (
+          <span key={key.name}>
+            {key.name}: {key.statement} {key.scope}{" "}
+          </span>
+        ))}
+        La verificación es de código abierto:{" "}
+        <a
+          href={ctx.verifySourceUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-accent underline underline-offset-4"
+        >
+          verify.ts<span className="sr-only">{ctx.newTab}</span>
+        </a>
+        .
+      </>
+    ),
+  },
+  {
+    q: "¿Se puede revertir el cierre de una cuenta?",
+    a: (
+      <>
+        No. El merge final (fusión que cierra la cuenta y envía su saldo) elimina la cuenta del
+        ledger de Stellar para siempre. Como la acción es irreversible, LumenWipe te muestra el plan
+        completo desde el principio, simula cada paso y te pide una confirmación explícita (con la
+        transacción en bruto disponible para revisar) antes de cada firma.
+      </>
+    ),
+  },
+  {
+    q: "¿Cuánto XLM voy a recuperar?",
+    a: (
+      <>
+        Todo lo que se puede recuperar. Stellar exige un saldo mínimo de {xlm(ctx.minimumBalance)}{" "}
+        (dos base reserves, la unidad de reserva que fija la red) más {xlm(ctx.perItem)} por cada
+        subentry (elemento que bloquea reserva): cada trustline (línea de confianza con un emisor de
+        activos), offer abierta (orden abierta en el libro de órdenes), data entry (dato guardado en
+        la cuenta) y signer extra (firmante adicional de la cuenta). LumenWipe los deshace todos
+        para liberar esas reservas, convierte los tokens sobrantes a XLM y envía el saldo completo a
+        tu destino.
+      </>
+    ),
+  },
+  {
+    q: "¿Puedo enviar el XLM recuperado directo a un exchange?",
+    a: (
+      <>
+        {ctx.exchangeLive ? "Sí." : "Por ahora, en testnet."} Los exchanges no aceptan un merge como
+        depósito, así que LumenWipe hace el merge final a través de una relay account (cuenta
+        intermedia que reenvía el saldo): una cuenta compartida que recibe el merge y, en la misma
+        transacción, paga el saldo a tu dirección de depósito con el memo correcto (memo que
+        identifica el depósito). Los exchanges conocidos se validan contra un registro que exige el
+        tipo de memo que cada uno requiere, para que los depósitos no se pierdan.
+        {ctx.exchangeLive
+          ? ""
+          : " En mainnet, el plan bloquea un cierre hacia un exchange hasta que la relay account esté desplegada ahí, así que por ahora cierra hacia una billetera que controles."}
+      </>
+    ),
+  },
+  {
+    q: "¿Maneja posiciones de DeFi en Soroban?",
+    a: (
+      <>
+        Sí. LumenWipe detecta las posiciones con OctoPos y sale de ellas en{" "}
+        <span className="text-white/80">{ctx.liveExits}</span> en mainnet
+        {ctx.testnetOnlyExits !== "" && (
+          <>
+            ;{" "}
+            <span data-site-status="testnet-only">
+              las salidas de <span className="text-white/80">{ctx.testnetOnlyExits}</span> funcionan
+              solo en testnet
+            </span>
+          </>
+        )}
+        . Las offers del libro de órdenes clásico se cancelan en cada cierre. Las pool shares
+        (participaciones en un pool de liquidez AMM) clásicas no se deshacen: se reportan como un
+        bloqueo, así que primero retira tu liquidez del pool.
+      </>
+    ),
+  },
+  {
+    q: "¿Qué billeteras son compatibles?",
+    a: (
+      <>
+        Cualquier billetera que conecte Stellar Wallets Kit: Varial (antes Freighter), xBull,
+        Albedo, LOBSTR, Hana, WalletConnect y más. Si tienes experiencia, también puedes usar un
+        modo avanzado con tu clave secreta, en el que la clave se mantiene en memoria solo mientras
+        dura el cierre, nunca se guarda ni se envía a un servidor, y se borra cuando terminas,
+        cancelas, sales de la página o haces clic en el botón &quot;Forget key&quot;.
+      </>
+    ),
+  },
+  {
+    q: "¿Qué pasa si cierro la pestaña a mitad del proceso?",
+    a: (
+      <>
+        Lo que ya se confirmó en la red queda hecho. Cuando confirmas el plan, este navegador guarda
+        un pequeño registro del cierre: la cuenta, el destino, el memo y el hash de cualquier
+        transacción que siga pendiente, nunca tus claves. Cuando vuelves en el mismo navegador, la
+        página de inicio te ofrece retomarlo: LumenWipe vuelve a leer la cuenta y arma un plan nuevo
+        con lo que falta, que revisas y firmas de nuevo, así que el trabajo confirmado no se repite.
+        Si una transacción seguía esperando a la red, primero revisas cómo terminó. Tus decisiones
+        para cada activo se guardan solo en esta pestaña, así que al recargarla las vuelves a ver
+        para revisarlas; en otra pestaña, o cuando cierres esta, las tomas de nuevo.
+      </>
+    ),
+  },
+  {
+    q: "¿Mainnet o testnet?",
+    a: (
+      <>
+        Las dos. Haz todo el flujo en testnet, sin fondos reales en riesgo, para ver exactamente qué
+        va a pasar, y después cambia a mainnet para el cierre real.{" "}
+        <span data-site-status="testnet-only">{ctx.testnetOnlySentence}</span> Cerrar una cuenta en
+        mainnet es irreversible y corre por tu cuenta y riesgo: revisa cada paso, el resultado de la
+        simulación y la dirección de destino antes de firmar.
+      </>
+    ),
+  },
+];
+
+const es: FaqCopy = {
+  eyebrow: "Preguntas frecuentes",
+  heading: "Tus preguntas, respondidas.",
+  lede: "Cerrar una cuenta es irreversible. Así es exactamente como LumenWipe lo hace de forma segura.",
+  items: esItems,
+  page: {
+    title: "Preguntas frecuentes",
+    description:
+      "Respuestas a las preguntas comunes sobre cómo cerrar una cuenta de Stellar con LumenWipe: firma no custodial, irreversibilidad, cierres hacia exchanges, DeFi en Soroban, billeteras compatibles y sesiones que puedes retomar.",
+    openApp: "Abrir la app",
+    docs: "Leer la documentación",
+  },
+};
+
+export const FAQ: Record<Locale, FaqCopy> = { en, es };
