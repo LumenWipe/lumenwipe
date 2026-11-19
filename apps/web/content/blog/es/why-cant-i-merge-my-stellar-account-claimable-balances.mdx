@@ -1,0 +1,67 @@
+---
+title: "¿Por qué no puedo hacer el merge de mi cuenta de Stellar? Los claimable balances explicados"
+description: "Qué es un claimable balance, cuándo impide el merge de una cuenta de Stellar y cuándo no, y qué puedes hacer con cada saldo antes de cerrar la cuenta."
+publishedAt: "2026-11-19"
+category: "Guides"
+tags: ["bloqueos-de-cuenta", "claimable-balances", "account-merge", "stellar"]
+cta: "Ingresa la cuenta para ver los claimable balances que la esperan y elegir qué pasa con cada uno antes de firmar nada."
+---
+
+Abres tu billetera para cerrar una cuenta vieja de Stellar y encuentras una lista de claimable balances (saldos reclamables) que nunca pediste. Algunos son airdrops, otros son pagos de un exchange, otros son tokens de los que nunca oíste hablar. Antes de hacer el merge (fusión que cierra la cuenta y envía su saldo) de la cuenta, necesitas saber cuáles importan, porque un merge no se puede deshacer.
+
+Esta guía es una de cinco sobre lo que mantiene abierta una cuenta de Stellar. Las otras tratan las [trustlines](/es/blog/how-do-i-remove-a-trustline-on-stellar), los [signers adicionales](/es/blog/cant-merge-a-stellar-account-because-of-extra-signers), las [offers abiertas](/es/blog/how-do-i-cancel-open-offers-on-stellar) y las [data entries](/es/blog/what-are-stellar-data-entries).
+
+## Qué es un claimable balance
+
+Un claimable balance es un pago que espera en el ledger hasta que alguien lo reclama. Quien lo envía lo crea, indica uno o más destinatarios que pueden reclamarlo y le pone a cada uno una condición, llamada claim predicate. Un predicate puede decir "en cualquier momento", o puede abrir y cerrar una ventana ("no antes de esta fecha" o "solo antes de esa fecha").
+
+El saldo es su propia entrada en el ledger. No está dentro de tu cuenta. La cuenta que lo creó paga su reserva, así que la reserva queda bloqueada en la cuenta de quien lo envió, no en la tuya, hasta que se reclama el saldo.
+
+Para reclamar un saldo en un activo distinto de XLM, tu cuenta necesita una trustline (línea de confianza con un emisor de activos) para ese activo. Una trustline es la entrada que permite a una cuenta tener un activo determinado, y cada una bloquea su propia reserva.
+
+## ¿Impide el merge?
+
+Depende de qué lado del saldo esté tu cuenta.
+
+Si tu cuenta puede reclamarlo, la red no rechaza el merge por eso. Un saldo dirigido a ti no es una de las entradas de tu cuenta, así que `AccountMerge` se completa con el saldo todavía en el ledger. El problema es lo que pasa después: una vez que la cuenta desaparece, ya no puede reclamar nada. Lo que la estaba esperando queda fuera del alcance de esa cuenta para siempre.
+
+Si tu cuenta creó el saldo, está patrocinando la reserva de ese saldo, y la red se niega a hacer el merge de una cuenta que todavía patrocina entradas. Ese patrocinio no se puede mover a menos que otra cuenta acepte hacerse cargo de él, así que solo termina cuando alguien que puede reclamar el saldo lo reclama.
+
+En el caso común, entonces, el merge se completa y la decisión es tuya, antes, mientras la cuenta todavía puede reclamar.
+
+## Qué puedes hacer con cada saldo
+
+Tienes tres opciones, según el saldo.
+
+1. Reclamarlo. Si el predicate lo permite ahora y tu cuenta puede tener el activo, al reclamarlo la cantidad pasa a tu cuenta. Desde ahí se trata como cualquier otro saldo que tengas antes del cierre.
+2. Agregar una trustline y luego reclamarlo. Si el saldo está en un activo para el que tu cuenta no tiene trustline, primero agregas la trustline. Para eso necesitas suficiente XLM por encima de tu saldo mínimo actual para cubrir una reserva más.
+3. Dejarlo. Puedes elegir no reclamarlo. Una vez hecho el merge de la cuenta, ella ya no puede reclamar el saldo.
+
+Algunos saldos no se pueden reclamar en este cierre de ninguna manera, por ejemplo cuando la ventana se abre en una fecha posterior o ya se cerró para tu cuenta. Para esos, dejarlo es la única respuesta.
+
+## Cómo lo resuelve LumenWipe
+
+LumenWipe lee los claimable balances que nombran la cuenta y te pregunta por cada uno en la pantalla de análisis. Las opciones que ofrece dependen del saldo:
+
+- Un saldo que la cuenta puede reclamar ahora ofrece "Claim it" (reclamarlo, la opción predeterminada) o "Leave it unclaimed" (dejarlo sin reclamar).
+- Un saldo en un activo para el que la cuenta no tiene trustline ofrece agregar una trustline para ese activo y reclamarlo ("Add a USDC trustline and claim it." para un saldo en USDC), o "Leave it unclaimed". Si la cuenta no puede cubrir la reserva extra, dejarlo es la única opción, y la pantalla dice cuánto XLM falta.
+- Un saldo fuera de su ventana de reclamo ofrece solo "Leave it unclaimed", con la fecha en que se puede reclamar cuando la hay.
+- Cuando dos o más saldos no se pueden reclamar ahora, una sola respuesta puede dejarlos todos a la vez. Nunca toca los que sí puedes reclamar.
+
+Cuando dejas un saldo, el plan incluye una advertencia que indica la cantidad y dice que quedará inaccesible una vez hecho el merge de la cuenta.
+
+Si la propia cuenta patrocina un claimable balance, LumenWipe lo muestra como un bloqueo. El cierre no puede mover ese patrocinio, así que el bloqueo sigue hasta que alguien que puede reclamar el saldo lo reclama.
+
+El orden es el mismo para todas las cuentas. Si ninguna clave de la cuenta puede firmar por sí sola todos los pasos, primero se eliminan los signers (firmantes adicionales de la cuenta), en una transacción aparte. Después vienen los claimable balances que elegiste reclamar, en su propia transacción, con cualquier trustline que necesite un reclamo agregada justo antes. Una vez confirmados, LumenWipe construye el cierre en sí, que elimina los signers si eso no pasó antes, luego borra las data entries (datos guardados en la cuenta), cancela las offers (órdenes abiertas en el libro de órdenes), convierte, devuelve o envía cada saldo restante, elimina las trustlines y hace el merge de la cuenta al final. Un cierre con más de 100 operaciones se divide en varias transacciones, en ese mismo orden.
+
+Un activo que reclamaste se trata en el cierre como cualquier otro saldo. Una trustline que el plan agregó solo para reclamar un saldo se elimina en el mismo cierre, así que una entrada creada por el plan no impide el merge.
+
+## Qué revisar antes de empezar
+
+- Mira quién envió cada saldo. Un token inesperado suele ser spam, y puedes dejarlo.
+- Revisa la cantidad de cualquier saldo en XLM. Reclamarlo suma a lo que recibes con el merge.
+- Si necesitas una trustline para reclamar, guarda suficiente XLM para su reserva hasta que termine el reclamo.
+
+## Empieza un cierre
+
+Abre [LumenWipe](/mainnet) e ingresa la cuenta. La [pantalla de análisis](/mainnet/analyze) muestra cada claimable balance con las opciones de arriba. No se firma nada hasta que revisas el plan completo. Para ver antes cómo funciona un cierre, lee [cómo funciona](/es/how-it-works) y las [preguntas frecuentes](/es/faq), o vuelve al [inicio](/es).

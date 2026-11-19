@@ -1,0 +1,75 @@
+---
+title: "¿No puedes hacer el merge de una cuenta de Stellar con signers adicionales? Revisa los thresholds"
+description: "Los signers adicionales no impiden el merge de una cuenta de Stellar. Lo que pueden cambiar es quién tiene que firmarlo: cómo funcionan los pesos y los thresholds, qué te dice el código de resultado de un merge fallido y qué necesita de ti el cierre de una cuenta multisig."
+publishedAt: "2026-11-19"
+category: "Guides"
+tags: ["bloqueos-de-cuenta", "signers", "multisig", "account-merge", "stellar"]
+cta: "Ingresa la cuenta para ver sus signers adicionales y, si es multisig, cuántas claves tienen que firmar antes de construir nada."
+---
+
+Quizás una billetera u otra herramienta agregó una segunda clave a tu cuenta de Stellar, y ahora quieres cerrarla. Es fácil suponer que esa clave es lo que impide el merge (fusión que cierra la cuenta y envía su saldo), pero la propia red elimina los signers (firmantes adicionales de la cuenta) cuando hace el merge de la cuenta. Lo que un signer adicional sí puede cambiar es quién tiene que firmar el merge, y eso depende de los thresholds de la cuenta.
+
+Si un merge ya falló, su código de resultado te dice qué problema tienes. `op_has_sub_entries` significa que todavía queda en la cuenta algo distinto de un signer: una trustline (línea de confianza con un emisor de activos), una offer (orden abierta en el libro de órdenes) o una data entry (dato guardado en la cuenta). `op_bad_auth` o `tx_bad_auth` significa que las firmas de la transacción no sumaron suficiente peso, y ahí es donde entran los signers y los thresholds.
+
+Esta guía es una de cinco sobre lo que mantiene abierta una cuenta de Stellar. Las otras tratan los [claimable balances](/es/blog/why-cant-i-merge-my-stellar-account-claimable-balances), las [trustlines](/es/blog/how-do-i-remove-a-trustline-on-stellar), las [offers abiertas](/es/blog/how-do-i-cancel-open-offers-on-stellar) y las [data entries](/es/blog/what-are-stellar-data-entries).
+
+## Qué es un signer adicional
+
+Toda cuenta de Stellar empieza con un signer, su clave maestra: el par de claves cuya clave pública es la dirección de la cuenta. Una operación `SetOptions` puede agregar más signers, cada uno con un peso. La mayoría son claves comunes, del tipo que guarda una billetera. También hay tipos especiales: un signer hash(x), que se satisface revelando un valor secreto; un signer de transacción preautorizada, que permite una transacción exacta; y un signer de payload firmado.
+
+Cada signer adicional cuenta como una subentry (elemento que bloquea reserva) de la cuenta, igual que una trustline o una offer, y bloquea una base reserve (unidad de reserva que fija la red) de <BaseReserve /> mientras existe (verificada el <BaseReserveCheckedOn />). Esa reserva vuelve de cualquier forma, ya sea que elimines el signer o que el merge lo elimine con la cuenta.
+
+## Pesos y thresholds
+
+Una cuenta tiene tres thresholds: bajo, medio y alto. Cada operación pertenece a uno de ellos. Una transacción queda autorizada cuando los signers que la firmaron suman al menos el threshold que necesitan sus operaciones.
+
+Las dos operaciones que importan para un cierre necesitan el threshold alto: `SetOptions` cuando cambia signers o thresholds, y el propio `AccountMerge`.
+
+En una cuenta nueva, la clave maestra tiene peso 1 y todos los thresholds están en 0, así que la clave maestra sola puede hacer cualquier cosa. Una configuración multisig sube los thresholds y agrega signers para que ninguna clave alcance por sí sola. Por ejemplo, tres claves de peso 1 con un threshold alto de 2 significa que dos cualesquiera de ellas tienen que firmar un merge.
+
+## Los signers no impiden el merge
+
+La red se niega a hacer el merge de una cuenta que todavía tiene subentries, y lo informa con `op_has_sub_entries`. Los signers son la excepción. La verificación compara la cantidad de subentries de la cuenta con su cantidad de signers y deja pasar el merge cuando coinciden, lo que significa que cada subentry restante es un signer. El merge borra entonces esos signers junto con la cuenta.
+
+Así que no tienes que eliminar un signer adicional antes del merge. Si vuelve `op_has_sub_entries`, busca en cambio una trustline, una offer o una data entry. Las guías enlazadas arriba explican cada una.
+
+## Los thresholds deciden quién puede firmar el merge
+
+`AccountMerge` necesita el threshold alto. En una cuenta nueva ese threshold es 0, así que la clave maestra firma el merge sola y un signer adicional no cambia nada.
+
+Si se subieron los thresholds, un merge firmado por una clave cuyo peso está por debajo del threshold alto falla con `op_bad_auth`, o con `tx_bad_auth` cuando las firmas no alcanzan el threshold que necesita la transacción misma. Entonces los otros signers también tienen que firmar, hasta que sus pesos sumen el threshold alto. Así es como un signer adicional puede interponerse en un cierre: el merge no puede hacerse sin las claves que exigen los thresholds, y puede que ya no las tengas.
+
+## Cómo lo resuelve LumenWipe
+
+La pantalla de análisis muestra cuántos signers adicionales tiene la cuenta. Cuando tiene alguno, o cuando su threshold medio o alto está por encima de 1, el plan incluye un paso llamado "Remove extra signers". Ese paso pone en 0 el peso de cada uno de los otros signers, lo que los elimina, y luego restablece los thresholds a 0, 1 y 1, para que la clave maestra sola pueda autorizar lo que sigue. El merge eliminaría los signers de todos modos. LumenWipe los elimina antes para que una sola clave pueda firmar cada paso restante, en lugar de reunir varias firmas en cada transacción del cierre.
+
+El orden es el mismo para todas las cuentas. Si ninguna clave de la cuenta puede firmar por sí sola todos los pasos, primero se eliminan los signers adicionales, en una transacción aparte. Después vienen los claimable balances (saldos reclamables) que elegiste reclamar, en su propia transacción, con cualquier trustline que necesite un reclamo agregada justo antes. Una vez confirmados, LumenWipe construye el cierre en sí, que elimina los signers adicionales si eso no pasó antes, luego borra las data entries, cancela las offers abiertas, convierte, devuelve o envía cada saldo restante, elimina las trustlines y hace el merge de la cuenta al final. Un cierre con más de 100 operaciones se divide en varias transacciones, en ese mismo orden.
+
+Cuando la eliminación de signers va primero, la clave maestra tiene que ser una de las claves que la firman. Una vez confirmada, la clave maestra sola firma el resto del cierre. Esa transacción no cierra la cuenta: si un paso posterior se rechaza, la cuenta queda abierta solo con su clave maestra. El paso lo dice en el plan, así que lo ves antes de firmar.
+
+Para una cuenta multisig, la pantalla de revisión dice cuántas de las claves de la cuenta tienen que firmar y en cuántas transacciones. Esas claves tienen que firmar durante el cierre. Mientras firmas, la pantalla de firma muestra el peso reunido hasta el momento, el peso que todavía falta y qué signers aún no firmaron.
+
+Cada tipo especial de signer tiene una regla:
+
+- Un signer hash(x) se satisface ingresando su valor secreto en el navegador, solo en el paso que elimina ese signer.
+- Un signer de transacción preautorizada se usa enviando esa transacción exacta desde el navegador. No es una firma.
+- Un signer de payload firmado no puede firmar en LumenWipe, y su peso no cuenta para el threshold.
+
+## Cuándo se detiene LumenWipe
+
+LumenWipe no construye una eliminación que sabe que no puede autorizarse. En su lugar, la pantalla de análisis muestra un bloqueo en dos casos.
+
+- La clave maestra tiene peso 0. Eliminar los otros signers dejaría la cuenta sin ninguna clave capaz de autorizar nada, nunca más, así que LumenWipe se niega a hacerlo.
+- Los signers que pueden firmar en LumenWipe no suman el threshold alto. El bloqueo indica el peso que pueden alcanzar y el peso que exige el threshold alto.
+
+En ambos casos, los signers actuales de la cuenta tienen que cambiar primero su configuración, fuera de LumenWipe, por ejemplo dándole peso a la clave maestra o bajando el threshold alto.
+
+## Antes de empezar
+
+- Averigua quién agregó cada signer adicional. Si pertenece a un servicio que todavía usas, cerrar la cuenta le quita el acceso que ese signer le daba.
+- Reúne las claves que vas a necesitar antes de abrir el cierre. La pantalla de revisión te dice cuántas.
+- Si solo tienes la clave maestra y los thresholds están por encima de su peso, no puedes cerrar la cuenta tú solo.
+
+## Empieza un cierre
+
+Abre [LumenWipe](/mainnet) e ingresa la cuenta. La [pantalla de análisis](/mainnet/analyze) muestra los signers adicionales y cualquier bloqueo, y la pantalla de revisión muestra cuántas claves tienen que firmar antes de construir nada. Para ver antes cómo funciona un cierre, lee [cómo funciona](/es/how-it-works) y las [preguntas frecuentes](/es/faq), o vuelve al [inicio](/es).

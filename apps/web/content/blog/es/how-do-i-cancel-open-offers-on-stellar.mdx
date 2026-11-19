@@ -1,0 +1,56 @@
+---
+title: "¿Cómo cancelo las offers abiertas en Stellar antes de cerrar mi cuenta?"
+description: "Por qué una offer abierta impide el merge de una cuenta de Stellar, qué reserva y qué bloquea mientras está abierta, y cómo se cancela sin que nada tenga que volver a tu cuenta."
+publishedAt: "2026-11-19"
+category: "Guides"
+tags: ["bloqueos-de-cuenta", "offers", "dex", "account-merge", "stellar"]
+cta: "Ingresa la cuenta para ver cuántas offers abiertas tiene y en qué parte del plan se cancelan antes de firmar nada."
+---
+
+Una offer (orden abierta en el libro de órdenes) que pusiste en el DEX de Stellar hace años puede seguir abierta hoy. Si nadie la tomó a ese precio, sigue en el ledger, y la cuenta no admite un merge (fusión que cierra la cuenta y envía su saldo) hasta que desaparezca.
+
+Esta guía es una de cinco sobre lo que mantiene abierta una cuenta de Stellar. Las otras tratan los [claimable balances](/es/blog/why-cant-i-merge-my-stellar-account-claimable-balances), las [trustlines](/es/blog/how-do-i-remove-a-trustline-on-stellar), los [signers adicionales](/es/blog/cant-merge-a-stellar-account-because-of-extra-signers) y las [data entries](/es/blog/what-are-stellar-data-entries).
+
+## Qué es una offer
+
+Stellar tiene un exchange integrado en la red, al que a menudo se llama DEX. Una offer es una orden en él: vender tanto de un activo por otro activo a tal precio. Una vez creada, la offer queda abierta hasta que se completa del todo o se cancela. Una ejecución parcial reduce la cantidad que queda en la offer y deja el resto abierto.
+
+Las offers se crean con `ManageSellOffer`, `ManageBuyOffer` o `CreatePassiveSellOffer`. Las billeteras y las apps de trading las crean por ti, así que es fácil tener una abierta sin recordarlo.
+
+## Qué retiene una offer
+
+Una offer abierta es una de las subentries (elementos que bloquean reserva) de la cuenta, así que bloquea una base reserve (unidad de reserva que fija la red) de <BaseReserve /> en el saldo mínimo de la cuenta (verificada el <BaseReserveCheckedOn />).
+
+También retiene liabilities. La cantidad que la offer vende queda reservada como liability de venta, y esa parte de tu saldo no se puede enviar ni vender en otro lado mientras la offer esté abierta. Lo que la offer compraría queda reservado como liability de compra, que ocupa espacio bajo el límite de la trustline (línea de confianza con un emisor de activos) que lo recibiría.
+
+## Por qué una offer impide el merge
+
+La red se niega a hacer el merge de una cuenta que todavía tiene subentries, y cada offer abierta es una. El merge fallido informa `op_has_sub_entries`, que no te dice que la entrada que queda es una offer.
+
+Una offer también estorba en los pasos previos al merge. Una trustline no se puede eliminar mientras tenga saldo, y la parte del saldo que una offer reservó no se puede sacar de ella. Una liability de compra impide poner en cero el límite de la trustline, que es como se elimina una trustline. Por eso las offers tienen que desaparecer antes que las trustlines.
+
+## Cómo funciona la cancelación
+
+No hay una operación de cancelación aparte. Cancelas una offer actualizándola a una cantidad de cero: un `ManageSellOffer` que indica el ID de la offer, repite el activo que vende y el activo que compra, y pone la cantidad en `0`. La red borra la offer, libera sus liabilities y libera su reserva.
+
+No tiene que volverte nada cuando se cancela una offer. Una offer en Stellar no deja tus activos en custodia: la cantidad que vendía nunca salió de tu cuenta, solo estaba reservada. Una vez borrada la offer, esa cantidad vuelve a ser una parte común de tu saldo, y puedes venderla, enviarla o devolverla como el resto.
+
+La cancelación es definitiva para esa offer. Si más adelante quieres operar con el activo, pones una nueva.
+
+## Cómo lo resuelve LumenWipe
+
+La pantalla de análisis muestra cuántas offers abiertas tiene la cuenta. Las offers no necesitan ninguna decisión de tu parte: cada offer abierta se cancela como parte del cierre.
+
+En la pantalla de revisión, el plan muestra un paso llamado "Cancel open DEX offers", con la cantidad de offers que cancela. Cada offer se convierte en un `ManageSellOffer` con el ID de la offer, los mismos activos de venta y de compra que la offer, y una cantidad de cero. Una transacción tiene como máximo 100 operaciones, así que una cuenta con una cantidad muy grande de offers se cancela por lotes, que aparecen como pasos separados.
+
+El orden es el mismo para todas las cuentas. Si ninguna clave de la cuenta puede firmar por sí sola todos los pasos, primero se eliminan los signers (firmantes adicionales de la cuenta), en una transacción aparte. Después vienen los claimable balances (saldos reclamables) que elegiste reclamar, en su propia transacción, con cualquier trustline que necesite un reclamo agregada justo antes. Una vez confirmados, LumenWipe construye el cierre en sí, que elimina los signers si eso no pasó antes, luego borra las data entries (datos guardados en la cuenta), cancela las offers abiertas, convierte, devuelve o envía cada saldo restante, elimina las trustlines y hace el merge de la cuenta al final. Un cierre con más de 100 operaciones se divide en varias transacciones, en ese mismo orden.
+
+Dentro del cierre, las offers se cancelan antes de tocar cualquier saldo, así que cada saldo está libre de liabilities cuando se mueve, y cada trustline se puede eliminar después.
+
+## Hacerlo a mano
+
+Si cancelas las offers tú mismo, busca cada offer abierta de la cuenta, que cualquier explorador de cuentas o billetera con soporte de DEX muestra, y envía un `ManageSellOffer` con su ID, los mismos activos de venta y de compra, y una cantidad de cero. Una offer creada como offer de compra se cancela de la misma forma: indica su ID, el activo con el que paga como activo de venta y el activo que compra como activo de compra. Cuando la cuenta no muestra offers abiertas, ya no estorban al merge.
+
+## Empieza un cierre
+
+Abre [LumenWipe](/mainnet) e ingresa la cuenta. La [pantalla de revisión](/mainnet/review) muestra las cancelaciones de offers del plan antes de que firmes nada. Para ver antes cómo funciona un cierre, lee [cómo funciona](/es/how-it-works) y las [preguntas frecuentes](/es/faq), o vuelve al [inicio](/es).
