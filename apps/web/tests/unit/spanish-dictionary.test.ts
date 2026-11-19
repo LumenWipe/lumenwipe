@@ -8,11 +8,13 @@ import { HERO } from "@/lib/i18n/messages/hero";
 import { LANDING } from "@/lib/i18n/messages/landing";
 import { NAV } from "@/lib/i18n/messages/nav";
 import { NOT_FOUND } from "@/lib/i18n/messages/not-found";
+import { SECURITY } from "@/lib/i18n/messages/security";
 import { SITE } from "@/lib/i18n/messages/site";
 import { nodeText } from "@/lib/site/node-text";
 
-// The sections the navigation, footer, 404, landing and FAQ pages read, and what the landing's own
-// components read (the hero, the registry sentences, the trust statements, the reserve figures).
+// The sections the navigation, footer, 404, landing, FAQ and security pages read, and what the
+// landing's own components read (the hero, the registry sentences, the trust statements, the reserve
+// figures).
 const SECTIONS: Record<string, { en: unknown; es: unknown }> = {
   address: ADDRESS,
   common: COMMON,
@@ -22,6 +24,7 @@ const SECTIONS: Record<string, { en: unknown; es: unknown }> = {
   landing: LANDING,
   nav: NAV,
   "not-found": NOT_FOUND,
+  security: SECURITY,
   site: SITE,
 };
 
@@ -54,12 +57,14 @@ function onlyNames(value: string): boolean {
   return /^[\s\d.,·-]*$/.test(rest);
 }
 
-// Terminal output and code identifiers in the 404 console, which stay as a program prints them.
+// Terminal output and code identifiers in the 404 console, which stay as a program prints them, and
+// the names of the services the security page's network layer reads.
 const CODE = new Set([
   "not-found.consoleTitle",
   "not-found.command",
   "not-found.failure",
   "not-found.infoLabel",
+  "security.layers.network.sub",
 ]);
 
 const accent = (text: string): ReactNode => text;
@@ -99,6 +104,8 @@ const CALLS: Record<string, unknown[][]> = {
   "hero.estimate.readAt": [["12:00"]],
   "faq.items": [[faqFacts(true, "")], [faqFacts(false, "Aquarius")]],
   "landing.description": [[true], [false]],
+  "security.lede": [["KEY", "CHECK"]],
+  "security.openSource": [[element, element]],
   "landing.hero.headline": [[accent]],
   "landing.stats.asOf": [["Nov 2026", element]],
   "landing.problem.truths.exchanges.body": [[1]],
@@ -187,7 +194,7 @@ function untranslated(path: string, en: unknown, es: unknown): string[] {
   return [];
 }
 
-describe("the Spanish copy of the navigation, footer, 404, landing and FAQ", () => {
+describe("the Spanish copy of the navigation, footer, 404, landing, FAQ and security pages", () => {
   for (const [name, section] of Object.entries(SECTIONS)) {
     test(`${name}: every entry is filled and reads in Spanish`, () => {
       expect(untranslated(name, section.en, section.es)).toEqual([]);

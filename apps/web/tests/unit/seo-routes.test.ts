@@ -85,6 +85,7 @@ const PAGE_TITLES: Record<string, Metadata["title"]> = {
   "/content": "Content",
   "/es": { absolute: SITE.es.metadata.homeTitle },
   "/es/faq": "Preguntas frecuentes",
+  "/es/security": "Seguridad",
   "/faq": "FAQ",
   "/how-it-works": "How it works",
   "/playground": "Playground",
@@ -255,6 +256,21 @@ describe("the sitemap", () => {
       alternates: { languages: pair },
     });
     expect(entry(siteUrl("/faq"))).toMatchObject({ alternates: { languages: pair } });
+  });
+
+  test("lists the Spanish security page with its rank and both languages", () => {
+    const pair = {
+      en: siteUrl("/security"),
+      es: siteUrl("/es/security"),
+      "x-default": siteUrl("/security"),
+    };
+    const entry = (url: string) => SITEMAP.find((e) => e.url === url);
+    expect(entry(siteUrl("/es/security"))).toMatchObject({
+      priority: 0.9,
+      changeFrequency: "monthly",
+      alternates: { languages: pair },
+    });
+    expect(entry(siteUrl("/security"))).toMatchObject({ alternates: { languages: pair } });
   });
 
   test("ranks the app entry below the pages that explain it and leaves testnet out", () => {

@@ -64,7 +64,7 @@ describe("the language switch", () => {
   });
 
   test("the header, mobile menu and footer each mount it, in both directions", () => {
-    for (const path of ["/", "/faq"]) {
+    for (const path of ["/", "/faq", "/security"]) {
       expect(SPANISH_PAGES.find((page) => page.path === path)?.translated).toBe(true);
     }
     for (const [locale, pathname, href, tag] of [
@@ -72,6 +72,8 @@ describe("the language switch", () => {
       ["es", "/es", "/", "en"],
       ["en", "/faq", "/es/faq", "es-419"],
       ["es", "/es/faq", "/faq", "en"],
+      ["en", "/security", "/es/security", "es-419"],
+      ["es", "/es/security", "/security", "en"],
     ] as const) {
       at(pathname);
       const { container } = render(
@@ -102,7 +104,7 @@ describe("the language switch", () => {
   test("links nothing from a page whose other version is not translated", () => {
     for (const [locale, pathname] of [
       ["en", "/how-it-works"],
-      ["en", "/security"],
+      ["en", "/registry"],
     ] as const) {
       at(pathname);
       const { container } = render(
@@ -129,6 +131,27 @@ describe("the language switch", () => {
         link.getAttribute("href")?.endsWith("/faq")
       );
       expect(faq.map((link) => link.getAttribute("href"))).toEqual([href]);
+      cleanup();
+      mock.restore();
+    }
+  });
+
+  test("the header, mobile menu and footer lead to the security page in the reader's language", () => {
+    for (const [locale, pathname, href] of [
+      ["en", "/", "/security"],
+      ["es", "/es", "/es/security"],
+    ] as const) {
+      at(pathname);
+      const { container } = render(
+        <>
+          <MarketingNav locale={locale} />
+          <MarketingFooter locale={locale} />
+        </>
+      );
+      const security = [...container.querySelectorAll("a")]
+        .map((link) => link.getAttribute("href"))
+        .filter((link) => link?.endsWith("/security"));
+      expect(security).toEqual([href, href, href]);
       cleanup();
       mock.restore();
     }

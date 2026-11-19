@@ -184,9 +184,17 @@ exports[`English marketing copy security metadata is the recorded metadata 1`] =
 {
   "alternates": {
     "canonical": "https://www.lumenwipe.com/security",
+    "languages": {
+      "en": "https://www.lumenwipe.com/security",
+      "es": "https://www.lumenwipe.com/es/security",
+      "x-default": "https://www.lumenwipe.com/security",
+    },
   },
   "description": "How LumenWipe keeps your key in your browser, what its API builds, what your browser checks before you sign, and the two server keys and what each may sign.",
   "openGraph": {
+    "alternateLocale": [
+      "es_LA",
+    ],
     "description": "How LumenWipe keeps your key in your browser, what its API builds, what your browser checks before you sign, and the two server keys and what each may sign.",
     "images": [
       {

@@ -1,6 +1,7 @@
 import type { Locale } from "@/lib/i18n/locale";
 import { NAV } from "@/lib/i18n/messages/nav";
 import { DOCS_URL } from "@/config/discovery-links.mjs";
+import { localeHref } from "@/lib/site/pages";
 
 export interface SiteLink {
   href: string;
@@ -25,7 +26,7 @@ export function siteLinks(locale: Locale): SiteLinks {
   return {
     primary: [
       { href: "/how-it-works", label: label.howItWorks },
-      { href: "/security", label: label.security },
+      { href: localeHref(locale, "/security"), label: label.security },
       { href: "/content", label: label.guides },
       { href: PLAYGROUND_URL, label: label.playground, external: true },
     ],

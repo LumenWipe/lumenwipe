@@ -6,6 +6,7 @@ import FaqPage from "@/app/(marketing)/faq/page";
 import BlogPage from "@/app/(marketing)/blog/page";
 import SpanishLandingPage from "@/app/(marketing-es)/es/page";
 import SpanishFaqPage from "@/app/(marketing-es)/es/faq/page";
+import SpanishSecurityPage from "@/app/(marketing-es)/es/security/page";
 import BlogPostPage, { generateMetadata } from "@/app/(marketing)/blog/[slug]/page";
 import SecurityPage from "@/app/(marketing)/security/page";
 import HowItWorksPage from "@/app/(marketing)/how-it-works/page";
@@ -95,7 +96,11 @@ describe("every block", () => {
   }
 
   test("only the home, FAQ, blog and post pages emit structured data", () => {
-    for (const page of [<SecurityPage key="s" />, <HowItWorksPage key="h" />]) {
+    for (const page of [
+      <SecurityPage key="s" />,
+      <SpanishSecurityPage key="es-s" />,
+      <HowItWorksPage key="h" />,
+    ]) {
       expect(blocksIn(renderMarketing(page))).toEqual([]);
     }
   });
