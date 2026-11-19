@@ -67,7 +67,7 @@ export const config = {
     // the nonce policy; a new post or Spanish page needs its line here
     // (tests/unit/proxy-matcher.test.ts). The blog's feed is prerendered XML with no script,
     // skipped the same way.
-    "/((?!_next/static|_next/image|favicon|api/|(?:(?:|faq|how-it-works|security|stats|registry|content|playground|es|es/faq|es/how-it-works|es/security|blog|blog/feed\\.xml|blog/account-merge-on-stellar|blog/cant-merge-a-stellar-account-because-of-extra-signers|blog/how-do-i-cancel-open-offers-on-stellar|blog/how-do-i-remove-a-trustline-on-stellar|blog/phase-0-launch|blog/phase-1-launch|blog/phase-2-launch|blog/what-are-stellar-data-entries|blog/why-cant-i-merge-my-stellar-account-claimable-balances)(?:\\.rsc|\\.segments/.*)?|index(?:\\.rsc|\\.segments/.*))$).*)",
+    "/((?!_next/static|_next/image|favicon|api/|(?:(?:|faq|how-it-works|security|stats|registry|content|playground|es|es/faq|es/how-it-works|es/security|es/blog|es/blog/how-do-i-remove-a-trustline-on-stellar|blog|blog/feed\\.xml|blog/account-merge-on-stellar|blog/cant-merge-a-stellar-account-because-of-extra-signers|blog/how-do-i-cancel-open-offers-on-stellar|blog/how-do-i-remove-a-trustline-on-stellar|blog/phase-0-launch|blog/phase-1-launch|blog/phase-2-launch|blog/what-are-stellar-data-entries|blog/why-cant-i-merge-my-stellar-account-claimable-balances)(?:\\.rsc|\\.segments/.*)?|index(?:\\.rsc|\\.segments/.*))$).*)",
     "/api/:path*",
   ],
 };

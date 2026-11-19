@@ -17,7 +17,15 @@ function isPhoneWidth(page: Page): boolean {
   return (page.viewportSize()?.width ?? 0) < DESKTOP;
 }
 
-for (const path of ["/", "/es", "/es/faq", "/es/security", "/es/how-it-works"]) {
+for (const path of [
+  "/",
+  "/es",
+  "/es/faq",
+  "/es/security",
+  "/es/how-it-works",
+  "/es/blog",
+  "/es/blog/how-do-i-remove-a-trustline-on-stellar",
+]) {
   test(`${path} carries no noindex`, async ({ page }) => {
     await page.goto(path);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
@@ -36,6 +44,8 @@ for (const path of [
   "/content",
   "/blog/how-do-i-remove-a-trustline-on-stellar",
   "/blog/phase-1-launch",
+  "/es/blog",
+  "/es/blog/how-do-i-remove-a-trustline-on-stellar",
   "/stats",
 ]) {
   test(`${path} has no serious accessibility violations`, async ({ page }) => {

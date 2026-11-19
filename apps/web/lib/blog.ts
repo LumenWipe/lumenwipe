@@ -3,8 +3,15 @@ import path from "path";
 import matter from "gray-matter";
 import readingTime from "reading-time";
 import { z } from "zod";
+import type { Locale } from "@/lib/i18n/locale";
 
 const CONTENT_DIR = path.join(process.cwd(), "content/blog");
+
+/** Where the posts in `locale` live: English at the root of the blog's content, each translation
+ *  in a folder named after its locale, under its English post's slug. */
+function contentDir(locale: Locale): string {
+  return locale === "en" ? CONTENT_DIR : path.join(CONTENT_DIR, locale);
+}
 
 export const CATEGORIES = ["Technical", "Updates", "Guides"] as const;
 
@@ -46,6 +53,8 @@ export class PostNotFoundError extends Error {
 
 export function slugify(text: string): string {
   return text
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, "")
     .trim()
@@ -120,23 +129,36 @@ export function minutesToRead(content: string): number {
   return Math.ceil(Number(readingTime(content).minutes.toFixed(2)));
 }
 
-function readPublishedPosts(): Post[] {
-  if (!fs.existsSync(CONTENT_DIR)) return [];
-  return fs
-    .readdirSync(CONTENT_DIR)
+function readPublishedPosts(locale: Locale = "en"): Post[] {
+  const dir = contentDir(locale);
+  if (!fs.existsSync(dir)) return [];
+  const posts = fs
+    .readdirSync(dir)
     .filter((f) => f.endsWith(".mdx"))
+    .sort()
     .flatMap((file) => {
       const slug = file.replace(/\.mdx$/, "");
-      const { data, content } = matter(fs.readFileSync(path.join(CONTENT_DIR, file), "utf8"));
+      const { data, content } = matter(fs.readFileSync(path.join(dir, file), "utf8"));
       if (data.draft === true) return [];
+      const name = locale === "en" ? slug : `${locale}/${slug}`;
       return [
-        { slug, ...parseFrontMatter(slug, data), readingMinutes: minutesToRead(content), content },
+        { slug, ...parseFrontMatter(name, data), readingMinutes: minutesToRead(content), content },
       ];
     });
+  if (locale !== "en") {
+    const english = new Set(readPublishedPosts().map((p) => p.slug));
+    const orphan = posts.find((p) => !english.has(p.slug));
+    if (orphan) {
+      throw new Error(
+        `Post "${locale}/${orphan.slug}" has no published English post: a translation keeps its English post's slug`
+      );
+    }
+  }
+  return posts;
 }
 
-export function getAllPostMetas(): PostMeta[] {
-  return readPublishedPosts()
+export function getAllPostMetas(locale: Locale = "en"): PostMeta[] {
+  return readPublishedPosts(locale)
     .map(({ content: _content, cta: _cta, ...meta }) => meta)
     .sort(
       (a, b) =>
@@ -145,16 +167,18 @@ export function getAllPostMetas(): PostMeta[] {
     );
 }
 
-/** A published post by slug. The slug is matched against the posts on disk, never joined into a
- *  path. */
-export function getPost(slug: string): Post {
-  const post = readPublishedPosts().find((p) => p.slug === slug);
+/** A published post in `locale` by slug. The slug is matched against the posts on disk, never
+ *  joined into a path. */
+export function getPost(slug: string, locale: Locale = "en"): Post {
+  const post = readPublishedPosts(locale).find((p) => p.slug === slug);
   if (!post) throw new PostNotFoundError(slug);
   return post;
 }
 
-export function getAllSlugs(): string[] {
-  return readPublishedPosts().map((p) => p.slug);
+/** The slugs of the posts published in `locale`, in one order whatever order the directory
+ *  lists them in. */
+export function getAllSlugs(locale: Locale = "en"): string[] {
+  return readPublishedPosts(locale).map((p) => p.slug);
 }
 
 /** Up to `limit` other posts sharing a tag with `post`, the most shared tags first, then newest. */

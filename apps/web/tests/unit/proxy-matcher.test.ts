@@ -20,7 +20,9 @@ function marketingPaths(): string[] {
   for (const root of MARKETING_DIRS) walk(root, root);
   return pages.flatMap((route) =>
     route.includes("[slug]")
-      ? getAllSlugs().map((slug) => `/${route.replace("[slug]", slug)}`)
+      ? getAllSlugs(route.startsWith("es/") ? "es" : "en").map(
+          (slug) => `/${route.replace("[slug]", slug)}`
+        )
       : [`/${route}`.replace(/\/$/, "") || "/"]
   );
 }
@@ -49,6 +51,9 @@ describe("the proxy matcher", () => {
     expect(paths).toContain("/es/security");
     expect(paths).toContain("/es/how-it-works");
     expect(paths.filter((p) => p.startsWith("/blog/"))).toHaveLength(getAllSlugs().length);
+    expect(paths).toContain("/es/blog");
+    expect(getAllSlugs("es").length).toBeGreaterThan(0);
+    expect(paths.filter((p) => p.startsWith("/es/blog/"))).toHaveLength(getAllSlugs("es").length);
   });
 
   test("skips every prerendered marketing page and its RSC payload, so a new post or Spanish page needs its line", () => {
@@ -79,6 +84,9 @@ describe("the proxy matcher", () => {
       "/x/y/z",
       "/es/nope",
       "/es/x/y",
+      "/es/blog/no-such-post",
+      "/es/blog/account-merge-on-stellar",
+      "/es/blog/how-do-i-remove-a-trustline-on-stellar/extra",
       "/esx",
       "/es.rscx",
       "/api/health",

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { isValidElement, type ReactNode } from "react";
 import { ADDRESS } from "@/lib/i18n/messages/address";
+import { BLOG } from "@/lib/i18n/messages/blog";
 import { COMMON } from "@/lib/i18n/messages/common";
 import { FAQ, type FaqFacts } from "@/lib/i18n/messages/faq";
 import { FOOTER } from "@/lib/i18n/messages/footer";
@@ -18,6 +19,7 @@ import { nodeText } from "@/lib/site/node-text";
 // the reserve figures).
 const SECTIONS: Record<string, { en: unknown; es: unknown }> = {
   address: ADDRESS,
+  blog: BLOG,
   common: COMMON,
   faq: FAQ,
   footer: FOOTER,
@@ -111,6 +113,8 @@ function faqFacts(exchangeLive: boolean, testnetOnlyExits: string): FaqFacts {
 // Arguments for each function in the sections, so its Spanish sentence is read, not only its
 // reference. A function with no entry here fails the walk.
 const CALLS: Record<string, unknown[][]> = {
+  "blog.readingTime": [[1], [4]],
+  "blog.playVideo": [["Demo"]],
   "footer.copyright": [[2026]],
   "hero.console.progress": [[3, 6, "8.50"]],
   "hero.input.reassurance": [[element]],

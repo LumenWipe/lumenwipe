@@ -4,7 +4,7 @@ import { GithubIcon } from "@/components/icons/GithubIcon";
 import { APP_HREF, DOCS_URL, GITHUB_URL, siteLinks, type SiteLink } from "@/lib/site/navigation";
 import type { Locale } from "@/lib/i18n/locale";
 import { FOOTER } from "@/lib/i18n/messages/footer";
-import { localeHref } from "@/lib/site/pages";
+import { localeHref, SPANISH_PAGES, type SpanishPage } from "@/lib/site/pages";
 import LanguageSwitch from "./LanguageSwitch";
 import Logo from "./Logo";
 
@@ -28,7 +28,7 @@ function columns(locale: Locale): { title: string; links: readonly SiteLink[] }[
       title: T.columns.guides,
       links: [
         { label: L.guidesAndVideos, href: "/content" },
-        { label: L.blog, href: "/blog" },
+        { label: L.blog, href: localeHref(locale, "/blog") },
       ],
     },
     {
@@ -49,7 +49,13 @@ function columns(locale: Locale): { title: string; links: readonly SiteLink[] }[
   ];
 }
 
-export default function MarketingFooter({ locale }: { locale: Locale }) {
+export default function MarketingFooter({
+  locale,
+  pages = SPANISH_PAGES,
+}: {
+  locale: Locale;
+  pages?: readonly SpanishPage[];
+}) {
   const T = FOOTER[locale];
   return (
     <footer className="relative border-t border-white/10 bg-canvas">
@@ -68,7 +74,7 @@ export default function MarketingFooter({ locale }: { locale: Locale }) {
               >
                 <GithubIcon className="h-4 w-4" />
               </a>
-              <LanguageSwitch locale={locale} className="text-sm" />
+              <LanguageSwitch locale={locale} pages={pages} className="text-sm" />
             </div>
           </div>
 

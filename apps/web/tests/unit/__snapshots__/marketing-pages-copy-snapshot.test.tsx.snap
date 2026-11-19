@@ -170,6 +170,11 @@ exports[`English copy of the stats, registry, playground and content pages and t
 {
   "alternates": {
     "canonical": "https://www.lumenwipe.com/blog",
+    "languages": {
+      "en": "https://www.lumenwipe.com/blog",
+      "es": "https://www.lumenwipe.com/es/blog",
+      "x-default": "https://www.lumenwipe.com/blog",
+    },
     "types": {
       "application/rss+xml": [
         {
@@ -181,6 +186,9 @@ exports[`English copy of the stats, registry, playground and content pages and t
   },
   "description": "Technical deep dives, project updates, and guides on Stellar account management, trustline removal, reserve recovery, and non-custodial DeFi tooling.",
   "openGraph": {
+    "alternateLocale": [
+      "es_LA",
+    ],
     "description": "Technical deep dives, project updates, and guides on Stellar account management, trustline removal, reserve recovery, and non-custodial DeFi tooling.",
     "images": [
       {

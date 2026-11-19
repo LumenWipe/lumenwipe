@@ -38,11 +38,12 @@ export function siteLinks(locale: Locale): SiteLinks {
   };
 }
 
-/** Whether `pathname` is the page `link` leads to. Guides covers the blog it lists. */
+/** Whether `pathname` is the page `link` leads to. Guides covers the blog it lists, in
+ *  either language. */
 export function isCurrent(link: SiteLink, pathname: string): boolean {
   if (link.external) return false;
   if (link.href === "/content") {
-    return pathname === "/content" || pathname === "/blog" || pathname.startsWith("/blog/");
+    return pathname === "/content" || /^(?:\/es)?\/blog(?:\/|$)/.test(pathname);
   }
   return pathname === link.href;
 }

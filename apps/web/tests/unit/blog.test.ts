@@ -4,6 +4,7 @@ import readingTime from "reading-time";
 import { BLOG } from "@/lib/i18n/messages/blog";
 import path from "path";
 import {
+  extractToc,
   getAllPostMetas,
   getAllSlugs,
   minutesToRead,
@@ -12,6 +13,7 @@ import {
   PostNotFoundError,
   relatedPosts,
   resolveUpdatedAt,
+  slugify,
   type PostMeta,
 } from "@/lib/blog";
 
@@ -234,4 +236,115 @@ test("relatedPosts › ranks by shared tags, then newest, and leaves out the pos
   ]);
   expect(relatedPosts(post, all, 2).map((p) => p.slug)).toEqual(["two-tags", "one-tag-new"]);
   expect(relatedPosts(meta("lonely", ["z"]), all)).toEqual([]);
+});
+
+const SPANISH_DIR = path.join(CONTENT_DIR, "es");
+const TRANSLATED = "how-do-i-remove-a-trustline-on-stellar";
+
+test("getAllPostMetas › a locale reads only its own folder, and English leaves the translations out", () => {
+  const english = getAllSlugs();
+  const spanish = getAllSlugs("es");
+  expect(spanish).toContain(TRANSLATED);
+  expect(english).not.toContain("es");
+  const files = fs.readdirSync(CONTENT_DIR).filter((f) => f.endsWith(".mdx"));
+  expect(english.length).toBe(files.filter((f) => f !== `${DRAFT_SLUG}.mdx`).length);
+  expect(getAllPostMetas("es").map((p) => p.slug)).toEqual([...spanish].sort());
+  expect(getPost(TRANSLATED, "es").title).not.toBe(getPost(TRANSLATED).title);
+});
+
+test("getAllSlugs › lists a locale's slugs in one order whatever order the directory lists them in", () => {
+  const listed = { en: getAllSlugs(), es: getAllSlugs("es") };
+  const readdir = fs.readdirSync.bind(fs);
+  const spy = spyOn(fs, "readdirSync").mockImplementation(((dir: fs.PathLike) =>
+    (readdir(dir) as string[]).reverse()) as typeof fs.readdirSync);
+  try {
+    expect({ en: getAllSlugs(), es: getAllSlugs("es") }).toEqual(listed);
+  } finally {
+    spy.mockRestore();
+  }
+  expect(listed.en).toEqual([...listed.en].sort());
+});
+
+test("getPost › a post missing in a locale is not found there", () => {
+  expect(() => getPost("phase-0-launch", "es")).toThrow(PostNotFoundError);
+  expect(() => getPost("../how-do-i-remove-a-trustline-on-stellar", "es")).toThrow(
+    PostNotFoundError
+  );
+});
+
+test("getAllPostMetas › a translation with no published English post fails the build by name", () => {
+  const slug = "test-orphan-fixture";
+  const file = path.join(SPANISH_DIR, `${slug}.mdx`);
+  fs.writeFileSync(
+    file,
+    `---\ntitle: "Huérfano"\ndescription: "Solo para blog.test.ts."\npublishedAt: "2026-06-02"\ncategory: "Guides"\ntags: ["fixture"]\n---\n\nCuerpo.\n`
+  );
+  try {
+    expect(() => getAllPostMetas("es")).toThrow(`Post "es/${slug}" has no published English post`);
+    expect(() => getAllSlugs("es")).toThrow(`Post "es/${slug}" has no published English post`);
+    expect(getAllSlugs()).not.toContain(slug);
+  } finally {
+    fs.rmSync(file, { force: true });
+  }
+});
+
+test("getAllPostMetas › a translation's front matter is validated and named with its locale", () => {
+  const file = path.join(SPANISH_DIR, "phase-0-launch.mdx");
+  fs.writeFileSync(
+    file,
+    `---\ntitle: "Inválido"\ndescription: "Solo para blog.test.ts."\npublishedAt: "2026-06-02"\ncategory: "Guía"\ntags: ["fixture"]\n---\n\nCuerpo.\n`
+  );
+  try {
+    expect(() => getAllPostMetas("es")).toThrow(
+      'Post "es/phase-0-launch" has invalid front matter'
+    );
+  } finally {
+    fs.rmSync(file, { force: true });
+  }
+});
+
+// The anchor every heading had before slugify learned accents: letters and digits of the ASCII
+// lowercase text, the rest dropped.
+function asciiSlugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+test("slugify › keeps an accented letter as its base letter, so a Spanish heading reads in its anchor", () => {
+  expect(slugify("¿Qué es una trustline?")).toBe("que-es-una-trustline");
+  expect(slugify("Por qué una trustline impide el merge")).toBe(
+    "por-que-una-trustline-impide-el-merge"
+  );
+  expect(slugify("Añadir una señal, ¡ya!")).toBe("anadir-una-senal-ya");
+  expect(slugify("Cómo lo resuelve LumenWipe")).toBe("como-lo-resuelve-lumenwipe");
+});
+
+test("slugify › leaves every English heading's anchor as it was", () => {
+  const headings = getAllSlugs().flatMap((slug) =>
+    (getPost(slug).content.match(/^#{2,3}\s+.+/gm) ?? []).map((h) => h.replace(/^#+\s+/, ""))
+  );
+  expect(headings.length).toBeGreaterThan(20);
+  for (const heading of headings) expect(slugify(heading)).toBe(asciiSlugify(heading));
+  expect(extractToc(getPost(TRANSLATED).content).map((e) => e.id)).toEqual([
+    "what-a-trustline-is",
+    "why-a-trustline-stops-the-merge",
+    "what-to-do-with-the-balance",
+    "how-lumenwipe-handles-it",
+    "doing-it-by-hand",
+    "start-a-close",
+  ]);
+});
+
+test("extractToc › every translated post's anchors are unique ASCII", () => {
+  for (const slug of getAllSlugs("es")) {
+    const ids = extractToc(getPost(slug, "es").content).map((e) => e.id);
+    expect(ids.length).toBeGreaterThan(0);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const id of ids) expect(id).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+  }
 });

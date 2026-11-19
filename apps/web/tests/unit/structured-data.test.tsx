@@ -8,7 +8,8 @@ import SpanishLandingPage from "@/app/(marketing-es)/es/page";
 import SpanishFaqPage from "@/app/(marketing-es)/es/faq/page";
 import SpanishSecurityPage from "@/app/(marketing-es)/es/security/page";
 import SpanishHowItWorksPage from "@/app/(marketing-es)/es/how-it-works/page";
-import BlogPostPage, { generateMetadata } from "@/app/(marketing)/blog/[slug]/page";
+import SpanishBlogPage from "@/app/(marketing-es)/es/blog/page";
+import PostPage, { postMetadata } from "@/components/blog/PostPage";
 import SecurityPage from "@/app/(marketing)/security/page";
 import HowItWorksPage from "@/app/(marketing)/how-it-works/page";
 import Faq, { faqItems } from "@/components/marketing/Faq";
@@ -81,7 +82,7 @@ const PAGES = {
   home: blocksIn(renderMarketing(<LandingPage />)),
   faq: blocksIn(renderMarketing(<FaqPage />)),
   blog: blocksIn(renderMarketing(<BlogPage />)),
-  post: blocksInTree(await BlogPostPage({ params: Promise.resolve({ slug: POST.slug }) })),
+  post: blocksInTree(PostPage({ locale: "en", slug: POST.slug })),
 };
 
 describe("every block", () => {
@@ -218,8 +219,7 @@ describe("a post", () => {
     const TIMESTAMP = /^\d{4}-\d{2}-\d{2}T00:00:00Z$/;
     const article = one(PAGES.post, "Article");
     const entries = one(PAGES.blog, "Blog").blogPost as Record<string, unknown>[];
-    const og = (await generateMetadata({ params: Promise.resolve({ slug: post.slug }) }))
-      .openGraph as Record<string, unknown>;
+    const og = postMetadata("en", post.slug).openGraph as Record<string, unknown>;
     for (const value of [
       article.datePublished,
       article.dateModified,
@@ -341,6 +341,41 @@ describe("the language of the structured data", () => {
       for (const type of types) expect(one(nodes, type).inLanguage).toBe("es-419");
     }
     expect(one(docs.faq["@graph"] as Node[], "FAQPage").url).toBe(siteUrl("/es/faq"));
+    expect(one(docs.blog["@graph"] as Node[], "Blog").url).toBe(siteUrl("/es/blog"));
+    expect(one(docs.post["@graph"] as Node[], "Article").url).toBe(
+      siteUrl(`/es/blog/${post.slug}`)
+    );
+  });
+
+  test("the Spanish blog lists its own posts at their Spanish URLs, under a Spanish breadcrumb", () => {
+    const nodes = blocksIn(renderMarketing(<SpanishBlogPage />));
+    const blog = one(nodes, "Blog");
+    expect(blog).toMatchObject({ url: siteUrl("/es/blog"), inLanguage: "es-419" });
+    const posts = getAllPostMetas("es");
+    expect(posts.length).toBeGreaterThan(0);
+    expect((blog.blogPost as { url: string }[]).map((p) => p.url)).toEqual(
+      posts.map((p) => siteUrl(`/es/blog/${p.slug}`))
+    );
+    expect(one(nodes, "BreadcrumbList").itemListElement).toEqual([
+      { "@type": "ListItem", position: 1, name: "Inicio", item: siteUrl("/es") },
+      { "@type": "ListItem", position: 2, name: "Blog", item: siteUrl("/es/blog") },
+    ]);
+  });
+
+  test("a Spanish post is a Spanish Article at its own URL, with its English post's image", () => {
+    const { slug } = getAllPostMetas("es")[0]!;
+    const post = getPost(slug, "es");
+    const canonical = siteUrl(`/es/blog/${slug}`);
+    const nodes = blocksInTree(PostPage({ locale: "es", slug }));
+    expect(one(nodes, "Article")).toMatchObject({
+      headline: post.title,
+      inLanguage: "es-419",
+      url: canonical,
+      mainEntityOfPage: { "@type": "WebPage", "@id": canonical },
+      image: [siteUrl(postShareImage(slug, getPost(slug).title).url)],
+    });
+    const crumbs = one(nodes, "BreadcrumbList").itemListElement as { item: string }[];
+    expect(crumbs.map((c) => c.item)).toEqual([siteUrl("/es"), siteUrl("/es/blog"), canonical]);
   });
 
   test("the Spanish landing declares es-419, its own URLs and the Spanish feature names", () => {

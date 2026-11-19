@@ -173,6 +173,8 @@ for (const [path, lang] of [
   ["/registry", "en"],
   ["/blog", "en"],
   ["/blog/account-merge-on-stellar", "en"],
+  ["/es/blog", "es-419"],
+  ["/es/blog/how-do-i-remove-a-trustline-on-stellar", "es-419"],
 ] as const) {
   test(`${path} runs under its hash policy with no violation`, async ({ page }) => {
     const violations = await watchViolations(page);
@@ -193,6 +195,7 @@ for (const [path, lang, title] of [
   ["/nope", "en", /This page has\s*been closed/],
   ["/es/nope", "es-419", /Esta página\s*ya se cerró/],
   ["/es/x/y", "es-419", /Esta página\s*ya se cerró/],
+  ["/es/blog/nope", "es-419", /Esta página\s*ya se cerró/],
 ] as const) {
   test(`${path} answers 404 under the nonce policy, noindex, and hydrates`, async ({ page }) => {
     const violations = await watchViolations(page);
@@ -232,6 +235,22 @@ for (const path of ["/nope", "/foo", "/esx"]) {
     for (const attrs of scripts.filter((a) => !a.includes('type="application/ld+json"'))) {
       expect(attrs, "every script carries the response's nonce").toContain(`nonce="${nonce}"`);
     }
+  });
+}
+
+// An unknown post is a routing miss too: each locale's post route lists its slugs and takes no
+// other (dynamicParams = false), so its server HTML is the full 404 in that locale.
+for (const [path, lang, title] of [
+  ["/blog/nope", "en", "404 - Page Not Found"],
+  ["/es/blog/nope", "es-419", "404 - Página no encontrada"],
+] as const) {
+  test(`${path} answers the full 404 in its server HTML`, async ({ request }) => {
+    const res = await request.get(path);
+    expect(res.status()).toBe(404);
+    const html = await res.text();
+    expect(html).toMatch(new RegExp(`<html lang="${lang}"[ >]`));
+    expect(html).not.toContain('id="__next_error__"');
+    expect(html).toContain(`<title>${title}</title>`);
   });
 }
 

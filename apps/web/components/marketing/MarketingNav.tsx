@@ -9,7 +9,7 @@ import { APP_HREF, isCurrent, siteLinks, type SiteLink } from "@/lib/site/naviga
 import type { Locale } from "@/lib/i18n/locale";
 import { COMMON } from "@/lib/i18n/messages/common";
 import { NAV } from "@/lib/i18n/messages/nav";
-import { localeHref } from "@/lib/site/pages";
+import { localeHref, SPANISH_PAGES, type SpanishPage } from "@/lib/site/pages";
 import LanguageSwitch from "./LanguageSwitch";
 import Logo from "./Logo";
 
@@ -112,7 +112,13 @@ function DevelopersMenu({
   );
 }
 
-export default function MarketingNav({ locale }: { locale: Locale }) {
+export default function MarketingNav({
+  locale,
+  pages = SPANISH_PAGES,
+}: {
+  locale: Locale;
+  pages?: readonly SpanishPage[];
+}) {
   const pathname = usePathname();
   const T = NAV[locale];
   const newTab = COMMON[locale].newTab;
@@ -238,7 +244,7 @@ export default function MarketingNav({ locale }: { locale: Locale }) {
         </div>
 
         <div className="flex items-center gap-2">
-          <LanguageSwitch locale={locale} className="hidden lg:inline-flex" />
+          <LanguageSwitch locale={locale} pages={pages} className="hidden lg:inline-flex" />
           <Button asChild variant="secondary" size="sm" className="whitespace-nowrap">
             <Link href={APP_HREF}>{T.openApp}</Link>
           </Button>
@@ -280,7 +286,7 @@ export default function MarketingNav({ locale }: { locale: Locale }) {
             newTab={newTab}
             onNavigate={() => setOpen(false)}
           />
-          <LanguageSwitch locale={locale} className="mt-3 px-3 py-2.5" />
+          <LanguageSwitch locale={locale} pages={pages} className="mt-3 px-3 py-2.5" />
         </div>
       </div>
     </header>

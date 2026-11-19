@@ -83,12 +83,15 @@ export interface SpanishPage {
   translated: boolean;
 }
 
-/** The English pages that have a Spanish version under `/es` (docs/contributing/localization.mdx). */
+/** The English pages that have a Spanish version under `/es` (docs/contributing/localization.mdx).
+ *  A translated post is not listed here: `spanishPages()` adds one for each post under
+ *  `content/blog/es`. */
 export const SPANISH_PAGES: readonly SpanishPage[] = [
   { path: "/", translated: true },
   { path: "/faq", translated: true },
   { path: "/security", translated: true },
   { path: "/how-it-works", translated: true },
+  { path: "/blog", translated: true },
 ];
 
 /** Whether the page at English `path` reads in `locale`: always in English, and in Spanish once
