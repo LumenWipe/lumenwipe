@@ -45,7 +45,8 @@ const en = {
       },
       data: {
         title: "Remove data entries",
-        body: "Clear every ManageData entry in batches, releasing 0.5 XLM of reserve each.",
+        body: (perItem: string): string =>
+          `Clear every ManageData entry in batches, releasing ${perItem} XLM of reserve each.`,
         op: "ManageData (value = null)",
       },
       offers: {
@@ -66,7 +67,8 @@ const en = {
       },
       trustlines: {
         title: "Remove trustlines",
-        body: "Once a balance is zero, remove its trustline and release the 0.5 XLM reserve.",
+        body: (perItem: string): string =>
+          `Once a balance is zero, remove its trustline and release the ${perItem} XLM reserve.`,
         op: "ChangeTrust · limit = 0",
       },
       merge: {
@@ -188,7 +190,8 @@ const es: HowItWorksCopy = {
       },
       data: {
         title: "Quitar los data entries",
-        body: "Borra cada data entry con ManageData, por lotes, y libera 0.5 XLM de reserva por cada uno.",
+        body: (perItem: string): string =>
+          `Borra cada data entry con ManageData, por lotes, y libera ${perItem} XLM de reserva por cada uno.`,
         op: "ManageData (value = null)",
       },
       offers: {
@@ -208,7 +211,8 @@ const es: HowItWorksCopy = {
       },
       trustlines: {
         title: "Quitar las trustlines",
-        body: "Cuando un saldo queda en cero, quita su trustline y libera los 0.5 XLM de reserva.",
+        body: (perItem: string): string =>
+          `Cuando un saldo queda en cero, quita su trustline y libera los ${perItem} XLM de reserva.`,
         op: "ChangeTrust · limit = 0",
       },
       merge: {

@@ -27,7 +27,8 @@ const en = {
   problem: {
     eyebrow: "The problem",
     heading: "Your lumens are locked, and the exit is a maze.",
-    body: "Every Stellar account holds XLM in reserve: 1 XLM for the account, plus 0.5 for every trustline, offer, data entry and signer. That reserve is only recoverable by closing the account, and closing one cleanly is harder than it sounds.",
+    body: (minimumBalance: string, perItem: string): string =>
+      `Every Stellar account holds XLM in reserve: ${minimumBalance} XLM for the account, plus ${perItem} for every trustline, offer, data entry and signer. That reserve is only recoverable by closing the account, and closing one cleanly is harder than it sounds.`,
     reserve: "Locked reserve",
     example: "Example account",
     total: "Total locked",
@@ -98,7 +99,8 @@ const es: LandingCopy = {
   problem: {
     eyebrow: "El problema",
     heading: "Tus lumens están bloqueados, y la salida es un laberinto.",
-    body: "Toda cuenta de Stellar mantiene XLM en reserva: 1 XLM por la cuenta, más 0.5 por cada trustline, offer, data entry y signer. Esa reserva solo se recupera cerrando la cuenta, y cerrarla de forma limpia es más difícil de lo que parece.",
+    body: (minimumBalance: string, perItem: string): string =>
+      `Toda cuenta de Stellar mantiene XLM en reserva: ${minimumBalance} XLM por la cuenta, más ${perItem} por cada trustline, offer, data entry y signer. Esa reserva solo se recupera cerrando la cuenta, y cerrarla de forma limpia es más difícil de lo que parece.`,
     reserve: "Reserva bloqueada",
     example: "Cuenta de ejemplo",
     total: "Total bloqueado",

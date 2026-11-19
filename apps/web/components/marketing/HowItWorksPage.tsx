@@ -22,6 +22,8 @@ import {
 import Reveal from "@/components/marketing/Reveal";
 import Faq from "@/components/marketing/Faq";
 import { LIVE_EXIT_PROTOCOLS } from "@/lib/site/status";
+import { BASE_RESERVE_XLM } from "@/lib/site/reserve";
+import { formatNumber } from "@/lib/i18n/format";
 import { Button } from "@/components/ui/button";
 import type { Locale } from "@/lib/i18n/locale";
 import { HOW_IT_WORKS } from "@/lib/i18n/messages/how-it-works";
@@ -49,6 +51,7 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
 /** The how it works page in `locale`. */
 export default function HowItWorksPage({ locale }: { locale: Locale }) {
   const T = HOW_IT_WORKS[locale];
+  const perItem = formatNumber(locale, BASE_RESERVE_XLM);
   const loop = [
     { icon: RefreshCw, ...T.loop.steps.reread },
     { icon: Eye, ...T.loop.steps.simulate },
@@ -60,7 +63,7 @@ export default function HowItWorksPage({ locale }: { locale: Locale }) {
   const steps = [
     { icon: Search, ...T.plan.steps.analyze },
     { icon: KeyRound, ...T.plan.steps.signers },
-    { icon: Database, ...T.plan.steps.data },
+    { icon: Database, ...T.plan.steps.data, body: T.plan.steps.data.body(perItem) },
     { icon: XCircle, ...T.plan.steps.offers },
     {
       icon: Layers,
@@ -68,7 +71,7 @@ export default function HowItWorksPage({ locale }: { locale: Locale }) {
       op: T.plan.steps.defi.op(LIVE_EXIT_PROTOCOLS.map((p) => p.name)),
     },
     { icon: ArrowLeftRight, ...T.plan.steps.convert },
-    { icon: Unlink, ...T.plan.steps.trustlines },
+    { icon: Unlink, ...T.plan.steps.trustlines, body: T.plan.steps.trustlines.body(perItem) },
     { icon: GitMerge, ...T.plan.steps.merge },
   ];
 

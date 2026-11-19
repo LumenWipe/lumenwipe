@@ -65,7 +65,7 @@ const en = {
     },
     csp: {
       title: "Strict CSP",
-      body: "No inline scripts, no unsafe-eval. Dependencies are lockfile-pinned and audited in CI; the transaction builder is a pure, unit-tested module with zero network side effects.",
+      body: "Scripts get no unsafe-inline and no unsafe-eval: an inline script in the page runs only when the policy names it, by its hash on prerendered pages and by a per-request nonce elsewhere. Dependencies are lockfile-pinned and audited in CI; the transaction builder is a pure, unit-tested module with zero network side effects.",
     },
   },
   serverKeysHeading: "Keys on the server",
@@ -139,7 +139,7 @@ const es: SecurityCopy = {
     },
     csp: {
       title: "CSP estricta",
-      body: "Sin scripts inline ni unsafe-eval. Las dependencias están fijadas en el lockfile y se auditan en CI; el módulo que arma las transacciones es puro, tiene pruebas unitarias y no tiene ningún efecto secundario de red.",
+      body: "Los scripts no tienen unsafe-inline ni unsafe-eval: un script inline de la página solo se ejecuta si la política lo nombra, por su hash en las páginas prerenderizadas y con un nonce por solicitud en las demás. Las dependencias están fijadas en el lockfile y se auditan en CI; el módulo que arma las transacciones es puro, tiene pruebas unitarias y no tiene ningún efecto secundario de red.",
     },
   },
   serverKeysHeading: "Claves en el servidor",
