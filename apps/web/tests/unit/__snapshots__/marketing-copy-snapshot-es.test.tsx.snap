@@ -54,9 +54,9 @@ exports[`Spanish marketing copy root metadata is the recorded metadata 1`] = `
     "description": "Cierra tu cuenta de Stellar de forma segura. Recupera las reservas de XLM bloqueadas, quita trustlines, cancela offers abiertas y sal de tus posiciones de DeFi en Soroban en un solo flujo no custodial.",
     "images": [
       {
-        "alt": "LumenWipe: an example close plan and the XLM it recovers",
+        "alt": "LumenWipe: un plan de cierre de ejemplo y el XLM que recupera",
         "height": 630,
-        "url": "/opengraph-image",
+        "url": "/es/opengraph-image",
         "width": 1200,
       },
     ],
@@ -74,9 +74,9 @@ exports[`Spanish marketing copy root metadata is the recorded metadata 1`] = `
     "description": "Cierra tu cuenta de Stellar de forma segura. Recupera las reservas de XLM bloqueadas, quita trustlines, cancela offers abiertas y sal de tus posiciones de DeFi en Soroban en un solo flujo no custodial.",
     "images": [
       {
-        "alt": "LumenWipe: an example close plan and the XLM it recovers",
+        "alt": "LumenWipe: un plan de cierre de ejemplo y el XLM que recupera",
         "height": 630,
-        "url": "/opengraph-image",
+        "url": "/es/opengraph-image",
         "width": 1200,
       },
     ],
@@ -103,9 +103,9 @@ exports[`Spanish marketing copy landing metadata is the recorded metadata 1`] = 
     "description": "LumenWipe cierra una cuenta de Stellar de principio a fin y recupera el XLM bloqueado en sus reservas. Deshace trustlines, offers, data entries y posiciones de DeFi en Soroban, y luego envía el saldo con un merge a tu billetera. No custodial, de código abierto.",
     "images": [
       {
-        "alt": "LumenWipe: an example close plan and the XLM it recovers",
+        "alt": "LumenWipe: un plan de cierre de ejemplo y el XLM que recupera",
         "height": 630,
-        "url": "/opengraph-image",
+        "url": "/es/opengraph-image",
         "width": 1200,
       },
     ],
@@ -123,9 +123,9 @@ exports[`Spanish marketing copy landing metadata is the recorded metadata 1`] = 
     "description": "LumenWipe cierra una cuenta de Stellar de principio a fin y recupera el XLM bloqueado en sus reservas. Deshace trustlines, offers, data entries y posiciones de DeFi en Soroban, y luego envía el saldo con un merge a tu billetera. No custodial, de código abierto.",
     "images": [
       {
-        "alt": "LumenWipe: an example close plan and the XLM it recovers",
+        "alt": "LumenWipe: un plan de cierre de ejemplo y el XLM que recupera",
         "height": 630,
-        "url": "/opengraph-image",
+        "url": "/es/opengraph-image",
         "width": 1200,
       },
     ],
@@ -152,9 +152,9 @@ exports[`Spanish marketing copy faq metadata is the recorded metadata 1`] = `
     "description": "Respuestas a las preguntas comunes sobre cómo cerrar una cuenta de Stellar con LumenWipe: firma no custodial, irreversibilidad, cierres hacia exchanges, DeFi en Soroban, billeteras compatibles y sesiones que puedes retomar.",
     "images": [
       {
-        "alt": "LumenWipe: an example close plan and the XLM it recovers",
+        "alt": "LumenWipe: un plan de cierre de ejemplo y el XLM que recupera",
         "height": 630,
-        "url": "/opengraph-image",
+        "url": "/es/opengraph-image",
         "width": 1200,
       },
     ],
@@ -170,9 +170,9 @@ exports[`Spanish marketing copy faq metadata is the recorded metadata 1`] = `
     "description": "Respuestas a las preguntas comunes sobre cómo cerrar una cuenta de Stellar con LumenWipe: firma no custodial, irreversibilidad, cierres hacia exchanges, DeFi en Soroban, billeteras compatibles y sesiones que puedes retomar.",
     "images": [
       {
-        "alt": "LumenWipe: an example close plan and the XLM it recovers",
+        "alt": "LumenWipe: un plan de cierre de ejemplo y el XLM que recupera",
         "height": 630,
-        "url": "/opengraph-image",
+        "url": "/es/opengraph-image",
         "width": 1200,
       },
     ],
@@ -199,9 +199,9 @@ exports[`Spanish marketing copy security metadata is the recorded metadata 1`] =
     "description": "Cómo LumenWipe mantiene tu clave en tu navegador, qué arma su API, qué verifica tu navegador antes de que firmes, y las dos claves del servidor y qué puede firmar cada una.",
     "images": [
       {
-        "alt": "LumenWipe: an example close plan and the XLM it recovers",
+        "alt": "LumenWipe: un plan de cierre de ejemplo y el XLM que recupera",
         "height": 630,
-        "url": "/opengraph-image",
+        "url": "/es/opengraph-image",
         "width": 1200,
       },
     ],
@@ -217,9 +217,9 @@ exports[`Spanish marketing copy security metadata is the recorded metadata 1`] =
     "description": "Cómo LumenWipe mantiene tu clave en tu navegador, qué arma su API, qué verifica tu navegador antes de que firmes, y las dos claves del servidor y qué puede firmar cada una.",
     "images": [
       {
-        "alt": "LumenWipe: an example close plan and the XLM it recovers",
+        "alt": "LumenWipe: un plan de cierre de ejemplo y el XLM que recupera",
         "height": 630,
-        "url": "/opengraph-image",
+        "url": "/es/opengraph-image",
         "width": 1200,
       },
     ],
@@ -246,9 +246,9 @@ exports[`Spanish marketing copy how it works metadata is the recorded metadata 1
     "description": "Cómo LumenWipe cierra una cuenta de Stellar: un plan determinista y ordenado, simulación y confirmación en cada paso, el flujo de relay para exchanges centralizados y sesiones reanudables que se concilian con el estado on-chain.",
     "images": [
       {
-        "alt": "LumenWipe: an example close plan and the XLM it recovers",
+        "alt": "LumenWipe: un plan de cierre de ejemplo y el XLM que recupera",
         "height": 630,
-        "url": "/opengraph-image",
+        "url": "/es/opengraph-image",
         "width": 1200,
       },
     ],
@@ -264,9 +264,9 @@ exports[`Spanish marketing copy how it works metadata is the recorded metadata 1
     "description": "Cómo LumenWipe cierra una cuenta de Stellar: un plan determinista y ordenado, simulación y confirmación en cada paso, el flujo de relay para exchanges centralizados y sesiones reanudables que se concilian con el estado on-chain.",
     "images": [
       {
-        "alt": "LumenWipe: an example close plan and the XLM it recovers",
+        "alt": "LumenWipe: un plan de cierre de ejemplo y el XLM que recupera",
         "height": 630,
-        "url": "/opengraph-image",
+        "url": "/es/opengraph-image",
         "width": 1200,
       },
     ],

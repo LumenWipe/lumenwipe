@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { INK } from "@/brand/tokens";
 import { LOCALE_TAGS, type Locale } from "@/lib/i18n/locale";
 import { SITE } from "@/lib/i18n/messages/site";
-import { SHARE_IMAGE, SITE_NAME } from "@/lib/site/pages";
+import { shareImageFor, SITE_NAME } from "@/lib/site/pages";
 import { siteOrigin } from "@/lib/site/url";
 
 /** The root layout's viewport: the browser chrome takes the ink. */
@@ -29,13 +29,13 @@ export function rootMetadata(locale: Locale): Metadata {
       siteName: SITE_NAME,
       type: "website",
       locale: LOCALE_TAGS[locale].openGraph,
-      images: [SHARE_IMAGE],
+      images: [shareImageFor(locale)],
     },
     twitter: {
       card: "summary_large_image",
       title: COPY.defaultTitle,
       description: COPY.description,
-      images: [SHARE_IMAGE],
+      images: [shareImageFor(locale)],
     },
     icons: {
       icon: [

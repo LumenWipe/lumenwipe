@@ -44,8 +44,7 @@ function findPost(slug: string, locale: Locale): Post | null {
   }
 }
 
-/** The metadata of the post at `slug` in `locale`, with its other language when it has one. A
- *  translation shares its English post's share image. */
+/** The metadata of the post at `slug` in `locale`, with its other language when it has one. */
 export function postMetadata(
   locale: Locale,
   slug: string,
@@ -53,7 +52,6 @@ export function postMetadata(
 ): Metadata {
   const post = findPost(slug, locale);
   if (!post) return {};
-  const image = locale === "en" ? post : getPost(slug);
   return {
     ...pageMetadata(
       {
@@ -61,7 +59,7 @@ export function postMetadata(
         locale,
         title: post.title,
         description: post.description,
-        shareImage: postShareImage(slug, image.title),
+        shareImage: postShareImage(slug, post.title, locale),
         blogFeed: locale === "en",
         openGraph: {
           type: "article",
