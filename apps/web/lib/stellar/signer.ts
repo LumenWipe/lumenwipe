@@ -1,5 +1,6 @@
 import { Keypair, Networks, TransactionBuilder } from "@stellar/stellar-sdk";
 import type { Network } from "@/config/networks";
+import { toHex } from "@/lib/stellar/hex";
 import { submissionValidUntil } from "@/lib/stellar/submission";
 import { signTimeoutMs, startSignTimeout, type SignTimer } from "@/lib/stellar/wallet-timeout";
 
@@ -70,18 +71,39 @@ export class SignerReleasedError extends Error {
 /** The wallet kit's id for WalletConnect, whose wallet answers from another device. */
 export const WALLET_CONNECT_WALLET_ID = "wallet_connect";
 
+/** The wallet kit's id for Ledger, which signs on a device over WebUSB. */
+export const LEDGER_WALLET_ID = "LEDGER";
+
+/**
+ * The largest signature base a Ledger is asked to show in full (`nonBlindTx`). The Stellar app
+ * buffers at most 4 KiB of it on a Nano X and 8 KiB on the other models; above the smaller of the
+ * two, it is signed by hash where the screen shows the hash to compare.
+ */
+export const LEDGER_CLEAR_SIGNING_MAX_BYTES = 4096;
+
+/** What a hardware wallet's library said about a failure: the device's status word, when it sent
+ *  one, and the library's error class name. */
+export interface DeviceErrorDetail {
+  status: number | null;
+  name: string | null;
+}
+
 /**
  * A wallet refused or failed to sign. Thrown only by `WalletKitSigner`, so a timeout, a network
  * failure or anything else outside the wallet is never read as one. `code` is the wallet kit's,
  * which normalizes every wallet's error to it: -1 internal, -2 external, -3 unsupported or
  * domain-specific, -4 rejected by the user. The wallet's own text is kept as the message for
- * debugging and is never shown.
+ * debugging and is never shown. A Ledger's failures reach the app unparsed, so `device` keeps the
+ * status word and class name its library gave, and `hashSigningNext` says the next attempt will
+ * be signed by hash because the device could not show this one.
  */
 export class WalletSigningError extends Error {
   constructor(
     readonly code: number,
     readonly walletId: string | null,
-    walletMessage: string
+    walletMessage: string,
+    readonly device: DeviceErrorDetail = { status: null, name: null },
+    readonly hashSigningNext = false
   ) {
     super(walletMessage);
     this.name = "WalletSigningError";
@@ -189,24 +211,88 @@ export function otherNetworkSignedFor(
   return KNOWN_PASSPHRASES.find(verifiesFor) ?? null;
 }
 
+/** The status word a Ledger app answers with when the user rejects the request on the device. */
+const DEVICE_DENIED = 0x6985;
+
+/** A Ledger status word: a whole number of at most two bytes. */
+function statusWord(value: unknown): number | null {
+  return typeof value === "number" && Number.isInteger(value) && value > 0 && value <= 0xffff
+    ? value
+    : null;
+}
+
+/**
+ * The status word and class name a device library put on an error. `@ledgerhq/errors` sets
+ * `statusCode` on a `TransportStatusError`; `@ledgerhq/hw-app-str` rethrows some of those as its
+ * own classes, with the original as `cause`.
+ */
+function deviceDetailOf(thrown: object): DeviceErrorDetail {
+  const cause = (thrown as { cause?: unknown }).cause;
+  const name = (thrown as { name?: unknown }).name;
+  return {
+    status:
+      statusWord((thrown as { statusCode?: unknown }).statusCode) ??
+      (typeof cause === "object" && cause !== null
+        ? statusWord((cause as { statusCode?: unknown }).statusCode)
+        : null),
+    name: typeof name === "string" && name !== "Error" ? name : null,
+  };
+}
+
 /** The kit's own reading of a wallet error (`parseError` in the kit): a nested `error.code`, then
- *  `code`, else -1. */
+ *  `code`, else -1, with any device detail kept. */
 function walletErrorOf(thrown: unknown, walletId: string | null): WalletSigningError {
   const outer = typeof thrown === "object" && thrown !== null ? thrown : {};
   const inner = (outer as { error?: unknown }).error;
   const source = typeof inner === "object" && inner !== null ? inner : outer;
   const code = (source as { code?: unknown }).code;
   const message = (source as { message?: unknown }).message;
+  const device = deviceDetailOf(outer);
+  // A refusal on the device is the user's, the kit's -4, though its library throws it unparsed.
+  const refused =
+    walletId === LEDGER_WALLET_ID &&
+    (device.status === DEVICE_DENIED || device.name === "StellarUserRefusedError");
   return new WalletSigningError(
-    typeof code === "number" && Number.isFinite(code) && code !== 0 ? code : -1,
+    refused ? -4 : typeof code === "number" && Number.isFinite(code) && code !== 0 ? code : -1,
     walletId,
-    typeof message === "string" ? message : typeof thrown === "string" ? thrown : ""
+    typeof message === "string" ? message : typeof thrown === "string" ? thrown : "",
+    device
   );
+}
+
+/** Status words of a Stellar app that could not show a transaction: too large (0xb004) or one it
+ *  cannot parse (0xb005), and the class names `@ledgerhq/hw-app-str` gives them. */
+const CANNOT_SHOW_STATUS: ReadonlySet<number> = new Set([0xb004, 0xb005]);
+const CANNOT_SHOW_NAMES: ReadonlySet<string> = new Set([
+  "StellarDataTooLargeError",
+  "StellarDataParsingFailedError",
+]);
+
+/** Whether a device refused to show a transaction it was asked to sign in full. */
+export function deviceCannotShow(device: DeviceErrorDetail): boolean {
+  return (
+    (device.status !== null && CANNOT_SHOW_STATUS.has(device.status)) ||
+    (device.name !== null && CANNOT_SHOW_NAMES.has(device.name))
+  );
+}
+
+/** The kit's signing options a wallet-kit-shaped signing function takes. */
+export interface KitSignOptions {
+  networkPassphrase: string;
+  address: string;
+  /** Ledger only: true shows the whole transaction on the device, false signs its hash. */
+  nonBlindTx?: boolean;
 }
 
 export interface WalletKitSignerOptions {
   /** The kit's id of the wallet in use, e.g. `freighter` or `wallet_connect`. */
   walletId?: string | null;
+  /**
+   * Whether the screen asking for this signature shows the transaction hash to compare with a
+   * device's. Only then may a Ledger sign by hash; without it, a Ledger is only ever asked to show
+   * the whole transaction.
+   */
+  fingerprintShown?: boolean;
   /** Starts the signing timeout. Injected in tests. */
   startTimeout?: (ms: number) => SignTimer;
   /** The clock the validity window is read against. Injected in tests. */
@@ -227,8 +313,12 @@ export interface WalletKitSignerOptions {
  */
 export class WalletKitSigner implements TransactionSigner {
   readonly walletId: string | null;
+  readonly fingerprintShown: boolean;
   private openPrompt: Promise<void> | null = null;
   private lastMismatch: string | null = null;
+  /** The hash of the one transaction this device could not show in full, which the user's retry
+   *  of it signs by hash; null when there is none. */
+  private hashSigningFor: string | null = null;
   private readonly startTimeout: (ms: number) => SignTimer;
   private readonly now: () => number;
 
@@ -236,11 +326,12 @@ export class WalletKitSigner implements TransactionSigner {
     public readonly publicKey: string,
     private readonly signWithKit: (
       xdr: string,
-      opts: { networkPassphrase: string; address: string }
+      opts: KitSignOptions
     ) => Promise<{ signedTxXdr: string; signerAddress?: string }>,
     options: WalletKitSignerOptions = {}
   ) {
     this.walletId = options.walletId ?? null;
+    this.fingerprintShown = options.fingerprintShown ?? false;
     this.startTimeout = options.startTimeout ?? startSignTimeout;
     this.now = options.now ?? Date.now;
   }
@@ -259,12 +350,47 @@ export class WalletKitSigner implements TransactionSigner {
     return this.lastMismatch;
   }
 
+  /**
+   * For a Ledger, whether to show the whole transaction on the device (`nonBlindTx`) rather than
+   * sign its hash; undefined for any other wallet. Shown in full unless the screen shows the hash
+   * to compare and the transaction is too large for every model, or it is the very transaction
+   * the device could not show last time. Read before the prompt, so a fallback only ever applies
+   * to a later attempt the user starts, and only to that transaction.
+   */
+  private clearSigning(xdr: string, networkPassphrase: string): boolean | undefined {
+    if (this.walletId !== LEDGER_WALLET_ID) return undefined;
+    if (!this.fingerprintShown) return true;
+    const tx = TransactionBuilder.fromXdr(xdr, networkPassphrase);
+    if (this.hashSigningFor === toHex(tx.hash())) return false;
+    return tx.signatureBase().length <= LEDGER_CLEAR_SIGNING_MAX_BYTES;
+  }
+
+  /** A Ledger failure that leaves the next attempt to sign by hash, where that is allowed. */
+  private walletError(
+    thrown: unknown,
+    nonBlindTx: boolean | undefined,
+    xdr: string,
+    networkPassphrase: string
+  ): Error {
+    // Found before the wallet was asked (see walletKitSigner), so it is not the wallet's failure.
+    if (thrown instanceof WalletNotUsableError) return thrown;
+    const err = walletErrorOf(thrown, this.walletId);
+    if (nonBlindTx !== true || !this.fingerprintShown || !deviceCannotShow(err.device)) return err;
+    this.hashSigningFor = toHex(TransactionBuilder.fromXdr(xdr, networkPassphrase).hash());
+    return new WalletSigningError(err.code, err.walletId, err.message, err.device, true);
+  }
+
   async sign(xdr: string, networkPassphrase: string): Promise<string> {
+    const nonBlindTx = this.clearSigning(xdr, networkPassphrase);
     const timeoutMs = signTimeoutMs(submissionValidUntil(xdr, networkPassphrase), this.now());
     const timer = this.startTimeout(timeoutMs);
+    const opts: KitSignOptions =
+      nonBlindTx === undefined
+        ? { networkPassphrase, address: this.publicKey }
+        : { networkPassphrase, address: this.publicKey, nonBlindTx };
     // Through a then(), so a kit that throws before returning a promise is typed the same way.
     const answer = Promise.resolve()
-      .then(() => this.signWithKit(xdr, { networkPassphrase, address: this.publicKey }))
+      .then(() => this.signWithKit(xdr, opts))
       .then(
         ({ signedTxXdr, signerAddress }) => {
           // Pre-checks, so a wallet on another account or network is named in plain words. They
@@ -279,7 +405,7 @@ export class WalletKitSigner implements TransactionSigner {
           return signedTxXdr;
         },
         (thrown: unknown) => {
-          throw walletErrorOf(thrown, this.walletId);
+          throw this.walletError(thrown, nonBlindTx, xdr, networkPassphrase);
         }
       );
     // A late failure, after the timeout won, has nobody left to hear it.

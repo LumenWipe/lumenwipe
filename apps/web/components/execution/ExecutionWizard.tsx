@@ -201,7 +201,8 @@ export default function ExecutionWizard({ network }: ExecutionWizardProps) {
   // A check of the wallet still running holds signing until it settles or times out.
   const walletHeld = activeSigner.kind === "wallet" && walletConnection.checking;
   const walletSigner = useMemo(
-    () => (usableWallet ? walletKitSigner(network, usableWallet) : null),
+    () =>
+      usableWallet ? walletKitSigner(network, usableWallet, { fingerprintShown: true }) : null,
     [usableWallet, network]
   );
   // The wallet signer the screen names, read for rendering: the held signer is only read in

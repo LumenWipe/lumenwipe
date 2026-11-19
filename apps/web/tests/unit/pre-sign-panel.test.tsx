@@ -14,6 +14,7 @@ import { XBULL_ID } from "@creit-tech/stellar-wallets-kit/modules/xbull";
 import { ALBEDO_ID } from "@creit-tech/stellar-wallets-kit/modules/albedo";
 import { RABET_ID } from "@creit-tech/stellar-wallets-kit/modules/rabet";
 import { HANA_ID } from "@creit-tech/stellar-wallets-kit/modules/hana";
+import { LEDGER_ID } from "@creit-tech/stellar-wallets-kit/modules/ledger";
 import PreSignPanel from "@/components/execution/PreSignPanel";
 import { hashFingerprint, signingPromptFor } from "@/lib/execution/signing-prompt";
 import { signingGuidance } from "@/lib/wallet-kit/signing-guidance";
@@ -106,4 +107,15 @@ test("pre-sign panel › a transaction without a merge says so, and an unreadabl
   expect(screen.queryByTestId("pre-sign-destination")).toBeNull();
   expect(screen.queryByTestId("pre-sign-operations")).toBeNull();
   expect(screen.getByTestId("pre-sign-hash").textContent).toBe(hashFingerprint("a".repeat(64)));
+});
+
+test("pre-sign panel › a Ledger is told to compare the hash on the device with the fingerprint", () => {
+  const xdr = envelope("merge");
+  render(<PreSignPanel prompt={signingPromptFor(LEDGER_ID, xdr, Networks.TESTNET, hashOf(xdr))} />);
+  const guidance = signingGuidance(LEDGER_ID);
+  expect(guidance).toContain("on your Ledger");
+  expect(guidance).toContain("If it shows a hash instead, compare it");
+  expect(guidance).toContain("start and end with the characters below");
+  expect(screen.getByText(guidance)).toBeDefined();
+  expect(screen.getByTestId("pre-sign-hash").textContent).toBe(hashFingerprint(hashOf(xdr)));
 });

@@ -2,11 +2,12 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type APIResponse, type Page } from "@playwright/test";
 import { HOMEPAGE_LINK } from "../../../config/discovery-links.mjs";
-import { SECURITY_HEADERS } from "../../../config/security-headers.mjs";
+import { SECURITY_HEADERS, SIGNING_PERMISSIONS_POLICY } from "../../../config/security-headers.mjs";
 import {
   pageScripts,
   prerenderedMarketingPages,
   scriptHash,
+  WEBUSB_PATHS,
 } from "../../../scripts/marketing-csp.mjs";
 
 // Headers do not depend on the viewport: one project is enough.
@@ -36,11 +37,13 @@ function csp(res: APIResponse): string {
   return values[0];
 }
 
-for (const path of [...MARKETING, ...NONCE_PATHS, "/api/health"]) {
+for (const path of [...new Set([...MARKETING, ...NONCE_PATHS, ...WEBUSB_PATHS]), "/api/health"]) {
   test(`${path} carries every security header exactly once`, async ({ request }) => {
     const res = await request.get(path, { maxRedirects: 0 });
     const raw = res.headersArray();
-    for (const { key, value } of SECURITY_HEADERS) {
+    const signing = WEBUSB_PATHS.includes(path);
+    for (const { key, value: base } of SECURITY_HEADERS) {
+      const value = signing && key === "Permissions-Policy" ? SIGNING_PERMISSIONS_POLICY : base;
       const values = raw.filter((h) => h.name.toLowerCase() === key.toLowerCase());
       expect(
         values.map((h) => h.value),

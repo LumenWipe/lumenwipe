@@ -118,7 +118,9 @@ function stubWalletKit(): void {
   // The real walletKitSigner refuses until the kit's code has loaded, which no test here does: a
   // connected address stands for a loaded kit, so it gets a signer, the same one per address.
   const signers = new Map<string, WalletKitSigner>();
-  spyOn(walletKitClient, "walletKitSigner").mockImplementation((network, address) => {
+  spyOn(walletKitClient, "walletKitSigner").mockImplementation((network, address, options) => {
+    // The close shows the hash fingerprint beside every wallet prompt (PreSignPanel).
+    expect(options).toEqual({ fingerprintShown: true });
     const key = `${network}|${address}`;
     const signer =
       signers.get(key) ??

@@ -82,6 +82,19 @@ run (`beforeSigning`), so a wallet that went stale or changed network since the 
 These are pre-checks; the approved-hash, own-signature and weight checks
 in `useCloseExecution` stay the authority.
 
+A Ledger signs through the kit's Ledger module over WebUSB, which the `Permissions-Policy` opens to this origin
+on the network routes and `/cosign` only (`apps/web/config/security-headers.mjs`; the built output is checked by
+`scripts/marketing-csp.mjs check-output`). The module signs the exact envelope it is handed, after `verify()`,
+either in full (`nonBlindTx`, the device shows every operation) or by its hash. A blind hash signature is the
+residual Tampering risk on this path: the device shows only 64 hex characters. `WalletKitSigner` asks for a
+full display whenever the signature base fits the smallest Stellar app buffer (4 KiB), and signs by hash only on
+a screen that shows the hash's first and last eight characters beside the prompt with an instruction to compare
+them on the device (the close flow's pre-sign panel and the co-signing station), and only on an attempt the user
+starts. Revoking an allowance shows no hash, so it is never signed by hash. The kit signs at the derivation path
+it stored for the account, without reading the key back; a device holding another seed is caught inside the kit
+when the signature does not verify for the account, and in the close flow by the own-signature check as well
+(`apps/web/tests/unit/ledger-signing.test.ts`).
+
 ## 3. Surface 2: the client-side session layer
 
 `apps/web/store/demolish.ts` (the `DemolishPhase` state machine), `apps/web/lib/session/store.ts` (the
