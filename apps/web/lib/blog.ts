@@ -129,6 +129,23 @@ export function minutesToRead(content: string): number {
   return Math.ceil(Number(readingTime(content).minutes.toFixed(2)));
 }
 
+const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/** The slug of the post file `file` in `locale`: its name, which must be lowercase letters and
+ *  digits in words joined by single hyphens, or the build fails naming the file. The slug becomes
+ *  part of every URL and link to the post, so it is returned URI-encoded: a valid slug is left as
+ *  it is, and no path built from it can carry markup. */
+export function postSlug(file: string, locale: Locale = "en"): string {
+  const name = file.replace(/\.mdx$/, "");
+  if (!SLUG.test(name)) {
+    const where = locale === "en" ? file : `${locale}/${file}`;
+    throw new Error(
+      `Post file "${where}" has an invalid name: use lowercase letters and digits joined by single hyphens`
+    );
+  }
+  return encodeURIComponent(name);
+}
+
 function readPublishedPosts(locale: Locale = "en"): Post[] {
   const dir = contentDir(locale);
   if (!fs.existsSync(dir)) return [];
@@ -137,7 +154,7 @@ function readPublishedPosts(locale: Locale = "en"): Post[] {
     .filter((f) => f.endsWith(".mdx"))
     .sort()
     .flatMap((file) => {
-      const slug = file.replace(/\.mdx$/, "");
+      const slug = postSlug(file, locale);
       const { data, content } = matter(fs.readFileSync(path.join(dir, file), "utf8"));
       if (data.draft === true) return [];
       const name = locale === "en" ? slug : `${locale}/${slug}`;

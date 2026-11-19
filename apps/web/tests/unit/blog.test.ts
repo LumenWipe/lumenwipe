@@ -11,6 +11,7 @@ import {
   getPost,
   parseFrontMatter,
   PostNotFoundError,
+  postSlug,
   relatedPosts,
   resolveUpdatedAt,
   slugify,
@@ -346,5 +347,43 @@ test("extractToc › every translated post's anchors are unique ASCII", () => {
     expect(ids.length).toBeGreaterThan(0);
     expect(new Set(ids).size).toBe(ids.length);
     for (const id of ids) expect(id).toMatch(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+  }
+});
+
+test("postSlug › takes a post's slug from its file name, lowercase words joined by single hyphens", () => {
+  expect(postSlug("how-do-i-remove-a-trustline-on-stellar.mdx")).toBe(
+    "how-do-i-remove-a-trustline-on-stellar"
+  );
+  expect(postSlug("phase-0-launch.mdx", "es")).toBe("phase-0-launch");
+  for (const file of [
+    "Bad-Name.mdx",
+    "bad_name.mdx",
+    "bad--name.mdx",
+    "-bad.mdx",
+    "bad-.mdx",
+    "qué.mdx",
+    'x"><script>.mdx',
+    "javascript:alert(1).mdx",
+    ".mdx",
+  ]) {
+    expect(() => postSlug(file)).toThrow(`Post file "${file}" has an invalid name`);
+  }
+  expect(() => postSlug("Bad.mdx", "es")).toThrow('Post file "es/Bad.mdx" has an invalid name');
+});
+
+test("getAllPostMetas › a post file with an invalid name fails the build by name, in either locale", () => {
+  const front = `---\ntitle: "Bad"\ndescription: "Used only by blog.test.ts."\npublishedAt: "2026-06-02"\ncategory: "Guides"\ntags: ["fixture"]\n---\n\nBody.\n`;
+  for (const [dir, locale, name] of [
+    [CONTENT_DIR, "en", "Test_Bad Name.mdx"],
+    [SPANISH_DIR, "es", "es/Test_Bad Name.mdx"],
+  ] as const) {
+    const file = path.join(dir, "Test_Bad Name.mdx");
+    fs.writeFileSync(file, front);
+    try {
+      expect(() => getAllPostMetas(locale)).toThrow(`Post file "${name}" has an invalid name`);
+      expect(() => getAllSlugs(locale)).toThrow(`Post file "${name}" has an invalid name`);
+    } finally {
+      fs.rmSync(file, { force: true });
+    }
   }
 });
