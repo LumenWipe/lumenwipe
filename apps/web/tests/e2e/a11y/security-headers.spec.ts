@@ -146,11 +146,18 @@ async function watchViolations(page: Page): Promise<() => Promise<string[]>> {
     page.evaluate(() => (window as unknown as { cspViolations: string[] }).cspViolations);
 }
 
+/** The navigation's own names per `<html lang>`, as `NAV` in lib/i18n/messages/nav.ts gives them. */
+const NAV_NAMES = {
+  en: { main: "Main", developers: "Developers" },
+  "es-419": { main: "Principal", developers: "Desarrolladores" },
+} as const;
+
 /** The Developers menu opens only once React has hydrated the marketing navigation. */
-async function expectHydrated(page: Page, path: string) {
+async function expectHydrated(page: Page, path: string, lang: keyof typeof NAV_NAMES = "en") {
+  const names = NAV_NAMES[lang];
   const developers = page
-    .getByRole("navigation", { name: "Main" })
-    .getByRole("button", { name: "Developers" });
+    .getByRole("navigation", { name: names.main })
+    .getByRole("button", { name: names.developers });
   await developers.click();
   await expect(developers, `${path} hydrated`).toHaveAttribute("aria-expanded", "true");
 }
@@ -184,7 +191,7 @@ for (const [path, lang, title] of [
     await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);
     await expect(page.locator("html")).toHaveAttribute("lang", lang);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
-    await expectHydrated(page, path);
+    await expectHydrated(page, path, lang);
     expect(await violations()).toEqual([]);
   });
 }
