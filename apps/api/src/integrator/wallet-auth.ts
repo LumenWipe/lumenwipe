@@ -1,10 +1,12 @@
-import { createHash, createHmac, timingSafeEqual } from "crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "crypto";
 import { Keypair, StrKey } from "@stellar/stellar-sdk";
 
 const CHALLENGE_TTL_SECONDS = 300;
 const CHALLENGE_WINDOW_SECONDS = 60;
 const SESSION_TTL_SECONDS = 1800;
 const SEP53_PREFIX = "Stellar Signed Message:\n";
+const SALT_BYTES = 16;
+const NONCE_LINE = /\nNonce: ([A-Za-z0-9_-]{22})\.[A-Za-z0-9_-]{43}$/;
 
 export interface Challenge {
   message: string;
@@ -44,27 +46,30 @@ function windowStart(now: Date, windowsAgo = 0): number {
   return seconds - (seconds % CHALLENGE_WINDOW_SECONDS) - windowsAgo * CHALLENGE_WINDOW_SECONDS;
 }
 
-function challengeMessage(secret: string, address: string, start: number): string {
-  const nonce = hmac(secret, "challenge", address, String(start)).toString("base64url");
-  return `LumenWipe API keys sign-in\nAddress: ${address}\nIssued: ${start}\nNonce: ${nonce}`;
+function challengeMessage(secret: string, address: string, start: number, salt: string): string {
+  const mac = hmac(secret, "challenge", address, String(start), salt).toString("base64url");
+  return `LumenWipe API keys sign-in\nAddress: ${address}\nIssued: ${start}\nNonce: ${salt}.${mac}`;
 }
 
 /**
- * Stateless SEP-53 sign-in challenge: the nonce is an HMAC of the address and a time window, so
- * the API stores nothing and any instance can verify it. Verification rebuilds the expected
- * message from the server's clock instead of reading a timestamp out of what the caller sent.
+ * SEP-53 sign-in challenge: the nonce is a random salt and an HMAC of the address, a time window
+ * and that salt, so any instance can verify it without storing it, and no two challenges are the
+ * same. Verification rebuilds the expected message from the server's clock instead of reading a
+ * timestamp out of what the caller sent; only the salt is taken from the message.
  */
 export function buildChallenge(secret: string, address: string, now: Date = new Date()): Challenge {
   const start = windowStart(now);
+  const salt = randomBytes(SALT_BYTES).toString("base64url");
   return {
-    message: challengeMessage(secret, address, start),
+    message: challengeMessage(secret, address, start, salt),
     expiresAt: new Date((start + CHALLENGE_TTL_SECONDS) * 1000).toISOString(),
   };
 }
 
 /**
- * True only if `signature` (base64) is the owner of `address` signing a still-valid challenge
- * minted by `buildChallenge`: SEP-53 is an ed25519 signature over SHA-256 of the prefixed message.
+ * When the challenge expires, if `signature` (base64) is the owner of `address` signing a
+ * still-valid challenge minted by `buildChallenge`; null otherwise. SEP-53 is an ed25519 signature
+ * over SHA-256 of the prefixed message.
  */
 export function verifyChallenge(
   secret: string,
@@ -72,21 +77,27 @@ export function verifyChallenge(
   message: string,
   signature: string,
   now: Date = new Date()
-): boolean {
+): Date | null {
+  const salt = NONCE_LINE.exec(message)?.[1];
+  if (!salt) return null;
   const windows = CHALLENGE_TTL_SECONDS / CHALLENGE_WINDOW_SECONDS;
   const received = Buffer.from(message);
-  let valid = false;
+  let issued: number | null = null;
   for (let ago = 0; ago < windows; ago++) {
-    const expected = Buffer.from(challengeMessage(secret, address, windowStart(now, ago)));
-    valid = safeEqual(received, expected) || valid;
+    const start = windowStart(now, ago);
+    const expected = Buffer.from(challengeMessage(secret, address, start, salt));
+    if (safeEqual(received, expected)) issued = start;
   }
-  if (!valid) return false;
+  if (issued === null) return null;
   const digest = createHash("sha256").update(`${SEP53_PREFIX}${message}`).digest();
   try {
-    return Keypair.fromPublicKey(address).verify(digest, Buffer.from(signature, "base64"));
+    if (!Keypair.fromPublicKey(address).verify(digest, Buffer.from(signature, "base64"))) {
+      return null;
+    }
   } catch {
-    return false;
+    return null;
   }
+  return new Date((issued + CHALLENGE_TTL_SECONDS) * 1000);
 }
 
 export function issueSession(secret: string, address: string, now: Date = new Date()): Session {

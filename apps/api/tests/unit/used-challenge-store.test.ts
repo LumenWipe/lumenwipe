@@ -4,7 +4,23 @@ import type { Firestore } from "@google-cloud/firestore";
 import {
   FirestoreUsedChallengeStore,
   InMemoryUsedChallengeStore,
+  createUsedChallengeStore,
 } from "@/integrator/used-challenge-store";
+
+describe("createUsedChallengeStore", () => {
+  test("uses Firestore whenever a project is configured, and memory only without one", () => {
+    const saved = process.env.FIRESTORE_PROJECT_ID;
+    try {
+      process.env.FIRESTORE_PROJECT_ID = "test-project";
+      expect(createUsedChallengeStore()).toBeInstanceOf(FirestoreUsedChallengeStore);
+      delete process.env.FIRESTORE_PROJECT_ID;
+      expect(createUsedChallengeStore()).toBeInstanceOf(InMemoryUsedChallengeStore);
+    } finally {
+      if (saved === undefined) delete process.env.FIRESTORE_PROJECT_ID;
+      else process.env.FIRESTORE_PROJECT_ID = saved;
+    }
+  });
+});
 
 describe("InMemoryUsedChallengeStore", () => {
   test("a challenge is claimed once until it expires", async () => {

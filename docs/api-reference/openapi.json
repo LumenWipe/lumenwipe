@@ -6692,6 +6692,7 @@
     },
     "/v1/integrator/auth/session": {
       "post": {
+        "description": "A challenge is exchanged once only; sign a new one to sign in again.",
         "operationId": "IntegratorController_session",
         "parameters": [],
         "requestBody": {
@@ -6769,7 +6770,7 @@
             }
           },
           "401": {
-            "description": "The signed challenge is invalid or has expired.",
+            "description": "The signed challenge is invalid, used or has expired.",
             "content": {
               "application/json": {
                 "schema": {
@@ -6936,7 +6937,7 @@
             }
           },
           "503": {
-            "description": "Self-serve key management is not configured.",
+            "description": "Self-serve key management is not configured, or sign-in is busy.",
             "content": {
               "application/json": {
                 "schema": {
@@ -6953,7 +6954,8 @@
                             "code": {
                               "type": "string",
                               "enum": [
-                                "integrator_api_not_configured"
+                                "integrator_api_not_configured",
+                                "service_unavailable"
                               ]
                             }
                           }
