@@ -18,6 +18,8 @@ release is cut.
   negative, so a check run with no balance read (`nativeBalance: "0"`) accepted any forward. A new
   accepted vector verifies a round ahead of the merge with no balance read, and its rejected
   mutation adds the hand-off to it.
+- The bundled list of networks now comes from one module that the web app's routing also reads.
+  The networks themselves (`mainnet`, `testnet`) and what `verify()` accepts are unchanged.
 
 ## [0.6.0] - 2026-11-19
 
