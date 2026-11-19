@@ -108,6 +108,7 @@ export const DICTIONARY_COPY = [
   "components/marketing/FaqAccordion.tsx",
   "components/marketing/HeroAccountInput.tsx",
   "components/marketing/HeroConsole.tsx",
+  "components/marketing/LandingPage.tsx",
   "components/marketing/LanguageSwitch.tsx",
   "components/marketing/MarketingFooter.tsx",
   "components/marketing/MarketingNav.tsx",
@@ -123,6 +124,7 @@ export const DICTIONARY_COPY = [
   "components/marketing/stats/RecentFeed.tsx",
   "components/marketing/stats/StatsClient.tsx",
   "components/marketing/stats/StatsHero.tsx",
+  "lib/api/estimate-client.ts",
   "lib/site/navigation.ts",
   "lib/site/numbers.ts",
   "lib/site/pages.ts",
@@ -130,6 +132,7 @@ export const DICTIONARY_COPY = [
   "lib/site/status.ts",
   "lib/site/structured-data.ts",
   "lib/site/trust.ts",
+  "lib/utils/validation.ts",
 ];
 
 const COPY_MESSAGE =

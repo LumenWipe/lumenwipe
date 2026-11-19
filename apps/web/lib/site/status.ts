@@ -4,7 +4,7 @@ import {
   EXIT_FUNCTIONS,
   isContractRegistryUsable,
 } from "@/lib/contract-registry";
-import { SITE_LOCALE } from "@/lib/i18n/locale";
+import { LOCALES, SITE_LOCALE, type Locale } from "@/lib/i18n/locale";
 import { SITE } from "@/lib/i18n/messages/site";
 import { PROTOCOL_LABELS } from "@/lib/plan/describe-position";
 import type { DefiPosition } from "@/types/account";
@@ -12,9 +12,12 @@ import type { DefiPosition } from "@/types/account";
 /** Live means available on mainnet; testnet-only means it runs on testnet and not yet on mainnet. */
 export type SiteStatus = "live" | "testnet-only" | "soon";
 
-const COPY = SITE[SITE_LOCALE];
+/** Each status as a reader of `locale` sees it. */
+export function statusLabels(locale: Locale): Record<SiteStatus, string> {
+  return SITE[locale].statusLabel;
+}
 
-export const STATUS_LABEL: Record<SiteStatus, string> = COPY.statusLabel;
+export const STATUS_LABEL: Record<SiteStatus, string> = statusLabels(SITE_LOCALE);
 
 export type ExitProtocol = DefiPosition["protocol"];
 
@@ -69,8 +72,11 @@ export function protocolsWithStatus(status: SiteStatus): readonly SiteProtocol[]
 export const LIVE_EXIT_PROTOCOLS = protocolsWithStatus("live");
 
 /** "A, B and C". */
-export function listNames(items: readonly { name: string }[]): string {
-  return COPY.list(items.map((i) => i.name));
+export function listNames(
+  items: readonly { name: string }[],
+  locale: Locale = SITE_LOCALE
+): string {
+  return SITE[locale].list(items.map((i) => i.name));
 }
 
 type FeatureState = Pick<SiteFeature, "id" | "status"> & { href?: string };
@@ -95,30 +101,46 @@ const FEATURE_STATES: readonly FeatureState[] = [
   { id: "deterministic-plan", status: "live" },
 ];
 
-export const FEATURES: readonly SiteFeature[] = FEATURE_STATES.map(({ id, status, href }) => {
-  const { title, noun, summary, linkLabel } = COPY.features[id];
-  if (href && !linkLabel) throw new Error(`Feature ${id} links to ${href} with no label`);
-  return {
-    id,
-    title,
-    noun,
-    summary,
-    status,
-    ...(href && linkLabel ? { link: { href, label: linkLabel } } : {}),
-  };
-});
+function featuresIn(locale: Locale): readonly SiteFeature[] {
+  return FEATURE_STATES.map(({ id, status, href }) => {
+    const { title, noun, summary, linkLabel } = SITE[locale].features[id];
+    if (href && !linkLabel) throw new Error(`Feature ${id} links to ${href} with no label`);
+    return {
+      id,
+      title,
+      noun,
+      summary,
+      status,
+      ...(href && linkLabel ? { link: { href, label: linkLabel } } : {}),
+    };
+  });
+}
 
-export function feature(id: FeatureId): SiteFeature {
-  const found = FEATURES.find((f) => f.id === id);
+const FEATURES_BY_LOCALE = Object.fromEntries(
+  LOCALES.map((locale) => [locale, featuresIn(locale)])
+) as Record<Locale, readonly SiteFeature[]>;
+
+/** Every feature with its status, named for a reader of `locale`. */
+export function features(locale: Locale): readonly SiteFeature[] {
+  return FEATURES_BY_LOCALE[locale];
+}
+
+export const FEATURES: readonly SiteFeature[] = features(SITE_LOCALE);
+
+export function feature(id: FeatureId, locale: Locale = SITE_LOCALE): SiteFeature {
+  const found = features(locale).find((f) => f.id === id);
   if (!found) throw new Error(`Unknown feature ${id}`);
   return found;
 }
 
 /** What runs on testnet but not yet on mainnet, as one sentence; "" when nothing does. */
-export function testnetOnlySentence(): string {
+export function testnetOnlySentence(locale: Locale = SITE_LOCALE): string {
+  const copy = SITE[locale];
   const names = [
-    ...FEATURES.filter((f) => f.status === "testnet-only").map((f) => f.noun),
-    ...protocolsWithStatus("testnet-only").map((p) => COPY.protocolExits(p.name)),
+    ...features(locale)
+      .filter((f) => f.status === "testnet-only")
+      .map((f) => f.noun),
+    ...protocolsWithStatus("testnet-only").map((p) => copy.protocolExits(p.name)),
   ];
-  return names.length === 0 ? "" : COPY.testnetOnly(names);
+  return names.length === 0 ? "" : copy.testnetOnly(names);
 }

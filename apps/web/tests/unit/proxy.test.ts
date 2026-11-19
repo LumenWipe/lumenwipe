@@ -62,3 +62,33 @@ test("the network, sign-in and 404 paths keep the nonce policy byte for byte", (
     expect(csp.replace(`'nonce-${nonce}'`, "'nonce-NONCE'"), path).toBe(golden);
   }
 });
+
+/** The locale header proxy.ts forwards to the page for `url`, sent with `inbound` if given. */
+function forwardedLocale(url: string, inbound?: string): string | null {
+  const headers = inbound ? { "x-lumenwipe-locale": inbound } : undefined;
+  const response = proxy(new NextRequest(url, { headers }));
+  return response.headers.get("x-middleware-request-x-lumenwipe-locale");
+}
+
+test("the locale header names Spanish for /es and every path under it, English for the rest", () => {
+  const cases: [string, string][] = [
+    ["/es", "es"],
+    ["/es/nope", "es"],
+    ["/es/x/y/z", "es"],
+    ["/esx", "en"],
+    ["/ES/nope", "en"],
+    ["/nope", "en"],
+    ["/", "en"],
+    ["/mainnet/nope", "en"],
+    ["/api/health", "en"],
+  ];
+  for (const [path, locale] of cases) {
+    expect(forwardedLocale(`https://www.lumenwipe.com${path}`), path).toBe(locale);
+  }
+});
+
+test("the locale header always overwrites the value a client sent", () => {
+  expect(forwardedLocale("https://www.lumenwipe.com/nope", "es")).toBe("en");
+  expect(forwardedLocale("https://www.lumenwipe.com/es/nope", "en")).toBe("es");
+  expect(forwardedLocale("https://www.lumenwipe.com/nope", "<script>")).toBe("en");
+});

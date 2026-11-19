@@ -146,11 +146,18 @@ async function watchViolations(page: Page): Promise<() => Promise<string[]>> {
     page.evaluate(() => (window as unknown as { cspViolations: string[] }).cspViolations);
 }
 
+/** The navigation's own names per `<html lang>`, as `NAV` in lib/i18n/messages/nav.ts gives them. */
+const NAV_NAMES = {
+  en: { main: "Main", developers: "Developers" },
+  "es-419": { main: "Principal", developers: "Desarrolladores" },
+} as const;
+
 /** The Developers menu opens only once React has hydrated the marketing navigation. */
-async function expectHydrated(page: Page, path: string) {
+async function expectHydrated(page: Page, path: string, lang: keyof typeof NAV_NAMES = "en") {
+  const names = NAV_NAMES[lang];
   const developers = page
-    .getByRole("navigation", { name: "Main" })
-    .getByRole("button", { name: "Developers" });
+    .getByRole("navigation", { name: names.main })
+    .getByRole("button", { name: names.developers });
   await developers.click();
   await expect(developers, `${path} hydrated`).toHaveAttribute("aria-expanded", "true");
 }
@@ -165,7 +172,15 @@ for (const path of ["/", "/faq", "/registry", "/blog", "/blog/account-merge-on-s
   });
 }
 
-for (const path of ["/x/y/z", "/mainnet/nope", "/foo", "/blog/nope", "/es/nope"]) {
+for (const [path, lang, title] of [
+  ["/x/y/z", "en", /This page has\s*been closed/],
+  ["/mainnet/nope", "en", /This page has\s*been closed/],
+  ["/foo", "en", /This page has\s*been closed/],
+  ["/blog/nope", "en", /This page has\s*been closed/],
+  ["/esx", "en", /This page has\s*been closed/],
+  ["/es/nope", "es-419", /Esta página\s*ya se cerró/],
+  ["/es/x/y", "es-419", /Esta página\s*ya se cerró/],
+] as const) {
   test(`${path} answers 404 under the nonce policy, noindex, and hydrates`, async ({ page }) => {
     const violations = await watchViolations(page);
     const res = await page.goto(path);
@@ -174,8 +189,9 @@ for (const path of ["/x/y/z", "/mainnet/nope", "/foo", "/blog/nope", "/es/nope"]
       /script-src 'self' 'nonce-[A-Za-z0-9+/=]+' 'strict-dynamic'(;|$)/
     );
     await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText(/This page has\s*been closed/);
-    await expectHydrated(page, path);
+    await expect(page.locator("html")).toHaveAttribute("lang", lang);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
+    await expectHydrated(page, path, lang);
     expect(await violations()).toEqual([]);
   });
 }

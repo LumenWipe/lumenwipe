@@ -42,4 +42,41 @@ const en = {
 
 export type NotFoundCopy = typeof en;
 
-export const NOT_FOUND: Record<Locale, NotFoundCopy> = { en, es: en };
+const es: NotFoundCopy = {
+  metadata: {
+    title: "404 - Página no encontrada",
+    description: "Esta página no existe en el ledger.",
+  },
+  eyebrow: "consulta al ledger · error_code: 404",
+  consoleTitle: "lumenwipe · account-lookup",
+  command: "lw analyze --network mainnet ",
+  commandTarget: "esta-pagina",
+  steps: {
+    route: "Resolviendo la ruta",
+    ledger: "Consultando el estado del ledger",
+    account: "Cuenta encontrada",
+  },
+  failure: " - account_not_found",
+  stats: {
+    subentries: "Elementos",
+    balance: "Saldo en XLM",
+    statusLabel: "Estado",
+    merged: "CERRADA",
+  },
+  infoLabel: "info ",
+  info: "Esta cuenta ya se cerró. No queda nada en el ledger.",
+  title: ["Esta página", "ya se cerró."],
+  lede: ["Sin activos. Sin saldo. Sin elementos en reserva.", "Parece que esta ruta ya se cerró."],
+  home: "Volver al inicio",
+  openApp: "Abrir la app",
+  nextLabel: "Adónde ir ahora",
+  next: {
+    guides: "Guías",
+    howItWorks: "Cómo funciona",
+    playground: "Probar el playground",
+  },
+  followedLink: "¿Llegaste aquí desde un enlace?",
+  reportLink: "Reporta un enlace roto",
+};
+
+export const NOT_FOUND: Record<Locale, NotFoundCopy> = { en, es };

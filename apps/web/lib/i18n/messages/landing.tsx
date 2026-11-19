@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { formatNumber } from "@/lib/i18n/format";
 import type { Locale } from "@/lib/i18n/locale";
 
 const en = {
@@ -72,4 +73,73 @@ const en = {
 
 export type LandingCopy = typeof en;
 
-export const LANDING: Record<Locale, LandingCopy> = { en, es: en };
+const es: LandingCopy = {
+  description: (exchangeLive: boolean): string =>
+    `LumenWipe cierra una cuenta de Stellar de principio a fin y recupera el XLM bloqueado en sus reservas. Deshace trustlines, offers, data entries y posiciones de DeFi en Soroban, y luego envía el saldo con un merge a ${exchangeLive ? "tu billetera o exchange" : "tu billetera"}. No custodial, de código abierto.`,
+  hero: {
+    label: "Recupera tu XLM bloqueado",
+    headline: (accent: (text: string) => ReactNode): ReactNode => (
+      <>Cierra la cuenta. Quédate con los {accent("lumens.")}</>
+    ),
+    openApp: "Abrir la app",
+    howItWorks: "Ver cómo funciona",
+  },
+  stats: {
+    asOf: (date: string, source: ReactNode): ReactNode => (
+      <>
+        {"Dato de "}
+        {date}
+        {" ·"} {source}
+      </>
+    ),
+    source: "Fuente: ",
+    registry: "Del registro de contratos",
+  },
+  problem: {
+    eyebrow: "El problema",
+    heading: "Tus lumens están bloqueados, y la salida es un laberinto.",
+    body: "Toda cuenta de Stellar mantiene XLM en reserva: 1 XLM por la cuenta, más 0.5 por cada trustline, offer, data entry y signer. Esa reserva solo se recupera cerrando la cuenta, y cerrarla de forma limpia es más difícil de lo que parece.",
+    reserve: "Reserva bloqueada",
+    example: "Cuenta de ejemplo",
+    total: "Total bloqueado",
+    truths: {
+      reverts: {
+        title: "Un solo error y todo se revierte",
+        body: "Un solo elemento sobrante hace fallar el merge final. Cada offer, posición, activo y elemento tiene que resolverse antes, en el orden correcto.",
+      },
+      exchanges: {
+        title: "Los exchanges no aceptan un merge",
+        body: (minimum: number): string =>
+          `Ningún exchange importante acepta un merge de cuenta como depósito. Si en su lugar envías tu XLM a un exchange con un pago, el mínimo de ${formatNumber("es", minimum)} XLM queda bloqueado en la cuenta.`,
+      },
+      defi: {
+        title: "Las posiciones de DeFi se esconden fuera de la cuenta",
+        body: "Un préstamo en Blend, la liquidez en Aquarius o una posición en Soroswap viven en el contrato del protocolo. Si haces el merge de la cuenta con una de ellas abierta, los fondos quedan varados allí, así que primero hay que salir de cada una a través de su propio contrato.",
+      },
+    },
+  },
+  capabilities: {
+    eyebrow: "Lo que obtienes",
+    heading: "Hecho para la realidad desordenada de las cuentas reales.",
+    liveExits: "Salidas de protocolos disponibles en mainnet",
+  },
+  faq: {
+    stillCurious: (docs: ReactNode): ReactNode => (
+      <>
+        {"¿Todavía tienes dudas?"} {docs}.
+      </>
+    ),
+    docs: "Lee la documentación completa",
+  },
+  cta: {
+    heading: "Recupera el XLM que lleva tiempo bloqueado.",
+    body: "Prueba todo el flujo en testnet sin arriesgar fondos y luego cambia a mainnet para el cierre real.",
+    openApp: "Abrir la app",
+    testnet: "Probar en testnet",
+    noSignup: "Sin registro",
+    signedInBrowser: "Firmado en tu navegador",
+    openSource: "Código abierto",
+  },
+};
+
+export const LANDING: Record<Locale, LandingCopy> = { en, es };

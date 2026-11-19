@@ -30,4 +30,33 @@ const en = {
 
 export type FooterCopy = typeof en;
 
-export const FOOTER: Record<Locale, FooterCopy> = { en, es: en };
+const es: FooterCopy = {
+  tagline:
+    "Cierra cualquier cuenta de Stellar de forma limpia y recupera el XLM bloqueado en sus reservas. No custodial, firmado en tu navegador, de código abierto.",
+  githubLabel: "GitHub",
+  columns: {
+    product: "Producto",
+    guides: "Guías",
+    developers: "Desarrolladores",
+    openSource: "Código abierto",
+  },
+  links: {
+    openApp: "Abrir la app",
+    testnet: "Probar en testnet",
+    faq: "Preguntas frecuentes",
+    stats: "Estadísticas",
+    registry: "Registro de exchanges",
+    guidesAndVideos: "Guías y videos",
+    blog: "Blog",
+    architecture: "Arquitectura",
+    securityPolicy: "Política de seguridad",
+    contributing: "Cómo contribuir",
+    license: "Licencia Apache 2.0",
+  },
+  copyright: (year: number): ReactNode => (
+    <>© {year} LumenWipe · Código abierto bajo la licencia Apache 2.0.</>
+  ),
+  promise: "No custodial · Firmado en tu navegador",
+};
+
+export const FOOTER: Record<Locale, FooterCopy> = { en, es };

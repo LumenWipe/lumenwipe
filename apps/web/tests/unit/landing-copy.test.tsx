@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import { cleanup, within } from "@testing-library/react";
-import LandingPage from "@/app/(marketing)/page";
+import EnglishLandingPage from "@/app/(marketing)/page";
+import LandingPage from "@/components/marketing/LandingPage";
 import { heroOutcome } from "@/lib/site/numbers";
 import { feature } from "@/lib/site/status";
 import { renderMarketing } from "./fixtures/marketing";
@@ -18,12 +19,12 @@ function hero(root: HTMLElement): HTMLElement {
 
 describe("landing copy", () => {
   test("names no protocol term or other tool", () => {
-    const text = renderMarketing(<LandingPage />).textContent ?? "";
+    const text = renderMarketing(<EnglishLandingPage />).textContent ?? "";
     expect(text.match(JARGON)).toBeNull();
   });
 
   test("the relay account is defined where the page first names it", () => {
-    const text = renderMarketing(<LandingPage />).textContent ?? "";
+    const text = renderMarketing(<EnglishLandingPage />).textContent ?? "";
     const definition = feature("exchange-close").summary;
     expect(definition).toMatch(/relay account receives the merge and pays the balance on/);
     expect(text.search(/relay account/i)).toBe(
@@ -32,7 +33,7 @@ describe("landing copy", () => {
   });
 
   test("the hero leads with the outcome and the recovered amount", () => {
-    const section = hero(renderMarketing(<LandingPage />));
+    const section = hero(renderMarketing(<EnglishLandingPage />));
     expect(section.textContent).toContain("Recover your locked XLM");
     expect(section.textContent).toMatch(
       /Get back the 1 XLM every account must hold,\s*plus 0.5 XLM/
@@ -50,14 +51,14 @@ describe("hero outcome line", () => {
   });
 
   test("the landing page renders the line for the registry's current DeFi status", () => {
-    const section = hero(renderMarketing(<LandingPage />));
+    const section = hero(renderMarketing(<EnglishLandingPage />));
     expect(section.textContent).toContain(heroOutcome(feature("defi-exits").status));
   });
 });
 
 describe("landing hero actions", () => {
   test("the analyzer is the only solid button", () => {
-    const section = hero(renderMarketing(<LandingPage />));
+    const section = hero(renderMarketing(<EnglishLandingPage />));
     const solid = Array.from(section.querySelectorAll("a, button")).filter((el) =>
       /(?:^|\s)bg-accent(?:\s|$)/.test(el.className)
     );
@@ -65,7 +66,7 @@ describe("landing hero actions", () => {
   });
 
   test("Open the app is a text link and the playground sits right under the input", () => {
-    const section = hero(renderMarketing(<LandingPage />));
+    const section = hero(renderMarketing(<EnglishLandingPage />));
     const open = within(section).getByRole("link", { name: "Open the app" });
     expect(open.getAttribute("href")).toBe("/mainnet");
     expect(open.className).not.toMatch(/(?:^|\s)(?:bg-|border-line-strong)/);
@@ -82,7 +83,7 @@ describe("landing hero actions", () => {
   });
 
   test("below sm the input and the button stack at full width", () => {
-    const section = hero(renderMarketing(<LandingPage />));
+    const section = hero(renderMarketing(<EnglishLandingPage />));
     const input = within(section).getByRole("textbox", { name: "Stellar account address" });
     const group = input.parentElement as HTMLElement;
     expect(group.className.split(" ")).toEqual(
@@ -90,5 +91,35 @@ describe("landing hero actions", () => {
     );
     const submit = within(section).getByRole("button", { name: "Analyze account" });
     expect(submit.className.split(" ")).toEqual(expect.arrayContaining(["w-full", "sm:w-auto"]));
+  });
+});
+
+describe("Spanish landing copy", () => {
+  // docs/contributing/localization.mdx: a protocol term stays in English, with its gloss on the
+  // page's first use.
+  const GLOSSES: [string, string][] = [
+    ["trustline", "línea de confianza con un emisor de activos"],
+    ["offer", "orden abierta en el libro de órdenes"],
+    ["data entry", "dato guardado en la cuenta"],
+    ["signer", "firmante adicional de la cuenta"],
+    ["merge", "fusión que cierra la cuenta y envía su saldo"],
+    ["relay account", "cuenta intermedia que reenvía el saldo"],
+    ["memo", "memo que identifica el depósito"],
+  ];
+
+  test("glosses each protocol term where the page first names it", () => {
+    const root = renderMarketing(<LandingPage locale="es" />).cloneNode(true) as HTMLElement;
+    root.querySelectorAll("script").forEach((el) => el.remove());
+    const text = (root.textContent ?? "").replace(/\s+/g, " ");
+    for (const [term, gloss] of GLOSSES) {
+      const first = text.search(new RegExp(`\\b${term}`));
+      expect(first, term).toBeGreaterThan(-1);
+      expect(text.slice(first + term.length), term).toStartWith(` (${gloss})`);
+    }
+  });
+
+  test("names no protocol term or other tool the English page avoids", () => {
+    const text = renderMarketing(<LandingPage locale="es" />).textContent ?? "";
+    expect(text.match(JARGON)).toBeNull();
   });
 });
