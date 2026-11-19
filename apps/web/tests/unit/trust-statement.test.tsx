@@ -35,7 +35,8 @@ const WEB = join(import.meta.dir, "..", "..");
 const ROOT = join(WEB, "..", "..");
 
 // Absolutes the architecture contradicts: the API builds every transaction, two server keys sign,
-// and the relay account is one shared account whose key the API holds.
+// the relay account is one shared account whose key the API holds, and the pages run inline scripts
+// the policy names by hash or nonce.
 const OVERCLAIMS = [
   /\b0 servers\b/i,
   /read-only backend/i,
@@ -48,6 +49,7 @@ const OVERCLAIMS = [
   /its (one|only) (signing )?key/i,
   /single-use/i,
   /generated in (your )?browser/i,
+  /no inline scripts?/i,
 ];
 
 // The same absolutes as a Spanish page would put them.
@@ -62,6 +64,7 @@ const SPANISH_OVERCLAIMS = [
   /su (única|sola) clave/i,
   /de un solo uso/i,
   /generad[ao] en (tu )?navegador/i,
+  /sin scripts? inline/i,
 ];
 
 function overclaims(text: string, patterns: readonly RegExp[] = OVERCLAIMS): string[] {
