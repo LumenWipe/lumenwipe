@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { refuseUnknownNetwork } from "@/lib/api/network-segment";
+import { LOCALE_HEADER, localeOfPath } from "@/lib/i18n/locale";
 
 // The kit's WalletConnect module (@reown/appkit/core + @walletconnect/sign-client)
 // talks to these hosts directly - verified against its source, not guessed:
@@ -17,7 +18,11 @@ export function proxy(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
   const refused = refuseUnknownNetwork(pathname);
   if (refused) return refused;
-  if (pathname.startsWith("/api/")) return NextResponse.next();
+  // Always written, so a value the client sent never reaches a page.
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set(LOCALE_HEADER, localeOfPath(pathname));
+  if (pathname.startsWith("/api/"))
+    return NextResponse.next({ request: { headers: requestHeaders } });
 
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   // Next.js's dev-mode webpack build wraps every client module in eval() for fast
@@ -45,7 +50,6 @@ export function proxy(request: NextRequest): NextResponse {
     `report-to csp`,
   ].join("; ");
 
-  const requestHeaders = new Headers(request.headers);
   requestHeaders.set("Content-Security-Policy", csp);
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });

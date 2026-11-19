@@ -165,7 +165,15 @@ for (const path of ["/", "/faq", "/registry", "/blog", "/blog/account-merge-on-s
   });
 }
 
-for (const path of ["/x/y/z", "/mainnet/nope", "/foo", "/blog/nope", "/es/nope"]) {
+for (const [path, lang, title] of [
+  ["/x/y/z", "en", /This page has\s*been closed/],
+  ["/mainnet/nope", "en", /This page has\s*been closed/],
+  ["/foo", "en", /This page has\s*been closed/],
+  ["/blog/nope", "en", /This page has\s*been closed/],
+  ["/esx", "en", /This page has\s*been closed/],
+  ["/es/nope", "es-419", /Esta página\s*ya se cerró/],
+  ["/es/x/y", "es-419", /Esta página\s*ya se cerró/],
+] as const) {
   test(`${path} answers 404 under the nonce policy, noindex, and hydrates`, async ({ page }) => {
     const violations = await watchViolations(page);
     const res = await page.goto(path);
@@ -174,7 +182,8 @@ for (const path of ["/x/y/z", "/mainnet/nope", "/foo", "/blog/nope", "/es/nope"]
       /script-src 'self' 'nonce-[A-Za-z0-9+/=]+' 'strict-dynamic'(;|$)/
     );
     await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText(/This page has\s*been closed/);
+    await expect(page.locator("html")).toHaveAttribute("lang", lang);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
     await expectHydrated(page, path);
     expect(await violations()).toEqual([]);
   });

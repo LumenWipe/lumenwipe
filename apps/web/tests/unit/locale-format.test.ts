@@ -4,7 +4,13 @@ import { join } from "node:path";
 import { formatPostDate } from "@/lib/blog-date";
 import { formatXlmDown } from "@/lib/api/estimate-client";
 import { formatDate, formatList, formatNumber, plural, TWO_DECIMALS } from "@/lib/i18n/format";
-import { LOCALE_TAGS, LOCALES, SITE_LOCALE } from "@/lib/i18n/locale";
+import {
+  localeFromHeader,
+  localeOfPath,
+  LOCALE_TAGS,
+  LOCALES,
+  SITE_LOCALE,
+} from "@/lib/i18n/locale";
 
 describe("locale-aware formatting", () => {
   test("numbers read as the en-US calls they replace", () => {
@@ -126,5 +132,23 @@ describe("the document language", () => {
     );
     expect(source).toContain("<html lang={LOCALE_TAGS[locale].html}");
     expect(source).not.toMatch(/lang="/);
+  });
+});
+
+describe("the locale of a request", () => {
+  test("a path under /es is Spanish, matched case-sensitively as the routes are", () => {
+    expect(localeOfPath("/es")).toBe("es");
+    expect(localeOfPath("/es/nope")).toBe("es");
+    for (const path of ["/", "/esx", "/es-419", "/ES", "/ES/nope", "/blog/es"]) {
+      expect(localeOfPath(path), path).toBe("en");
+    }
+  });
+
+  test("a header value names a locale only when it is one, else the site's own", () => {
+    expect(localeFromHeader("es")).toBe("es");
+    expect(localeFromHeader("en")).toBe("en");
+    for (const value of [null, "", "ES", "es-419", "fr", "es "]) {
+      expect(localeFromHeader(value), String(value)).toBe(SITE_LOCALE);
+    }
   });
 });

@@ -17,13 +17,16 @@ function isPhoneWidth(page: Page): boolean {
   return (page.viewportSize()?.width ?? 0) < DESKTOP;
 }
 
-test("the home page carries no noindex", async ({ page }) => {
-  await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-  await expect(page.locator('meta[name="robots"][content*="noindex"]')).toHaveCount(0);
-});
+for (const path of ["/", "/es"]) {
+  test(`${path} carries no noindex`, async ({ page }) => {
+    await page.goto(path);
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await expect(page.locator('meta[name="robots"][content*="noindex"]')).toHaveCount(0);
+  });
+}
 
 for (const path of [
+  "/es",
   "/faq",
   "/security",
   "/registry",
