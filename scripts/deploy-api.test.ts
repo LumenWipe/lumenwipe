@@ -626,7 +626,12 @@ describe("deploy", () => {
     ]);
     for (const args of r.deploys) {
       expect(args).toEqual(
-        expect.arrayContaining(["--min-instances=0", "--max-instances=1", "--cpu-throttling"])
+        expect.arrayContaining([
+          "--min-instances=0",
+          "--max-instances=1",
+          "--concurrency=8",
+          "--cpu-throttling",
+        ])
       );
     }
   });
