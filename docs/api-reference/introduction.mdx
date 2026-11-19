@@ -49,7 +49,7 @@ Create one on the [API keys page](https://lumenwipe.com/api-keys):
 2. Optionally give the key a label and limit it to mainnet or testnet (both are fixed once it is created, and rotating keeps them; a key limited to one network is refused on routes that take no network), then select **Create key**. The key is shown once, so copy it to your server's secrets before you dismiss it.
 3. Call the API with it, or follow the [Quickstart](/integrators/quickstart) to a first testnet close.
 
-The sign-in lasts 30 minutes and survives a page reload in the same browser; after that, sign in again. A contract account (an address starting with `C`, such as a passkey smart wallet) cannot sign in yet, because the sign-in needs a signature from a single account key; sign in with a regular `G` account instead. The key it owns works for any account you analyze or close.
+The sign-in lasts 30 minutes and survives a page reload in the same browser; after that, sign in again. A contract account (an address starting with `C`, such as a passkey smart wallet) signs in under **Sign in with a contract account**: the page fetches a one-time authorization for the account, you sign it with what controls the account and paste it back, or a wallet or Google, GitHub or email account that can sign it does so for you. It is not a transaction either. Whatever key it signs in with, the key it owns works for any account you analyze or close.
 
 <Warning>
   Keep the key on your server. A browser application should call the API through its own backend, as
@@ -59,6 +59,8 @@ The sign-in lasts 30 minutes and survives a page reload in the same browser; aft
 ### Self-serve keys
 
 You manage your keys by signing in with a Stellar wallet: `POST /v1/integrator/auth/challenge` returns a message to sign, and `POST /v1/integrator/auth/session` exchanges the signature for a session token that lasts 30 minutes. Sign in again when it expires. The session token only manages keys; it is not an API key.
+
+A contract account (`C...`) signs in after SEP-45 instead: `POST /v1/integrator/auth/contract/{network}/challenge` returns authorization entries for `web_auth_verify` on the web authentication contract, the account's unsigned and the server's signed. Sign the account's entry with the account's own signer, valid until `validUntilLedger` at the latest, and send the list to `POST /v1/integrator/auth/contract/{network}/session` within five minutes. The session is issued once per challenge, only when the account's own authorization check accepts the signature on every RPC provider the API uses. A `503 contract_sign_in_unavailable` means the network is not set up for it.
 
 - A wallet holds at most 5 active keys. Creating a sixth answers `409 key_limit_reached`; revoke one first.
 - `POST /v1/integrator/keys` takes an optional `label` (1 to 64 characters) and an optional `networks` list (`["testnet"]`, `["mainnet"]` or both). A key without `networks` works on every network.
@@ -121,6 +123,7 @@ Each endpoint page lists the codes that endpoint can return. Every error respons
 | `claimable_balances_too_many`                 | 422    | The account holds more claimable balances than one read returns and the unclaimed ones fill it.                                |
 | `close_fee_balance_short`                     | 422    | The account lacks the XLM above its reserve to pay the fees of the steps no sponsor can cover.                                 |
 | `confirmation_timeout`                        | 504    | The transaction was submitted and is not confirmed yet. Look it up by hash before retrying.                                    |
+| `contract_sign_in_unavailable`                | 503    | Contract-account sign-in is not available on this network.                                                                     |
 | `conversion_floor_missing`                    | 422    | A conversion carries no destination minimum.                                                                                   |
 | `conversion_impact_not_acknowledged`          | any    | A token conversion with a high or unmeasured price impact, or with disagreeing quotes, was chosen without its confirmation.    |
 | `conversion_provider_unrecognized`            | 422    | A conversion names a provider the API does not recognize.                                                                      |

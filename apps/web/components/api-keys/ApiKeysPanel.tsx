@@ -12,14 +12,17 @@ import { toUserMessage } from "@/lib/utils/user-error";
 import { ensureWalletKitInitialized, selectedWalletId } from "@/lib/wallet-kit/client";
 import {
   IntegratorRequestError,
+  createContractSession,
   createKey,
   createSession,
   endSession,
   getSession,
   listKeys,
   requestChallenge,
+  requestContractChallenge,
   revokeKey,
   rotateKey,
+  type ContractChallenge,
   type CreateKeyRequest,
   type KeyList,
   type Session,
@@ -35,6 +38,8 @@ import {
   walletName,
   walletNetworkPassphrase,
 } from "@/lib/integrator/wallet-sign-in";
+import { signWithWallet } from "@/lib/integrator/contract-sign-in";
+import ContractSignIn from "./ContractSignIn";
 import CreateKeyForm, {
   LABEL_ERROR,
   NETWORKS_ERROR,
@@ -65,7 +70,7 @@ const WALLETS = `${MESSAGE_SIGNING_WALLETS.slice(0, -1).join(", ")} or ${MESSAGE
 type View = "restoring" | "signed-out" | "signed-in";
 type Busy = "wallet" | "pollar" | "keys" | "signout" | null;
 type Notice =
-  | { kind: "contract_account" }
+  | { kind: "contract_account"; address: string; network: Network }
   | { kind: "unsupported_wallet"; walletId: string | null }
   | { kind: "not_configured" }
   | null;
@@ -89,7 +94,9 @@ const CREATE_ERRORS: Record<string, CreateKeyFailure> = {
   },
 };
 
-const SIGN_IN_ERRORS: Record<"signer_mismatch" | "bad_signature", string> = {
+const SIGN_IN_ERRORS: Record<"signer_mismatch" | "bad_signature" | "contract_account", string> = {
+  contract_account:
+    "This is a contract account. Sign in with a contract account (C...) below instead.",
   signer_mismatch:
     "Your wallet signed with a different account than the one it connected. Switch to that account in the wallet and try again.",
   bad_signature: "We could not verify your wallet's signature. Please try again.",
@@ -133,8 +140,7 @@ export default function ApiKeysPanel({ pollar: PollarSlot }: ApiKeysPanelProps) 
           else if (e.status === 401 && !signingIn) endLocally(SESSION_ENDED);
           else setError(e.message);
         } else if (e instanceof WalletSignInError) {
-          if (e.reason === "contract_account") setNotice({ kind: "contract_account" });
-          else if (e.reason === "unsupported_wallet") {
+          if (e.reason === "unsupported_wallet") {
             setNotice({ kind: "unsupported_wallet", walletId: e.walletId });
           } else setError(SIGN_IN_ERRORS[e.reason]);
         } else {
@@ -201,13 +207,48 @@ export default function ApiKeysPanel({ pollar: PollarSlot }: ApiKeysPanelProps) 
     setAnnouncement("Signed in.");
   }, []);
 
+  const finishContractSignIn = useCallback(
+    async (network: Network, address: string, authorizationEntries: string) => {
+      const started = await createContractSession(network, address, authorizationEntries);
+      setNotice(null);
+      setSession(started);
+      setList(null);
+      setView("signed-in");
+      setAnnouncement("Signed in.");
+    },
+    []
+  );
+
+  /**
+   * Tries a signer that offers to sign the contract account's entry, and on any refusal other
+   * than a server that is not set up, shows the steps to sign it by hand instead.
+   */
+  const signInAsContract = useCallback(
+    async (address: string, sign: (challenge: ContractChallenge) => Promise<string>) => {
+      try {
+        const challenge = await requestContractChallenge(KIT_NETWORK, address);
+        await finishContractSignIn(KIT_NETWORK, address, await sign(challenge));
+      } catch (e) {
+        if (e instanceof IntegratorRequestError && e.code === "integrator_api_not_configured") {
+          throw e;
+        }
+        setNotice({ kind: "contract_account", address, network: KIT_NETWORK });
+      }
+    },
+    [finishContractSignIn]
+  );
+
   const signInWithWallet = () =>
     guarded("wallet", async () => {
       setNotice(null);
       const kit = await ensureWalletKitInitialized(KIT_NETWORK);
       const { address } = await kit.authModal();
       const walletId = selectedWalletId(kit);
-      if (isContractAddress(address)) throw new WalletSignInError("contract_account", walletId);
+      if (isContractAddress(address)) {
+        await signInAsContract(address, (challenge) => signWithWallet(kit, challenge, address));
+        signedInWithPollar.current = false;
+        return;
+      }
       if (messageSigningSupport(walletId) === "no") {
         throw new WalletSignInError("unsupported_wallet", walletId);
       }
@@ -223,7 +264,11 @@ export default function ApiKeysPanel({ pollar: PollarSlot }: ApiKeysPanelProps) 
       void guarded("pollar", async () => {
         setNotice(null);
         if (account.smart || isContractAddress(account.address)) {
-          throw new WalletSignInError("contract_account");
+          await signInAsContract(account.address, (challenge) =>
+            account.signContractChallenge(challenge)
+          );
+          signedInWithPollar.current = true;
+          return;
         }
         const { message } = await requestChallenge(account.address);
         const signature = normalizeSignature(await account.sign(message));
@@ -233,7 +278,7 @@ export default function ApiKeysPanel({ pollar: PollarSlot }: ApiKeysPanelProps) 
         await finishSignIn(account.address, message, signature);
         signedInWithPollar.current = true;
       }),
-    [guarded, finishSignIn]
+    [guarded, finishSignIn, signInAsContract]
   );
 
   const onPollarLogoutChange = useCallback((logout: (() => Promise<void> | void) | null) => {
@@ -378,15 +423,44 @@ export default function ApiKeysPanel({ pollar: PollarSlot }: ApiKeysPanelProps) 
             )}
 
             {notice?.kind === "contract_account" && (
-              <Callout tone="warning" title="Contract accounts cannot own keys yet">
+              <Callout tone="warning" title="Sign the contract account's challenge by hand">
                 This account is a contract account (its address starts with C, as passkey smart
-                wallets do). Signing in needs a signature from a single account key, which a
-                contract account does not have. Sign in with a regular account (its address starts
-                with G) from {WALLETS}
+                wallets do), and the wallet could not sign its sign-in here. Get the challenge
+                below, sign it with what controls the account, and paste it back. You can also sign
+                in with a regular account (its address starts with G) from {WALLETS}
                 {PollarSlot ? ", or continue with Google, GitHub or email" : ""}. The key it owns
                 works for every account you analyze or close, not only its own.
               </Callout>
             )}
+
+            <details
+              key={notice?.kind === "contract_account" ? notice.address : "contract"}
+              open={notice?.kind === "contract_account" ? true : undefined}
+              className="rounded-control border border-line p-3"
+            >
+              <summary className="cursor-pointer text-sm font-medium text-white">
+                Sign in with a contract account (C...)
+              </summary>
+              <div className="mt-3 space-y-3">
+                <p className="text-sm text-white/65">
+                  A smart wallet signs in with its own authorization logic: LumenWipe checks the
+                  signature by simulating the account&apos;s check on the network, so whoever that
+                  logic accepts can manage the keys the account owns.
+                </p>
+                <ContractSignIn
+                  disabled={signingIn}
+                  initial={
+                    notice?.kind === "contract_account"
+                      ? { address: notice.address, network: notice.network }
+                      : null
+                  }
+                  onSignIn={async (network, address, entries) => {
+                    await finishContractSignIn(network, address, entries);
+                    signedInWithPollar.current = false;
+                  }}
+                />
+              </div>
+            </details>
 
             {!PollarSlot && (
               <Callout announce={false}>
@@ -513,6 +587,11 @@ function HowKeysWork() {
         <li>
           Signing in lasts {SESSION_MINUTES} minutes, then you sign in again. It only manages keys;
           it is not an API key.
+        </li>
+        <li>
+          A contract account (C..., such as a passkey smart wallet) can own keys too. It signs a
+          one-time authorization instead of a message, and its own code decides who may sign: anyone
+          that code accepts can manage the account&apos;s keys.
         </li>
         <li>
           Each key has its own rate limit: {DEFAULT_KEY_RATE_LIMIT.requests} requests per{" "}

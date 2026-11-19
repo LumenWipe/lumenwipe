@@ -235,6 +235,14 @@ export async function rpcReferenceLedger(network: Network): Promise<number> {
   }
 }
 
+/**
+ * One simulation server per configured provider, in failover order, for a check that must hold on
+ * every provider rather than on whichever one the request pinned.
+ */
+export function everyRpcSimulationServer(network: Network): rpc.Server[] {
+  return rpcProviders(network).map((provider) => serversFor(network, provider).simulation);
+}
+
 /** The provider after the pinned one, for a by-hash check; null on a one-entry list. */
 export function nextRpcServer(network: Network): rpc.Server | null {
   const providers = rpcProviders(network);

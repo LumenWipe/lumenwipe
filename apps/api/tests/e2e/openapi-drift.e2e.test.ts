@@ -130,7 +130,7 @@ test("every $ref in the document resolves", () => {
 
 test("every integrator operation documents its responses and any request body", () => {
   const integrator = operations().filter(({ id }) => id.includes(" /v1/integrator/"));
-  expect(integrator).toHaveLength(6);
+  expect(integrator).toHaveLength(8);
   const bodyless = new Set([
     "GET /v1/integrator/keys",
     "POST /v1/integrator/keys",

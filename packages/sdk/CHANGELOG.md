@@ -13,6 +13,11 @@ version number before 0.4.0. Neither has a git tag.
 
 ### Added
 
+- `LumenWipeIntegratorClient.contractChallenge(network, address)` and
+  `contractSession(network, { address, authorizationEntries })`: a contract account (`C...`)
+  signs in for key management by signing SEP-45 style authorization entries with its own signer.
+  The new `ErrorCode` `contract_sign_in_unavailable` means the server has not set this up for
+  that network.
 - `AllowanceSource` gains `"indexer"`: an approval the API found through StellarIndex, in the
   account's operations or a token's transfer feed. Its amount is read from the ledger like every
   other source's.

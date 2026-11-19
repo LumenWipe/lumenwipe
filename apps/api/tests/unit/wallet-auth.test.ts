@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "crypto";
-import { Keypair } from "@stellar/stellar-sdk";
+import { Keypair, StrKey } from "@stellar/stellar-sdk";
 import {
   buildChallenge,
   issueSession,
@@ -106,5 +106,15 @@ describe("sessions", () => {
   test("rejects malformed tokens", () => {
     expect(verifySession(SECRET, "lw_somethingelse", NOW)).toBeNull();
     expect(verifySession(SECRET, "lws.a.b.c.d", NOW)).toBeNull();
+  });
+});
+
+describe("verifySession owners", () => {
+  test("a session can name a contract account, and nothing but a G or C address", () => {
+    const contract = StrKey.encodeContract(Buffer.alloc(32, 1));
+    expect(verifySession(SECRET, issueSession(SECRET, contract, NOW).token, NOW)).toBe(contract);
+    const muxed = StrKey.encodeMed25519PublicKey(Buffer.alloc(40, 2));
+    expect(verifySession(SECRET, issueSession(SECRET, muxed, NOW).token, NOW)).toBeNull();
+    expect(verifySession(SECRET, issueSession(SECRET, "anyone", NOW).token, NOW)).toBeNull();
   });
 });

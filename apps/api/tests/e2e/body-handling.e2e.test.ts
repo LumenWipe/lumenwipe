@@ -20,6 +20,8 @@ const POST_ROUTES = [
   "/v1/:network/allowances/revoke",
   "/v1/integrator/auth/challenge",
   "/v1/integrator/auth/session",
+  "/v1/integrator/auth/contract/:network/challenge",
+  "/v1/integrator/auth/contract/:network/session",
   "/v1/integrator/keys",
   "/v1/integrator/keys/:id/revoke",
   "/v1/integrator/keys/:id/rotate",
