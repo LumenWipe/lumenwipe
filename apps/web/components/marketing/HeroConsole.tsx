@@ -3,26 +3,21 @@
 import { useEffect, useRef, useState } from "react";
 import { Check } from "lucide-react";
 import { formatNumber, TWO_DECIMALS } from "@/lib/i18n/format";
-import { SITE_LOCALE } from "@/lib/i18n/locale";
+import { SITE_LOCALE, type Locale } from "@/lib/i18n/locale";
 import { HERO } from "@/lib/i18n/messages/hero";
 import { BASE_RESERVE_XLM, MINIMUM_BALANCE_RESERVES } from "@/lib/site/reserve";
 
-const T = HERO[SITE_LOCALE].console;
-
-function xlm(amount: number): string {
-  return formatNumber(SITE_LOCALE, amount, TWO_DECIMALS);
-}
-
-type Row = { n: string; label: string; amount: number };
+type Step = keyof (typeof HERO)["en"]["console"]["steps"];
+type Row = { n: string; step: Step; amount: number };
 
 // Reserve released per step of an example account (step 04 is the swap, it frees no reserve).
 const ROWS: Row[] = [
-  { n: "01", label: T.steps.signers, amount: 1 * BASE_RESERVE_XLM },
-  { n: "02", label: T.steps.data, amount: 1 * BASE_RESERVE_XLM },
-  { n: "03", label: T.steps.offers, amount: 2 * BASE_RESERVE_XLM },
-  { n: "04", label: T.steps.convert, amount: 0 },
-  { n: "05", label: T.steps.trustlines, amount: 4 * BASE_RESERVE_XLM },
-  { n: "06", label: T.steps.merge, amount: MINIMUM_BALANCE_RESERVES * BASE_RESERVE_XLM },
+  { n: "01", step: "signers", amount: 1 * BASE_RESERVE_XLM },
+  { n: "02", step: "data", amount: 1 * BASE_RESERVE_XLM },
+  { n: "03", step: "offers", amount: 2 * BASE_RESERVE_XLM },
+  { n: "04", step: "convert", amount: 0 },
+  { n: "05", step: "trustlines", amount: 4 * BASE_RESERVE_XLM },
+  { n: "06", step: "merge", amount: MINIMUM_BALANCE_RESERVES * BASE_RESERVE_XLM },
 ];
 
 const TOTAL = ROWS.reduce((s, r) => s + r.amount, 0);
@@ -43,7 +38,9 @@ const TIMING = {
  * row sweeps, and the recoverable reserve counts up. Loops gently. Honors
  * prefers-reduced-motion by rendering the finished state statically.
  */
-export default function HeroConsole() {
+export default function HeroConsole({ locale = SITE_LOCALE }: { locale?: Locale }) {
+  const T = HERO[locale].console;
+  const xlm = (amount: number): string => formatNumber(locale, amount, TWO_DECIMALS);
   const [active, setActive] = useState(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -111,7 +108,7 @@ export default function HeroConsole() {
                   }`}
                 >
                   <span className="mkt-mono w-5 text-caption text-fg-subtle">{r.n}</span>
-                  <span>{r.label}</span>
+                  <span>{T.steps[r.step]}</span>
                   {done && <Check className="h-3.5 w-3.5 text-accent" />}
                   <span
                     className={`mkt-mono ml-auto tabular-nums transition-colors duration-500 ${

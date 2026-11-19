@@ -21,4 +21,23 @@ const en = {
 
 export type NavCopy = typeof en;
 
-export const NAV: Record<Locale, NavCopy> = { en, es: en };
+const es: NavCopy = {
+  links: {
+    howItWorks: "Cómo funciona",
+    security: "Seguridad",
+    guides: "Guías",
+    playground: "Playground",
+    apiKeys: "Claves de API",
+    docs: "Documentación",
+    github: "GitHub",
+  },
+  mainLabel: "Principal",
+  homeLabel: "Inicio de LumenWipe",
+  developers: "Desarrolladores",
+  openApp: "Abrir la app",
+  openMenu: "Abrir el menú",
+  closeMenu: "Cerrar el menú",
+  skipToContent: "Saltar al contenido",
+};
+
+export const NAV: Record<Locale, NavCopy> = { en, es };

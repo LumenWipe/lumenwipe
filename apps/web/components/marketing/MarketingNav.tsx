@@ -9,6 +9,7 @@ import { APP_HREF, isCurrent, siteLinks, type SiteLink } from "@/lib/site/naviga
 import type { Locale } from "@/lib/i18n/locale";
 import { COMMON } from "@/lib/i18n/messages/common";
 import { NAV } from "@/lib/i18n/messages/nav";
+import { localeHref } from "@/lib/site/pages";
 import LanguageSwitch from "./LanguageSwitch";
 import Logo from "./Logo";
 
@@ -191,7 +192,7 @@ export default function MarketingNav({ locale }: { locale: Locale }) {
         aria-label={T.mainLabel}
         className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 lg:px-8"
       >
-        <Link href="/" aria-label={T.homeLabel} className="shrink-0">
+        <Link href={localeHref(locale, "/")} aria-label={T.homeLabel} className="shrink-0">
           <Logo wordClassName="max-[359px]:sr-only" />
         </Link>
 

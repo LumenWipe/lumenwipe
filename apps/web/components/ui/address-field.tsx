@@ -2,7 +2,9 @@
 
 import { useState, type ClipboardEvent, type ReactElement, type ReactNode } from "react";
 import { CheckCircle, XCircle } from "lucide-react";
-import { addressErrorMessage, couldBeSecretKey, SECRET_KEY_WARNING } from "@/lib/utils/validation";
+import { SITE_LOCALE, type Locale } from "@/lib/i18n/locale";
+import { ADDRESS } from "@/lib/i18n/messages/address";
+import { addressErrorMessage, couldBeSecretKey } from "@/lib/utils/validation";
 import { cn } from "@/lib/utils/cn";
 import { Field, Input } from "./field";
 
@@ -23,6 +25,8 @@ interface AddressFieldProps {
   trailing?: ReactNode;
   groupClassName?: string;
   inputClassName?: string;
+  /** The language of the field's own messages. */
+  locale?: Locale;
 }
 
 export function AddressField({
@@ -39,12 +43,14 @@ export function AddressField({
   trailing,
   groupClassName,
   inputClassName,
+  locale = SITE_LOCALE,
 }: AddressFieldProps): ReactElement {
+  const T = ADDRESS[locale];
   const [touched, setTouched] = useState(false);
   // Only that a key was refused is kept, never the key.
   const [secretRefused, setSecretRefused] = useState(false);
-  const revealed = touched && value ? addressErrorMessage(value) : null;
-  const shown = secretRefused ? SECRET_KEY_WARNING : (error ?? revealed);
+  const revealed = touched && value ? addressErrorMessage(value, locale) : null;
+  const shown = secretRefused ? T.problems["secret-key"] : (error ?? revealed);
 
   function refuseSecret(): void {
     setSecretRefused(true);
@@ -78,7 +84,7 @@ export function AddressField({
       required={required}
       helper={helper}
       error={shown}
-      status={confirmed ? "Valid address" : undefined}
+      status={confirmed ? T.valid : undefined}
     >
       <div className={cn("relative flex items-center gap-2", groupClassName)}>
         {leading}

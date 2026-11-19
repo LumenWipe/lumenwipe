@@ -7,6 +7,7 @@ import robots from "@/app/robots";
 import { rootMetadata as rootMetadataFor } from "@/lib/site/root-metadata";
 import { getAllPostMetas, getPost } from "@/lib/blog";
 import { LOCALE_TAGS } from "@/lib/i18n/locale";
+import { SITE } from "@/lib/i18n/messages/site";
 import {
   HOME_TITLE,
   INDEXED_PAGES,
@@ -82,7 +83,7 @@ const PAGE_TITLES: Record<string, Metadata["title"]> = {
   "/api-keys": "API keys",
   "/blog": "Blog",
   "/content": "Content",
-  "/es": { absolute: HOME_TITLE },
+  "/es": { absolute: SITE.es.metadata.homeTitle },
   "/faq": "FAQ",
   "/how-it-works": "How it works",
   "/playground": "Playground",
@@ -126,7 +127,9 @@ describe("every public page under app/(marketing) and app/(marketing-es), and /a
           expect(expected).not.toContain(SITE_NAME);
         }
         const shared =
-          typeof expected === "object" ? HOME_TITLE : `${String(expected)} | ${SITE_NAME}`;
+          expected && typeof expected === "object" && "absolute" in expected
+            ? expected.absolute
+            : `${String(expected)} | ${SITE_NAME}`;
         expect(page.metadata.openGraph?.title).toBe(shared);
         expect(page.metadata.twitter?.title).toBe(shared);
       });
@@ -158,13 +161,13 @@ describe("every public page under app/(marketing) and app/(marketing-es), and /a
     });
   }
 
-  test("/api-keys and the untranslated Spanish landing are the only pages marked noindex", () => {
-    expect(NOINDEX_PAGES).toEqual(["/api-keys", "/es"]);
+  test("/api-keys is the only page marked noindex", () => {
+    expect(NOINDEX_PAGES).toEqual(["/api-keys"]);
     expect(
       PAGES.filter((p) => p.metadata.robots !== undefined)
         .map((p) => p.route)
         .sort()
-    ).toEqual(["/api-keys", "/es"]);
+    ).toEqual(["/api-keys"]);
   });
 
   test("each root layout declares no page URL and no robots rule, and shares in its locale", () => {
@@ -227,9 +230,19 @@ describe("the Spanish pages", () => {
 describe("the sitemap", () => {
   test("lists the home page first with the top priority, and every URL once on the site origin", () => {
     expect(SITEMAP[0]).toMatchObject({ url: siteUrl("/"), priority: 1 });
-    for (const entry of SITEMAP.slice(1)) expect(entry.priority!).toBeLessThan(1);
+    const homes = [siteUrl("/"), siteUrl("/es")];
+    for (const entry of SITEMAP.filter((e) => !homes.includes(e.url))) {
+      expect(entry.priority!).toBeLessThan(1);
+    }
     expect(new Set(SITEMAP_URLS).size).toBe(SITEMAP_URLS.length);
     for (const url of SITEMAP_URLS) expect(new URL(url).origin).toBe(siteOrigin());
+  });
+
+  test("lists the Spanish landing with the home page's rank and both languages", () => {
+    const pair = { en: siteUrl("/"), es: siteUrl("/es"), "x-default": siteUrl("/") };
+    const entry = (url: string) => SITEMAP.find((e) => e.url === url);
+    expect(entry(siteUrl("/es"))).toMatchObject({ priority: 1, alternates: { languages: pair } });
+    expect(entry(siteUrl("/"))).toMatchObject({ alternates: { languages: pair } });
   });
 
   test("ranks the app entry below the pages that explain it and leaves testnet out", () => {

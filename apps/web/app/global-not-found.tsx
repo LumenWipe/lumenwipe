@@ -1,23 +1,33 @@
 import type { Metadata, Viewport } from "next";
 import { connection } from "next/server";
+import { headers } from "next/headers";
 import RootDocument from "@/app/root-document";
-import { SITE_LOCALE } from "@/lib/i18n/locale";
+import { LOCALE_HEADER, localeFromHeader, type Locale } from "@/lib/i18n/locale";
 import MarketingShell from "@/components/marketing/MarketingShell";
-import NotFoundView, { NOT_FOUND_METADATA } from "@/components/marketing/NotFoundView";
+import NotFoundView, { notFoundMetadata } from "@/components/marketing/NotFoundView";
 import { rootMetadata, ROOT_VIEWPORT } from "@/lib/site/root-metadata";
 
 export const viewport: Viewport = ROOT_VIEWPORT;
 
-export const metadata: Metadata = { ...rootMetadata(SITE_LOCALE), ...NOT_FOUND_METADATA };
+/** The locale proxy.ts read from the requested path: Spanish under /es, else English. */
+async function requestLocale(): Promise<Locale> {
+  return localeFromHeader((await headers()).get(LOCALE_HEADER));
+}
 
-/** Unmatched URLs, under either root layout. Rendered per request so its scripts carry the
- *  nonce of the policy proxy.ts sends with it. */
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await requestLocale();
+  return { ...rootMetadata(locale), ...notFoundMetadata(locale) };
+}
+
+/** Unmatched URLs, under either root layout, in the language of the path. Rendered per request so
+ *  its scripts carry the nonce of the policy proxy.ts sends with it. */
 export default async function GlobalNotFound() {
   await connection();
+  const locale = await requestLocale();
   return (
-    <RootDocument locale={SITE_LOCALE}>
-      <MarketingShell locale={SITE_LOCALE}>
-        <NotFoundView />
+    <RootDocument locale={locale}>
+      <MarketingShell locale={locale}>
+        <NotFoundView locale={locale} />
       </MarketingShell>
     </RootDocument>
   );

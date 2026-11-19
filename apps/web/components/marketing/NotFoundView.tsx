@@ -2,36 +2,38 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Home, ArrowRight, ArrowUpRight, GitMerge } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { SITE_LOCALE } from "@/lib/i18n/locale";
+import { SITE_LOCALE, type Locale } from "@/lib/i18n/locale";
 import { COMMON } from "@/lib/i18n/messages/common";
 import { NOT_FOUND } from "@/lib/i18n/messages/not-found";
+import { localeHref } from "@/lib/site/pages";
 
-const T = NOT_FOUND[SITE_LOCALE];
+/** The 404's title and description in `locale`. */
+export function notFoundMetadata(locale: Locale): Metadata {
+  return NOT_FOUND[locale].metadata;
+}
 
-export const NOT_FOUND_METADATA: Metadata = T.metadata;
+export const NOT_FOUND_METADATA: Metadata = notFoundMetadata(SITE_LOCALE);
 
 export const REPORT_BROKEN_LINK_URL =
   "https://github.com/LumenWipe/lumenwipe/issues/new?title=Broken%20link%20on%20lumenwipe.com";
 
-const STEPS = [
-  { label: T.steps.route, ok: true },
-  { label: T.steps.ledger, ok: true },
-  { label: T.steps.account, ok: false },
-];
-
-const STATS = [
-  { label: T.stats.subentries, value: "0" },
-  { label: T.stats.balance, value: "0.0000000" },
-  { label: T.stats.statusLabel, value: T.stats.merged },
-];
-
-const NEXT_STEPS = [
-  { href: "/content", label: T.next.guides },
-  { href: "/how-it-works", label: T.next.howItWorks },
-  { href: "/playground", label: T.next.playground },
-];
-
-export default function NotFoundView() {
+export default function NotFoundView({ locale = SITE_LOCALE }: { locale?: Locale }) {
+  const T = NOT_FOUND[locale];
+  const steps = [
+    { label: T.steps.route, ok: true },
+    { label: T.steps.ledger, ok: true },
+    { label: T.steps.account, ok: false },
+  ];
+  const stats = [
+    { label: T.stats.subentries, value: "0" },
+    { label: T.stats.balance, value: "0.0000000" },
+    { label: T.stats.statusLabel, value: T.stats.merged },
+  ];
+  const nextSteps = [
+    { href: localeHref(locale, "/content"), label: T.next.guides },
+    { href: localeHref(locale, "/how-it-works"), label: T.next.howItWorks },
+    { href: localeHref(locale, "/playground"), label: T.next.playground },
+  ];
   return (
     <div className="flex items-center justify-center px-5 py-16 lg:py-20">
       <div className="w-full max-w-md">
@@ -53,7 +55,7 @@ export default function NotFoundView() {
             </div>
 
             <ul className="mkt-mono space-y-2 text-sm">
-              {STEPS.map((s) => (
+              {steps.map((s) => (
                 <li key={s.label} className="flex items-center gap-3">
                   <span aria-hidden className={s.ok ? "text-success" : "text-danger-fg"}>
                     {s.ok ? "✓" : "✗"}
@@ -68,7 +70,7 @@ export default function NotFoundView() {
 
             <div className="border-t border-white/[0.07] pt-4">
               <div className="grid grid-cols-3 gap-2 text-center">
-                {STATS.map((s) => (
+                {stats.map((s) => (
                   <div key={s.label}>
                     <div className="mkt-mono text-base font-semibold text-fg-muted">{s.value}</div>
                     <div className="mkt-eyebrow mt-1 text-fg-muted">{s.label}</div>
@@ -97,7 +99,7 @@ export default function NotFoundView() {
 
         <div className="flex flex-wrap gap-3">
           <Button asChild size="lg">
-            <Link href="/">
+            <Link href={localeHref(locale, "/")}>
               <Home className="h-4 w-4" />
               {T.home}
             </Link>
@@ -113,7 +115,7 @@ export default function NotFoundView() {
 
         <nav aria-label={T.nextLabel} className="mt-8">
           <ul className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
-            {NEXT_STEPS.map((l) => (
+            {nextSteps.map((l) => (
               <li key={l.href}>
                 <Link href={l.href} className="text-accent underline-offset-4 hover:underline">
                   {l.label}
@@ -130,7 +132,7 @@ export default function NotFoundView() {
               className="inline-flex items-center gap-0.5 text-accent underline underline-offset-4"
             >
               {T.reportLink}
-              <span className="sr-only">{COMMON[SITE_LOCALE].newTab}</span>
+              <span className="sr-only">{COMMON[locale].newTab}</span>
               <ArrowUpRight aria-hidden className="h-3 w-3" />
             </a>
           </p>

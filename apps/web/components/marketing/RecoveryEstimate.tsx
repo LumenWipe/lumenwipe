@@ -10,24 +10,23 @@ import {
   type RecoveryEstimate as Estimate,
 } from "@/lib/api/estimate-client";
 import { formatDate } from "@/lib/i18n/format";
-import { SITE_LOCALE } from "@/lib/i18n/locale";
+import type { Locale } from "@/lib/i18n/locale";
 import { HERO } from "@/lib/i18n/messages/hero";
 
-const T = HERO[SITE_LOCALE].estimate;
-
-export const ESTIMATE_CAVEAT = T.caveat;
+type EstimateCopy = (typeof HERO)[Locale]["estimate"];
 
 type Read =
   { kind: "pending" } | { kind: "ready"; estimate: Estimate } | { kind: "failed"; message: string };
 
-function rangeText({ lowStroops, highStroops }: Estimate["range"]): string {
-  const low = formatXlmDown(lowStroops);
-  const high = formatXlmDown(highStroops);
+function rangeText(locale: Locale, { lowStroops, highStroops }: Estimate["range"]): string {
+  const T = HERO[locale].estimate;
+  const low = formatXlmDown(lowStroops, locale);
+  const high = formatXlmDown(highStroops, locale);
   return low === high ? T.about(low) : T.range(low, high);
 }
 
 /** The assumptions behind the figures, each shown only when it applies to this read. */
-function assumptions(range: Estimate["range"]): string[] {
+function assumptions(T: EstimateCopy, range: Estimate["range"]): string[] {
   const lines = [T.assumptions.low, T.assumptions.high, T.assumptions.exchangeFee];
   if (range.unquotedSwaps > 0) {
     lines.push(T.assumptions.unquoted(range.unquotedSwaps));
@@ -42,15 +41,16 @@ function assumptions(range: Estimate["range"]): string[] {
 }
 
 /** The sentence the hero's live region reads for this outcome. */
-export function estimateAnnouncement(read: Read): string {
+function estimateAnnouncement(locale: Locale, read: Read): string {
+  const T = HERO[locale].estimate;
   if (read.kind === "pending") return T.readingAnnouncement;
   if (read.kind === "failed") return read.message;
   const { range } = read.estimate;
-  return T.announcement(rangeText(range), T.blockers(range.blockers), ESTIMATE_CAVEAT);
+  return T.announcement(rangeText(locale, range), T.blockers(range.blockers), T.caveat);
 }
 
-function readTime(readAt: string): string {
-  return formatDate(SITE_LOCALE, readAt, { hour: "2-digit", minute: "2-digit" });
+function readTime(locale: Locale, readAt: string): string {
+  return formatDate(locale, readAt, { hour: "2-digit", minute: "2-digit" });
 }
 
 /**
@@ -61,14 +61,17 @@ function readTime(readAt: string): string {
 export default function RecoveryEstimate({
   address,
   network,
+  locale,
   onAnnounce,
   onContinue,
 }: {
   address: string;
   network: Network;
+  locale: Locale;
   onAnnounce: (text: string) => void;
   onContinue: () => void;
 }) {
+  const T = HERO[locale].estimate;
   const headingId = useId();
   const [read, setRead] = useState<Read>({ kind: "pending" });
 
@@ -79,16 +82,17 @@ export default function RecoveryEstimate({
       (estimate) => setRead({ kind: "ready", estimate }),
       (e: unknown) => {
         if (controller.signal.aborted) return;
-        const message = e instanceof EstimateError ? e.message : String(e);
+        const message =
+          e instanceof EstimateError ? HERO[locale].estimate.errors[e.reason] : String(e);
         setRead({ kind: "failed", message });
       }
     );
     return () => controller.abort();
-  }, [address, network]);
+  }, [address, network, locale]);
 
   useEffect(() => {
-    onAnnounce(estimateAnnouncement(read));
-  }, [read, onAnnounce]);
+    onAnnounce(estimateAnnouncement(locale, read));
+  }, [read, locale, onAnnounce]);
 
   return (
     <section
@@ -107,17 +111,17 @@ export default function RecoveryEstimate({
       {read.kind === "ready" && (
         <>
           <p className="mkt-display mt-2 text-2xl font-bold text-value">
-            {rangeText(read.estimate.range)}
+            {rangeText(locale, read.estimate.range)}
           </p>
           <p className="mt-1 text-xs text-fg-subtle">
             {T.readAt(
-              <time dateTime={read.estimate.readAt}>{readTime(read.estimate.readAt)}</time>
+              <time dateTime={read.estimate.readAt}>{readTime(locale, read.estimate.readAt)}</time>
             )}
           </p>
-          <p className="mt-3 text-sm font-medium text-white">{ESTIMATE_CAVEAT}</p>
+          <p className="mt-3 text-sm font-medium text-white">{T.caveat}</p>
           <p className="mt-2 text-sm text-fg-muted">{T.blockers(read.estimate.range.blockers)}</p>
           <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-fg-muted">
-            {assumptions(read.estimate.range).map((line) => (
+            {assumptions(T, read.estimate.range).map((line) => (
               <li key={line}>{line}</li>
             ))}
           </ul>

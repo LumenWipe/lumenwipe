@@ -2,6 +2,8 @@ import { test, expect } from "bun:test";
 import { Account, Keypair, MuxedAccount } from "@stellar/stellar-sdk";
 import {
   addressErrorMessage,
+  addressProblem,
+  type AddressProblem,
   isValidGAddress,
   isValidSecretKey,
   looksLikeSecretKey,
@@ -91,4 +93,35 @@ test("addressErrorMessage › length, prefix, checksum and muxed messages are di
   ];
   expect(messages.every((m) => m !== null)).toBe(true);
   expect(new Set(messages).size).toBe(4);
+});
+
+// The English text each refusal showed before the reasons moved into the locale dictionary. The app
+// flow reads it unchanged, so these strings are never edited alongside a refactor.
+const ENGLISH_REFUSALS: Record<AddressProblem, string> = {
+  "secret-key":
+    "That looks like a secret key. Never paste it here. LumenWipe only needs your public address (starts with G).",
+  muxed: "This looks like a muxed address. Use the G address plus the memo your exchange shows.",
+  prefix: "A Stellar account address starts with G.",
+  length: "A Stellar account address has 56 characters.",
+  checksum: "This address has a typo: its checksum does not match. Copy it again from the source.",
+};
+
+test("addressProblem › names the reason, and addressErrorMessage keeps the English text", () => {
+  const muxed = new MuxedAccount(new Account(VALID_ADDRESS, "0"), "7").accountId();
+  const typo = VALID_ADDRESS.slice(0, -1) + (VALID_ADDRESS.endsWith("A") ? "B" : "A");
+  const cases: [string, AddressProblem][] = [
+    [VALID_SECRET, "secret-key"],
+    [muxed, "muxed"],
+    ["XABC", "prefix"],
+    ["GABC", "length"],
+    [typo, "checksum"],
+  ];
+  expect(addressProblem(VALID_ADDRESS)).toBeNull();
+  expect(addressErrorMessage(VALID_ADDRESS)).toBeNull();
+  for (const [input, problem] of cases) {
+    expect(addressProblem(input)).toBe(problem);
+    expect(addressErrorMessage(input)).toBe(ENGLISH_REFUSALS[problem]);
+  }
+  expect(SECRET_KEY_WARNING).toBe(ENGLISH_REFUSALS["secret-key"]);
+  expect(MUXED_ADDRESS_MESSAGE).toBe(ENGLISH_REFUSALS.muxed);
 });

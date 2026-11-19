@@ -6,6 +6,21 @@ export type Locale = (typeof LOCALES)[number];
  *  the pages stay prerendered (docs/contributing/localization.mdx). */
 export const SITE_LOCALE: Locale = "en";
 
+/** The request header proxy.ts sets to the locale of the requested path, so a page rendered per
+ *  request, the global 404, can answer in the visitor's language. */
+export const LOCALE_HEADER = "x-lumenwipe-locale";
+
+/** The locale of the page at `pathname`: Spanish for `/es` and every path under it, English for
+ *  anything else. Paths match case-sensitively, as the routes do, so `/ES` is an English path. */
+export function localeOfPath(pathname: string): Locale {
+  return pathname === "/es" || pathname.startsWith("/es/") ? "es" : "en";
+}
+
+/** The locale a `LOCALE_HEADER` value names, or the site's own for anything else. */
+export function localeFromHeader(value: string | null): Locale {
+  return LOCALES.find((locale) => locale === value) ?? SITE_LOCALE;
+}
+
 export interface LocaleTags {
   /** The `lang` attribute on `<html>`. */
   html: string;

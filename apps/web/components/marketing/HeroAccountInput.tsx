@@ -7,11 +7,9 @@ import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
 import { AddressField } from "@/components/ui/address-field";
 import { Button } from "@/components/ui/button";
-import { SITE_LOCALE } from "@/lib/i18n/locale";
+import { SITE_LOCALE, type Locale } from "@/lib/i18n/locale";
 import { HERO } from "@/lib/i18n/messages/hero";
 import { addressErrorMessage } from "@/lib/utils/validation";
-
-const T = HERO[SITE_LOCALE].input;
 
 // Loaded only when a visitor asks for an estimate, so the landing page's first load carries none
 // of it.
@@ -19,11 +17,10 @@ const RecoveryEstimate = dynamic(() => import("@/components/marketing/RecoveryEs
   ssr: false,
 });
 
-function refusalOf(address: string): string | null {
-  return address ? addressErrorMessage(address) : T.empty;
-}
-
-export default function HeroAccountInput() {
+export default function HeroAccountInput({ locale = SITE_LOCALE }: { locale?: Locale }) {
+  const T = HERO[locale].input;
+  const refusalOf = (address: string): string | null =>
+    address ? addressErrorMessage(address, locale) : T.empty;
   const router = useRouter();
   const [address, setAddress] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -65,6 +62,7 @@ export default function HeroAccountInput() {
             if (estimate && next !== estimate.address) setEstimate(null);
           }}
           error={error}
+          locale={locale}
           placeholder={T.placeholder}
           groupClassName="flex-col items-stretch sm:flex-row sm:items-center rounded-2xl border border-line-strong bg-white/[0.04] p-2 transition-colors has-[input[aria-invalid=true]]:border-danger has-[input:focus-visible]:outline has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-focus"
           inputClassName="border-0 bg-transparent px-2 sm:px-0 sm:pr-2 text-body-sm text-white focus-visible:outline-none"
@@ -115,6 +113,7 @@ export default function HeroAccountInput() {
           key={estimate.request}
           address={estimate.address}
           network="mainnet"
+          locale={locale}
           onAnnounce={announce}
           onContinue={() => analyze(estimate.address)}
         />
