@@ -20,6 +20,8 @@ const FACTS: FaqFacts = {
   liveExits: "Alpha and Beta",
   testnetOnlyExits: "",
   testnetOnlySentence: "",
+  minimumBalance: "1",
+  perItem: "0.5",
 };
 
 function answer(locale: (typeof LOCALES)[number], facts: FaqFacts, question: number): string {
@@ -39,6 +41,14 @@ describe("sentences built from the registry", () => {
       expect(answer(locale, FACTS, exchange)).not.toBe(
         answer(locale, { ...FACTS, exchangeLive: true }, exchange)
       );
+    });
+
+    test(`${locale}: the reserve answer shows the reserve it is given`, () => {
+      const reserve = FAQ[locale].items(FACTS).findIndex((item) => /XLM/.test(item.q));
+      const shown = answer(locale, { ...FACTS, minimumBalance: "7", perItem: "3.5" }, reserve);
+      expect(shown).toContain("7 XLM");
+      expect(shown).toContain("3.5 XLM");
+      expect(shown).not.toContain("0.5 XLM");
     });
 
     test(`${locale}: the testnet sentence lists every name it is given`, () => {

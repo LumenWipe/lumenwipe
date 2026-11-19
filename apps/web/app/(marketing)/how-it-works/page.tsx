@@ -295,7 +295,7 @@ export default function HowItWorksPage() {
           </h2>
         </Reveal>
         <div className="mt-10">
-          <Faq />
+          <Faq locale={SITE_LOCALE} />
         </div>
         <div className="mt-12 flex flex-col items-center gap-4 rounded-2xl border border-white/10 bg-surface p-8 text-center">
           <h3 className="mkt-display text-xl font-bold text-white">{T.ready.heading}</h3>
