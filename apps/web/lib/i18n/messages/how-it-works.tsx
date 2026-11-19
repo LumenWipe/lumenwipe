@@ -10,7 +10,7 @@ const en = {
   hero: {
     eyebrow: "How it works",
     heading: "A deterministic plan for an irreversible action.",
-    body: "Closing an account is several sequential transactions in the right order. LumenWipe shows the whole plan up front, then executes it one confirmed step at a time, re-reading live state and simulating before every signature, so nothing is ever signed on stale data.",
+    body: "Closing an account takes one or more transactions in the right order. LumenWipe shows the whole plan up front, then executes it one transaction at a time, each confirmed before the next, re-reading live state and simulating before every signature, so nothing is ever signed on stale data.",
     openApp: "Open the app",
     faq: "Jump to FAQ",
   },
@@ -83,19 +83,19 @@ const en = {
       <>
         {"Exchanges don't support"} {code("ACCOUNT_MERGE")}
         {
-          ". LumenWipe bridges the gap with a transparent, single-use relay account, generated in your browser, used once, and cleared from memory."
+          ". LumenWipe bridges the gap with one shared relay account: the merge sends your balance into it and, in the same transaction, it pays that balance on to your deposit address with the memo. Its key stays on the LumenWipe API, which co-signs only that payment, and your browser checks that the payment goes to the address you typed before you sign."
         }
       </>
     ),
     nodes: {
       source: { label: "Source account", sub: "the account you're closing" },
       merge: "AccountMerge",
-      relay: { label: "Relay account", sub: "single-use · generated in browser" },
+      relay: { label: "Relay account", sub: "shared · co-signed by the API" },
       payment: "Payment + memo",
       exchange: { label: "Exchange deposit", sub: "validated address & memo" },
     },
     footnote:
-      "The ~1 XLM that stays as the relay account's base reserve is disclosed upfront. Known exchanges are validated against a registry that enforces the correct memo type.",
+      "The relay account forwards your whole balance less a two-operation network fee, so none of your reserve stays behind, and the review names the exchange and the relay route before you sign. Known exchanges are validated against a registry that enforces the correct memo type.",
   },
   resume: {
     eyebrow: "Resumable by design",

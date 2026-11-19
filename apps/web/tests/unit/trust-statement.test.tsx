@@ -24,7 +24,8 @@ import { renderMarketing } from "./fixtures/marketing";
 const WEB = join(import.meta.dir, "..", "..");
 const ROOT = join(WEB, "..", "..");
 
-// Absolutes the architecture contradicts: the API builds every transaction and two server keys sign.
+// Absolutes the architecture contradicts: the API builds every transaction, two server keys sign,
+// and the relay account is one shared account whose key the API holds.
 const OVERCLAIMS = [
   /\b0 servers\b/i,
   /read-only backend/i,
@@ -35,6 +36,8 @@ const OVERCLAIMS = [
   /can never move your funds/i,
   /signed entirely in your browser/i,
   /its (one|only) (signing )?key/i,
+  /single-use/i,
+  /generated in (your )?browser/i,
 ];
 
 function overclaims(text: string): string[] {
