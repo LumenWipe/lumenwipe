@@ -186,6 +186,7 @@ for (const [path, lang, title] of [
   ["/foo", "en", /This page has\s*been closed/],
   ["/blog/nope", "en", /This page has\s*been closed/],
   ["/esx", "en", /This page has\s*been closed/],
+  ["/nope", "en", /This page has\s*been closed/],
   ["/es/nope", "es-419", /Esta página\s*ya se cerró/],
   ["/es/x/y", "es-419", /Esta página\s*ya se cerró/],
 ] as const) {
@@ -203,6 +204,37 @@ for (const [path, lang, title] of [
     expect(await violations()).toEqual([]);
   });
 }
+
+// A single unknown segment would otherwise reach the [network] segment and fail there with the
+// bare error shell, which shows the 404 only after hydration: the server HTML alone carries it.
+// The rewrite sends it to a path no route serves (config/network-ids.mjs), the same miss as
+// /x/y/z, which is what keeps its status 404 on Vercel.
+for (const path of ["/nope", "/foo", "/esx"]) {
+  test(`${path} answers the full 404 in its server HTML, under its nonce`, async ({ request }) => {
+    const res = await request.get(path);
+    expect(res.status()).toBe(404);
+    const nonce = /'nonce-([A-Za-z0-9+/=]+)'/.exec(csp(res))?.[1];
+    expect(nonce).toBeTruthy();
+    const html = await res.text();
+    expect(html).toMatch(/<html lang="en"[ >]/);
+    expect(html).not.toContain('id="__next_error__"');
+    expect(html).toContain("<title>404 - Page Not Found</title>");
+    expect([...html.matchAll(/<meta name="robots"[^>]*>/g)].map((m) => m[0])).toEqual([
+      '<meta name="robots" content="noindex"/>',
+    ]);
+    expect(html).toMatch(/<h1\b[^>]*>This page has<br\/>been closed\.<\/h1>/);
+    const scripts = [...html.matchAll(/<script\b([^>]*)>/gi)].map((m) => m[1]);
+    expect(scripts.length).toBeGreaterThan(0);
+    for (const attrs of scripts.filter((a) => !a.includes('type="application/ld+json"'))) {
+      expect(attrs, "every script carries the response's nonce").toContain(`nonce="${nonce}"`);
+    }
+  });
+}
+
+test("a single unknown segment's RSC payload answers 404", async ({ request }) => {
+  const res = await request.get("/nope.rsc");
+  expect(res.status()).toBe(404);
+});
 
 test("the report receiver answers 204 and echoes nothing", async ({ request }) => {
   const res = await request.post("/api/csp-report", {

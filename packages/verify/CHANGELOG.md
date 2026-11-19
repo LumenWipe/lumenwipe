@@ -7,6 +7,11 @@ release is cut.
 
 ## [Unreleased]
 
+### Changed
+
+- The bundled list of networks now comes from one module that the web app's routing also reads.
+  The networks themselves (`mainnet`, `testnet`) and what `verify()` accepts are unchanged.
+
 ## [0.6.0] - 2026-11-19
 
 ### Added

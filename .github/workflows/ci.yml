@@ -466,6 +466,11 @@ jobs:
         working-directory: apps/web
         run: node scripts/marketing-csp.mjs check-output ../../.vercel/output
 
+      - name: Check that an unknown path segment is a routing miss in the build output
+        if: github.event_name != 'pull_request' || steps.web.outputs.run == 'true'
+        working-directory: apps/web
+        run: node scripts/not-found-routing.mjs check-output ../../.vercel/output
+
   # The same gate for the playground: its own production build, every /api call answered by
   # fixtures in the browser, so no API, no secret and no testnet. A serious or critical violation
   # fails it.
