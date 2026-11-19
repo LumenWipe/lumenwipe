@@ -156,6 +156,13 @@ const en = {
     shareImageAlt: "LumenWipe: an example close plan and the XLM it recovers",
     blogDescription:
       "Technical deep dives, project updates, and guides on Stellar account management, trustline removal, reserve recovery, and non-custodial DeFi tooling.",
+    blogName: (siteName: string): string => `${siteName} blog`,
+  },
+  structuredData: {
+    home: "Home",
+    blog: "Blog",
+    /** The feature-list entry naming the protocols with a live exit, from the registry's names. */
+    positionExits: (protocols: string): string => `Position exits: ${protocols}`,
   },
 };
 

@@ -20,7 +20,7 @@ export const metadata: Metadata = pageMetadata({
 export default function FaqPage() {
   return (
     <section className="mx-auto max-w-3xl px-5 py-20 lg:px-8 lg:py-24">
-      <JsonLd data={faqJsonLd(ITEMS)} />
+      <JsonLd data={faqJsonLd(ITEMS, SITE_LOCALE)} />
       <div className="text-center">
         <span className="mkt-eyebrow inline-flex items-center gap-2 text-fg-muted">
           <span className="h-px w-5 bg-line-strong" />

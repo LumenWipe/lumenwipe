@@ -108,7 +108,7 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
 export default function LandingPage() {
   return (
     <>
-      <JsonLd data={homeJsonLd(DESCRIPTION)} />
+      <JsonLd data={homeJsonLd(DESCRIPTION, SITE_LOCALE)} />
       {/* ============================ HERO ============================ */}
       <section className="mx-auto max-w-6xl px-5 pb-10 pt-16 text-center lg:px-8 lg:pt-20">
         {/* Label - typographic, not a status pill */}

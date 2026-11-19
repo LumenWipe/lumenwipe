@@ -4,6 +4,7 @@ import { render } from "@testing-library/react";
 import LandingPage from "@/app/(marketing)/page";
 import FaqPage from "@/app/(marketing)/faq/page";
 import BlogPage from "@/app/(marketing)/blog/page";
+import SpanishLandingPage from "@/app/(marketing-es)/es/page";
 import BlogPostPage, { generateMetadata } from "@/app/(marketing)/blog/[slug]/page";
 import SecurityPage from "@/app/(marketing)/security/page";
 import HowItWorksPage from "@/app/(marketing)/how-it-works/page";
@@ -14,7 +15,14 @@ import { GITHUB_URL } from "@/lib/site/navigation";
 import { nodeText } from "@/lib/site/node-text";
 import { postShareImage } from "@/lib/site/pages";
 import { FEATURES, LIVE_EXIT_PROTOCOLS, listNames } from "@/lib/site/status";
-import { liveFeatureList, serializeJsonLd } from "@/lib/site/structured-data";
+import {
+  blogJsonLd,
+  faqJsonLd,
+  homeJsonLd,
+  liveFeatureList,
+  postJsonLd,
+  serializeJsonLd,
+} from "@/lib/site/structured-data";
 import { siteOrigin, siteUrl } from "@/lib/site/url";
 import { renderMarketing } from "./fixtures/marketing";
 
@@ -121,7 +129,7 @@ describe("the home page", () => {
 
   test("lists only what the status registry has live, every live feature included", () => {
     const list = one(nodes, "WebApplication").featureList as string[];
-    expect(list).toEqual(liveFeatureList());
+    expect(list).toEqual(liveFeatureList("en"));
     for (const f of FEATURES) expect(list.includes(f.title)).toBe(f.status === "live");
     if (LIVE_EXIT_PROTOCOLS.length > 0) {
       expect(list.at(-1)).toBe(`Position exits: ${listNames(LIVE_EXIT_PROTOCOLS)}`);
@@ -212,6 +220,112 @@ describe("a post", () => {
     }[];
     expect(crumbs.map((c) => c.item)).toEqual([siteUrl("/"), siteUrl("/blog"), canonical]);
     expect(crumbs.at(-1)!.name).toBe(post.title);
+  });
+});
+
+// The page-level CreativeWork nodes, which carry their content's language, and every property each
+// node type may use: what the Rich Results Test reads, checked here as far as it can be offline.
+const IN_LANGUAGE_TYPES = ["WebSite", "WebApplication", "FAQPage", "Blog", "Article"];
+const SCHEMA: Record<string, { required: string[]; optional?: string[] }> = {
+  Organization: { required: ["name", "url"], optional: ["@id", "logo", "sameAs"] },
+  ImageObject: { required: ["url", "width", "height"] },
+  WebSite: { required: ["@id", "name", "url", "inLanguage", "publisher"] },
+  WebApplication: {
+    required: [
+      "name",
+      "url",
+      "description",
+      "inLanguage",
+      "applicationCategory",
+      "operatingSystem",
+      "isAccessibleForFree",
+      "featureList",
+      "publisher",
+    ],
+  },
+  FAQPage: { required: ["url", "inLanguage", "mainEntity"] },
+  Question: { required: ["name", "acceptedAnswer"] },
+  Answer: { required: ["text"] },
+  Blog: { required: ["name", "url", "inLanguage", "publisher", "blogPost"] },
+  BlogPosting: { required: ["headline", "url", "datePublished", "dateModified"] },
+  Article: {
+    required: [
+      "headline",
+      "description",
+      "inLanguage",
+      "datePublished",
+      "dateModified",
+      "image",
+      "mainEntityOfPage",
+      "url",
+      "author",
+      "publisher",
+      "keywords",
+    ],
+  },
+  WebPage: { required: ["@id"] },
+  BreadcrumbList: { required: ["itemListElement"] },
+  ListItem: { required: ["position", "name", "item"] },
+};
+
+/** Every typed node in a block, at any depth, and the props it sets. A reference such as
+ *  `{ "@id": ... }` has no type and is skipped. */
+function typedNodes(value: unknown, out: Node[] = []): Node[] {
+  if (Array.isArray(value)) value.forEach((v) => typedNodes(v, out));
+  else if (value && typeof value === "object") {
+    if ("@type" in value) out.push(value as Node);
+    Object.values(value).forEach((v) => typedNodes(v, out));
+  }
+  return out;
+}
+
+describe("the language of the structured data", () => {
+  const TOP = {
+    home: ["WebSite", "WebApplication"],
+    faq: ["FAQPage"],
+    blog: ["Blog"],
+    post: ["Article"],
+  };
+
+  for (const [page, types] of Object.entries(TOP)) {
+    test(`the ${page} page declares its content as English`, () => {
+      const nodes = PAGES[page as keyof typeof PAGES];
+      for (const type of types) expect(one(nodes, type).inLanguage).toBe("en");
+    });
+  }
+
+  test("every node on every page has its type's required properties and no others", () => {
+    for (const nodes of Object.values(PAGES)) {
+      for (const node of typedNodes(nodes)) {
+        const shape = SCHEMA[node["@type"]];
+        expect(shape).toBeDefined();
+        const keys = Object.keys(node).filter((k) => k !== "@type");
+        for (const key of shape!.required) expect(keys).toContain(key);
+        for (const key of keys) {
+          expect([...shape!.required, ...(shape!.optional ?? [])]).toContain(key);
+        }
+        expect("inLanguage" in node).toBe(IN_LANGUAGE_TYPES.includes(node["@type"]));
+      }
+    }
+  });
+
+  test("a Spanish page declares es-419 and its own URL", () => {
+    const post = getPost(POST.slug);
+    const docs = {
+      home: homeJsonLd("Descripción", "es"),
+      faq: faqJsonLd(ITEMS, "es"),
+      blog: blogJsonLd(getAllPostMetas(), "es"),
+      post: postJsonLd(post, "es"),
+    };
+    for (const [page, types] of Object.entries(TOP)) {
+      const nodes = docs[page as keyof typeof docs]["@graph"] as Node[];
+      for (const type of types) expect(one(nodes, type).inLanguage).toBe("es-419");
+    }
+    expect(one(docs.faq["@graph"] as Node[], "FAQPage").url).toBe(siteUrl("/es/faq"));
+  });
+
+  test("the Spanish landing, still the English page, declares English", () => {
+    expect(blocksIn(renderMarketing(<SpanishLandingPage />))).toEqual(PAGES.home);
   });
 });
 

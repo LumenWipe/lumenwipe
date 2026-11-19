@@ -10,6 +10,8 @@ import { LOCALE_TAGS } from "@/lib/i18n/locale";
 import {
   HOME_TITLE,
   INDEXED_PAGES,
+  languageAlternate,
+  languageAlternates,
   localePath,
   NOINDEX_PAGES,
   postShareImage,
@@ -69,6 +71,8 @@ async function resolvePages(): Promise<Page[]> {
 }
 
 const PAGES = await resolvePages();
+
+const routeLocale = (route: string) => (route === "/es" || route.startsWith("/es/") ? "es" : "en");
 const SITEMAP = sitemap();
 const SITEMAP_URLS = SITEMAP.map((entry) => entry.url);
 
@@ -128,8 +132,20 @@ describe("every public page under app/(marketing) and app/(marketing-es), and /a
       });
 
       test("shares in its own locale", () => {
-        const locale = page.route === "/es" || page.route.startsWith("/es/") ? "es" : "en";
-        expect(page.metadata.openGraph).toMatchObject({ locale: LOCALE_TAGS[locale].openGraph });
+        expect(page.metadata.openGraph).toMatchObject({
+          locale: LOCALE_TAGS[routeLocale(page.route)].openGraph,
+        });
+      });
+
+      test("names its other language only as a translated pair", () => {
+        const locale = routeLocale(page.route);
+        const other = languageAlternate(locale, page.route);
+        expect(page.metadata.alternates?.languages).toEqual(
+          languageAlternates(locale, page.route) ?? undefined
+        );
+        expect(page.metadata.openGraph?.alternateLocale).toEqual(
+          other ? [LOCALE_TAGS[other.locale].openGraph] : undefined
+        );
       });
 
       test(`is ${NOINDEX_PAGES.includes(page.route) ? "" : "not "}marked noindex`, () => {
@@ -199,7 +215,12 @@ describe("the Spanish pages", () => {
     expect(source).toContain('<RootDocument locale="es">');
     expect(source).toContain('<MarketingShell locale="es">');
     expect(source).toContain('rootMetadata("es")');
-    expect(LOCALE_TAGS.es).toEqual({ html: "es-419", intl: "es-419", openGraph: "es_LA" });
+    expect(LOCALE_TAGS.es).toEqual({
+      html: "es-419",
+      intl: "es-419",
+      openGraph: "es_LA",
+      hreflang: "es",
+    });
   });
 });
 
@@ -237,6 +258,15 @@ describe("the sitemap", () => {
       expect(entry?.lastModified).toEqual(new Date("2026-03-04"));
     } finally {
       rmSync(file, { force: true });
+    }
+  });
+
+  test("lists the hreflang set of each translated pair, and of nothing else", () => {
+    for (const entry of SITEMAP) {
+      const path = new URL(entry.url).pathname;
+      expect(entry.alternates?.languages).toEqual(
+        languageAlternates(routeLocale(path), path) ?? undefined
+      );
     }
   });
 

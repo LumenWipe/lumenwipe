@@ -33,6 +33,11 @@ export function postShareImage(slug: string, title: string): ShareImage {
 
 type ChangeFrequency = NonNullable<MetadataRoute.Sitemap[number]["changeFrequency"]>;
 
+/** A page's `hreflang` set: each language's URL, and the one for any other reader. */
+type HreflangSet = NonNullable<
+  NonNullable<MetadataRoute.Sitemap[number]["alternates"]>["languages"]
+>;
+
 export interface IndexedPage {
   path: string;
   priority: number;
@@ -58,7 +63,7 @@ export const INDEXED_PAGES: readonly IndexedPage[] = [
 export const BLOG_FEED = {
   path: "/blog/feed.xml",
   type: "application/rss+xml",
-  title: `${SITE_NAME} blog`,
+  title: COPY.blogName(SITE_NAME),
 } as const;
 
 /** The blog's own description, for the blog index and its feed. */
@@ -105,11 +110,49 @@ export function languageAlternate(
   return { locale: other, path: localePath(other, page.path) };
 }
 
+/** The `hreflang` set of the page at `pathname`: every version, itself included, and English as
+ *  `x-default`, the same from either side. Only a translated pair has one, so no indexed page names
+ *  a `noindex` page as its alternate. */
+export function languageAlternates(
+  locale: Locale,
+  pathname: string,
+  pages: readonly SpanishPage[] = SPANISH_PAGES
+): HreflangSet | null {
+  const alternate = languageAlternate(locale, pathname, pages);
+  if (!alternate) return null;
+  const english = locale === "en" ? pathname : alternate.path;
+  const spanish = locale === "es" ? pathname : alternate.path;
+  return {
+    [LOCALE_TAGS.en.hreflang]: siteUrl(english),
+    [LOCALE_TAGS.es.hreflang]: siteUrl(spanish),
+    "x-default": siteUrl(english),
+  };
+}
+
+/** The sitemap entries of the static pages: every indexed English page, then the translated
+ *  Spanish ones, each with the `hreflang` set of its pair. */
+export function sitemapPages(pages: readonly SpanishPage[] = SPANISH_PAGES): MetadataRoute.Sitemap {
+  const entry = (locale: Locale) => (page: IndexedPage) => {
+    const languages = languageAlternates(locale, page.path, pages);
+    return {
+      url: siteUrl(page.path),
+      changeFrequency: page.changeFrequency,
+      priority: page.priority,
+      ...(languages ? { alternates: { languages } } : {}),
+    };
+  };
+  return [...INDEXED_PAGES.map(entry("en")), ...spanishIndexedPages(pages).map(entry("es"))];
+}
+
 /** Pages search engines must not index: kept out of the sitemap and marked `noindex`. */
-export const NOINDEX_PAGES: readonly string[] = [
-  "/api-keys",
-  ...SPANISH_PAGES.filter((page) => !page.translated).map((page) => localePath("es", page.path)),
-];
+export function noindexPages(pages: readonly SpanishPage[] = SPANISH_PAGES): string[] {
+  return [
+    "/api-keys",
+    ...pages.filter((page) => !page.translated).map((page) => localePath("es", page.path)),
+  ];
+}
+
+export const NOINDEX_PAGES: readonly string[] = noindexPages();
 
 interface PageInput {
   path: string;
@@ -125,26 +168,32 @@ interface PageInput {
     | { type: "article"; publishedTime: string; modifiedTime: string; tags: string[] };
 }
 
-/** The metadata every public page carries: its name, its own canonical URL, and a share image
- *  for both Open Graph and X. */
-export function pageMetadata({
-  path,
-  locale = SITE_LOCALE,
-  title,
-  description,
-  shareImage = SHARE_IMAGE,
-  blogFeed = false,
-  openGraph = { type: "website" },
-}: PageInput): Metadata {
+/** The metadata every public page carries: its name, its own canonical URL, a share image for
+ *  both Open Graph and X, and, for a translated pair, its other language. */
+export function pageMetadata(
+  {
+    path,
+    locale = SITE_LOCALE,
+    title,
+    description,
+    shareImage = SHARE_IMAGE,
+    blogFeed = false,
+    openGraph = { type: "website" },
+  }: PageInput,
+  pages: readonly SpanishPage[] = SPANISH_PAGES
+): Metadata {
   const isHome = path === localePath(locale, "/");
   const homeTitle = SITE[locale].metadata.homeTitle;
   const fullTitle = isHome ? homeTitle : `${title} | ${SITE_NAME}`;
   const url = siteUrl(path);
+  const languages = languageAlternates(locale, path, pages);
+  const other = languageAlternate(locale, path, pages);
   return {
     title: isHome ? { absolute: homeTitle } : title,
     description,
     alternates: {
       canonical: url,
+      ...(languages ? { languages } : {}),
       ...(blogFeed
         ? {
             types: { [BLOG_FEED.type]: [{ url: siteUrl(BLOG_FEED.path), title: BLOG_FEED.title }] },
@@ -158,9 +207,10 @@ export function pageMetadata({
       url,
       siteName: SITE_NAME,
       locale: LOCALE_TAGS[locale].openGraph,
+      ...(other ? { alternateLocale: [LOCALE_TAGS[other.locale].openGraph] } : {}),
       images: [shareImage],
     },
     twitter: { card: "summary_large_image", title: fullTitle, description, images: [shareImage] },
-    ...(NOINDEX_PAGES.includes(path) ? { robots: { index: false, follow: true } } : {}),
+    ...(noindexPages(pages).includes(path) ? { robots: { index: false, follow: true } } : {}),
   };
 }

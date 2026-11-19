@@ -8,7 +8,7 @@ The marketing site renders in English. A Spanish locale is routed under `/es` bu
 
 ## How the copy is held
 
-- `apps/web/lib/i18n/locale.ts` declares the locales (`en` and `es`), `SITE_LOCALE` (the English default), and for each locale the `<html lang>` value, the tag dates and numbers are formatted with, and the `og:locale` value.
+- `apps/web/lib/i18n/locale.ts` declares the locales (`en` and `es`), `SITE_LOCALE` (the English default), and for each locale the `<html lang>` value, the tag dates and numbers are formatted with, the `og:locale` value and the `hreflang` value.
 - `SITE_LOCALE` is a build-time constant. Nothing reads a header or a cookie to choose the locale, so every page under `app/(marketing)` and `app/(marketing-es)` stays prerendered and keeps its per-page hash policy (`apps/web/scripts/marketing-csp.mjs`).
 - `apps/web/lib/i18n/messages/` holds one module per surface (`nav`, `footer`, `not-found`, `landing`, `faq`, `security`, `how-it-works`, `hero`, `stats`, `registry`, `playground`, `content`, `blog`, `site`, `common`), each a `Record<Locale, Copy>`. A client component imports only its own section, so the browser never downloads the whole dictionary.
 - A post's title and description come from the post, and a video's title and description from the video, each in its own language. The planned article titles on `/content` are titles of posts to come, so they stay with the post list in `lib/site/content-status.ts`. The page around them (headings, labels, and the units of a reading time or a video's length) is dictionary copy.
@@ -43,17 +43,19 @@ The App Router has no configuration-based locale routing: the `i18n` option in `
 - `app/(marketing-es)/layout.tsx` is the Spanish root layout: `RootDocument`, `MarketingShell` and the root metadata, each given `locale="es"`. The navigation and footer read their copy for the locale they are given.
 - `SPANISH_PAGES` in `apps/web/lib/site/pages.ts` lists the English pages that have a Spanish version, each with a `translated` flag. That one list drives everything else:
   - an untranslated Spanish page is marked `noindex` and left out of the sitemap; a translated one is indexed and listed in the sitemap with its English page's rank;
-  - the language switch (`components/marketing/LanguageSwitch.tsx`) links a page to its other version only when that entry is translated, in both directions, so no link leads to English text under `lang="es-419"`.
+  - the language switch (`components/marketing/LanguageSwitch.tsx`) links a page to its other version only when that entry is translated, in both directions, so no link leads to English text under `lang="es-419"`;
+  - the `hreflang` set, `og:locale:alternate` and the sitemap alternates are declared only for a translated pair, so no indexed page names a `noindex` page as its alternate.
 - Today the list holds only the landing page, untranslated: `/es` renders the English landing behind `noindex`, and the switch renders nowhere. An unknown path under `/es/` gets the English 404 from `app/global-not-found.tsx`, under the proxy's nonce policy, until the 404 is translated.
 - The Proxy matcher skips `es` (and its RSC payloads) literally, and `tests/unit/proxy-matcher.test.ts` walks both route groups, so a Spanish page without its matcher line fails the test. `marketing-csp.mjs` requires both groups to be prerendered, hashes each Spanish page like an English one, and checks that `/es/nope` keeps the nonce policy.
-- The sitemap alternates and `alternates.languages` wait for the first translated page: a `noindex` page should not be named as an alternate.
+- With no entry translated yet, no page declares an `hreflang` set or an `og:locale:alternate`, and no sitemap entry lists alternates. Translating a page and setting its flag turns all three on for that pair.
 
 ### `hreflang`, canonical and Open Graph
 
 - `pageMetadata()` (`apps/web/lib/site/pages.ts`) keeps a self-referencing canonical per locale: `/faq` is canonical for English and `/es/faq` for Spanish. A Spanish page never points its canonical at the English page.
-- `pageMetadata()` gains `alternates.languages` only for pages that exist in both locales: `en` to the English URL, `es` to the Spanish URL, and `x-default` to the English URL. Google ignores a pair that does not point at each other, and each version must list itself as well as the others ([Google Search Central, localized versions](https://developers.google.com/search/docs/specialty/international/localized-versions), checked 2026-11-16). This extends the canonical and share image work of #527 rather than replacing it.
-- The sitemap lists the alternates of each page that has a Spanish version.
-- `og:locale` is `en_US` or `es_LA`, and each page lists the other as `og:locale:alternate`. The structured data carries `inLanguage`.
+- `pageMetadata()` declares `alternates.languages` only for a translated pair (`languageAlternates()`): `en` to the English URL, `es` to the Spanish URL, and `x-default` to the English URL. Google ignores a pair that does not point at each other, and each version must list itself as well as the others ([Google Search Central, localized versions](https://developers.google.com/search/docs/specialty/international/localized-versions), checked 2026-11-16). This extends the canonical and share image work of #527 rather than replacing it.
+- The sitemap lists the same set under both URLs of each translated pair (`sitemapPages()`).
+- `og:locale` is `en_US` or `es_LA`, and each page of a translated pair lists the other as `og:locale:alternate`.
+- The structured data carries `inLanguage`, the `<html lang>` tag of the language the page is written in (`en` or `es-419`), on its page-level nodes: `WebSite`, `WebApplication`, `FAQPage`, `Blog` and `Article`. Its names and labels (the breadcrumb, the blog's name, the live protocol exits in the feature list) come from the dictionary.
 
 ### Locale tags
 
