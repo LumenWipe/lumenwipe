@@ -1,9 +1,8 @@
 name: on-chain monitors
 
-# The ledger watchers from docs/monitoring-plan.md, and the daily upstream request budget check.
-# Scheduled rather than on push: a check that only fires when someone opens a pull request is not
-# monitoring. Read-only, no secret except the alert webhook; the budget check signs in to Google
-# Cloud keylessly, as an account that can only read Firestore.
+# The ledger watchers from docs/monitoring-plan.md. Scheduled rather than on push: a check that
+# only fires when someone opens a pull request is not monitoring. Read-only, no secret except the
+# alert webhook.
 
 on:
   schedule:
@@ -126,44 +125,9 @@ jobs:
         working-directory: apps/api
         run: bun run scripts/monitors/service-accounts.ts forward
 
-  upstream-budget:
-    name: upstream requests within budget
-    # Daily, from main only: the identity it signs in as trusts main's workflow runs and nothing else.
-    if: (github.event_name == 'workflow_dispatch' || github.event.schedule == '0 6 * * *') && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      id-token: write # keyless sign-in (Workload Identity Federation) as the read-only monitor account
-    outputs:
-      status: ${{ steps.budget.outputs.status }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Authenticate to Google Cloud (keyless / WIF)
-        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
-        with:
-          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-          service_account: ${{ secrets.GCP_MONITOR_SA }}
-
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: "1.4.4"
-
-      - run: bun install --frozen-lockfile --filter @lumenwipe/api
-
-      - name: Every upstream is under 70 percent of its monthly request budget
-        id: budget
-        working-directory: apps/api
-        env:
-          FIRESTORE_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-        run: bun run scripts/monitors/upstream-budget.ts
-
   report:
     name: open an issue and alert on failure
-    needs: [registry, service-accounts, upstream-budget]
+    needs: [registry, service-accounts]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -176,8 +140,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           REGISTRY: ${{ needs.registry.result }}
-          BUDGET: ${{ needs.upstream-budget.result }}
-          BUDGET_STATUS: ${{ needs.upstream-budget.outputs.status }}
           CONFIG: ${{ needs.service-accounts.outputs.config }}
           KEYS: ${{ needs.service-accounts.outputs.keys }}
           KEYS_STATUS: ${{ needs.service-accounts.outputs.keys_status }}
@@ -209,20 +171,18 @@ jobs:
           KEYS_STATUS="${KEYS_STATUS:-incomplete}"
           FORWARD_STATUS="${FORWARD_STATUS:-incomplete}"
           detail() { if [ "$1" = "success" ]; then echo "$1"; else echo "$1 ($2)"; fi; }
-          BUDGET_STATUS="${BUDGET_STATUS:-incomplete}"
 
           STATUS=$(printf '%s\n' \
             "- registry hashes still match mainnet: $REGISTRY" \
             "- variables, monitoring plan and stellar.toml agree: $CONFIG" \
             "- service keys have not signed anything: $(detail "$KEYS" "$KEYS_STATUS")" \
             "- service accounts are above their balance floor: $BALANCES" \
-            "- no service account paid out beyond the forward and the drain: $(detail "$FORWARD" "$FORWARD_STATUS")" \
-            "- every upstream is under 70 percent of its monthly request budget: $(if [ "$BUDGET" = "failure" ]; then detail "$BUDGET" "$BUDGET_STATUS"; else echo "$BUDGET"; fi)")
+            "- no service account paid out beyond the forward and the drain: $(detail "$FORWARD" "$FORWARD_STATUS")")
 
-          # The registry's and the budget's `cancelled` and `skipped` are a superseded run, a human
-          # stopping a job, or the hourly run leaving them to the daily one: not findings.
+          # The registry's `cancelled` and `skipped` are a superseded run, a human stopping a job,
+          # or the hourly run leaving it to the daily one: not findings.
           FINDING=no
-          if [ "$REGISTRY" = "failure" ] || [ "$BUDGET" = "failure" ]; then FINDING=yes; fi
+          if [ "$REGISTRY" = "failure" ]; then FINDING=yes; fi
           for result in "$CONFIG" "$KEYS" "$BALANCES" "$FORWARD"; do
             if [ "$result" != "success" ]; then FINDING=yes; fi
           done
@@ -257,10 +217,6 @@ jobs:
             "A configuration failure means the repository variables, the monitoring plan and" \
             "stellar.toml disagree, or one the plan expects is unset: the checks did not run." \
             "Fix the variable or the plan; the run log names which." \
-            "" \
-            "A budget finding means an upstream has spent 70 percent of its monthly request" \
-            "budget, or the counts could not be read: follow" \
-            "https://docs.lumenwipe.com/runbooks/provider-quotas before the provider starts refusing." \
             "" \
             "A service-key or forward finding is different. It means a key the API holds signed a" \
             "transaction this codebase did not build, or a service or retired account paid out" \

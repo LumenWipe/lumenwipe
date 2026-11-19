@@ -64,7 +64,6 @@ async function report(env: Record<string, string>, existing = false): Promise<Ou
       RUN_URL: "https://github.com/o/r/actions/runs/1",
       HOURLY: "true",
       REGISTRY: "skipped",
-      BUDGET: "skipped",
       ...env,
     },
     stdout: "pipe",
@@ -206,50 +205,11 @@ describe("the on-chain monitors report", () => {
     expect(outputs.critical).toBe("yes");
   });
 
-  test("a registry or budget check that skips or is cancelled is not a finding on its own", async () => {
-    for (const result of ["skipped", "cancelled"]) {
-      for (const check of ["REGISTRY", "BUDGET"]) {
-        const { outputs } = await report({ ...CLEAN, [check]: result }, true);
-        expect(outputs.alert).toBeUndefined();
-      }
-    }
-  });
-
-  test.each([
-    ["finding", "failure (finding)"],
-    ["incomplete", "failure (incomplete)"],
-    ["", "failure (incomplete)"],
-  ])(
-    "a failed budget check with status %p is a finding that pages nobody",
-    async (status, line) => {
-      const { outputs, raw, calls } = await report(
-        {
-          ...CLEAN,
-          REGISTRY: "success",
-          BUDGET: "failure",
-          ...(status === "" ? {} : { BUDGET_STATUS: status }),
-        },
-        true
-      );
+  test("a registry that skips or is cancelled is not a finding on its own", async () => {
+    for (const registry of ["skipped", "cancelled"]) {
+      const { outputs } = await report({ ...CLEAN, REGISTRY: registry }, true);
       expect(outputs.alert).toBeUndefined();
-      expect(outputs.issue).toBe("7");
-      expect(calls.some((c) => c.startsWith("issue close"))).toBe(false);
-      expect(raw).toContain(
-        `- every upstream is under 70 percent of its monthly request budget: ${line}\n`
-      );
-      const fresh = await report({ ...CLEAN, BUDGET: "failure", BUDGET_STATUS: status });
-      expect(fresh.outputs).toMatchObject({ alert: "finding", critical: "no" });
-      expect(fresh.calls.join("\n")).toContain(
-        "https://docs.lumenwipe.com/runbooks/provider-quotas"
-      );
     }
-  );
-
-  test("a budget check that passed reads as success", async () => {
-    const { raw } = await report({ ...CLEAN, BUDGET: "success", KEYS: "failure" });
-    expect(raw).toContain(
-      "- every upstream is under 70 percent of its monthly request budget: success\n"
-    );
   });
 });
 

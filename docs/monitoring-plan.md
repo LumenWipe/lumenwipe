@@ -289,9 +289,10 @@ on SIGTERM, so they survive a restart and scale-to-zero. A crash loses at most t
 inside a request rather than on a timer, because Cloud Run throttles CPU between requests; `/health*` never
 triggers one. To read them, open `upstreamUsage/{YYYY-MM-DD}` in the `lumenwipe-api` Firestore database:
 `counts.<network>.<upstream>.<metric>` is that UTC day's total. There is no API route for them. Without
-`FIRESTORE_PROJECT_ID` they stay in memory, like usage metering. A daily job of the on-chain monitors workflow
-sums the month's `requests` against each provider's monthly budget and alerts at 70 percent; the budgets and
-their sources are in [Provider quotas](/runbooks/provider-quotas).
+`FIRESTORE_PROJECT_ID` they stay in memory, like usage metering. After a write, at most once an hour per
+instance, the API sums the month's `requests` against each provider's monthly budget and logs a warning for each
+budget at 70 percent or more, which a log-based alert picks up; the budgets, their sources and the alert are in
+[Provider quotas](/runbooks/provider-quotas).
 
 `upstreamRateLimitHits` and `defiDegradedFallbackCount` on `/health` are since-start values for one process:
 they reset on every cold start, and exist for compatibility.

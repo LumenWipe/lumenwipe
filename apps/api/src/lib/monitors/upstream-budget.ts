@@ -1,7 +1,7 @@
 /**
- * Month-to-date upstream requests against each provider's monthly request budget, read from the
- * `upstreamUsage/{date}` documents the API writes (docs/monitoring-plan.md). Read-only. Budgets
- * and their sources are in docs/runbooks/provider-quotas.mdx.
+ * Month-to-date upstream requests against each provider's monthly request budget, summed from the
+ * `upstreamUsage/{date}` documents the API writes (docs/monitoring-plan.md). Budgets are in
+ * `config/upstream-budgets.json`, and their sources in docs/runbooks/provider-quotas.mdx.
  */
 
 import { VALID_NETWORKS as NETWORKS, type Network } from "@/config/networks";
@@ -39,6 +39,8 @@ export interface UsageDay {
 
 export interface BudgetUse {
   provider: string;
+  networks: Network[];
+  upstreams: Upstream[];
   used: number;
   budget: number;
 }
@@ -136,18 +138,24 @@ export function budgetUse(
         counted.add(key);
       }
     }
-    return { provider: e.provider, used, budget: e.monthlyRequests };
+    return {
+      provider: e.provider,
+      networks: e.networks,
+      upstreams: e.upstreams,
+      used,
+      budget: e.monthlyRequests,
+    };
   });
   const unbudgeted = [...totals.keys()].filter((key) => !counted.has(key)).sort();
   return { uses, unbudgeted };
 }
 
-export function overBudget(use: BudgetUse, share = ALERT_SHARE): boolean {
+export function overBudget(use: Pick<BudgetUse, "used" | "budget">, share = ALERT_SHARE): boolean {
   return use.used > 0 && use.used >= use.budget * share;
 }
 
-export function formatUse(use: BudgetUse): string {
-  const pct =
-    use.budget > 0 ? `${Math.floor((use.used / use.budget) * 100)} percent` : "unbudgeted";
-  return `${use.provider}: ${use.used} of ${use.budget} requests this month (${pct})`;
+/** How much of its budget an entry has spent, in whole percent; 100 for any use of a budget of 0. */
+export function percentUsed(use: Pick<BudgetUse, "used" | "budget">): number {
+  if (use.budget === 0) return use.used > 0 ? 100 : 0;
+  return Math.floor((use.used / use.budget) * 100);
 }

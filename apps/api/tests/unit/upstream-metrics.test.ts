@@ -38,6 +38,8 @@ import { defaultXBullConversionDeps } from "@/lib/xbull/conversion-quotes";
 import { KeyActivityService } from "@/metering/key-activity.service";
 import { UpstreamFlushInterceptor } from "@/metering/upstream-flush.interceptor";
 import {
+  UPSTREAM_BUDGET_CHECK_INTERVAL_MS,
+  UPSTREAM_BUDGET_MESSAGE,
   UPSTREAM_FLUSH_INTERVAL_MS,
   UpstreamMetricsService,
 } from "@/metering/upstream-metrics.service";
@@ -505,6 +507,7 @@ describe("durable flush", () => {
     increment: async () => {},
     daily: async () => [],
     addUpstreamCounts,
+    upstreamDays: async () => [],
     addRateLimited: async () => {},
   });
 
@@ -615,6 +618,120 @@ describe("durable flush", () => {
     await Promise.resolve();
     expect(counts()).toEqual({});
     expect(store.upstream.get(`${DAY}/testnet/rpc/requests`)).toBe(1);
+  });
+
+  describe("budget alerts", () => {
+    // The committed budget for mainnet RPC is 100,000 requests a month: 70 percent is 70,000.
+    const seed = (store: InMemoryUsageStore, date: string, count: number) =>
+      store.addUpstreamCounts(date, [
+        { network: "mainnet", upstream: "rpc", metric: "requests", count },
+      ]);
+    let warn: ReturnType<typeof spyOn>;
+    const lines = (): unknown[] => warn.mock.calls.map((call: unknown[]) => call[0]);
+    const budgetLines = () =>
+      lines().filter(
+        (line): line is Record<string, unknown> =>
+          typeof line === "object" && line !== null && "provider" in line
+      );
+
+    beforeEach(() => {
+      warn = spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+    });
+    afterEach(() => warn.mockRestore());
+
+    test("nothing is logged below 70 percent of a budget", async () => {
+      const store = new InMemoryUsageStore();
+      await seed(store, DAY, 69_998);
+      const service = flushService(store);
+      recordUpstream("mainnet", "rpc", "requests");
+      tick();
+      await service.flushIfDue();
+      expect(store.upstream.get(`${DAY}/mainnet/rpc/requests`)).toBe(69_999);
+      expect(budgetLines()).toEqual([]);
+    });
+
+    test("at 70 percent one line names the budget, with the figures as fields", async () => {
+      const store = new InMemoryUsageStore();
+      await seed(store, DAY, 69_999);
+      await seed(store, "2026-09-30", 50_000);
+      const service = flushService(store);
+      recordUpstream("mainnet", "rpc", "requests");
+      tick();
+      await service.flushIfDue();
+      expect(budgetLines()).toEqual([
+        {
+          message: UPSTREAM_BUDGET_MESSAGE,
+          provider: "Stellar RPC (mainnet list)",
+          networks: ["mainnet"],
+          upstreams: ["rpc"],
+          percent: 70,
+          used: 70_000,
+          budget: 100_000,
+        },
+      ]);
+    });
+
+    test("one process checks at most once an hour, however often it writes", async () => {
+      const store = new InMemoryUsageStore();
+      await seed(store, DAY, 80_000);
+      let reads = 0;
+      const read = store.upstreamDays.bind(store);
+      store.upstreamDays = (dates) => {
+        reads++;
+        return read(dates);
+      };
+      const service = flushService(store);
+      const writeOnce = async (ms: number) => {
+        recordUpstream("mainnet", "rpc", "requests");
+        tick(ms);
+        await service.flushIfDue();
+      };
+      await writeOnce(UPSTREAM_FLUSH_INTERVAL_MS);
+      await writeOnce(UPSTREAM_FLUSH_INTERVAL_MS);
+      await writeOnce(UPSTREAM_BUDGET_CHECK_INTERVAL_MS - 2 * UPSTREAM_FLUSH_INTERVAL_MS);
+      expect(reads).toBe(1);
+      expect(budgetLines()).toHaveLength(1);
+      await writeOnce(UPSTREAM_FLUSH_INTERVAL_MS);
+      expect(reads).toBe(2);
+      expect(budgetLines()).toHaveLength(2);
+    });
+
+    test("a failed read is logged once, keeps the written counts and waits for the next hour", async () => {
+      const store = new InMemoryUsageStore();
+      let reads = 0;
+      store.upstreamDays = async () => {
+        reads++;
+        throw new Error("firestore down");
+      };
+      const service = flushService(store);
+      recordUpstream("mainnet", "rpc", "requests");
+      tick();
+      await service.flushIfDue();
+      recordUpstream("mainnet", "rpc", "requests");
+      tick();
+      await service.flushIfDue();
+      expect(reads).toBe(1);
+      expect(store.upstream.get(`${DAY}/mainnet/rpc/requests`)).toBe(2);
+      expect(counts()).toEqual({});
+      expect(lines()).toContain("upstream_budget_check_failed: firestore down");
+    });
+
+    test("a write that fails runs no check", async () => {
+      let reads = 0;
+      const service = flushService({
+        ...storeWith(async () => {
+          throw new Error("firestore down");
+        }),
+        upstreamDays: async () => {
+          reads++;
+          return [];
+        },
+      });
+      recordUpstream("mainnet", "rpc", "requests");
+      tick();
+      await service.flushIfDue();
+      expect(reads).toBe(0);
+    });
   });
 
   test("a write that outlives the cap and then rejects gives its counts back once", async () => {

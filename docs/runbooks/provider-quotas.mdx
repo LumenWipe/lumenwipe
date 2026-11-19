@@ -12,7 +12,7 @@ The API counts every HTTP attempt to each upstream, retries included, by network
 
 ## Quotas and budgets
 
-Budgets are in [`apps/api/scripts/monitors/upstream-budgets.json`](https://github.com/LumenWipe/lumenwipe/blob/main/apps/api/scripts/monitors/upstream-budgets.json). Upstreams that spend one quota share one budget: `horizon` and `paths` go to the same Horizon host, and one Soroswap or StellarIndex key serves both networks.
+Budgets are in [`apps/api/src/config/upstream-budgets.json`](https://github.com/LumenWipe/lumenwipe/blob/main/apps/api/src/config/upstream-budgets.json). Upstreams that spend one quota share one budget: `horizon` and `paths` go to the same Horizon host, and one Soroswap or StellarIndex key serves both networks.
 
 Each budget follows one of three rules:
 
@@ -38,12 +38,19 @@ A provider added to `STELLAR_RPC_<NET>` or `PATH_ROUTING_API_<NET>` brings its o
 
 ## Alerts at 70 percent
 
-- **Upstream requests.** The `upstream requests within budget` job of the on-chain monitors workflow runs daily at 06:00 UTC, from `main` only. It signs in keylessly as an account that can only read Firestore, sums this month's counts and fails when any budget has reached 70 percent, or when the counts cannot be read. The workflow's report then opens or updates the monitors issue and alerts the maintainers' channel without paging everyone. The issue closes itself on the next clean daily run.
+- **Upstream requests.** The API checks its own budgets, with no credential beyond the one it already writes the counts with. After it writes the counts, at most once an hour per instance, it sums this month's `requests` and logs one `WARNING` line for each budget at or past 70 percent. The line has the fixed message `upstream request budget at 70 percent`, with `provider`, `networks`, `upstreams`, `percent`, `used` and `budget` as fields. The log-based metric `upstream_budget_threshold` counts those lines, and an alert policy on it notifies the maintainers while any line arrives. A budget past 70 percent logs again every hour the API takes traffic, so the alert stays open until the month resets or the budget is raised. A check that cannot read the counts logs `upstream_budget_check_failed` and tries again an hour later.
 - **Cloud spend.** Each budget on the billing account alerts at 70 percent of its amount, among its other thresholds. The `billing` check of the [migration check](/runbooks/restore-api-keys#migration-check) fails when no budget alerts at 70 percent.
 
 ## When an upstream alert fires
 
-1. Read the job's log. It prints every budget's use, for example `Horizon (mainnet): 460000 of 648000 requests this month (70 percent)`.
+1. Read the lines that fired it:
+
+   ```bash
+   gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="lumenwipe-api" AND jsonPayload.message="upstream request budget at 70 percent"' --freshness=2h --format='value(jsonPayload.provider,jsonPayload.percent,jsonPayload.used,jsonPayload.budget)'
+   ```
+
+   Expected while an alert is open: one row per budget past 70 percent, such as `Horizon (mainnet)  70  453600  648000`.
+
 2. Find what spent it. `upstreamUsage/{date}` shows the days, and the access log shows the routes and keys of the same period. Many requests from one key point at an integrator to talk to, or at a key whose rate limit to lower.
-3. If the growth is real, move the upstream before it starts refusing: a paid plan, an API key, or a second provider in the list, set as [Provider outage](/runbooks/provider-outage) step 3 shows. Then raise the budget in `upstream-budgets.json` to match the new quota, with its source in this table.
-4. A finding with the counts unreadable (`incomplete read, not a finding`) means Firestore or the sign-in failed: re-run the workflow, and check the [Firestore outage](/runbooks/firestore-outage) runbook if it fails again.
+3. If the growth is real, move the upstream before it starts refusing: a paid plan, an API key, or a second provider in the list, set as [Provider outage](/runbooks/provider-outage) step 3 shows. Then raise the budget in `upstream-budgets.json` to match the new quota, with its source in this table, and deploy.
+4. `upstream_budget_check_failed` in the log means the counts could not be read: see the [Firestore outage](/runbooks/firestore-outage) runbook if it repeats.
