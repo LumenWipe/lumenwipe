@@ -112,6 +112,10 @@ export function defaultTokenConversionRoundDeps(
  * `apps/api/tests/fixtures/xbull-strict-send-sample.json`'s own `pathTupleOrder` field, captured
  * from the same research.
  */
+/** The most hops an xBull path may have; each costs one ledger read to resolve. Real routes
+ *  seen on mainnet have at most three. */
+export const MAX_XBULL_PATH_HOPS = 8;
+
 export async function resolveXBullPath(
   rpc: Pick<stellarRpc.Server, "getLedgerEntries">,
   contractArgsXDR: string
@@ -120,6 +124,11 @@ export async function resolveXBullPath(
   const args = contractArgs.args;
   const pathArg = args[4]!;
   const tuples = scValToNative(pathArg) as number[][];
+  if (tuples.length > MAX_XBULL_PATH_HOPS) {
+    throw new Error(
+      `xBull's path has ${tuples.length} hops, more than the ${MAX_XBULL_PATH_HOPS} it may resolve`
+    );
+  }
   const contract = new Contract(Address.fromScAddress(contractArgs.contractAddress).toString());
   const IN_INDEX_POSITION = 1;
   const OUT_INDEX_POSITION = 3;

@@ -13,7 +13,7 @@ const read = (path: string): string =>
 
 /** Each file that constructs a VerificationError, with how many refusal sites it holds. */
 const SOURCES: [string, number][] = [
-  ["verify.ts", 106],
+  ["verify.ts", 107],
   ["intent/serialize.ts", 1],
 ];
 

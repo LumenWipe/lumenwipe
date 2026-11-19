@@ -25,6 +25,7 @@ export const VERIFICATION_ERROR_CODES = [
   "mediator_forward_source_mismatch",
   "mediator_forward_destination_mismatch",
   "mediator_forward_not_native",
+  "mediator_forward_balance_unknown",
   "mediator_forward_short",
   // Classic and token transfers
   "transfer_not_chosen",
