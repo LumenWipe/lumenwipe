@@ -112,6 +112,7 @@ const hashOf = (xdr: string): Buffer =>
   Buffer.from(TransactionBuilder.fromXdr(xdr, Networks.TESTNET).hash());
 
 const SMALL = envelope(2);
+const OTHER_SMALL = envelope(3);
 // 80 trustline removals put the signature base past what a Nano X buffers.
 const LARGE = envelope(80);
 
@@ -207,6 +208,27 @@ for (const status of [0xb004, 0xb005]) {
     await signer.sign(SMALL, Networks.TESTNET);
     expect(transport.prompts.map((p) => p.ins)).toEqual([INS_SIGN_HASH]);
     expect(transport.prompts[0].payload.subarray(PATH_BYTES)).toEqual(hashOf(SMALL));
+  });
+
+  test(`ledger › after 0x${hex} on one transaction, another that fits is still shown in full`, async () => {
+    let failing = true;
+    const transport = fakeTransport(device);
+    const send = transport.send;
+    transport.send = async (...args: Parameters<typeof send>) => {
+      if (failing) throw new ledgerErrors.TransportStatusError(status);
+      return send(...args);
+    };
+    const { signer } = ledgerSigner(transport, true);
+    expect((await failureOf(signer.sign(SMALL, Networks.TESTNET))).hashSigningNext).toBe(true);
+
+    failing = false;
+    await signer.sign(OTHER_SMALL, Networks.TESTNET);
+    expect(transport.prompts.map((p) => p.ins)).toEqual([INS_SIGN_TX]);
+    expect(transport.prompts[0].payload.subarray(PATH_BYTES)).toEqual(signatureBase(OTHER_SMALL));
+    // The failed transaction itself, retried by the user, is still the one signed by hash.
+    await signer.sign(SMALL, Networks.TESTNET);
+    expect(transport.prompts.map((p) => p.ins)).toEqual([INS_SIGN_TX, INS_SIGN_HASH]);
+    expect(transport.prompts[1].payload.subarray(PATH_BYTES)).toEqual(hashOf(SMALL));
   });
 
   test(`ledger › where no fingerprint shows, 0x${hex} never turns into hash signing`, async () => {

@@ -1,5 +1,6 @@
 import { Keypair, Networks, TransactionBuilder } from "@stellar/stellar-sdk";
 import type { Network } from "@/config/networks";
+import { toHex } from "@/lib/stellar/hex";
 import { submissionValidUntil } from "@/lib/stellar/submission";
 import { signTimeoutMs, startSignTimeout, type SignTimer } from "@/lib/stellar/wallet-timeout";
 
@@ -315,7 +316,9 @@ export class WalletKitSigner implements TransactionSigner {
   readonly fingerprintShown: boolean;
   private openPrompt: Promise<void> | null = null;
   private lastMismatch: string | null = null;
-  private deviceCannotShowAll = false;
+  /** The hash of the one transaction this device could not show in full, which the user's retry
+   *  of it signs by hash; null when there is none. */
+  private hashSigningFor: string | null = null;
   private readonly startTimeout: (ms: number) => SignTimer;
   private readonly now: () => number;
 
@@ -350,25 +353,30 @@ export class WalletKitSigner implements TransactionSigner {
   /**
    * For a Ledger, whether to show the whole transaction on the device (`nonBlindTx`) rather than
    * sign its hash; undefined for any other wallet. Shown in full unless the screen shows the hash
-   * to compare and the transaction is too large for every model, or this device already could not
-   * show one. Read before the prompt, so a fallback only ever applies to a later attempt the user
-   * starts.
+   * to compare and the transaction is too large for every model, or it is the very transaction
+   * the device could not show last time. Read before the prompt, so a fallback only ever applies
+   * to a later attempt the user starts, and only to that transaction.
    */
   private clearSigning(xdr: string, networkPassphrase: string): boolean | undefined {
     if (this.walletId !== LEDGER_WALLET_ID) return undefined;
     if (!this.fingerprintShown) return true;
-    if (this.deviceCannotShowAll) return false;
-    const size = TransactionBuilder.fromXdr(xdr, networkPassphrase).signatureBase().length;
-    return size <= LEDGER_CLEAR_SIGNING_MAX_BYTES;
+    const tx = TransactionBuilder.fromXdr(xdr, networkPassphrase);
+    if (this.hashSigningFor === toHex(tx.hash())) return false;
+    return tx.signatureBase().length <= LEDGER_CLEAR_SIGNING_MAX_BYTES;
   }
 
   /** A Ledger failure that leaves the next attempt to sign by hash, where that is allowed. */
-  private walletError(thrown: unknown, nonBlindTx: boolean | undefined): Error {
+  private walletError(
+    thrown: unknown,
+    nonBlindTx: boolean | undefined,
+    xdr: string,
+    networkPassphrase: string
+  ): Error {
     // Found before the wallet was asked (see walletKitSigner), so it is not the wallet's failure.
     if (thrown instanceof WalletNotUsableError) return thrown;
     const err = walletErrorOf(thrown, this.walletId);
     if (nonBlindTx !== true || !this.fingerprintShown || !deviceCannotShow(err.device)) return err;
-    this.deviceCannotShowAll = true;
+    this.hashSigningFor = toHex(TransactionBuilder.fromXdr(xdr, networkPassphrase).hash());
     return new WalletSigningError(err.code, err.walletId, err.message, err.device, true);
   }
 
@@ -397,7 +405,7 @@ export class WalletKitSigner implements TransactionSigner {
           return signedTxXdr;
         },
         (thrown: unknown) => {
-          throw this.walletError(thrown, nonBlindTx);
+          throw this.walletError(thrown, nonBlindTx, xdr, networkPassphrase);
         }
       );
     // A late failure, after the timeout won, has nobody left to hear it.
