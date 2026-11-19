@@ -21,8 +21,18 @@ const isCreateSession = (res: Response): boolean => {
   );
 };
 
+/** The preview's step list, unfolded first: the picker keeps it folded until asked. */
 async function previewSteps(page: Page): Promise<string[]> {
-  return page.getByRole("list", { name: "Steps before the close" }).locator("li").allInnerTexts();
+  const steps = page.getByRole("list", { name: "Steps before the close" });
+  if (!(await steps.isVisible())) await page.getByText(/^Show the \d+ setup steps?$/).click();
+  return steps.locator("li").allInnerTexts();
+}
+
+/** Types a replay code into the folded "Replay a code" section and applies it. */
+async function replay(page: Page, code: string): Promise<void> {
+  await page.getByText("Replay a code", { exact: true }).click();
+  await page.getByLabel("Replay a seed").fill(code);
+  await page.getByRole("button", { name: "Replay", exact: true }).click();
 }
 
 /** Runs the wallet on screen through the close; returns the request body and the server's plan. */
@@ -44,8 +54,7 @@ test("a replay code runs the same wallet twice", async ({ page }) => {
   test.setTimeout(15 * 60_000);
   await page.goto("/");
 
-  await page.getByLabel("Replay a seed").fill(CODE);
-  await page.getByRole("button", { name: "Replay", exact: true }).click();
+  await replay(page, CODE);
   await expect(page.getByText(CODE, { exact: true })).toBeVisible();
   const firstPreview = await previewSteps(page);
   expect(firstPreview.length).toBeGreaterThan(0);
@@ -68,8 +77,7 @@ test("today's random wallet closes end to end", async ({ page }) => {
   test.info().annotations.push({ type: "replay code", description: code });
   await page.goto("/");
 
-  await page.getByLabel("Replay a seed").fill(code);
-  await page.getByRole("button", { name: "Replay", exact: true }).click();
+  await replay(page, code);
   await expect(page.getByText(code, { exact: true })).toBeVisible();
   await closeOnScreen(page, null);
   await expect(page.getByText(`Replay code ${code}`)).toBeVisible();

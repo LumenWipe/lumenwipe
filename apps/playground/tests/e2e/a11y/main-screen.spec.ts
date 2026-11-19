@@ -8,6 +8,7 @@ import { SECRET_PLACEHOLDER, SESSION_ID, answerRoutes, runSetup } from "./fixtur
 test("the start screen, with what the run will create", async ({ page }) => {
   const routes = await answerRoutes(page);
   await page.goto("/");
+  await page.getByText("This will create on testnet").click();
   await expect(page.getByRole("region", { name: "This will create on testnet" })).toBeVisible();
   await expectNoAxeViolations(page, "start");
   routes.expectAllAnswered();

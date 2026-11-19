@@ -163,17 +163,17 @@ export function BatchSizeField() {
   return (
     <fieldset className="mb-4">
       <legend className="mkt-eyebrow mb-2 text-[0.6rem] text-white/50">Accounts to close</legend>
-      <div className="flex flex-wrap gap-2">
+      <div className="grid grid-cols-3 gap-1 rounded-lg border border-white/10 bg-white/[0.02] p-1">
         {SIZES.map(({ value, label }) => (
           <button
             key={value}
             type="button"
             aria-pressed={batchSize === value}
             onClick={() => setBatchSize(value)}
-            className={`rounded-md border px-3 py-1.5 text-xs transition-colors ${
+            className={`rounded-md px-2 py-1.5 text-[11px] transition-colors ${
               batchSize === value
-                ? "border-stellar/60 bg-[hsl(var(--stellar)/0.12)] text-white"
-                : "border-white/15 text-white/65 hover:bg-white/5"
+                ? "bg-[hsl(var(--stellar)/0.15)] text-white shadow-[inset_0_0_0_1px_hsl(var(--stellar)/0.5)]"
+                : "text-white/60 hover:bg-white/5 hover:text-white/85"
             }`}
           >
             {label}

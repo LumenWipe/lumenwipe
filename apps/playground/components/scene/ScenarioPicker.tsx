@@ -23,6 +23,7 @@ import {
 } from "@/lib/scenarios";
 import { MEASURED_DURATIONS } from "@/lib/scenarios/measured-durations";
 import { selectionLink } from "@/lib/share-link";
+import Disclosure from "./Disclosure";
 
 function durationLabel(seconds: number): string {
   if (seconds < 60) return `~${seconds}s`;
@@ -208,6 +209,10 @@ export default function ScenarioPicker({
         : "border-white/10 bg-white/[0.02] text-white/60 hover:border-white/20 hover:text-white/80"
     }`;
 
+  // A hand-picked selection (toggled here, or restored from a shared link) opens the scenario
+  // list, so what is switched on is in view; a preset keeps it folded.
+  const custom = preset === null;
+
   return (
     <div className="space-y-3">
       <div
@@ -275,107 +280,6 @@ export default function ScenarioPicker({
         </div>
       )}
 
-      <form onSubmit={submitReplay} className="flex items-center gap-1.5">
-        <label htmlFor="replay-seed" className="sr-only">
-          Replay a seed
-        </label>
-        <input
-          id="replay-seed"
-          value={replayText}
-          onChange={(e) => setReplayText(e.target.value)}
-          placeholder="Replay a seed, e.g. LW1-7Q2M4KD9"
-          aria-invalid={replayError}
-          aria-describedby={replayError ? "replay-seed-error" : undefined}
-          maxLength={16}
-          className="min-w-0 flex-1 rounded-md border border-white/10 bg-white/[0.03] px-2.5 py-1.5 mkt-mono text-[11px] text-white/80 placeholder:text-subtle"
-        />
-        <button
-          type="submit"
-          className="rounded-md border border-white/15 px-2.5 py-1.5 text-[11px] text-white/70 hover:bg-white/5"
-        >
-          Replay
-        </button>
-      </form>
-      {replayError && (
-        <p id="replay-seed-error" className="text-[10px] text-value">
-          That is not a replay code this playground can run. One looks like LW1-7Q2M4KD9.
-        </p>
-      )}
-
-      {FEATURE_SETS.map((set) => {
-        const scenarios = SCENARIOS.filter((s) => s.featureSet === set.id);
-        if (scenarios.length === 0) return null;
-        return (
-          <fieldset key={set.id} className="space-y-1.5">
-            <legend className="mkt-eyebrow mb-1 text-[0.6rem] text-subtle">{set.label}</legend>
-            {scenarios.map((def) => {
-              const on = selected.has(def.id);
-              const reason = unavailable.get(def.id);
-              const choice = selection.scenarios.find((c) => c.id === def.id);
-              const reasonId = `scenario-reason-${def.id}`;
-              return (
-                <div key={def.id} className="rounded-lg border border-white/10 bg-white/[0.02]">
-                  <button
-                    aria-pressed={on}
-                    aria-describedby={reason === undefined ? undefined : reasonId}
-                    disabled={reason !== undefined}
-                    onClick={() => toggle(def.id)}
-                    className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <span className={`text-xs ${on ? "text-white" : "text-white/60"}`}>
-                      {def.label}
-                    </span>
-                    <span className="text-[10px] leading-tight text-subtle">{def.description}</span>
-                  </button>
-                  {reason !== undefined && (
-                    <p id={reasonId} className="px-3 pb-2 text-[10px] text-value">
-                      {reason}
-                    </p>
-                  )}
-                  {on && choice && Object.keys(def.params).length > 0 && (
-                    <div className="space-y-1.5 border-t border-white/10 px-3 py-2">
-                      {Object.entries(def.params).map(([name, spec]) =>
-                        spec.choices ? (
-                          <Choice
-                            key={name}
-                            label={spec.label}
-                            value={choice.params[name] ?? spec.default}
-                            min={spec.min}
-                            choices={spec.choices}
-                            onChange={(v) => setParam(def.id, name, v)}
-                          />
-                        ) : (
-                          <Counter
-                            key={name}
-                            label={spec.label}
-                            value={choice.params[name] ?? spec.default}
-                            min={spec.min}
-                            max={spec.max}
-                            onChange={(v) => setParam(def.id, name, v)}
-                          />
-                        )
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-            {TESTNET_UNAVAILABLE.filter((u) => u.featureSet === set.id).map((u, i) => (
-              // Not a toggle: nothing here can be picked, so it is text, not a disabled button.
-              <div
-                key={u.label}
-                className="rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 opacity-50"
-              >
-                <p className="text-xs text-white/60">{u.label}</p>
-                <p id={`testnet-unavailable-${set.id}-${i}`} className="text-[10px] text-value">
-                  {u.reason}
-                </p>
-              </div>
-            ))}
-          </fieldset>
-        );
-      })}
-
       <div
         aria-live="polite"
         className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-2.5 text-xs text-white/60"
@@ -409,11 +313,20 @@ export default function ScenarioPicker({
                 {range.measuredAt}
               </p>
             )}
-            <ol aria-label="Steps before the close" className="mt-2 space-y-0.5 text-[10px]">
-              {result.plan.steps.map((step) => (
-                <li key={step.id}>{step.label}</li>
-              ))}
-            </ol>
+            <details className="mt-2">
+              <summary className="cursor-pointer text-[10px] text-white/50 hover:text-white/80">
+                Show the {result.plan.steps.length} setup{" "}
+                {result.plan.steps.length === 1 ? "step" : "steps"}
+              </summary>
+              <ol
+                aria-label="Steps before the close"
+                className="mt-1.5 list-decimal space-y-0.5 pl-4 text-[10px]"
+              >
+                {result.plan.steps.map((step) => (
+                  <li key={step.id}>{step.label}</li>
+                ))}
+              </ol>
+            </details>
             <button
               onClick={() => copy("link", selectionLink(window.location, selection))}
               className="mt-2 flex items-center gap-1 text-[10px] text-white/50 hover:text-white/80"
@@ -430,6 +343,142 @@ export default function ScenarioPicker({
           <p>{result.message}</p>
         )}
       </div>
+
+      <Disclosure
+        label="Customize scenarios"
+        hint={`${selected.size} on`}
+        autoOpen={custom}
+        className="[&>div]:space-y-2"
+      >
+        {FEATURE_SETS.map((set) => {
+          const scenarios = SCENARIOS.filter((s) => s.featureSet === set.id);
+          if (scenarios.length === 0) return null;
+          const count = scenarios.filter((s) => selected.has(s.id)).length;
+          return (
+            <Disclosure
+              key={set.id}
+              label={set.label}
+              hint={`${count} of ${scenarios.length}`}
+              defaultOpen={count > 0}
+              autoOpen={custom && count > 0}
+            >
+              <fieldset className="space-y-1.5">
+                <legend className="sr-only">{set.label}</legend>
+                {scenarios.map((def) => {
+                  const on = selected.has(def.id);
+                  const reason = unavailable.get(def.id);
+                  const choice = selection.scenarios.find((c) => c.id === def.id);
+                  const reasonId = `scenario-reason-${def.id}`;
+                  return (
+                    <div
+                      key={def.id}
+                      className={`rounded-lg border bg-white/[0.02] ${
+                        on ? "border-stellar/40" : "border-white/10"
+                      }`}
+                    >
+                      <button
+                        aria-pressed={on}
+                        aria-describedby={reason === undefined ? undefined : reasonId}
+                        disabled={reason !== undefined}
+                        onClick={() => toggle(def.id)}
+                        className="flex w-full items-start gap-2 px-3 py-2 text-left disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <span
+                          aria-hidden
+                          className={`mt-0.5 flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border ${
+                            on ? "border-stellar bg-stellar text-black" : "border-white/30"
+                          }`}
+                        >
+                          {on && <Check className="h-2.5 w-2.5" />}
+                        </span>
+                        <span className="flex flex-col gap-0.5">
+                          <span className={`text-xs ${on ? "text-white" : "text-white/70"}`}>
+                            {def.label}
+                          </span>
+                          <span className="text-[10px] leading-tight text-subtle">
+                            {def.description}
+                          </span>
+                        </span>
+                      </button>
+                      {reason !== undefined && (
+                        <p id={reasonId} className="px-3 pb-2 text-[10px] text-value">
+                          {reason}
+                        </p>
+                      )}
+                      {on && choice && Object.keys(def.params).length > 0 && (
+                        <div className="space-y-1.5 border-t border-white/10 px-3 py-2">
+                          {Object.entries(def.params).map(([name, spec]) =>
+                            spec.choices ? (
+                              <Choice
+                                key={name}
+                                label={spec.label}
+                                value={choice.params[name] ?? spec.default}
+                                min={spec.min}
+                                choices={spec.choices}
+                                onChange={(v) => setParam(def.id, name, v)}
+                              />
+                            ) : (
+                              <Counter
+                                key={name}
+                                label={spec.label}
+                                value={choice.params[name] ?? spec.default}
+                                min={spec.min}
+                                max={spec.max}
+                                onChange={(v) => setParam(def.id, name, v)}
+                              />
+                            )
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {TESTNET_UNAVAILABLE.filter((u) => u.featureSet === set.id).map((u, i) => (
+                  // Not a toggle: nothing here can be picked, so it is text, not a disabled button.
+                  <div
+                    key={u.label}
+                    className="rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 opacity-50"
+                  >
+                    <p className="text-xs text-white/60">{u.label}</p>
+                    <p id={`testnet-unavailable-${set.id}-${i}`} className="text-[10px] text-value">
+                      {u.reason}
+                    </p>
+                  </div>
+                ))}
+              </fieldset>
+            </Disclosure>
+          );
+        })}
+      </Disclosure>
+
+      <Disclosure label="Replay a code" autoOpen={replayError}>
+        <form onSubmit={submitReplay} className="flex items-center gap-1.5">
+          <label htmlFor="replay-seed" className="sr-only">
+            Replay a seed
+          </label>
+          <input
+            id="replay-seed"
+            value={replayText}
+            onChange={(e) => setReplayText(e.target.value)}
+            placeholder="e.g. LW1-7Q2M4KD9"
+            aria-invalid={replayError}
+            aria-describedby={replayError ? "replay-seed-error" : undefined}
+            maxLength={16}
+            className="min-w-0 flex-1 rounded-md border border-white/10 bg-white/[0.03] px-2.5 py-1.5 mkt-mono text-[11px] text-white/80 placeholder:text-subtle"
+          />
+          <button
+            type="submit"
+            className="rounded-md border border-white/15 px-2.5 py-1.5 text-[11px] text-white/70 hover:bg-white/5"
+          >
+            Replay
+          </button>
+        </form>
+        {replayError && (
+          <p id="replay-seed-error" className="mt-2 text-[10px] text-value">
+            That is not a replay code this playground can run. One looks like LW1-7Q2M4KD9.
+          </p>
+        )}
+      </Disclosure>
     </div>
   );
 }
