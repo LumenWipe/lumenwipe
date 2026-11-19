@@ -23,7 +23,7 @@ export default function BlogPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-5 lg:px-8 py-14 lg:py-20">
-      <JsonLd data={blogJsonLd(posts)} />
+      <JsonLd data={blogJsonLd(posts, SITE_LOCALE)} />
       <div className="mb-12">
         <span className="mkt-eyebrow inline-flex items-center gap-2 text-fg-muted">
           <span className="h-px w-6 bg-line-strong" />
