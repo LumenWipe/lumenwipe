@@ -1,17 +1,17 @@
 import { formatPostDate } from "@/lib/blog-date";
-import { SITE_LOCALE } from "@/lib/i18n/locale";
+import { formatNumber } from "@/lib/i18n/format";
+import type { Locale } from "@/lib/i18n/locale";
 import { BASE_RESERVE_CHECKED_ON, BASE_RESERVE_XLM } from "@/lib/site/reserve";
 
-/** The network's base reserve, for a post to state without copying the number. */
-export function BaseReserve() {
-  return <>{BASE_RESERVE_XLM} XLM</>;
-}
-
-/** The day the base reserve was last checked against the network. */
-export function BaseReserveCheckedOn() {
-  return (
-    <time dateTime={BASE_RESERVE_CHECKED_ON}>
-      {formatPostDate(SITE_LOCALE, BASE_RESERVE_CHECKED_ON)}
-    </time>
-  );
+/** The MDX components a post in `locale` states the base reserve with, so no post copies the
+ *  number or the day it was checked. */
+export function baseReserveComponents(locale: Locale) {
+  return {
+    BaseReserve: () => <>{formatNumber(locale, BASE_RESERVE_XLM)} XLM</>,
+    BaseReserveCheckedOn: () => (
+      <time dateTime={BASE_RESERVE_CHECKED_ON}>
+        {formatPostDate(locale, BASE_RESERVE_CHECKED_ON)}
+      </time>
+    ),
+  };
 }

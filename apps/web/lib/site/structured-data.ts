@@ -113,8 +113,8 @@ function breadcrumbs(trail: { name: string; path: string }[]): Node {
 }
 
 const blogTrail = (locale: Locale) => [
-  { name: SITE[locale].structuredData.home, path: "/" },
-  { name: SITE[locale].structuredData.blog, path: "/blog" },
+  { name: SITE[locale].structuredData.home, path: localePath(locale, "/") },
+  { name: SITE[locale].structuredData.blog, path: localePath(locale, "/blog") },
 ];
 
 /** The blog index: the blog and its posts, and where it sits. */
@@ -123,13 +123,13 @@ export function blogJsonLd(posts: readonly PostMeta[], locale: Locale): JsonLdDo
     {
       "@type": "Blog",
       name: SITE[locale].metadata.blogName(SITE_NAME),
-      url: siteUrl("/blog"),
+      url: siteUrl(localePath(locale, "/blog")),
       inLanguage: inLanguage(locale),
       publisher: organization(),
       blogPost: posts.map((post) => ({
         "@type": "BlogPosting",
         headline: post.title,
-        url: siteUrl(`/blog/${post.slug}`),
+        url: siteUrl(localePath(locale, `/blog/${post.slug}`)),
         datePublished: postTimestamp(post.publishedAt),
         dateModified: postTimestamp(post.updatedAt),
       })),
@@ -140,7 +140,8 @@ export function blogJsonLd(posts: readonly PostMeta[], locale: Locale): JsonLdDo
 
 /** One post: the article, complete enough for article rich results, and where it sits. */
 export function postJsonLd(post: Post, locale: Locale): JsonLdDocument {
-  const url = siteUrl(`/blog/${post.slug}`);
+  const path = localePath(locale, `/blog/${post.slug}`);
+  const url = siteUrl(path);
   return graph(
     {
       "@type": "Article",
@@ -156,7 +157,7 @@ export function postJsonLd(post: Post, locale: Locale): JsonLdDocument {
       publisher: organization(),
       keywords: post.tags.join(", "),
     },
-    breadcrumbs([...blogTrail(locale), { name: post.title, path: `/blog/${post.slug}` }])
+    breadcrumbs([...blogTrail(locale), { name: post.title, path }])
   );
 }
 

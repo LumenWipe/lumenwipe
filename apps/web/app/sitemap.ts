@@ -1,15 +1,27 @@
 import type { MetadataRoute } from "next";
-import { getAllPostMetas } from "@/lib/blog";
-import { sitemapPages } from "@/lib/site/pages";
+import { getAllPostMetas, type PostMeta } from "@/lib/blog";
+import type { Locale } from "@/lib/i18n/locale";
+import { languageAlternates, localePath, sitemapPages } from "@/lib/site/pages";
+import { spanishPages } from "@/lib/site/spanish-pages";
 import { siteUrl } from "@/lib/site/url";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const posts: MetadataRoute.Sitemap = getAllPostMetas().map((post) => ({
-    url: siteUrl(`/blog/${post.slug}`),
-    lastModified: new Date(post.updatedAt),
-    changeFrequency: "monthly",
-    priority: 0.7,
-  }));
+  const pages = spanishPages();
+  const post = (locale: Locale) => (meta: PostMeta) => {
+    const path = localePath(locale, `/blog/${meta.slug}`);
+    const languages = languageAlternates(locale, path, pages);
+    return {
+      url: siteUrl(path),
+      lastModified: new Date(meta.updatedAt),
+      changeFrequency: "monthly" as const,
+      priority: 0.7,
+      ...(languages ? { alternates: { languages } } : {}),
+    };
+  };
 
-  return [...sitemapPages(), ...posts];
+  return [
+    ...sitemapPages(pages),
+    ...getAllPostMetas().map(post("en")),
+    ...getAllPostMetas("es").map(post("es")),
+  ];
 }

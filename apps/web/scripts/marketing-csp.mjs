@@ -300,6 +300,7 @@ export const NONCE_PATHS = [
   "/x/y/z",
   "/blog/nope",
   "/es/nope",
+  "/es/blog/nope",
 ];
 
 /**

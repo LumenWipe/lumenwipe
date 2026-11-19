@@ -1,21 +1,21 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-
-export const DEFAULT_NEXT_STEP =
-  "Connect a wallet or paste the account address. LumenWipe lists what is keeping the account open and shows the full plan before you sign anything.";
+import type { Locale } from "@/lib/i18n/locale";
+import { BLOG } from "@/lib/i18n/messages/blog";
 
 /** The step after reading: analyze an account, introduced by the post's own lead when it has one. */
-export default function PostNextStep({ lead }: { lead?: string }) {
+export default function PostNextStep({ lead, locale }: { lead?: string; locale: Locale }) {
+  const T = BLOG[locale].post;
   return (
     <section aria-labelledby="post-next-step" className="mkt-panel mt-10 rounded-2xl p-6">
       <h2 id="post-next-step" className="mkt-display text-lg font-bold text-white">
-        Next step
+        {T.nextStep}
       </h2>
-      <p className="mt-2 mb-5 text-sm leading-relaxed text-white/85">{lead ?? DEFAULT_NEXT_STEP}</p>
+      <p className="mt-2 mb-5 text-sm leading-relaxed text-white/85">{lead ?? T.nextStepLead}</p>
       <Button asChild>
         <Link href="/mainnet">
-          Analyze an account
+          {T.analyzeAccount}
           <ArrowRight aria-hidden="true" className="h-4 w-4" />
         </Link>
       </Button>

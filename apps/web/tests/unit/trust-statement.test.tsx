@@ -14,9 +14,11 @@ import SpanishFaqPage, { metadata as esFaqMeta } from "@/app/(marketing-es)/es/f
 import SpanishHowItWorksPage, {
   metadata as esHowMeta,
 } from "@/app/(marketing-es)/es/how-it-works/page";
+import SpanishBlogPage, { metadata as esBlogMeta } from "@/app/(marketing-es)/es/blog/page";
 import { GET } from "@/app/llms.txt/route";
 import HeroConsole from "@/components/marketing/HeroConsole";
 import MarketingFooter from "@/components/marketing/MarketingFooter";
+import { getAllPostMetas, getPost } from "@/lib/blog";
 import { renderLlmsTxt } from "@/lib/site/llms";
 import { FEATURES, PROTOCOLS, STATUS_LABEL } from "@/lib/site/status";
 import {
@@ -59,6 +61,7 @@ const SPANISH_OVERCLAIMS = [
   /nunca (está )?en (la ruta|el camino) de (la )?firma/i,
   /ningún backend (tiene|guarda)/i,
   /(armad|construid)[ao]s? y firmad[ao]s? en tu navegador/i,
+  /se (arma|construye)n? y (se )?firman? en tu navegador/i,
   /nunca puede mover tus fondos/i,
   /firmad[ao]s? (por completo|enteramente|completamente) en tu navegador/i,
   /su (única|sola) clave/i,
@@ -118,6 +121,7 @@ describe("no Spanish surface overstates the trust model", () => {
     howItWorks: <SpanishHowItWorksPage />,
     faq: <SpanishFaqPage />,
     footer: <MarketingFooter locale="es" />,
+    blog: <SpanishBlogPage />,
   };
   for (const [name, page] of Object.entries(pages)) {
     test(`${name} renders no absolute custody claim`, () => {
@@ -126,13 +130,46 @@ describe("no Spanish surface overstates the trust model", () => {
   }
 
   test("page metadata and the dictionaries make none", () => {
-    for (const meta of [esLandingMeta, esSecurityMeta, esHowMeta, esFaqMeta]) {
+    for (const meta of [esLandingMeta, esSecurityMeta, esHowMeta, esFaqMeta, esBlogMeta]) {
       expect(overclaims(String(meta.description), SPANISH_OVERCLAIMS)).toEqual([]);
     }
-    for (const file of ["site.ts", "security.tsx", "how-it-works.tsx", "faq.tsx", "landing.tsx"]) {
+    for (const file of [
+      "site.ts",
+      "security.tsx",
+      "how-it-works.tsx",
+      "faq.tsx",
+      "landing.tsx",
+      "blog.ts",
+    ]) {
       const source = readFileSync(join(WEB, "lib", "i18n", "messages", file), "utf8");
       expect(overclaims(source, SPANISH_OVERCLAIMS)).toEqual([]);
     }
+  });
+});
+
+describe("no translated post overstates the trust model", () => {
+  const posts = getAllPostMetas("es").map((meta) => getPost(meta.slug, "es"));
+
+  test("there is a translated post to read", () => {
+    expect(posts.length).toBeGreaterThan(0);
+  });
+
+  for (const post of posts) {
+    test(`${post.slug} makes no absolute custody claim`, () => {
+      const text = [post.title, post.description, post.cta ?? "", post.content].join("\n");
+      expect(overclaims(squash(text), SPANISH_OVERCLAIMS)).toEqual([]);
+    });
+  }
+
+  test("the Spanish patterns catch a claim a post could make, in either verb form", () => {
+    for (const claim of [
+      "Cada transacción es armada y firmada en tu navegador.",
+      "Cada transacción se arma y firma en tu navegador.",
+      "Las transacciones se construyen y se firman en tu navegador.",
+    ]) {
+      expect(overclaims(claim, SPANISH_OVERCLAIMS)).toHaveLength(1);
+    }
+    expect(overclaims("La transacción se firma en tu navegador.", SPANISH_OVERCLAIMS)).toEqual([]);
   });
 });
 

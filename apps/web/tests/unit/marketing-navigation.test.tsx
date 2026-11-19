@@ -138,6 +138,26 @@ describe("navigation grouping", () => {
     for (const link of guides) expect(link.getAttribute("aria-current")).toBe("page");
   });
 
+  test("Guías is current on the Spanish blog and its posts, and nowhere else under /es", () => {
+    for (const [pathname, current] of [
+      ["/es/blog", true],
+      ["/es/blog/how-do-i-remove-a-trustline-on-stellar", true],
+      ["/es/blogx", false],
+      ["/es/faq", false],
+    ] as const) {
+      spyOn(navigation, "usePathname").mockReturnValue(pathname);
+      const { unmount } = render(<MarketingNav locale="es" />);
+      for (const link of screen.getAllByRole("link", { name: "Guías" })) {
+        expect({ pathname, current: link.getAttribute("aria-current") }).toEqual({
+          pathname,
+          current: current ? "page" : null,
+        });
+      }
+      unmount();
+      mock.restore();
+    }
+  });
+
   test("Developers opens a disclosure that Escape closes, returning focus", () => {
     render(<MarketingNav locale="en" />);
     const button = screen.getByRole("button", { name: "Developers" });
