@@ -689,6 +689,14 @@ function assertForwardCarriesTheBalance(forwardAmount: string, nativeBalance: st
   // attacker would aim.
   const forwarded = BigInt(xlmToStroops(forwardAmount));
   const observed = BigInt(xlmToStroops(nativeBalance));
+  // At or under the tolerance the floor below is zero or negative and holds the forward to
+  // nothing. Only a missing read or a sponsored account with dust gets here; neither is checkable.
+  if (observed <= FORWARD_SHORTFALL_TOLERANCE_STROOPS) {
+    throw new VerificationError(
+      "mediator_forward_balance_unknown",
+      "The balance this close would pass on is unknown or too small to check, so the hand-off is refused. Run the analysis again, or close to a wallet you control."
+    );
+  }
   const floor = observed - FORWARD_SHORTFALL_TOLERANCE_STROOPS;
 
   if (forwarded < floor) {

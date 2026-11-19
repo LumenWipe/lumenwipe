@@ -91,6 +91,7 @@ try {
 | Mediator      | `mediator_forward_source_mismatch`      | The forward is sent by an account other than the one the merge paid.                                        |
 | Mediator      | `mediator_forward_destination_mismatch` | The forward pays an address other than the user's destination.                                              |
 | Mediator      | `mediator_forward_not_native`           | The forward is not in XLM.                                                                                  |
+| Mediator      | `mediator_forward_balance_unknown`      | The observed balance is not above the 0.01 XLM tolerance: never read, or too small to check.                |
 | Mediator      | `mediator_forward_short`                | The forward passes on less than the balance.                                                                |
 | Transfer      | `transfer_not_chosen`                   | A payment moves an asset the user did not choose to transfer.                                               |
 | Transfer      | `transfer_destination_mismatch`         | A classic or token transfer goes to an address other than the one chosen.                                   |
