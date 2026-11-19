@@ -186,7 +186,7 @@ describe("navigation grouping", () => {
 
 describe("faq", () => {
   test("a closed answer's link sits in an inert subtree", () => {
-    render(<Faq />);
+    render(<Faq locale="en" />);
     const first = screen.getByRole("button", { name: "Is LumenWipe really non-custodial?" });
     const panel = document.getElementById(first.getAttribute("aria-controls") ?? "") as HTMLElement;
     const link = within(panel).getByRole("link");

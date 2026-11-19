@@ -108,7 +108,7 @@ export default function LandingPage({ locale }: { locale: Locale }) {
       body: T.problem.truths.defi.body,
     },
   ];
-  // The questions show once the FAQ reads in this locale (#936).
+  // The questions show once the FAQ reads in this locale.
   const showFaq = isTranslated(locale, "/faq");
   const cards = CARD_IDS.map((id) => ({ ...feature(id, locale), icon: FEATURE_ICONS[id] }));
   return (
@@ -356,7 +356,7 @@ export default function LandingPage({ locale }: { locale: Locale }) {
         )}
         {showFaq && (
           <div className="mt-10">
-            <Faq />
+            <Faq locale={locale} />
           </div>
         )}
         <p className="mt-6 text-center text-sm text-fg-muted">

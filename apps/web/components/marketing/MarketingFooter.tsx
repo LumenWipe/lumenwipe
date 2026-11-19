@@ -4,6 +4,7 @@ import { GithubIcon } from "@/components/icons/GithubIcon";
 import { APP_HREF, DOCS_URL, GITHUB_URL, siteLinks, type SiteLink } from "@/lib/site/navigation";
 import type { Locale } from "@/lib/i18n/locale";
 import { FOOTER } from "@/lib/i18n/messages/footer";
+import { localeHref } from "@/lib/site/pages";
 import LanguageSwitch from "./LanguageSwitch";
 import Logo from "./Logo";
 
@@ -18,7 +19,7 @@ function columns(locale: Locale): { title: string; links: readonly SiteLink[] }[
         { label: L.openApp, href: APP_HREF },
         { label: L.testnet, href: "/testnet" },
         ...links.primary.filter((l) => l.href !== "/content"),
-        { label: L.faq, href: "/faq" },
+        { label: L.faq, href: localeHref(locale, "/faq") },
         { label: L.stats, href: "/stats" },
         { label: L.registry, href: "/registry" },
       ],
