@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { within } from "@testing-library/react";
 import LandingPage from "@/app/(marketing)/page";
 import HowItWorksPage from "@/app/(marketing)/how-it-works/page";
+import SpanishHowItWorksPage from "@/app/(marketing-es)/es/how-it-works/page";
 import Faq from "@/components/marketing/Faq";
 import { exitCapableProtocols } from "@/lib/contract-registry";
 import {
@@ -62,6 +63,7 @@ describe("pages read the registry", () => {
     for (const page of [
       <LandingPage key="l" />,
       <HowItWorksPage key="h" />,
+      <SpanishHowItWorksPage key="es-h" />,
       <Faq key="f" locale="en" />,
     ]) {
       const text = textOutsideStatusLabels(renderMarketing(page));

@@ -231,9 +231,17 @@ exports[`English marketing copy how it works metadata is the recorded metadata 1
 {
   "alternates": {
     "canonical": "https://www.lumenwipe.com/how-it-works",
+    "languages": {
+      "en": "https://www.lumenwipe.com/how-it-works",
+      "es": "https://www.lumenwipe.com/es/how-it-works",
+      "x-default": "https://www.lumenwipe.com/how-it-works",
+    },
   },
   "description": "How LumenWipe closes a Stellar account: a deterministic ordered plan, per-step simulation and confirmation, the CEX relay flow, and resumable sessions reconciled against on-chain state.",
   "openGraph": {
+    "alternateLocale": [
+      "es_LA",
+    ],
     "description": "How LumenWipe closes a Stellar account: a deterministic ordered plan, per-step simulation and confirmation, the CEX relay flow, and resumable sessions reconciled against on-chain state.",
     "images": [
       {

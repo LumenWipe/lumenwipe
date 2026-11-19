@@ -7,6 +7,7 @@ import BlogPage from "@/app/(marketing)/blog/page";
 import SpanishLandingPage from "@/app/(marketing-es)/es/page";
 import SpanishFaqPage from "@/app/(marketing-es)/es/faq/page";
 import SpanishSecurityPage from "@/app/(marketing-es)/es/security/page";
+import SpanishHowItWorksPage from "@/app/(marketing-es)/es/how-it-works/page";
 import BlogPostPage, { generateMetadata } from "@/app/(marketing)/blog/[slug]/page";
 import SecurityPage from "@/app/(marketing)/security/page";
 import HowItWorksPage from "@/app/(marketing)/how-it-works/page";
@@ -100,6 +101,7 @@ describe("every block", () => {
       <SecurityPage key="s" />,
       <SpanishSecurityPage key="es-s" />,
       <HowItWorksPage key="h" />,
+      <SpanishHowItWorksPage key="es-h" />,
     ]) {
       expect(blocksIn(renderMarketing(page))).toEqual([]);
     }

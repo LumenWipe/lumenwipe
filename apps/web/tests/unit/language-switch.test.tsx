@@ -64,7 +64,7 @@ describe("the language switch", () => {
   });
 
   test("the header, mobile menu and footer each mount it, in both directions", () => {
-    for (const path of ["/", "/faq", "/security"]) {
+    for (const path of ["/", "/faq", "/security", "/how-it-works"]) {
       expect(SPANISH_PAGES.find((page) => page.path === path)?.translated).toBe(true);
     }
     for (const [locale, pathname, href, tag] of [
@@ -74,6 +74,8 @@ describe("the language switch", () => {
       ["es", "/es/faq", "/faq", "en"],
       ["en", "/security", "/es/security", "es-419"],
       ["es", "/es/security", "/security", "en"],
+      ["en", "/how-it-works", "/es/how-it-works", "es-419"],
+      ["es", "/es/how-it-works", "/how-it-works", "en"],
     ] as const) {
       at(pathname);
       const { container } = render(
@@ -103,8 +105,8 @@ describe("the language switch", () => {
 
   test("links nothing from a page whose other version is not translated", () => {
     for (const [locale, pathname] of [
-      ["en", "/how-it-works"],
       ["en", "/registry"],
+      ["en", "/stats"],
     ] as const) {
       at(pathname);
       const { container } = render(
@@ -136,10 +138,10 @@ describe("the language switch", () => {
     }
   });
 
-  test("the header, mobile menu and footer lead to the security page in the reader's language", () => {
-    for (const [locale, pathname, href] of [
-      ["en", "/", "/security"],
-      ["es", "/es", "/es/security"],
+  test("the header, mobile menu and footer lead to the security and how it works pages in the reader's language", () => {
+    for (const [locale, pathname, prefix] of [
+      ["en", "/", ""],
+      ["es", "/es", "/es"],
     ] as const) {
       at(pathname);
       const { container } = render(
@@ -148,10 +150,11 @@ describe("the language switch", () => {
           <MarketingFooter locale={locale} />
         </>
       );
-      const security = [...container.querySelectorAll("a")]
-        .map((link) => link.getAttribute("href"))
-        .filter((link) => link?.endsWith("/security"));
-      expect(security).toEqual([href, href, href]);
+      const hrefs = [...container.querySelectorAll("a")].map((link) => link.getAttribute("href"));
+      for (const page of ["/security", "/how-it-works"]) {
+        const href = `${prefix}${page}`;
+        expect(hrefs.filter((link) => link?.endsWith(page))).toEqual([href, href, href]);
+      }
       cleanup();
       mock.restore();
     }
