@@ -215,11 +215,11 @@ check_billing() {
   fi
   account="$(jq -r '.billingAccountName // "" | sub("^billingAccounts/"; "")' <<< "$billing")"
   budgets="$(gc billing budgets list --billing-account="$account")" || { detail="cannot list budgets"; return 1; }
-  if ! jq -e 'any(.[]; (.thresholdRules // []) | length > 0)' > /dev/null <<< "$budgets"; then
-    detail="no budget with an alert threshold on the billing account"
+  if ! jq -e 'any(.[]; any((.thresholdRules // [])[]; .thresholdPercent == 0.7))' > /dev/null <<< "$budgets"; then
+    detail="no budget alerts at 70 percent on the billing account (docs/runbooks/provider-quotas.mdx)"
     return 1
   fi
-  detail="billing enabled, $(jq 'length' <<< "$budgets") budget(s) with alert thresholds"
+  detail="billing enabled, $(jq '[.[] | select(any((.thresholdRules // [])[]; .thresholdPercent == 0.7))] | length' <<< "$budgets") budget(s) alerting at 70 percent"
 }
 
 check_logging() {

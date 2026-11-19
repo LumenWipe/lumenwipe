@@ -28,6 +28,13 @@ import {
   rpcTimingKey,
   type UpstreamDelta,
 } from "@/lib/stellar/upstream-metrics";
+import {
+  defaultConversionDeps,
+  quoteTokenToXlmOutcome,
+  resetConversionSdk,
+  xlmContractId,
+} from "@/lib/soroswap/conversion-quotes";
+import { defaultXBullConversionDeps } from "@/lib/xbull/conversion-quotes";
 import { KeyActivityService } from "@/metering/key-activity.service";
 import { UpstreamFlushInterceptor } from "@/metering/upstream-flush.interceptor";
 import {
@@ -212,6 +219,59 @@ describe("counting", () => {
       PATH_ROUTING_API_URLS.testnet = realUrl;
       HORIZON_FALLBACKS.testnet = realFallbacks;
     }
+  });
+});
+
+describe("conversion quotes", () => {
+  const VARS = [
+    "SOROBAN_CONVERSION_ENABLED",
+    "SOROSWAP_API_KEY",
+    "SOROSWAP_API_URL",
+    "XBULL_CONVERSION_ENABLED",
+    "XBULL_SWAP_API_URL",
+  ] as const;
+  let saved: Record<string, string | undefined>;
+  let server: ReturnType<typeof Bun.serve>;
+
+  beforeEach(() => {
+    saved = Object.fromEntries(VARS.map((v) => [v, process.env[v]]));
+    server = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch: () =>
+        Response.json({ statusCode: 429, message: "Rate limit exceeded" }, { status: 429 }),
+    });
+  });
+
+  afterEach(async () => {
+    for (const v of VARS) {
+      if (saved[v] === undefined) delete process.env[v];
+      else process.env[v] = saved[v];
+    }
+    resetConversionSdk();
+    await server.stop(true);
+  });
+
+  test("every Soroswap quote spends quota on its network, and its rate limit is counted", async () => {
+    process.env.SOROBAN_CONVERSION_ENABLED = "true";
+    process.env.SOROSWAP_API_KEY = "sk_test_only";
+    process.env.SOROSWAP_API_URL = `http://127.0.0.1:${server.port}`;
+    resetConversionSdk();
+    const token = xlmContractId("testnet");
+    const outcome = await quoteTokenToXlmOutcome(token, 10n, "mainnet", defaultConversionDeps());
+    expect(outcome).toEqual({ kind: "rate_limited" });
+    expect(counts()).toEqual({
+      "mainnet/soroswap/requests": 1,
+      "mainnet/soroswap/rate_limited": 1,
+    });
+  });
+
+  test("every xBull quote spends mainnet quota, and its rate limit is counted", async () => {
+    process.env.XBULL_CONVERSION_ENABLED = "true";
+    const doFetch = defaultXBullConversionDeps().fetch;
+    if (!doFetch) throw new Error("xBull should be enabled");
+    await doFetch(`http://127.0.0.1:${server.port}/quote`);
+    expect(counts()).toEqual({ "mainnet/xbull/requests": 1, "mainnet/xbull/rate_limited": 1 });
   });
 });
 

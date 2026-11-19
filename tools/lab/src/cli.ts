@@ -11,10 +11,13 @@ import {
   LabRefusal,
   checkoutRoot,
   labHome,
+  loadTestApiKey,
   productionApiKey,
   readPrivateFile,
   withoutLabEnv,
 } from "./home";
+import { LOAD_SCENARIOS, assertLoadTarget, renderLoadReport, runLoad } from "./load";
+import { LIMITS, STAGES } from "./ramp";
 import { assertNodeStripsTypes, childEnv, startLocalApi, throwawayApiKey } from "./local-api";
 import {
   measure,
@@ -31,7 +34,8 @@ const USAGE = `Usage:
   bun run lab measure [--target local|production|both] [--network testnet|mainnet|both]
                       [--runs 5-11] [--rounds N] [--pause-ms N] [--scenario id,id] [--no-build]
   bun run lab e2e --target local|production --network testnet|mainnet --destination G...
-                  [--submit]`;
+                  [--submit]
+  bun run lab load --url https://lumenwipe-api-loadtest-...run.app`;
 
 const PASSPHRASES: Record<Network, string> = {
   testnet: Networks.TESTNET,
@@ -291,9 +295,49 @@ async function runE2eCommand(args: string[]): Promise<void> {
   }
 }
 
+async function runLoadCommand(args: string[]): Promise<void> {
+  const { values } = parseArgs({ args, options: { url: { type: "string" } } });
+  const url = assertLoadTarget(values.url);
+  const root = checkoutRoot();
+  const home = labHome();
+  const apiKey = loadTestApiKey(process.env, home, root);
+  const idToken = process.env.LUMENWIPE_LAB_ID_TOKEN?.trim() || undefined;
+  if (url.protocol === "https:" && !idToken) {
+    throw new LabRefusal(
+      "the load-test service is private: set LUMENWIPE_LAB_ID_TOKEN=$(gcloud auth print-identity-token)"
+    );
+  }
+  const result = await runLoad({
+    baseUrl: url.origin,
+    apiKey,
+    idToken,
+    log: (line) => console.error(line),
+  });
+  const meta = {
+    date: new Date().toISOString(),
+    commit: gitCommit(root),
+    target: url.host,
+    network: "testnet",
+    scenarios: LOAD_SCENARIOS.join(", "),
+    stages: `${STAGES.join(", ")} in flight, each up to ${LIMITS.stageMs / 1000} s or ${LIMITS.stageRequests} requests`,
+    caps: `${LIMITS.totalRequests} requests and ${LIMITS.totalMs / 60_000} minutes in all, ${LIMITS.requestTimeoutMs / 1000} s per request`,
+    "stop rule": `${LIMITS.refusalShare * 100} percent or more 503s in ${LIMITS.refusalWindows} consecutive ${LIMITS.windowMs / 1000} s windows`,
+  };
+  const report = renderLoadReport(meta, result);
+  const written = writeResults(
+    join(home, "results", `load-${stamp()}`),
+    { "load.md": report, "load.json": `${JSON.stringify({ meta, ...result }, null, 2)}\n` },
+    [apiKey, idToken ?? ""],
+    root
+  );
+  console.log(report);
+  console.error(`written: ${written.join(", ")}`);
+}
+
 async function main(argv: string[]): Promise<void> {
   const [command, ...rest] = argv;
   if (command === "measure") return runMeasure(rest);
+  if (command === "load") return runLoadCommand(rest);
   if (command === "e2e") return runE2eCommand(rest);
   console.error(USAGE);
   process.exitCode = 2;

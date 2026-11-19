@@ -5,6 +5,8 @@ answer. No workflow runs it (`tests/no-workflow.test.ts` fails one that does), a
 repository.
 
 - `measure` sends requests that only read: it never signs and never moves funds.
+- `load` ramps read-only testnet requests against a separate load-test service, to find the concurrency
+  one instance can take.
 - `e2e` closes a disposable account for real, and only behind the guards listed below.
 
 Results are written to the lab folder on the machine that ran the tool. They are not committed to this
@@ -124,3 +126,71 @@ signing.
 
 Every transaction is checked by `@lumenwipe/verify` before it is signed. After the close, the run confirms on
 Horizon that the source account is gone. Each step's time is written to `results/e2e-<time>/e2e.json`.
+
+## load
+
+`load` finds how many requests one API instance can have in flight before it slows down or its providers
+refuse it. It reads testnet only, with the `analyze-baseline`, `analyze-dense`, `analyze-token` and `plan`
+scenarios in turn: no flag selects mainnet or a scenario that builds transactions.
+
+It runs only against a separate Cloud Run service named `lumenwipe-api-loadtest`, or an API on this
+machine. Production, its domain and any revision tag on it are refused. That service runs the image
+production serves, with production's CPU, memory and instance limits, but its own environment: testnet
+providers, a throwaway key, no Firestore and no secrets. A revision of the production service would not do,
+because a deploy that changes the environment changes it for every later revision.
+
+The ramp holds 1, 2, 4, 8, 16, 32 and then 64 requests in flight. Each stage lasts 60 seconds or 200
+requests, whichever comes first. The run stops early at the first sustained upstream refusal: at least 5
+percent of responses are `503` (the API's answer when a provider refuses or fails) in two consecutive
+10-second windows. A `429` from the API's own rate limit, or a fixture that no longer exists, also stops
+it. Whatever happens, it sends at most 1,500 requests in 10 minutes, each waiting at most 45 seconds.
+1,500 requests reach a few thousand to about 30,000 upstream calls, all on free public testnet endpoints.
+
+The report gives each stage's p50 and p95, statuses and throughput. It names the stage where p95 first
+reaches twice the one-in-flight p95, and the highest stage below that with no sustained refusal. Results go
+to `results/load-<time>/` in the lab folder.
+
+Set up the service, run the ramp, then delete everything it used. Run it off-peak, because the public
+testnet providers also serve the production API's testnet traffic:
+
+```bash
+REGION=us-central1
+PROJECT=$(gcloud config get-value project)
+SERVING=$(gcloud run services describe lumenwipe-api --region "$REGION" --format=json \
+  | jq -r '.status.traffic[] | select(.percent == 100) | .revisionName')
+IMAGE=$(gcloud run revisions describe "$SERVING" --region "$REGION" --format='value(status.imageDigest)')
+
+# A throwaway key, never printed: the lab reads it from its folder, the service from a private file.
+umask 077
+mkdir -p ~/.lumenwipe/lab/keys
+openssl rand -hex 32 | tr -d '\n' > ~/.lumenwipe/lab/keys/load-api-key
+ENV_FILE=$(mktemp)
+{
+  printf 'API_KEYS: "load=%s"\n' "$(cat ~/.lumenwipe/lab/keys/load-api-key)"
+  printf 'THROTTLE_LIMIT: "1000000"\n'
+  printf 'STELLAR_RPC_TESTNET: "https://soroban-rpc.testnet.stellar.gateway.fm,https://soroban-testnet.stellar.org"\n'
+  printf 'PATH_ROUTING_API_TESTNET: "https://horizon-testnet.stellar.org"\n'
+  printf 'STELLAR_RPC_MAINNET: "https://mainnet.sorobanrpc.com"\n'
+  printf 'PATH_ROUTING_API_MAINNET: "https://horizon.stellar.org"\n'
+} > "$ENV_FILE"
+
+# An identity with no roles, and a private service: only callers with run.invoker reach it.
+gcloud iam service-accounts create lumenwipe-loadtest --display-name "API load test (temporary)"
+gcloud run deploy lumenwipe-api-loadtest --region "$REGION" --image "$IMAGE" \
+  --service-account "lumenwipe-loadtest@$PROJECT.iam.gserviceaccount.com" \
+  --env-vars-file "$ENV_FILE" --no-allow-unauthenticated \
+  --min-instances=0 --max-instances=1 --concurrency=1000 --cpu-throttling --cpu=1 --memory=512Mi \
+  --execution-environment=gen1 --cpu-boost --timeout=300
+rm -f "$ENV_FILE"
+
+URL=$(gcloud run services describe lumenwipe-api-loadtest --region "$REGION" --format='value(status.url)')
+LUMENWIPE_LAB_ID_TOKEN=$(gcloud auth print-identity-token) bun run lab load --url "$URL"
+
+gcloud run services delete lumenwipe-api-loadtest --region "$REGION" --quiet
+gcloud iam service-accounts delete "lumenwipe-loadtest@$PROJECT.iam.gserviceaccount.com" --quiet
+rm -f ~/.lumenwipe/lab/keys/load-api-key
+```
+
+`--concurrency=1000` lets the ramp, not the platform, decide how many requests are in flight. The key can
+also come from `LUMENWIPE_LAB_LOAD_KEY`. Against a local API (`http://127.0.0.1:<port>`) no identity token
+is needed.

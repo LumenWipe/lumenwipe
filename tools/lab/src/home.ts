@@ -133,6 +133,26 @@ export function productionApiKey(
   return value;
 }
 
+export const LOAD_KEY_ENV = "LUMENWIPE_LAB_LOAD_KEY";
+
+/** The load-test service's throwaway key: from the environment, or `keys/load-api-key`. */
+export function loadTestApiKey(
+  env: NodeJS.ProcessEnv = process.env,
+  home = labHome(env),
+  root = checkoutRoot()
+): string {
+  const fromEnv = env[LOAD_KEY_ENV]?.trim();
+  if (fromEnv) return fromEnv;
+  const file = join(home, "keys", "load-api-key");
+  const value = readPrivateFileIfPresent(file, "The load-test key file", root);
+  if (value === null) {
+    throw new LabRefusal(
+      `load needs the load-test service's key: set ${LOAD_KEY_ENV} or write it to ${file} (chmod 600)`
+    );
+  }
+  return value;
+}
+
 /** The environment for the build and helper commands: without the lab's own variables, so the
  *  production key never reaches a build tool. */
 export function withoutLabEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {

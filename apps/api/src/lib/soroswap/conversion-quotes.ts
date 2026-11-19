@@ -12,6 +12,7 @@ import { Asset } from "@stellar/stellar-sdk";
 import type { Network } from "@lumenwipe/types";
 import { SLIPPAGE_BPS } from "@/config/constants";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
+import { recordUpstream, startUpstreamTimer } from "@/lib/stellar/upstream-metrics";
 
 /**
  * Soroban token conversion quotes, through the Soroswap API (#161).
@@ -103,7 +104,7 @@ export function isConversionEnabled(env = readSoroswapEnv()): boolean {
   return env.enabled && env.apiKey !== undefined;
 }
 
-let cachedSdk: SoroswapSDK | null | undefined;
+let cachedSdk: ConversionSdk | null | undefined;
 /** The environment the cached client was built from; a change rebuilds it rather than going stale. */
 let cachedFrom = "";
 
@@ -114,11 +115,13 @@ export function defaultConversionDeps(): ConversionDeps {
   if (cachedSdk === undefined || cachedFrom !== signature) {
     cachedSdk =
       isConversionEnabled(env) && env.apiKey
-        ? new SoroswapSDK({
-            apiKey: env.apiKey,
-            baseUrl: env.baseUrl,
-            timeout: QUOTE_TIMEOUT_MS,
-          })
+        ? countedConversionSdk(
+            new SoroswapSDK({
+              apiKey: env.apiKey,
+              baseUrl: env.baseUrl,
+              timeout: QUOTE_TIMEOUT_MS,
+            })
+          )
         : null;
     cachedFrom = signature;
   }
@@ -133,6 +136,33 @@ export function resetConversionSdk(): void {
 
 const toSdkNetwork = (network: Network): SupportedNetworks =>
   network === "mainnet" ? SupportedNetworks.MAINNET : SupportedNetworks.TESTNET;
+
+const fromSdkNetwork = (network: SupportedNetworks): Network =>
+  network === SupportedNetworks.MAINNET ? "mainnet" : "testnet";
+
+/**
+ * Counts every quote and build against Soroswap's quota, as `countedFetch` does for the upstreams
+ * reached over fetch. The SDK (0.5.1) sends one HTTP request per call and never retries.
+ */
+export function countedConversionSdk(sdk: ConversionSdk): ConversionSdk {
+  const counted = async <T>(network: SupportedNetworks, call: () => Promise<T>): Promise<T> => {
+    const net = fromSdkNetwork(network);
+    recordUpstream(net, "soroswap", "requests");
+    const stopTimer = startUpstreamTimer("soroswap");
+    try {
+      return await call();
+    } catch (error) {
+      if (isRateLimitRejection(error)) recordUpstream(net, "soroswap", "rate_limited");
+      throw error;
+    } finally {
+      stopTimer();
+    }
+  };
+  return {
+    quote: (request, network) => counted(network, () => sdk.quote(request, network)),
+    build: (request, network) => counted(network, () => sdk.build(request, network)),
+  };
+}
 
 export function xlmContractId(network: Network): string {
   return Asset.native().contractId(NETWORK_PASSPHRASES[network]);

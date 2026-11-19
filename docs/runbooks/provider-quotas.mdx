@@ -1,0 +1,49 @@
+---
+title: "Provider quotas"
+description: "What each upstream provider allows, the monthly request budget the API keeps under it, the 70 percent alerts, and what to do when one fires."
+icon: "gauge"
+---
+
+The API reads from providers it does not run. Each one limits how fast or how much the API can ask, and a provider that refuses ends the request with a retryable `503` (see [Provider outage](/runbooks/provider-outage)). This page records what each provider publishes, the monthly request budget the API keeps under it, and the alerts that fire at 70 percent of a budget.
+
+## Where the counts come from
+
+The API counts every HTTP attempt to each upstream, retries included, by network: `rpc`, `horizon`, `paths`, `defi` (OctoPos), `indexer` (StellarIndex), `soroswap` and `xbull`. The counts are written once a minute to `upstreamUsage/{YYYY-MM-DD}` in Firestore ([Upstream metrics](/monitoring-plan#upstream-metrics-and-dependency-health)). A request whose caller named no network is stored under `unknown`. The budget check charges it to that upstream on every network, so an alert can come early but never late.
+
+## Quotas and budgets
+
+Budgets are in [`apps/api/scripts/monitors/upstream-budgets.json`](https://github.com/LumenWipe/lumenwipe/blob/main/apps/api/scripts/monitors/upstream-budgets.json). Upstreams that spend one quota share one budget: `horizon` and `paths` go to the same Horizon host, and one Soroswap or StellarIndex key serves both networks.
+
+Each budget follows one of three rules:
+
+- **A published rate limit**: a quarter of that rate, sustained over a 30-day month. Rate limits bind on bursts, so the average stays well below the ceiling.
+- **No published limit**: 20 times the busiest month observed so far (November 2026, through the 19th), with a floor of 1,000 requests. An alert then means traffic grew enough to agree a plan with the provider before relying on an unpublished limit.
+- **Never called on that network**: 0. A single request is then a finding.
+
+Provider terms were read on 2026-11-19.
+
+| Provider                  | Upstreams (networks)         | What the provider publishes                                                                                                                                                                                                                                                                                                                                 | Monthly budget | Rule                                  |
+| ------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- | ------------------------------------- |
+| Stellar RPC, mainnet list | `rpc` (mainnet)              | The default, `mainnet.sorobanrpc.com`, is listed as a public endpoint in [SDF's provider list](https://developers.stellar.org/docs/data/apis/rpc/providers) with no limit stated                                                                                                                                                                            | 100,000        | Unpublished (4,946 in November)       |
+| Stellar RPC, testnet list | `rpc` (testnet)              | SDF's `soroban-testnet.stellar.org`: no limit stated in SDF's list. Gateway.fm's public endpoints were listed at 30 requests per second (60 after sign-up) on its [Stellar Community Fund page](https://communityfund.stellar.org/project/gatewayfm); its [own docs](https://docs.gateway.fm/rpc/stellar/) state no limit                                   | 850,000        | Unpublished (41,578 in November)      |
+| Horizon, mainnet          | `horizon`, `paths` (mainnet) | Horizon limits each IP to 3,600 requests an hour by default, answering `429` beyond it ([rate limiting](https://developers.stellar.org/docs/data/apis/horizon/api-reference/structure/rate-limiting)). SDF does not publish its own instance's setting, and halved it during an [incident on 2024-03-11](https://status.stellar.org/incidents/9fg2qfy4y6zz) | 648,000        | A quarter of 3,600 an hour            |
+| Horizon, testnet          | `horizon`, `paths` (testnet) | As above, for `horizon-testnet.stellar.org`                                                                                                                                                                                                                                                                                                                 | 648,000        | A quarter of 3,600 an hour            |
+| OctoPos                   | `defi` (mainnet)             | A rate-limited free tier with no figure; the Standard subscription allows 60 requests a minute for 30 days ([OctoPos docs](https://133040d3f8e3b180eb7cc00169e2a1b6-cf-credio-docs.pages.dev/docs/OctoPos/DeFi%20Positions%20API/intro)). The API calls it without a key, so the free tier applies                                                          | 4,000          | Unpublished (181 in November)         |
+| StellarIndex              | `indexer` (both)             | No official page found. A showcase site lists 60 requests a minute per IP without a key and 1,000 per key ([pricing](https://stellarindex-showcase.pages.dev/pricing/)), not confirmed as official                                                                                                                                                          | 6,000          | Unpublished (292 in November)         |
+| Soroswap API              | `soroswap` (both)            | Free plan: 1 request a second, bursts of 5; paid plans from 10 a second ([plans](https://docs.soroswap.finance/api/plans.md))                                                                                                                                                                                                                               | 648,000        | A quarter of 1 a second               |
+| xBull swap API            | `xbull` (mainnet)            | Nothing published. Off unless `XBULL_CONVERSION_ENABLED` is set                                                                                                                                                                                                                                                                                             | 1,000          | Unpublished, never counted: the floor |
+| None                      | `defi`, `xbull` (testnet)    | Never called on testnet                                                                                                                                                                                                                                                                                                                                     | 0              | Never called                          |
+
+A provider added to `STELLAR_RPC_<NET>` or `PATH_ROUTING_API_<NET>` brings its own quota. Before adding one, check that its published limit is at least the budget of the list it joins, and record it here.
+
+## Alerts at 70 percent
+
+- **Upstream requests.** The `upstream requests within budget` job of the on-chain monitors workflow runs daily at 06:00 UTC, from `main` only. It signs in keylessly as an account that can only read Firestore, sums this month's counts and fails when any budget has reached 70 percent, or when the counts cannot be read. The workflow's report then opens or updates the monitors issue and alerts the maintainers' channel without paging everyone. The issue closes itself on the next clean daily run.
+- **Cloud spend.** Each budget on the billing account alerts at 70 percent of its amount, among its other thresholds. The `billing` check of the [migration check](/runbooks/restore-api-keys#migration-check) fails when no budget alerts at 70 percent.
+
+## When an upstream alert fires
+
+1. Read the job's log. It prints every budget's use, for example `Horizon (mainnet): 460000 of 648000 requests this month (70 percent)`.
+2. Find what spent it. `upstreamUsage/{date}` shows the days, and the access log shows the routes and keys of the same period. Many requests from one key point at an integrator to talk to, or at a key whose rate limit to lower.
+3. If the growth is real, move the upstream before it starts refusing: a paid plan, an API key, or a second provider in the list, set as [Provider outage](/runbooks/provider-outage) step 3 shows. Then raise the budget in `upstream-budgets.json` to match the new quota, with its source in this table.
+4. A finding with the counts unreadable (`incomplete read, not a finding`) means Firestore or the sign-in failed: re-run the workflow, and check the [Firestore outage](/runbooks/firestore-outage) runbook if it fails again.

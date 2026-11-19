@@ -278,8 +278,9 @@ run on that warning says nothing about the deployed list.
 ### Upstream metrics and dependency health
 
 The API counts `requests`, `rate_limited`, `timeouts`, `server_errors`, `failovers` and `unavailable` for each
-upstream (`rpc`, `horizon`, `paths`, `defi`) on each network. Every HTTP attempt counts, retries
-included, because each one spends quota. Soroswap and xBull quotes are not counted. Over RPC,
+upstream (`rpc`, `horizon`, `paths`, `defi`, `indexer`, `soroswap`, `xbull`) on each network. Every HTTP attempt
+counts, retries included, because each one spends quota. Soroswap is reached through its SDK, so only its
+`requests` and `rate_limited` are counted, one per quote or build. Over RPC,
 `unavailable` is counted per attempt and again when a whole provider list is exhausted, so it is not comparable
 with the Horizon figure.
 
@@ -288,7 +289,9 @@ on SIGTERM, so they survive a restart and scale-to-zero. A crash loses at most t
 inside a request rather than on a timer, because Cloud Run throttles CPU between requests; `/health*` never
 triggers one. To read them, open `upstreamUsage/{YYYY-MM-DD}` in the `lumenwipe-api` Firestore database:
 `counts.<network>.<upstream>.<metric>` is that UTC day's total. There is no API route for them. Without
-`FIRESTORE_PROJECT_ID` they stay in memory, like usage metering.
+`FIRESTORE_PROJECT_ID` they stay in memory, like usage metering. A daily job of the on-chain monitors workflow
+sums the month's `requests` against each provider's monthly budget and alerts at 70 percent; the budgets and
+their sources are in [Provider quotas](/runbooks/provider-quotas).
 
 `upstreamRateLimitHits` and `defiDegradedFallbackCount` on `/health` are since-start values for one process:
 they reset on every cold start, and exist for compatibility.
@@ -302,7 +305,7 @@ the cheap RPC check.
 
 Every access log line carries `upstreamCalls`, the attempts that request made per upstream, so the cost of an
 analyze and of each build round can be read from the logs. It also carries `upstreamMs`, the milliseconds the
-request waited on each of `horizon`, `paths`, `defi` and `rpc.<method>` (a fixed list of JSON-RPC methods, any
+request waited on each of `horizon`, `paths`, `defi`, `indexer`, `soroswap`, `xbull` and `rpc.<method>` (a fixed list of JSON-RPC methods, any
 other as `rpc.other`). Each value is the summed wall-clock time of that key's calls, so concurrent calls can add up
 to more than the request's `latencyMs`.
 
