@@ -26,6 +26,9 @@ version number before 0.4.0. Neither has a git tag.
 
 ### Changed
 
+- `LumenWipeIntegratorClient.session(...)` accepts each signed challenge once: a second exchange
+  of the same challenge, including a retry after a lost response, answers 401
+  `invalid_challenge`. Request and sign a new challenge to sign in again.
 - `SorobanTokensResult.coverage` no longer has an `explorer` entry, and no `SorobanTokenBalance`
   lists `explorer` in `sources`: the API stopped reading the stellar.expert explorer. The value
   stays in `SorobanTokenSource`, deprecated, so code that matches on it keeps compiling.

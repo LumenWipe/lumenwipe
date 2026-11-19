@@ -118,17 +118,23 @@ export class IntegratorController {
     "invalid_request",
     "invalid_body",
   ])
-  @ApiErrorResponse(401, "The signed challenge is invalid or has expired.", ["invalid_challenge"])
-  @ApiErrorResponse(503, "Self-serve key management is not configured.", [
+  @ApiErrorResponse(401, "The signed challenge is invalid, used or has expired.", [
+    "invalid_challenge",
+  ])
+  @ApiErrorResponse(503, "Self-serve key management is not configured, or sign-in is busy.", [
     "integrator_api_not_configured",
+    "service_unavailable",
   ])
   @ApiBodyErrorResponses()
   @Post("auth/session")
   @HttpCode(200)
-  @ApiOperation({ summary: "Exchange a signed challenge for a short-lived session token." })
+  @ApiOperation({
+    summary: "Exchange a signed challenge for a short-lived session token.",
+    description: "A challenge is exchanged once only; sign a new one to sign in again.",
+  })
   @ApiBody({ type: SessionRequestDto })
   @ApiResponse({ status: 200, description: "A session token.", type: SessionResponseDto })
-  session(@Body() body: { address?: unknown; message?: unknown; signature?: unknown }) {
+  async session(@Body() body: { address?: unknown; message?: unknown; signature?: unknown }) {
     const secret = requireIntegratorConfig();
     const { address, message, signature } = body;
     if (
@@ -138,7 +144,8 @@ export class IntegratorController {
     ) {
       fail("invalid_request", "address, message and signature are required.", 400);
     }
-    if (!verifyChallenge(secret, address, message, signature)) {
+    const expiresAt = verifyChallenge(secret, address, message, signature);
+    if (!expiresAt || !(await this.usedChallenges.claim(message, expiresAt))) {
       fail("invalid_challenge", "The signed challenge is invalid or has expired.", 401);
     }
     return issueSession(secret, address);

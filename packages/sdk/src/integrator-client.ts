@@ -57,7 +57,8 @@ export class LumenWipeIntegratorClient {
     );
   }
 
-  /** Exchanges the signed challenge for a session token. */
+  /** Exchanges the signed challenge for a session token. A challenge is exchanged once only:
+   *  to sign in again, sign a new one. */
   session(
     request: IntegratorSessionRequest,
     options?: RequestOptions
