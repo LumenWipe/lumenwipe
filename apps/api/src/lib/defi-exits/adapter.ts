@@ -21,8 +21,9 @@ import type { HealthInputs } from "./invariants";
  *
  * `runExitAdapter` (run-exit.ts) drives these in a fixed order and enforces, from outside the
  * adapter, the invariants no adapter is trusted to remember on its own: the registry must be
- * fresh and must know the live wasmHash of every contract the plan touches before anything is
- * read or built; every amount stays within the live balance; every price-dependent step carries
+ * fresh and must know the live wasmHash of the position's contract before it is read, and of
+ * every contract a step invokes before anything is built (contracts a read only reaches through,
+ * such as a Blend pool's oracle, are read ungated, and a read that fails is a blocker); every amount stays within the live balance; every price-dependent step carries
  * a positive minimum-received floor; a position with debt repays before it withdraws and stays
  * above its liquidation threshold; the intent must describe the bytes it travels with; the step
  * is simulated (and, when built locally, assembled from that simulation) before it is offered;

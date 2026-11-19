@@ -5,6 +5,7 @@ import {
   Keypair,
   Networks,
   Operation,
+  StrKey,
   TransactionBuilder,
   nativeToScVal,
 } from "@stellar/stellar-sdk";
@@ -17,6 +18,7 @@ import type {
 import type { ExitRunResult, ExitStep } from "@/lib/defi-exits";
 import {
   buildExitRound,
+  EXIT_PREFLIGHT_CONCURRENCY,
   ExitRoundBlockedError,
   preflightExitTargets,
 } from "@/lib/defi-exits/exit-round";
@@ -425,6 +427,30 @@ describe("buildExitRound with positions the user chose to leave behind", () => {
 });
 
 describe("preflightExitTargets", () => {
+  test("runs at most EXIT_PREFLIGHT_CONCURRENCY targets at once and still reports every one", async () => {
+    const pools = Array.from({ length: EXIT_PREFLIGHT_CONCURRENCY * 3 }, () =>
+      StrKey.encodeContract(Keypair.random().rawPublicKey())
+    );
+    let inFlight = 0;
+    let peak = 0;
+    const { blocked: blockedTargets } = await preflightExitTargets(
+      account(pools.map(supply)),
+      "testnet",
+      {
+        rpc,
+        runExitAdapter: async (_adapter, position) => {
+          inFlight++;
+          peak = Math.max(peak, inFlight);
+          await new Promise((resolve) => setTimeout(resolve, 1));
+          inFlight--;
+          return blocked(position.contractAddress, "exit_simulation_failed");
+        },
+      }
+    );
+    expect(peak).toBe(EXIT_PREFLIGHT_CONCURRENCY);
+    expect([...blockedTargets.keys()].sort()).toEqual([...pools].sort());
+  });
+
   test("reports only the targets whose exit cannot be built, with whether each may be left", async () => {
     const { blocked: blockedTargets, simulatedFeeStroops } = await preflightExitTargets(
       account([supply(POOL), supply(POOL_2)]),
