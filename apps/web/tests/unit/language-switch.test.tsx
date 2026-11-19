@@ -64,10 +64,14 @@ describe("the language switch", () => {
   });
 
   test("the header, mobile menu and footer each mount it, in both directions", () => {
-    expect(SPANISH_PAGES.find((page) => page.path === "/")?.translated).toBe(true);
+    for (const path of ["/", "/faq"]) {
+      expect(SPANISH_PAGES.find((page) => page.path === path)?.translated).toBe(true);
+    }
     for (const [locale, pathname, href, tag] of [
       ["en", "/", "/es", "es-419"],
       ["es", "/es", "/", "en"],
+      ["en", "/faq", "/es/faq", "es-419"],
+      ["es", "/es/faq", "/faq", "en"],
     ] as const) {
       at(pathname);
       const { container } = render(
@@ -97,7 +101,7 @@ describe("the language switch", () => {
 
   test("links nothing from a page whose other version is not translated", () => {
     for (const [locale, pathname] of [
-      ["en", "/faq"],
+      ["en", "/how-it-works"],
       ["en", "/security"],
     ] as const) {
       at(pathname);
@@ -109,6 +113,22 @@ describe("the language switch", () => {
       );
       expect(container.querySelector("a[hreflang]")).toBeNull();
       expect(screen.queryByRole("link", { name: /^(English|Español)$/ })).toBeNull();
+      cleanup();
+      mock.restore();
+    }
+  });
+
+  test("the footer leads to the FAQ in the reader's language", () => {
+    for (const [locale, pathname, href] of [
+      ["en", "/", "/faq"],
+      ["es", "/es", "/es/faq"],
+    ] as const) {
+      at(pathname);
+      const { container } = render(<MarketingFooter locale={locale} />);
+      const faq = [...container.querySelectorAll("footer a")].filter((link) =>
+        link.getAttribute("href")?.endsWith("/faq")
+      );
+      expect(faq.map((link) => link.getAttribute("href"))).toEqual([href]);
       cleanup();
       mock.restore();
     }

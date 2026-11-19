@@ -59,7 +59,11 @@ describe("pages read the registry", () => {
   });
 
   test("a protocol that is not live appears only beside its status label", () => {
-    for (const page of [<LandingPage key="l" />, <HowItWorksPage key="h" />, <Faq key="f" />]) {
+    for (const page of [
+      <LandingPage key="l" />,
+      <HowItWorksPage key="h" />,
+      <Faq key="f" locale="en" />,
+    ]) {
       const text = textOutsideStatusLabels(renderMarketing(page));
       for (const p of NOT_LIVE) expect(text).not.toContain(p.name);
     }
@@ -75,7 +79,7 @@ describe("pages read the registry", () => {
   });
 
   test("the landing page and the FAQ name the same live protocols and testnet-only items", () => {
-    const faq = renderMarketing(<Faq />).textContent ?? "";
+    const faq = renderMarketing(<Faq locale="en" />).textContent ?? "";
     expect(faq).toContain(`exits them in ${listNames(LIVE_EXIT_PROTOCOLS)} on mainnet`);
     const testnetOnly = protocolsWithStatus("testnet-only");
     if (testnetOnly.length > 0) {

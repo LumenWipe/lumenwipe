@@ -45,6 +45,7 @@ describe("the proxy matcher", () => {
     expect(paths).toContain("/");
     expect(paths).toContain("/faq");
     expect(paths).toContain("/es");
+    expect(paths).toContain("/es/faq");
     expect(paths.filter((p) => p.startsWith("/blog/"))).toHaveLength(getAllSlugs().length);
   });
 

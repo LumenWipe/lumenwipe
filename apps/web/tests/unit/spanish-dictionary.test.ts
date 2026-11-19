@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { isValidElement, type ReactNode } from "react";
 import { ADDRESS } from "@/lib/i18n/messages/address";
 import { COMMON } from "@/lib/i18n/messages/common";
+import { FAQ, type FaqFacts } from "@/lib/i18n/messages/faq";
 import { FOOTER } from "@/lib/i18n/messages/footer";
 import { HERO } from "@/lib/i18n/messages/hero";
 import { LANDING } from "@/lib/i18n/messages/landing";
@@ -10,12 +11,12 @@ import { NOT_FOUND } from "@/lib/i18n/messages/not-found";
 import { SITE } from "@/lib/i18n/messages/site";
 import { nodeText } from "@/lib/site/node-text";
 
-// The sections the navigation, footer, 404 and landing page read, and what the landing's own
+// The sections the navigation, footer, 404, landing and FAQ pages read, and what the landing's own
 // components read (the hero, the registry sentences, the trust statements, the reserve figures).
-// The FAQ the landing embeds is translated with the FAQ page (#936).
 const SECTIONS: Record<string, { en: unknown; es: unknown }> = {
   address: ADDRESS,
   common: COMMON,
+  faq: FAQ,
   footer: FOOTER,
   hero: HERO,
   landing: LANDING,
@@ -64,6 +65,24 @@ const CODE = new Set([
 const accent = (text: string): ReactNode => text;
 const element: ReactNode = "LINK";
 
+/** FAQ facts with the exchange close live or not, and with or without testnet-only exits. */
+function faqFacts(exchangeLive: boolean, testnetOnlyExits: string): FaqFacts {
+  return {
+    keyStatement: "KEY",
+    checkStatement: "CHECK",
+    serverKeysIntro: "INTRO",
+    serverKeys: [{ name: "NAME", statement: "STATEMENT", scope: "" }],
+    verifySourceUrl: "https://example.com/verify.ts",
+    newTab: "NEW TAB",
+    exchangeLive,
+    liveExits: "Blend",
+    testnetOnlyExits,
+    testnetOnlySentence: "TESTNET ONLY",
+    minimumBalance: "1",
+    perItem: "0.5",
+  };
+}
+
 // Arguments for each function in the sections, so its Spanish sentence is read, not only its
 // reference. A function with no entry here fails the walk.
 const CALLS: Record<string, unknown[][]> = {
@@ -78,6 +97,7 @@ const CALLS: Record<string, unknown[][]> = {
   "hero.estimate.assumptions.unconvertible": [[1], [2]],
   "hero.estimate.announcement": [["10 to 12 XLM", "Nothing.", "Caveat"]],
   "hero.estimate.readAt": [["12:00"]],
+  "faq.items": [[faqFacts(true, "")], [faqFacts(false, "Aquarius")]],
   "landing.description": [[true], [false]],
   "landing.hero.headline": [[accent]],
   "landing.stats.asOf": [["Nov 2026", element]],
@@ -105,6 +125,16 @@ const CALLS: Record<string, unknown[][]> = {
 const text = (value: unknown): string =>
   typeof value === "string" ? value : nodeText(value as ReactNode);
 
+/** A function's result as the walk reads it: a list of entries (the FAQ items) entry by entry,
+ *  each field as the text a reader sees, so one entry left in English is reported on its own. */
+function readable(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(readable);
+  if (typeof value === "object" && value !== null && !isValidElement(value)) {
+    return Object.fromEntries(Object.entries(value).map(([key, v]) => [key, readable(v)]));
+  }
+  return text(value);
+}
+
 /** Every way the Spanish copy at `path` is missing or still reads as the English. */
 function untranslated(path: string, en: unknown, es: unknown): string[] {
   if (es === undefined) return [`${path}: missing`];
@@ -118,7 +148,11 @@ function untranslated(path: string, en: unknown, es: unknown): string[] {
     if (es === en) return [`${path}: the English function`];
     const calls = CALLS[path];
     if (!calls) return [`${path}: no arguments listed in CALLS`];
-    return calls.flatMap((args) => {
+    return calls.flatMap((args, i) => {
+      const result: unknown = en(...args);
+      if (Array.isArray(result)) {
+        return untranslated(`${path}#${i}`, readable(result), readable(es(...args)));
+      }
       const spanish = text(es(...args));
       const english = text(en(...args));
       return spanish === "" || (spanish === english && !onlyNames(spanish))
@@ -153,7 +187,7 @@ function untranslated(path: string, en: unknown, es: unknown): string[] {
   return [];
 }
 
-describe("the Spanish copy of the navigation, footer, 404 and landing", () => {
+describe("the Spanish copy of the navigation, footer, 404, landing and FAQ", () => {
   for (const [name, section] of Object.entries(SECTIONS)) {
     test(`${name}: every entry is filled and reads in Spanish`, () => {
       expect(untranslated(name, section.en, section.es)).toEqual([]);
@@ -181,6 +215,23 @@ describe("the Spanish copy of the navigation, footer, 404 and landing", () => {
     expect(untranslated("x", en, { b: (n: number) => `${n} elementos`, c: "GitHub" })).toEqual([
       "x.a: missing",
       "x.b: no arguments listed in CALLS",
+    ]);
+  });
+
+  test("the walk reports one list entry left in English, field by field", () => {
+    const en = () => [
+      { q: "Is it safe?", a: "Yes." },
+      { q: "Is it fast?", a: "Yes, in seconds." },
+    ];
+    const es = () => [
+      { q: "¿Es seguro?", a: "Sí." },
+      { q: "Is it fast?", a: "Yes, in seconds." },
+    ];
+    expect(untranslated("faq.items", en, es)).toEqual([
+      'faq.items#0.1.q: "Is it fast?"',
+      'faq.items#0.1.a: "Yes, in seconds."',
+      'faq.items#1.1.q: "Is it fast?"',
+      'faq.items#1.1.a: "Yes, in seconds."',
     ]);
   });
 });

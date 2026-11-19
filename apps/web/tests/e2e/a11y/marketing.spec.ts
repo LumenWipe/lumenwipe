@@ -17,7 +17,7 @@ function isPhoneWidth(page: Page): boolean {
   return (page.viewportSize()?.width ?? 0) < DESKTOP;
 }
 
-for (const path of ["/", "/es"]) {
+for (const path of ["/", "/es", "/es/faq"]) {
   test(`${path} carries no noindex`, async ({ page }) => {
     await page.goto(path);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
@@ -28,6 +28,7 @@ for (const path of ["/", "/es"]) {
 for (const path of [
   "/es",
   "/faq",
+  "/es/faq",
   "/security",
   "/registry",
   "/content",

@@ -5,16 +5,17 @@ import LandingPage from "@/app/(marketing)/page";
 import FaqPage from "@/app/(marketing)/faq/page";
 import BlogPage from "@/app/(marketing)/blog/page";
 import SpanishLandingPage from "@/app/(marketing-es)/es/page";
+import SpanishFaqPage from "@/app/(marketing-es)/es/faq/page";
 import BlogPostPage, { generateMetadata } from "@/app/(marketing)/blog/[slug]/page";
 import SecurityPage from "@/app/(marketing)/security/page";
 import HowItWorksPage from "@/app/(marketing)/how-it-works/page";
-import Faq, { ITEMS } from "@/components/marketing/Faq";
+import Faq, { faqItems } from "@/components/marketing/Faq";
 import JsonLd from "@/components/seo/JsonLd";
 import { getAllPostMetas, getPost } from "@/lib/blog";
 import { LANDING } from "@/lib/i18n/messages/landing";
 import { GITHUB_URL } from "@/lib/site/navigation";
 import { nodeText } from "@/lib/site/node-text";
-import { postShareImage } from "@/lib/site/pages";
+import { localePath, postShareImage } from "@/lib/site/pages";
 import { feature, FEATURES, LIVE_EXIT_PROTOCOLS, listNames } from "@/lib/site/status";
 import {
   blogJsonLd,
@@ -138,27 +139,37 @@ describe("the home page", () => {
   });
 });
 
-describe("the FAQ page", () => {
-  const faq = one(PAGES.faq, "FAQPage");
-  const questions = faq.mainEntity as { name: string; acceptedAnswer: { text: string } }[];
+const FAQ_PAGES = [
+  { locale: "en", page: PAGES.faq, inLanguage: "en" },
+  { locale: "es", page: blocksIn(renderMarketing(<SpanishFaqPage />)), inLanguage: "es-419" },
+] as const;
 
-  test("is a FAQPage with one question per item", () => {
-    expect(faq.url).toBe(siteUrl("/faq"));
-    expect(questions.map((q) => q.name)).toEqual(ITEMS.map((i) => i.q));
-    for (const q of questions) expect(q.acceptedAnswer.text.length).toBeGreaterThan(20);
-  });
+for (const { locale, page, inLanguage } of FAQ_PAGES) {
+  describe(`the FAQ page in ${locale}`, () => {
+    const faq = one(page, "FAQPage");
+    const questions = faq.mainEntity as { name: string; acceptedAnswer: { text: string } }[];
 
-  test("answers each question with exactly the text the accordion renders", () => {
-    const panels = [...renderMarketing(<Faq />).querySelectorAll('[role="region"]')];
-    expect(panels).toHaveLength(questions.length);
-    panels.forEach((panel, i) => {
-      const copy = panel.cloneNode(true) as HTMLElement;
-      copy.querySelectorAll(".sr-only").forEach((el) => el.remove());
-      const shown = (copy.textContent ?? "").replace(/\s+/g, " ").trim();
-      expect(questions[i]!.acceptedAnswer.text).toBe(shown);
+    test("is a FAQPage in its language with one question per item", () => {
+      expect(faq.url).toBe(siteUrl(localePath(locale, "/faq")));
+      expect(faq.inLanguage).toBe(inLanguage);
+      expect(questions.map((q) => q.name)).toEqual(faqItems(locale).map((i) => i.q));
+      for (const q of questions) expect(q.acceptedAnswer.text.length).toBeGreaterThan(20);
+    });
+
+    test("answers each question with exactly the text the accordion renders", () => {
+      const panels = [
+        ...renderMarketing(<Faq locale={locale} />).querySelectorAll('[role="region"]'),
+      ];
+      expect(panels).toHaveLength(questions.length);
+      panels.forEach((panel, i) => {
+        const copy = panel.cloneNode(true) as HTMLElement;
+        copy.querySelectorAll(".sr-only").forEach((el) => el.remove());
+        const shown = (copy.textContent ?? "").replace(/\s+/g, " ").trim();
+        expect(questions[i]!.acceptedAnswer.text).toBe(shown);
+      });
     });
   });
-});
+}
 
 describe("the blog index", () => {
   test("is a Blog listing every post, with its breadcrumb", () => {
@@ -314,7 +325,7 @@ describe("the language of the structured data", () => {
     const post = getPost(POST.slug);
     const docs = {
       home: homeJsonLd("Descripción", "es"),
-      faq: faqJsonLd(ITEMS, "es"),
+      faq: faqJsonLd(faqItems("es"), "es"),
       blog: blogJsonLd(getAllPostMetas(), "es"),
       post: postJsonLd(post, "es"),
     };
