@@ -111,7 +111,8 @@ export default function RevokeAllowanceModal({
         if (!walletConnection.address || !walletUsable) {
           throw new UserFacingError("Connect the wallet that owns this account first.");
         }
-        signer = walletKitSigner(network, walletConnection.address);
+        // No hash is shown here, so a Ledger is only ever asked to show the whole transaction.
+        signer = walletKitSigner(network, walletConnection.address, { fingerprintShown: false });
       } else {
         signer = new SecretKeySigner(secretKeyRef.current);
         if (signer.publicKey !== owner) {

@@ -10,26 +10,44 @@ const YOUTUBE_EMBED = '"https://www.youtube-nocookie.com"';
  * Only what the app uses is allowed: clipboard writes (copy buttons, the receipt export) and the
  * YouTube embed's copy and fullscreen. Every powerful feature it does not use is refused, for
  * this page and every frame in it. Browser extension wallets are not governed by this header.
- * Ledger (#736) needs `hid` and `usb` opened to self.
+ * WebUSB is opened to this origin only on the routes that sign (`SIGNING_ROUTE_SOURCES`), for a
+ * Ledger. The kit's Ledger module uses WebUSB alone, so `hid` stays refused everywhere.
  * Passkey key-owner sign-in (#770) would need `publickey-credentials-get` opened to self.
+ *
+ * @param {string} usb the allowlist WebUSB gets
+ * @returns {string}
  */
-const PERMISSIONS_POLICY = [
-  `clipboard-write=(self ${YOUTUBE_EMBED})`,
-  `fullscreen=(self ${YOUTUBE_EMBED})`,
-  "camera=()",
-  "microphone=()",
-  "geolocation=()",
-  "payment=()",
-  "usb=()",
-  "hid=()",
-  "serial=()",
-  "bluetooth=()",
-  "midi=()",
-  "display-capture=()",
-  "clipboard-read=()",
-  "publickey-credentials-create=()",
-  "publickey-credentials-get=()",
-].join(", ");
+function permissionsPolicy(usb) {
+  return [
+    `clipboard-write=(self ${YOUTUBE_EMBED})`,
+    `fullscreen=(self ${YOUTUBE_EMBED})`,
+    "camera=()",
+    "microphone=()",
+    "geolocation=()",
+    "payment=()",
+    `usb=${usb}`,
+    "hid=()",
+    "serial=()",
+    "bluetooth=()",
+    "midi=()",
+    "display-capture=()",
+    "clipboard-read=()",
+    "publickey-credentials-create=()",
+    "publickey-credentials-get=()",
+  ].join(", ");
+}
+
+const PERMISSIONS_POLICY = permissionsPolicy("()");
+
+/** The policy of the routes that sign: the same, with WebUSB allowed for this origin's own frame. */
+export const SIGNING_PERMISSIONS_POLICY = permissionsPolicy("(self)");
+
+/**
+ * The routes where a transaction is signed with a connected wallet: every network route (the
+ * bare `/mainnet` and `/testnet` included, which `:path*` matches with no segment) and the
+ * co-signing station. Nothing else, marketing pages and `/api-keys` included, gets WebUSB.
+ */
+export const SIGNING_ROUTE_SOURCES = ["/:network(mainnet|testnet)/:path*", "/cosign"];
 
 /**
  * The response headers every route carries, pages and `/api/*` alike.
@@ -52,3 +70,15 @@ export const SECURITY_HEADERS = [
   { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
   { key: "Reporting-Endpoints", value: 'csp="/api/csp-report"' },
 ];
+
+/**
+ * The header rules that replace the Permissions-Policy on the signing routes. They must come after
+ * the rule that sets `SECURITY_HEADERS` on every route: when two rules set the same key, Next (and
+ * the Build Output config Vercel serves) keeps the later one.
+ *
+ * @type {ReadonlyArray<{ source: string, headers: Array<{ key: string, value: string }> }>}
+ */
+export const SIGNING_HEADER_RULES = SIGNING_ROUTE_SOURCES.map((source) => ({
+  source,
+  headers: [{ key: "Permissions-Policy", value: SIGNING_PERMISSIONS_POLICY }],
+}));

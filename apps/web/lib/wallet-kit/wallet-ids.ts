@@ -9,3 +9,4 @@ export const ALBEDO_ID = "albedo";
 export const RABET_ID = "rabet";
 export const HANA_ID = "hana";
 export const WALLET_CONNECT_ID = "wallet_connect";
+export const LEDGER_ID = "LEDGER";

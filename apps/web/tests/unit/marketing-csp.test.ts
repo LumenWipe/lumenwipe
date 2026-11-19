@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { HOMEPAGE_LINK } from "@/config/discovery-links.mjs";
 import { marketingPolicy } from "@/config/marketing-csp.mjs";
+import { SECURITY_HEADERS, SIGNING_PERMISSIONS_POLICY } from "@/config/security-headers.mjs";
 import {
   checkOutput,
   exactPathRegex,
@@ -14,6 +15,7 @@ import {
   prerenderedMarketingPages,
   run,
   scriptHash,
+  WEBUSB_PATHS,
 } from "@/scripts/marketing-csp.mjs";
 
 const NEXT_INIT = "(self.__next_f=self.__next_f||[]).push([0])";
@@ -265,11 +267,22 @@ describe("under a build adapter, as on Vercel", () => {
   const LINK_ROUTE = { src: "^\\/(?:\\/)?$", headers: { Link: HOMEPAGE_LINK }, continue: true };
   const HSTS_VALUE = "max-age=63072000; includeSubDomains";
   // Both copied verbatim from .vercel/output/config.json of `vercel build --prod` (CLI 65.16.0).
+  const PERMISSIONS = "Permissions-Policy";
+  const BASE_PERMISSIONS = SECURITY_HEADERS.find((h) => h.key === PERMISSIONS)!.value;
   const HEADERS_ROUTE = {
     src: "^(?:\\/((?:[^\\/]+?)(?:\\/(?:[^\\/]+?))*))?(?:\\/)?$",
-    headers: { "Strict-Transport-Security": HSTS_VALUE, "X-Content-Type-Options": "nosniff" },
+    headers: {
+      "Strict-Transport-Security": HSTS_VALUE,
+      "X-Content-Type-Options": "nosniff",
+      [PERMISSIONS]: BASE_PERMISSIONS,
+    },
     continue: true,
   };
+  // The two signing header routes, copied verbatim from the same build.
+  const SIGNING_ROUTES = [
+    "^(?:\\/(mainnet|testnet))(?:\\/((?:[^\\/]+?)(?:\\/(?:[^\\/]+?))*))?(?:\\/)?$",
+    "^\\/cosign(?:\\/)?$",
+  ].map((src) => ({ src, headers: { [PERMISSIONS]: SIGNING_PERMISSIONS_POLICY }, continue: true }));
   const APEX_ROUTE = {
     src: "^(?:\\/((?:[^\\/]+?)(?:\\/(?:[^\\/]+?))*))?(?:\\/)?$",
     headers: { Location: "https://www.lumenwipe.com/$1" },
@@ -278,6 +291,7 @@ describe("under a build adapter, as on Vercel", () => {
   };
   const BASE_ROUTES = [
     HEADERS_ROUTE,
+    ...SIGNING_ROUTES,
     LINK_ROUTE,
     APEX_ROUTE,
     PROXY_ROUTE,
@@ -454,9 +468,10 @@ describe("under a build adapter, as on Vercel", () => {
   });
 
   type ApexRoute = Route & { status?: number; has?: Array<Record<string, string>> };
+  const APEX = BASE_ROUTES.indexOf(APEX_ROUTE);
   const withApex = (change: (apex: ApexRoute, routes: ApexRoute[]) => void) => {
     const routes: ApexRoute[] = structuredClone(BASE_ROUTES);
-    change(routes[2], routes);
+    change(routes[APEX], routes);
     write("output/config.json", { version: 3, routes });
   };
 
@@ -477,9 +492,9 @@ describe("under a build adapter, as on Vercel", () => {
   });
 
   test("a missing apex redirect, or one after the first handle, fails", () => {
-    withApex((_, routes) => routes.splice(2, 1));
+    withApex((_, routes) => routes.splice(APEX, 1));
     expect(() => run(dir, true)).toThrow("0 host-matched routes");
-    withApex((_, routes) => routes.push(...routes.splice(2, 1)));
+    withApex((_, routes) => routes.push(...routes.splice(APEX, 1)));
     expect(() => run(dir, true)).toThrow("1 host-matched routes");
   });
 
@@ -500,8 +515,49 @@ describe("under a build adapter, as on Vercel", () => {
   test("an apex redirect without includeSubDomains HSTS ahead of it fails", () => {
     withApex((_, routes) => (routes[0].headers![HSTS] = "max-age=63072000"));
     expect(() => run(dir, true)).toThrow("carries HSTS");
-    withApex((_, routes) => routes.splice(3, 0, ...routes.splice(0, 1)));
+    withApex((_, routes) => routes.splice(APEX, 0, ...routes.splice(0, 1)));
     expect(() => run(dir, true)).toThrow("carries HSTS []");
+  });
+
+  test("the signing routes end with WebUSB opened to self, every other path with it refused", () => {
+    expect(run(dir, true)).toHaveLength(4);
+    expect(WEBUSB_PATHS).toContain("/mainnet");
+    expect(WEBUSB_PATHS).toContain("/cosign");
+    expect(NONCE_PATHS.filter((p) => !WEBUSB_PATHS.includes(p))).toEqual([
+      "/api-keys",
+      "/x/y/z",
+      "/blog/nope",
+      "/es/nope",
+      "/es/blog/nope",
+    ]);
+  });
+
+  test("a signing route that loses its Permissions-Policy, or one ahead of the base, fails", () => {
+    const routes: Route[] = structuredClone(BASE_ROUTES);
+    routes.splice(1, 1);
+    write("output/config.json", { version: 3, routes });
+    expect(() => run(dir, true)).toThrow("/mainnet is served Permissions-Policy");
+    const swapped: Route[] = structuredClone(BASE_ROUTES);
+    swapped.splice(3, 0, ...swapped.splice(0, 1));
+    write("output/config.json", { version: 3, routes: swapped });
+    expect(() => run(dir, true)).toThrow("/mainnet is served Permissions-Policy");
+  });
+
+  test("WebUSB opened on any other path fails", () => {
+    for (const src of [
+      "^(?:\\/((?:[^\\/]+?)(?:\\/(?:[^\\/]+?))*))?(?:\\/)?$",
+      "^/api-keys$",
+      "^/faq$",
+    ]) {
+      const routes: Route[] = structuredClone(BASE_ROUTES);
+      routes.splice(3, 0, {
+        src,
+        headers: { [PERMISSIONS]: SIGNING_PERMISSIONS_POLICY },
+        continue: true,
+      });
+      write("output/config.json", { version: 3, routes });
+      expect(() => run(dir, true)).toThrow("is served Permissions-Policy");
+    }
   });
 
   test("check-output verifies the finished deployment output, not the build's copy", () => {

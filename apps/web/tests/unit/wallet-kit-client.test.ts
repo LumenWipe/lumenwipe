@@ -6,10 +6,12 @@ import {
   walletKitSigner,
 } from "@/lib/wallet-kit/client";
 import * as loader from "@/lib/wallet-kit/loader";
+import { WalletNotUsableError } from "@/lib/stellar/signer";
 import { vettedDefaultModules } from "@/lib/wallet-kit/modules";
 import { VARIAL_ID } from "@creit-tech/stellar-wallets-kit/modules/varial";
 
 const address = Keypair.random().publicKey();
+const SHOWN = { fingerprintShown: true };
 
 /** A kit whose selected wallet is `productId`, answering `getAddress` with `answer`. */
 function kitWith(productId: string, answer: () => Promise<{ address: string }>) {
@@ -25,7 +27,7 @@ test("silent wallet address › Freighter is asked without requesting access, so
   expect(getAddress.mock.calls[0]?.[0]).toEqual({ skipRequestAccess: true });
 });
 
-test.each(["xbull", "albedo", "rabet", "hana", "wallet_connect"])(
+test.each(["xbull", "albedo", "rabet", "hana", "wallet_connect", "LEDGER"])(
   "silent wallet address › %s cannot be asked without a prompt and is never asked",
   async (productId) => {
     const { kit, getAddress } = kitWith(productId, async () => ({ address }));
@@ -90,28 +92,33 @@ test("wallet kit › outside a browser it refuses before importing anything", as
 });
 
 test("wallet signer › before the kit has loaded there is no signer, not one without a wallet", () => {
-  expect(() => walletKitSigner("testnet", address)).toThrow(loader.WalletKitLoadError);
+  expect(() => walletKitSigner("testnet", address, SHOWN)).toThrow(loader.WalletKitLoadError);
 });
 
 test("wallet signer › the same network, wallet and address always get the same signer", async () => {
   const load = spyOn(loader, "importWalletKit").mockImplementation(async () => ({
     kit: standIn as unknown as loader.WalletKit,
     modules: () => [],
+    Buffer: globalThis.Buffer,
   }));
   await ensureWalletKitInitialized("testnet");
   load.mockRestore();
 
   const other = Keypair.random().publicKey();
-  const first = walletKitSigner("testnet", address);
+  const first = walletKitSigner("testnet", address, SHOWN);
   expect(first.walletId).toBe(VARIAL_ID);
-  expect(walletKitSigner("testnet", address)).toBe(first);
-  expect(walletKitSigner("testnet", other)).not.toBe(first);
-  expect(walletKitSigner("mainnet", address)).not.toBe(first);
+  expect(first.fingerprintShown).toBe(true);
+  expect(walletKitSigner("testnet", address, SHOWN)).toBe(first);
+  expect(walletKitSigner("testnet", other, SHOWN)).not.toBe(first);
+  expect(walletKitSigner("mainnet", address, SHOWN)).not.toBe(first);
+  const hidden = walletKitSigner("testnet", address, { fingerprintShown: false });
+  expect(hidden).not.toBe(first);
+  expect(hidden.fingerprintShown).toBe(false);
 });
 
 test("wallet signer › signs through the loaded kit with the signer's own network and address", async () => {
   standIn.setNetwork.mockClear();
-  const signer = walletKitSigner("testnet", address);
+  const signer = walletKitSigner("testnet", address, SHOWN);
   const signWithKit = (
     signer as unknown as {
       signWithKit: (
@@ -125,4 +132,35 @@ test("wallet signer › signs through the loaded kit with the signer's own netwo
   expect(signTransaction).toHaveBeenCalledWith("xdr", opts);
   expect(standIn.setNetwork).toHaveBeenCalledWith(Networks.TESTNET);
   expect(standIn.init).toHaveBeenCalledTimes(1);
+});
+
+test("wallet signer › the kit is handed nonBlindTx unchanged, though its own type omits it", async () => {
+  signTransaction.mockClear();
+  const signer = walletKitSigner("testnet", address, SHOWN);
+  const signWithKit = (
+    signer as unknown as { signWithKit: (x: string, o: object) => Promise<unknown> }
+  ).signWithKit;
+  const opts = { networkPassphrase: Networks.TESTNET, address, nonBlindTx: true };
+  await signWithKit("xdr", opts);
+  expect(signTransaction).toHaveBeenCalledWith("xdr", opts);
+});
+
+test("wallet signer › a wallet selected since the signer was built is never asked with its options", async () => {
+  signTransaction.mockClear();
+  const signer = walletKitSigner("testnet", address, SHOWN);
+  expect(signer.walletId).toBe(VARIAL_ID);
+  standIn.selectedModule.productId = "LEDGER";
+  try {
+    const signWithKit = (
+      signer as unknown as { signWithKit: (x: string, o: object) => Promise<unknown> }
+    ).signWithKit;
+    const refused = await signWithKit("xdr", {
+      networkPassphrase: Networks.TESTNET,
+      address,
+    }).catch((err: unknown) => err);
+    expect(refused).toBeInstanceOf(WalletNotUsableError);
+    expect(signTransaction).not.toHaveBeenCalled();
+  } finally {
+    standIn.selectedModule.productId = VARIAL_ID;
+  }
 });

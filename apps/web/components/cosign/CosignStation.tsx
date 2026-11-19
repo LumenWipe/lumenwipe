@@ -133,7 +133,7 @@ export default function CosignStation(): ReactElement {
     if (mode !== "wallet") return;
     const address = walletConnection.address;
     if (walletConnection.verified && address) {
-      select("wallet", walletKitSigner(network, address));
+      select("wallet", walletKitSigner(network, address, { fingerprintShown: true }));
     } else if (current()?.kind === "wallet") {
       clear();
     }

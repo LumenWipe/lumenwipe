@@ -136,7 +136,7 @@ export function useWalletKitConnection(
               : networkPassphrase === NETWORK_PASSPHRASES[network]
                 ? "yes"
                 : "no",
-          // Some wallets don't implement getNetwork (Albedo, Hana, WalletConnect, xBull, Rabet):
+          // Some wallets don't implement getNetwork (Albedo, Hana, WalletConnect, xBull, Rabet, Ledger):
           // unknown, never a match.
           (): WalletNetworkCheck => "unknown"
         );

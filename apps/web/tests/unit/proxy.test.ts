@@ -92,3 +92,11 @@ test("the locale header always overwrites the value a client sent", () => {
   expect(forwardedLocale("https://www.lumenwipe.com/es/nope", "en")).toBe("es");
   expect(forwardedLocale("https://www.lumenwipe.com/nope", "<script>")).toBe("en");
 });
+
+test("the proxy never sets a Permissions-Policy, so it cannot refuse WebUSB on a signing route", () => {
+  for (const path of ["/mainnet/execute", "/testnet", "/cosign", "/api-keys", "/api/v1/x"]) {
+    const response = proxy(new NextRequest(`https://www.lumenwipe.com${path}`));
+    expect(response.headers.get("Permissions-Policy"), path).toBeNull();
+    expect(response.headers.get("x-middleware-request-permissions-policy"), path).toBeNull();
+  }
+});

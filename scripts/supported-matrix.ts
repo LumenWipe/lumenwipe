@@ -88,6 +88,7 @@ const WALLETS: Record<string, string> = {
   Albedo: "Albedo",
   Rabet: "Rabet",
   Hana: "Hana",
+  Ledger: "Ledger, over USB in a browser with WebUSB (Chrome, Edge)",
 };
 
 function read(path: string): string {

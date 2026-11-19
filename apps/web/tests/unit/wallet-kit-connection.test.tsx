@@ -12,6 +12,7 @@ import {
 import WalletConnectPanel, { NO_WALLET_CONNECT_NOTE } from "@/components/wallet/WalletConnectPanel";
 import { WalletNotUsableError } from "@/lib/stellar/signer";
 import { VARIAL_ID } from "@creit-tech/stellar-wallets-kit/modules/varial";
+import { LEDGER_ID, LedgerModule } from "@creit-tech/stellar-wallets-kit/modules/ledger";
 
 const saved = Keypair.random().publicKey();
 const other = Keypair.random().publicKey();
@@ -22,6 +23,8 @@ type StateListener = (event: { payload: { address: string | undefined } }) => vo
 let kit: {
   saved: string | null;
   network: { networkPassphrase: string } | Error;
+  /** When set, the network answer is this wallet module's own. */
+  networkModule: { getNetwork: () => Promise<{ networkPassphrase: string }> } | null;
   /** While set, the network answer waits for it: a read still in flight. */
   networkGate: Promise<void> | null;
   stateListeners: StateListener[];
@@ -37,6 +40,7 @@ function installKit(): void {
   kit = {
     saved,
     network: { networkPassphrase: Networks.TESTNET },
+    networkModule: null,
     networkGate: null,
     stateListeners: [],
     authModal: mock(async () => ({ address: saved })),
@@ -52,6 +56,7 @@ function installKit(): void {
     },
     getNetwork: async () => {
       if (kit.networkGate) await kit.networkGate;
+      if (kit.networkModule) return { network: "", ...(await kit.networkModule.getNetwork()) };
       if (kit.network instanceof Error) throw kit.network;
       return { network: "", ...kit.network };
     },
@@ -190,6 +195,30 @@ test("wallet connection › a stale restored session shows Reconnect wallet, not
   render(<Panel />);
   expect(await screen.findByRole("button", { name: "Reconnect wallet" })).toBeDefined();
   expect(screen.queryByText(/Connected:/)?.textContent ?? null).toBeNull();
+});
+
+test("wallet connection › a restored Ledger session needs Reconnect, and its network the user's confirmation", async () => {
+  const ledger = new LedgerModule();
+  // The kit's real Ledger module answers no network query; and it cannot be asked its address
+  // without the device, which silentWalletAddress reports as "unsupported" (wallet-kit-client tests).
+  kit.networkModule = ledger;
+  silentAnswer = "unsupported";
+  expect(await ledger.getNetwork().catch((err: unknown) => err)).toMatchObject({ code: -3 });
+
+  const { result } = await restored();
+  expect(result.current.status).toBe("stale");
+  expect(result.current.network).toBe("unknown");
+  expect(result.current.verified).toBe(false);
+  act(() => result.current.confirmNetwork(true));
+  expect(result.current.networkConfirmed).toBe(true);
+  expect(LEDGER_ID).toBe("LEDGER");
+
+  function Panel() {
+    const connection = useWalletKitConnection("testnet");
+    return <WalletConnectPanel connection={connection} signingNetwork="testnet" />;
+  }
+  render(<Panel />);
+  expect(await screen.findByRole("button", { name: "Reconnect wallet" })).toBeDefined();
 });
 
 test("wallet connection › a state update with a new address replaces the session", async () => {
