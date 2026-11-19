@@ -16,6 +16,7 @@
     "test:adversarial": "bun test tests/adversarial",
     "openapi:generate": "bun run scripts/generate-openapi.ts",
     "phoenix:testnet-pool": "bun scripts/phoenix-testnet-pool.ts",
+    "web-auth:testnet-ttl": "bun scripts/web-auth-testnet-ttl.ts",
     "registry:staleness": "bun scripts/registry-staleness.ts",
     "backfill:expire-at": "bun scripts/backfill-expire-at.ts",
     "setup:mediator": "bun scripts/setup-mediator.ts",

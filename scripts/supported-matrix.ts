@@ -414,7 +414,7 @@ export const ENVIRONMENT: Record<EnvApp, Record<string, EnvironmentFacts>> = {
       true
     ),
     INTEGRATOR_WEB_AUTH_CONTRACT_TESTNET: optional(
-      "Testnet instance (C...) of the SEP-45 web authentication contract, running the attested build; mainnet uses SDF's deployment",
+      "Testnet instance (C...) of the SEP-45 web authentication contract, running the attested build; mainnet uses SDF's deployment. The repository variable of the same name holds the same value, and the nightly `web-auth-ttl` job extends that contract's TTL",
       false,
       "Contract-account sign-in is off on testnet"
     ),

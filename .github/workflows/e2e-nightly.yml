@@ -200,6 +200,36 @@ jobs:
           STELLAR_RPC_TESTNET: https://soroban-rpc.testnet.stellar.gateway.fm,https://soroban-testnet.stellar.org
         run: bun run phoenix:testnet-pool --extend-only
 
+  # The testnet web authentication contract contract-account sign-in uses (the API's
+  # INTEGRATOR_WEB_AUTH_CONTRACT_TESTNET, mirrored in the repository variable of the same name)
+  # archives once its TTL runs out, and testnet contract sign-in then answers 503. Each night
+  # extends its instance and code back to about 30 days, after checking it runs the attested
+  # SEP-45 build. No secret: a Friendbot throwaway pays.
+  web-auth-ttl:
+    name: keep the testnet web authentication contract live
+    runs-on: ubuntu-latest
+    outputs:
+      suite: ${{ steps.suite.outcome }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.4.4"
+
+      - run: bun install --frozen-lockfile
+
+      - name: Extend the contract's TTLs
+        id: suite
+        working-directory: apps/api
+        env:
+          STELLAR_RPC_TESTNET: https://soroban-rpc.testnet.stellar.gateway.fm,https://soroban-testnet.stellar.org
+          INTEGRATOR_WEB_AUTH_CONTRACT_TESTNET: ${{ vars.INTEGRATOR_WEB_AUTH_CONTRACT_TESTNET }}
+        run: bun run web-auth:testnet-ttl
+
   # A red run in the Actions tab is the same as no signal at all if nobody is looking, which is
   # the state this workflow exists to fix. A failure becomes an issue; a later green run closes
   # it, so a flaky night does not leave a stale one behind. One tracker per suite, so a playground
@@ -207,7 +237,7 @@ jobs:
   # are the ones this job has always used.
   report:
     name: open an issue on failure (${{ matrix.suite }})
-    needs: [e2e, playground, phoenix-ttl]
+    needs: [e2e, playground, phoenix-ttl, web-auth-ttl]
     # Manual runs report too. Gating this on `schedule` meant the run you would actually use to
     # confirm a fix could not close the issue, and left the whole reporting path impossible to
     # exercise except by waiting for a 07:00 UTC failure.
@@ -250,6 +280,17 @@ jobs:
               they archive about 30 days after the last good run, which breaks the funded Phoenix
               integration tests and the playground's Phoenix scenario. The job's log names the
               reason; after a testnet reset, rerun `bun run phoenix:testnet-pool` with the admin key.
+          - suite: web-auth-ttl
+            job: web-auth-ttl
+            name: Nightly testnet web authentication TTL extension
+            assignee: salazarsebas
+            failed: The nightly TTL extension of the testnet web authentication contract failed.
+            meaning: |-
+              The contract that testnet contract-account sign-in uses was not extended, and it
+              archives about 30 days after the last good run; testnet contract sign-in then
+              answers 503 contract_sign_in_unavailable. The job's log names the reason. After a
+              testnet reset, recreate the contract and update the variable as the rotate-secrets
+              runbook describes.
     steps:
       - name: Open or close the tracking issue
         env:

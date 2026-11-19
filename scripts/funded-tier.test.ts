@@ -161,4 +161,19 @@ describe("e2e-nightly.yml", () => {
       expect(readFileSync(join(WORKFLOWS, file), "utf8")).not.toContain(PLAYGROUND_TOKEN_SECRET);
     }
   });
+
+  test("the web authentication TTL job holds no secret and takes the contract only from vars through env", () => {
+    const job = nightly.jobs["web-auth-ttl"]!;
+    expect(job.environment).toBeUndefined();
+    expect(job.permissions).toEqual({ contents: "read" });
+    const [start, end] = jobLines(nightlyText, "web-auth-ttl");
+    const text = nightlyText.split("\n").slice(start, end).join("\n");
+    expect(text).not.toContain("secrets.");
+    const variable = "${{ vars.INTEGRATOR_WEB_AUTH_CONTRACT_TESTNET }}";
+    const naming = job.steps.filter((s) => JSON.stringify(s).includes("vars."));
+    expect(naming).toHaveLength(1);
+    expect(naming[0]!.env?.INTEGRATOR_WEB_AUTH_CONTRACT_TESTNET).toBe(variable);
+    expect(naming[0]!.run).toBe("bun run web-auth:testnet-ttl");
+    expect(nightly.jobs.report!.needs).toContain("web-auth-ttl");
+  });
 });
