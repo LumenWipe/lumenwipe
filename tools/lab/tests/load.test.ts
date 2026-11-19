@@ -125,9 +125,14 @@ describe("verdict", () => {
 function fakeApi(status: (n: number) => number, stepMs = 10) {
   let clock = 0;
   let n = 0;
-  const seen: { url: string; headers: Headers; method: string }[] = [];
+  const seen: { url: string; headers: Headers; method: string; redirect?: string }[] = [];
   const fetchImpl = (async (url: string, init?: RequestInit) => {
-    seen.push({ url, headers: new Headers(init?.headers), method: init?.method ?? "GET" });
+    seen.push({
+      url,
+      headers: new Headers(init?.headers),
+      method: init?.method ?? "GET",
+      redirect: init?.redirect,
+    });
     clock += stepMs;
     return new Response("{}", { status: status(++n) });
   }) as unknown as typeof fetch;
@@ -161,7 +166,8 @@ describe("runLoad", () => {
   test("sends the API key and Cloud Run's token apart, reading testnet only", async () => {
     const api = fakeApi(() => 200);
     await runLoad({ ...base(api), stages: [1] });
-    for (const { url, headers, method } of api.seen) {
+    for (const { url, headers, method, redirect } of api.seen) {
+      expect(redirect).toBe("error");
       expect(headers.get("Authorization")).toBe(`Bearer ${KEY}`);
       expect(headers.get("X-Serverless-Authorization")).toBe(`Bearer ${TOKEN}`);
       expect(url).toContain("/v1/testnet/");

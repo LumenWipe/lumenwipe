@@ -100,6 +100,8 @@ export async function runLoad(opts: LoadOptions): Promise<LoadResult> {
         headers: scenario.body ? { ...headers, "Content-Type": "application/json" } : headers,
         body: scenario.body ? JSON.stringify(scenario.body) : undefined,
         signal: AbortSignal.timeout(limits.requestTimeoutMs),
+        // A redirect could carry both credentials to another host; the service never sends one.
+        redirect: "error",
       });
       await res.arrayBuffer();
       return { stage, scenario: scenario.id, start, end: now(), status: res.status };
