@@ -22,7 +22,7 @@ import { COMMON } from "@/lib/i18n/messages/common";
 import { FAQ } from "@/lib/i18n/messages/faq";
 import { LANDING } from "@/lib/i18n/messages/landing";
 import { SITE } from "@/lib/i18n/messages/site";
-import { localeHref, localePath, pageMetadata } from "@/lib/site/pages";
+import { isTranslated, localeHref, localePath, pageMetadata } from "@/lib/site/pages";
 import { BASE_RESERVE_XLM, MINIMUM_BALANCE_RESERVES } from "@/lib/site/reserve";
 import {
   heroOutcome,
@@ -108,6 +108,8 @@ export default function LandingPage({ locale }: { locale: Locale }) {
       body: T.problem.truths.defi.body,
     },
   ];
+  // The questions show once the FAQ reads in this locale (#936).
+  const showFaq = isTranslated(locale, "/faq");
   const cards = CARD_IDS.map((id) => ({ ...feature(id, locale), icon: FEATURE_ICONS[id] }));
   return (
     <>
@@ -343,16 +345,20 @@ export default function LandingPage({ locale }: { locale: Locale }) {
         id="faq"
         className="mx-auto max-w-3xl scroll-mt-20 border-t border-white/[0.07] px-5 py-20 lg:px-8 lg:py-24"
       >
-        <Reveal className="text-center">
-          <Eyebrow>{faq.eyebrow}</Eyebrow>
-          <h2 className="mkt-display mt-4 text-3xl font-bold text-white sm:text-display">
-            {faq.heading}
-          </h2>
-          <p className="mt-4 text-white/70">{faq.lede}</p>
-        </Reveal>
-        <div className="mt-10">
-          <Faq />
-        </div>
+        {showFaq && (
+          <Reveal className="text-center">
+            <Eyebrow>{faq.eyebrow}</Eyebrow>
+            <h2 className="mkt-display mt-4 text-3xl font-bold text-white sm:text-display">
+              {faq.heading}
+            </h2>
+            <p className="mt-4 text-white/70">{faq.lede}</p>
+          </Reveal>
+        )}
+        {showFaq && (
+          <div className="mt-10">
+            <Faq />
+          </div>
+        )}
         <p className="mt-6 text-center text-sm text-fg-muted">
           {T.faq.stillCurious(
             <a

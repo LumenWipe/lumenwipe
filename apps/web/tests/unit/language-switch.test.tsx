@@ -64,48 +64,41 @@ describe("the language switch", () => {
   });
 
   test("the header, mobile menu and footer each mount it, in both directions", () => {
-    // The real list, flipped in place for this test only: the nav and footer take no list prop.
-    const home = SPANISH_PAGES.find((page) => page.path === "/") as SpanishPage;
-    home.translated = true;
-    try {
-      for (const [locale, pathname, href, tag] of [
-        ["en", "/", "/es", "es-419"],
-        ["es", "/es", "/", "en"],
+    expect(SPANISH_PAGES.find((page) => page.path === "/")?.translated).toBe(true);
+    for (const [locale, pathname, href, tag] of [
+      ["en", "/", "/es", "es-419"],
+      ["es", "/es", "/", "en"],
+    ] as const) {
+      at(pathname);
+      const { container } = render(
+        <>
+          <MarketingNav locale={locale} />
+          <MarketingFooter locale={locale} />
+        </>
+      );
+      const nav = container.querySelector("nav")!;
+      const sheet = container.querySelector("header > div[id]")!;
+      const footer = container.querySelector("footer")!;
+      for (const [where, region] of [
+        ["header", nav],
+        ["mobile menu", sheet],
+        ["footer", footer],
       ] as const) {
-        at(pathname);
-        const { container } = render(
-          <>
-            <MarketingNav locale={locale} />
-            <MarketingFooter locale={locale} />
-          </>
-        );
-        const nav = container.querySelector("nav")!;
-        const sheet = container.querySelector("header > div[id]")!;
-        const footer = container.querySelector("footer")!;
-        for (const [where, region] of [
-          ["header", nav],
-          ["mobile menu", sheet],
-          ["footer", footer],
-        ] as const) {
-          const links = [...region.querySelectorAll("a[hreflang]")];
-          expect(links, `${where} on ${pathname}`).toHaveLength(1);
-          expect(links[0].getAttribute("href")).toBe(href);
-          expect(links[0].getAttribute("hreflang")).toBe(tag);
-          expect(links[0].getAttribute("lang")).toBe(tag);
-        }
-        cleanup();
-        mock.restore();
+        const links = [...region.querySelectorAll("a[hreflang]")];
+        expect(links, `${where} on ${pathname}`).toHaveLength(1);
+        expect(links[0].getAttribute("href")).toBe(href);
+        expect(links[0].getAttribute("hreflang")).toBe(tag);
+        expect(links[0].getAttribute("lang")).toBe(tag);
       }
-    } finally {
-      home.translated = false;
+      cleanup();
+      mock.restore();
     }
   });
 
-  test("links nothing today: no Spanish page is translated yet", () => {
-    expect(SPANISH_PAGES.every((page) => !page.translated)).toBe(true);
+  test("links nothing from a page whose other version is not translated", () => {
     for (const [locale, pathname] of [
-      ["en", "/"],
-      ["es", "/es"],
+      ["en", "/faq"],
+      ["en", "/security"],
     ] as const) {
       at(pathname);
       const { container } = render(

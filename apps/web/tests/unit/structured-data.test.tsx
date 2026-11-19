@@ -11,10 +11,11 @@ import HowItWorksPage from "@/app/(marketing)/how-it-works/page";
 import Faq, { ITEMS } from "@/components/marketing/Faq";
 import JsonLd from "@/components/seo/JsonLd";
 import { getAllPostMetas, getPost } from "@/lib/blog";
+import { LANDING } from "@/lib/i18n/messages/landing";
 import { GITHUB_URL } from "@/lib/site/navigation";
 import { nodeText } from "@/lib/site/node-text";
 import { postShareImage } from "@/lib/site/pages";
-import { FEATURES, LIVE_EXIT_PROTOCOLS, listNames } from "@/lib/site/status";
+import { feature, FEATURES, LIVE_EXIT_PROTOCOLS, listNames } from "@/lib/site/status";
 import {
   blogJsonLd,
   faqJsonLd,
@@ -324,8 +325,23 @@ describe("the language of the structured data", () => {
     expect(one(docs.faq["@graph"] as Node[], "FAQPage").url).toBe(siteUrl("/es/faq"));
   });
 
-  test("the Spanish landing, still the English page, declares English", () => {
-    expect(blocksIn(renderMarketing(<SpanishLandingPage />))).toEqual(PAGES.home);
+  test("the Spanish landing declares es-419, its own URLs and the Spanish feature names", () => {
+    const description = LANDING.es.description(feature("exchange-close").status === "live");
+    const nodes = blocksIn(renderMarketing(<SpanishLandingPage />));
+    expect(nodes).toEqual(homeJsonLd(description, "es")["@graph"] as Node[]);
+    expect(one(nodes, "WebSite")).toMatchObject({
+      "@id": siteUrl("/es#website"),
+      url: siteUrl("/es"),
+      inLanguage: "es-419",
+    });
+    expect(one(nodes, "WebApplication")).toMatchObject({
+      url: siteUrl("/es"),
+      inLanguage: "es-419",
+      description,
+      featureList: liveFeatureList("es"),
+    });
+    expect(liveFeatureList("es")).not.toEqual(liveFeatureList("en"));
+    expect(one(nodes, "Organization")).toEqual(one(PAGES.home, "Organization"));
   });
 });
 

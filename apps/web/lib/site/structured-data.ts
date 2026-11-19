@@ -60,20 +60,21 @@ export function liveFeatureList(locale: Locale): string[] {
 
 /** The home page: the organization, the site, and the app itself. */
 export function homeJsonLd(description: string, locale: Locale): JsonLdDocument {
+  const home = localePath(locale, "/");
   return graph(
     organization(),
     {
       "@type": "WebSite",
-      "@id": siteUrl("/#website"),
+      "@id": siteUrl(`${home}#website`),
       name: SITE_NAME,
-      url: siteUrl("/"),
+      url: siteUrl(home),
       inLanguage: inLanguage(locale),
       publisher: publisherRef(),
     },
     {
       "@type": "WebApplication",
       name: SITE_NAME,
-      url: siteUrl("/"),
+      url: siteUrl(home),
       description,
       inLanguage: inLanguage(locale),
       applicationCategory: "FinanceApplication",

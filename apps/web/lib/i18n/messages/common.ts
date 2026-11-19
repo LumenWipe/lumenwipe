@@ -7,4 +7,8 @@ const en = {
 
 export type CommonCopy = typeof en;
 
-export const COMMON: Record<Locale, CommonCopy> = { en, es: en };
+const es: CommonCopy = {
+  newTab: " (se abre en una pestaña nueva)",
+};
+
+export const COMMON: Record<Locale, CommonCopy> = { en, es };

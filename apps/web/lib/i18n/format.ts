@@ -23,10 +23,20 @@ export function formatList(locale: Locale, items: readonly string[]): string {
   return new Intl.ListFormat(LOCALE_TAGS[locale].intl, { type: "conjunction" }).format(items);
 }
 
+/** The form `locale`'s plural rules pick for a count of `n`. */
+export function pluralForm(
+  locale: Locale,
+  n: number,
+  forms: { one: string; other: string }
+): string {
+  return new Intl.PluralRules(LOCALE_TAGS[locale].intl).select(n) === "one"
+    ? forms.one
+    : forms.other;
+}
+
 /** `n` with the form of its noun that `locale`'s plural rules pick for it. */
 export function plural(locale: Locale, n: number, forms: { one: string; other: string }): string {
-  const form = new Intl.PluralRules(LOCALE_TAGS[locale].intl).select(n) === "one" ? "one" : "other";
-  return `${formatNumber(locale, n)} ${forms[form]}`;
+  return `${formatNumber(locale, n)} ${pluralForm(locale, n, forms)}`;
 }
 
 /** Two decimal places, the way amounts of XLM are shown. */

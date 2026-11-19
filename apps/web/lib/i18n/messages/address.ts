@@ -16,4 +16,18 @@ const en = {
 
 export type AddressCopy = typeof en;
 
-export const ADDRESS: Record<Locale, AddressCopy> = { en, es: en };
+const es: AddressCopy = {
+  problems: {
+    "secret-key":
+      "Eso parece una clave secreta. Nunca la pegues aquí. LumenWipe solo necesita tu dirección pública (empieza con G).",
+    muxed:
+      "Esto parece una dirección muxed. Usa la dirección G junto con el memo que muestra tu exchange.",
+    prefix: "Una dirección de cuenta de Stellar empieza con G.",
+    length: "Una dirección de cuenta de Stellar tiene 56 caracteres.",
+    checksum:
+      "Esta dirección tiene un error: su checksum no coincide. Cópiala de nuevo desde donde la obtuviste.",
+  },
+  valid: "Dirección válida",
+};
+
+export const ADDRESS: Record<Locale, AddressCopy> = { en, es };
