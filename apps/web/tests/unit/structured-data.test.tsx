@@ -204,7 +204,7 @@ describe("a post", () => {
       description: post.description,
       datePublished: `${post.publishedAt}T00:00:00Z`,
       dateModified: `${post.updatedAt}T00:00:00Z`,
-      image: [siteUrl(postShareImage(post.slug, post.title).url)],
+      image: [siteUrl(postShareImage(post.slug, post.title, "en").url)],
       mainEntityOfPage: { "@type": "WebPage", "@id": canonical },
       author: { "@type": "Organization", name: "LumenWipe" },
     });
@@ -362,7 +362,7 @@ describe("the language of the structured data", () => {
     ]);
   });
 
-  test("a Spanish post is a Spanish Article at its own URL, with its English post's image", () => {
+  test("a Spanish post is a Spanish Article at its own URL, with its own Spanish image", () => {
     const { slug } = getAllPostMetas("es")[0]!;
     const post = getPost(slug, "es");
     const canonical = siteUrl(`/es/blog/${slug}`);
@@ -372,7 +372,7 @@ describe("the language of the structured data", () => {
       inLanguage: "es-419",
       url: canonical,
       mainEntityOfPage: { "@type": "WebPage", "@id": canonical },
-      image: [siteUrl(postShareImage(slug, getPost(slug).title).url)],
+      image: [siteUrl(`/es/blog/${slug}/share.png`)],
     });
     const crumbs = one(nodes, "BreadcrumbList").itemListElement as { item: string }[];
     expect(crumbs.map((c) => c.item)).toEqual([siteUrl("/es"), siteUrl("/es/blog"), canonical]);

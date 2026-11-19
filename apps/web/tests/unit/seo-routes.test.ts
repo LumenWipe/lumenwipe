@@ -16,7 +16,7 @@ import {
   localePath,
   NOINDEX_PAGES,
   postShareImage,
-  SHARE_IMAGE,
+  shareImageFor,
   SITE_NAME,
   SPANISH_PAGES,
   spanishIndexedPages,
@@ -125,18 +125,18 @@ describe("every public page under app/(marketing) and app/(marketing-es), and /a
         expect(page.metadata.openGraph?.url).toBe(siteUrl(page.route));
       });
 
-      test("has a share image for Open Graph and X", () => {
-        // A translated post shares its English post's image, which is drawn from that title.
+      test("has a share image in its own locale for Open Graph and X", () => {
+        const locale = routeLocale(page.route);
         const slug = postSlug(page.route);
-        const post = slug ? getPost(slug) : null;
-        const image = post ? postShareImage(post.slug, post.title) : SHARE_IMAGE;
+        const post = slug ? getPost(slug, locale) : null;
+        const image = post ? postShareImage(post.slug, post.title, locale) : shareImageFor(locale);
+        expect(image.url.startsWith(localePath(locale, "/"))).toBe(true);
         expect(page.metadata.openGraph?.images).toEqual([image]);
         expect(page.metadata.twitter?.images).toEqual([image]);
         expect(page.metadata.twitter).toMatchObject({ card: "summary_large_image" });
         if (post) {
-          expect(existsSync(join(MARKETING, "blog", "[slug]", "share.png", "route.tsx"))).toBe(
-            true
-          );
+          const group = locale === "en" ? MARKETING : join(MARKETING_ES, "es");
+          expect(existsSync(join(group, "blog", "[slug]", "share.png", "route.tsx"))).toBe(true);
         }
       });
 
@@ -211,14 +211,25 @@ describe("every public page under app/(marketing) and app/(marketing-es), and /a
       expect(rootMetadata.openGraph).not.toHaveProperty("url");
       expect(rootMetadata.openGraph).toMatchObject({ locale: LOCALE_TAGS[locale].openGraph });
       expect(rootMetadata.robots).toBeUndefined();
-      expect(rootMetadata.openGraph?.images).toEqual([SHARE_IMAGE]);
-      expect(rootMetadata.twitter?.images).toEqual([SHARE_IMAGE]);
+      expect(rootMetadata.openGraph?.images).toEqual([shareImageFor(locale)]);
+      expect(rootMetadata.twitter?.images).toEqual([shareImageFor(locale)]);
       expect(String(rootMetadata.metadataBase)).toBe(siteUrl("/"));
     }
   });
 
-  test("the share image is generated from the root segment", () => {
-    expect(existsSync(join(MARKETING, "..", "opengraph-image.tsx"))).toBe(true);
+  test("each locale's share image is generated at its root, with its own alt text", () => {
+    expect(existsSync(join(APP, "opengraph-image.tsx"))).toBe(true);
+    // Outside the route group: a metadata image inside one is served under a hashed path.
+    expect(existsSync(join(APP, "es", "opengraph-image.tsx"))).toBe(true);
+    expect(shareImageFor("en")).toMatchObject({
+      url: "/opengraph-image",
+      alt: SITE.en.metadata.shareImageAlt,
+    });
+    expect(shareImageFor("es")).toMatchObject({
+      url: "/es/opengraph-image",
+      alt: SITE.es.metadata.shareImageAlt,
+    });
+    expect(SITE.es.metadata.shareImageAlt).not.toBe(SITE.en.metadata.shareImageAlt);
   });
 });
 

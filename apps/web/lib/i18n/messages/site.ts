@@ -155,6 +155,11 @@ const en = {
       "LumenWipe",
     ],
     shareImageAlt: "LumenWipe: an example close plan and the XLM it recovers",
+    shareCard: {
+      eyebrow: "Example account",
+      headline: "Close the account. Keep the lumens.",
+      recovered: "Recovered on close",
+    },
     blogDescription:
       "Technical deep dives, project updates, and guides on Stellar account management, trustline removal, reserve recovery, and non-custodial DeFi tooling.",
     blogName: (siteName: string): string => `${siteName} blog`,
@@ -310,6 +315,11 @@ const es: SiteCopy = {
       "LumenWipe",
     ],
     shareImageAlt: "LumenWipe: un plan de cierre de ejemplo y el XLM que recupera",
+    shareCard: {
+      eyebrow: "Cuenta de ejemplo",
+      headline: "Cierra la cuenta. Quédate con los lumens.",
+      recovered: "Recuperado al cerrar",
+    },
     blogDescription:
       "Análisis técnicos, novedades del proyecto y guías sobre la gestión de cuentas de Stellar, la eliminación de trustlines, la recuperación de reservas y las herramientas de DeFi no custodiales.",
     blogName: (siteName: string): string => `Blog de ${siteName}`,

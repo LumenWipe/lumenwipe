@@ -1,14 +1,15 @@
-import { shareImage, SHARE_IMAGE_SIZE, SHARE_IMAGE_TYPE } from "@/components/seo/ShareImage";
-import { SHARE_IMAGE } from "@/lib/site/pages";
+import {
+  shareImage,
+  siteShareCard,
+  SHARE_IMAGE_SIZE,
+  SHARE_IMAGE_TYPE,
+} from "@/components/seo/ShareImage";
+import { shareImageFor } from "@/lib/site/pages";
 
-export const alt = SHARE_IMAGE.alt;
+export const alt = shareImageFor("en").alt;
 export const size = SHARE_IMAGE_SIZE;
 export const contentType = SHARE_IMAGE_TYPE;
 
 export default function Image() {
-  return shareImage({
-    eyebrow: "Example account",
-    headline: "Close the account. Keep the lumens.",
-    plan: true,
-  });
+  return shareImage(siteShareCard("en"));
 }

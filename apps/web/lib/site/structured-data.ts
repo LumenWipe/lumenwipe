@@ -150,7 +150,7 @@ export function postJsonLd(post: Post, locale: Locale): JsonLdDocument {
       inLanguage: inLanguage(locale),
       datePublished: postTimestamp(post.publishedAt),
       dateModified: postTimestamp(post.updatedAt),
-      image: [siteUrl(postShareImage(post.slug, post.title).url)],
+      image: [siteUrl(postShareImage(post.slug, post.title, locale).url)],
       mainEntityOfPage: { "@type": "WebPage", "@id": url },
       url,
       author: { "@type": "Organization", name: SITE_NAME, url: siteUrl("/") },

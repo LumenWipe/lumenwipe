@@ -70,6 +70,8 @@ const ROUTED = [
   "/api/integrator/keys/abc/revoke",
   "/blog/account-merge-on-stellar",
   "/blog/account-merge-on-stellar/share.png",
+  "/es/opengraph-image",
+  "/es/blog/how-do-i-remove-a-trustline-on-stellar/share.png",
   "/es/nope",
 ];
 
@@ -85,6 +87,8 @@ describe("the unknown single-segment rewrite", () => {
     const routes = appRoutes();
     expect(routes).toContain("/[network]/receipt/[id]");
     expect(routes).toContain("/blog/[slug]/share.png");
+    expect(routes).toContain("/es/blog/[slug]/share.png");
+    expect(routes).toContain("/es/opengraph-image");
     for (const route of routes) {
       const { re } = getRouteRegex(route);
       expect(re.test(UNMATCHED_PATH), route).toBe(false);
