@@ -1,0 +1,54 @@
+---
+title: "¿Qué son las data entries de Stellar y cómo las elimino?"
+description: "Qué es una data entry de Stellar, quién las crea, por qué cada una bloquea una reserva e impide el merge de una cuenta, y cómo se borra."
+publishedAt: "2026-11-19"
+category: "Guides"
+tags: ["bloqueos-de-cuenta", "data-entries", "reservas", "account-merge", "stellar"]
+cta: "Ingresa la cuenta para ver cuántas data entries tiene y en qué parte del plan se eliminan antes de firmar nada."
+---
+
+Puede que encuentres en tu cuenta de Stellar data entries (datos guardados en la cuenta) que no recuerdas haber creado. Parecen inofensivas, un nombre y un valor corto, pero cada una mantiene bloqueada parte de tu XLM y cada una impide el merge (fusión que cierra la cuenta y envía su saldo) de la cuenta.
+
+Esta guía es una de cinco sobre lo que mantiene abierta una cuenta de Stellar. Las otras tratan los [claimable balances](/es/blog/why-cant-i-merge-my-stellar-account-claimable-balances), las [trustlines](/es/blog/how-do-i-remove-a-trustline-on-stellar), los [signers adicionales](/es/blog/cant-merge-a-stellar-account-because-of-extra-signers) y las [offers abiertas](/es/blog/how-do-i-cancel-open-offers-on-stellar).
+
+## Qué es una data entry
+
+Una data entry es un pequeño dato guardado en la propia cuenta: un nombre de hasta 64 bytes y un valor de hasta 64 bytes. La red no lo interpreta. Se guarda con la cuenta hasta que alguien lo cambia o lo borra.
+
+Las data entries se escriben con la operación `ManageData`. Solo una transacción de la propia cuenta puede agregar, cambiar o borrar sus entradas, y necesita el threshold medio de la cuenta, lo que en la mayoría de las cuentas significa la firma de la clave maestra.
+
+## Quién las crea
+
+Billeteras, apps y servicios pueden escribir data entries para guardar una configuración, una referencia o una marca en la cuenta. La operación va dentro de una transacción que tú firmas, a menudo con otro propósito, y así aparecen entradas que nunca quisiste crear. Si la herramienta que escribió una entrada ya no existe, nada la elimina por ti.
+
+Puedes leer las data entries de una cuenta en un explorador de cuentas o a través de Horizon, que devuelve cada valor codificado en base64.
+
+## Por qué cada una bloquea una reserva e impide el merge
+
+Una data entry es una de las subentries (elementos que bloquean reserva) de la cuenta, igual que una trustline (línea de confianza con un emisor de activos), una offer (orden abierta en el libro de órdenes) o un signer (firmante adicional de la cuenta). Cada una sube el saldo mínimo de la cuenta en una base reserve (unidad de reserva que fija la red), hoy <BaseReserve /> por entrada (verificada contra la red el <BaseReserveCheckedOn />). Ese XLM queda bloqueado hasta que se borra la entrada.
+
+La red también se niega a hacer el merge de una cuenta que todavía tiene subentries. Un merge que se intenta con una data entry en la cuenta falla con `op_has_sub_entries`, y ese resultado no te dice qué entrada queda. Cada data entry tiene que borrarse antes del merge.
+
+## Cómo se borra
+
+Borras una data entry con una operación `ManageData` que indica la entrada y no da ningún valor. La red elimina la entrada y su reserva queda libre. Una operación borra una entrada, así que una cuenta con varias entradas necesita una operación por cada una, y todas pueden ir en la misma transacción.
+
+## ¿Es seguro borrarlas?
+
+Borrar una data entry cambia solo los datos de la propia cuenta. No mueve fondos y no toca ninguna otra cuenta. Lo único que conviene revisar es si un servicio que todavía usas lee esa entrada de esta cuenta: una vez borrada, ese servicio ya no puede encontrarla. Cuando estás cerrando la cuenta, esa pregunta ya tiene respuesta, porque la cuenta misma dejará de existir después del merge.
+
+## Cómo lo resuelve LumenWipe
+
+La pantalla de análisis muestra cuántas data entries tiene la cuenta. No necesitan ninguna decisión de tu parte: cada data entry se elimina como parte del cierre.
+
+En la pantalla de revisión, el plan muestra un paso llamado "Remove data entries", que dice cuántas entradas borra. Cada entrada se convierte en una operación `ManageData` con el nombre de la entrada y sin valor. Una transacción tiene como máximo 100 operaciones, así que una cuenta con más entradas que eso se limpia por lotes, que aparecen como pasos separados.
+
+El orden es el mismo para todas las cuentas. Si ninguna clave de la cuenta puede firmar por sí sola todos los pasos, primero se eliminan los signers adicionales, en una transacción aparte. Después vienen los claimable balances (saldos reclamables) que elegiste reclamar, en su propia transacción, con cualquier trustline que necesite un reclamo agregada justo antes. Una vez confirmados, LumenWipe construye el cierre en sí, que elimina los signers adicionales si eso no pasó antes, luego borra las data entries, cancela las offers abiertas, convierte, devuelve o envía cada saldo restante, elimina las trustlines y hace el merge de la cuenta al final. Un cierre con más de 100 operaciones se divide en varias transacciones, en ese mismo orden. Cuando se ejecuta el merge, no queda ninguna data entry en la cuenta.
+
+## Hacerlo a mano
+
+Si eliminas las data entries tú mismo, búscalas en un explorador de cuentas y luego firma una transacción de la cuenta con una operación `ManageData` por cada nombre de entrada y sin valor. Si tu billetera no tiene una opción para hacerlo, necesitas una herramienta que pueda armar una transacción personalizada, y la firmas con una clave que cumpla el threshold medio.
+
+## Empieza un cierre
+
+Abre [LumenWipe](/mainnet) e ingresa la cuenta. La [pantalla de revisión](/mainnet/review) muestra las eliminaciones de data entries del plan antes de que firmes nada. Para ver antes cómo funciona un cierre, lee [cómo funciona](/es/how-it-works) y las [preguntas frecuentes](/es/faq), o vuelve al [inicio](/es).

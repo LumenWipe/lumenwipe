@@ -184,6 +184,17 @@ describe("translated posts", () => {
     expect(translations.length).toBeGreaterThan(0);
   });
 
+  test("every blocker article has its Spanish version", () => {
+    const blockers = posts.filter((p) => p.tags.includes("account-blockers")).map((p) => p.slug);
+    expect(blockers).toHaveLength(5);
+    expect(
+      translations
+        .map(({ es }) => es.slug)
+        .filter((slug) => blockers.includes(slug))
+        .sort()
+    ).toEqual([...blockers].sort());
+  });
+
   test("flags a link to the English version of a translated page, and an /es link to none", () => {
     const spanish = new Set(["/es", "/es/faq", "/es/blog/x"]);
     expect(

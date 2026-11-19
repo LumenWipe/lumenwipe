@@ -46,6 +46,10 @@ for (const path of [
   "/blog/phase-1-launch",
   "/es/blog",
   "/es/blog/how-do-i-remove-a-trustline-on-stellar",
+  "/es/blog/cant-merge-a-stellar-account-because-of-extra-signers",
+  "/es/blog/how-do-i-cancel-open-offers-on-stellar",
+  "/es/blog/what-are-stellar-data-entries",
+  "/es/blog/why-cant-i-merge-my-stellar-account-claimable-balances",
   "/stats",
 ]) {
   test(`${path} has no serious accessibility violations`, async ({ page }) => {

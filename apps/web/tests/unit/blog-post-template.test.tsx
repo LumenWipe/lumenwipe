@@ -127,7 +127,7 @@ describe("a post in Spanish", () => {
   });
 
   test("renders the translated post with its Spanish frame, figures and anchors", async () => {
-    const { slug } = getAllPostMetas("es")[0]!;
+    const slug = "how-do-i-remove-a-trustline-on-stellar";
     const post = getPost(slug, "es");
     const root = await prerender(PostPage({ locale: "es", slug }));
     expect(within(root).getByRole("heading", { level: 1 }).textContent).toBe(post.title);
