@@ -15,6 +15,9 @@ import * as navigation from "next/navigation";
 import type { Metadata } from "next";
 import SpanishLandingPage, { metadata as landingMetadata } from "@/app/(marketing-es)/es/page";
 import SpanishFaqPage, { metadata as faqMetadata } from "@/app/(marketing-es)/es/faq/page";
+import SpanishSecurityPage, {
+  metadata as securityMetadata,
+} from "@/app/(marketing-es)/es/security/page";
 import MarketingNav from "@/components/marketing/MarketingNav";
 import MarketingFooter from "@/components/marketing/MarketingFooter";
 import NotFoundView, { notFoundMetadata } from "@/components/marketing/NotFoundView";
@@ -29,6 +32,7 @@ import { fakeRouter } from "./fixtures/navigation";
 const SURFACES: Record<string, () => ReactElement> = {
   landing: () => <SpanishLandingPage />,
   faq: () => <SpanishFaqPage />,
+  security: () => <SpanishSecurityPage />,
   nav: () => <MarketingNav locale="es" />,
   footer: () => <MarketingFooter locale="es" />,
   "not found": () => <NotFoundView locale="es" />,
@@ -38,6 +42,7 @@ const METADATA: Record<string, Metadata> = {
   root: rootMetadata("es"),
   landing: landingMetadata,
   faq: faqMetadata,
+  security: securityMetadata,
   "not found": notFoundMetadata("es"),
 };
 
@@ -94,6 +99,20 @@ describe("Spanish marketing copy", () => {
       "x-default": siteUrl("/faq"),
     });
     expect(faqMetadata.openGraph).toMatchObject({
+      locale: "es_LA",
+      alternateLocale: ["en_US"],
+    });
+  });
+
+  test("the security page is indexed, with both languages and the other Open Graph locale", () => {
+    expect(securityMetadata.robots).toBeUndefined();
+    expect(securityMetadata.alternates?.canonical).toBe(siteUrl("/es/security"));
+    expect(securityMetadata.alternates?.languages).toEqual({
+      en: siteUrl("/security"),
+      es: siteUrl("/es/security"),
+      "x-default": siteUrl("/security"),
+    });
+    expect(securityMetadata.openGraph).toMatchObject({
       locale: "es_LA",
       alternateLocale: ["en_US"],
     });

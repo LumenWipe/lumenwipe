@@ -87,6 +87,7 @@ export interface SpanishPage {
 export const SPANISH_PAGES: readonly SpanishPage[] = [
   { path: "/", translated: true },
   { path: "/faq", translated: true },
+  { path: "/security", translated: true },
 ];
 
 /** Whether the page at English `path` reads in `locale`: always in English, and in Spanish once
