@@ -409,6 +409,15 @@ export const ENVIRONMENT: Record<EnvApp, Record<string, EnvironmentFacts>> = {
       "Signs the wallet sign-in challenge and session tokens, at least 32 characters",
       true
     ),
+    INTEGRATOR_WEB_AUTH_SIGNING_SEED: optional(
+      "Secret seed (S...) of the server account that signs contract-account sign-in challenges; the account must exist on each network. Without it, contract-account sign-in answers 503",
+      true
+    ),
+    INTEGRATOR_WEB_AUTH_CONTRACT_TESTNET: optional(
+      "Testnet instance (C...) of the SEP-45 web authentication contract, running the attested build; mainnet uses SDF's deployment",
+      false,
+      "Contract-account sign-in is off on testnet"
+    ),
     PORT: optional("Port the API listens on", false, "`3001`"),
     STELLAR_RPC_TESTNET: optional(
       "Testnet Stellar RPC, one URL or a comma-separated failover list; secret because a provider URL can carry its key",

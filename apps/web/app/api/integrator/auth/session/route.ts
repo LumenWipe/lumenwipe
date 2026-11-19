@@ -7,43 +7,17 @@ import {
 } from "@/lib/integrator/relay";
 import {
   clearSessionCookie,
-  cookieMaxAge,
   expiresAtIso,
-  parseSessionToken,
   sessionFromRequest,
-  setSessionCookie,
 } from "@/lib/integrator/session-cookie";
-
-function requestedAddress(bodyText: string): unknown {
-  try {
-    return (JSON.parse(bodyText) as { address?: unknown } | null)?.address;
-  } catch {
-    return undefined;
-  }
-}
+import { sessionResponse } from "@/lib/integrator/session-response";
 
 /** Exchanges a signed challenge for a session held in an httpOnly cookie; the body never carries
  *  the token. */
 export function POST(req: NextRequest) {
   return relayIntegrator(req, "auth/session", "POST", {
     auth: "none",
-    onSuccess(payload, { bodyText }) {
-      const session = parseSessionToken((payload as { token?: unknown } | null)?.token);
-      if (
-        !session ||
-        session.address !== requestedAddress(bodyText) ||
-        cookieMaxAge(session.exp) === 0
-      ) {
-        console.error("Integrator proxy error: the API returned a malformed session.");
-        return integratorError("upstream_error", "The API returned an unexpected response.", 502);
-      }
-      const res = NextResponse.json({
-        address: session.address,
-        expiresAt: expiresAtIso(session.exp),
-      });
-      setSessionCookie(res, session);
-      return res;
-    },
+    onSuccess: (payload, { bodyText }) => sessionResponse(payload, bodyText),
   });
 }
 

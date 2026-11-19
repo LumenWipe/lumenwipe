@@ -32,6 +32,9 @@ import {
 import {
   ChallengeRequestDto,
   ChallengeResponseDto,
+  ContractChallengeRequestDto,
+  ContractChallengeResponseDto,
+  ContractSessionRequestDto,
   CreateIntegratorKeyRequestDto,
   IssuedIntegratorKeyResponseDto,
   ListIntegratorKeysResponseDto,
@@ -39,8 +42,27 @@ import {
   SessionRequestDto,
   SessionResponseDto,
 } from "./dto/integrator.dto";
+import type { Network } from "@/config/networks";
+import { NetworkPipe } from "@/common/pipes/network.pipe";
 import { parseLabel, parseNetworks } from "./key-options";
-import { buildChallenge, isClassicAddress, issueSession, verifyChallenge } from "./wallet-auth";
+import {
+  CONTRACT_AUTH_NETWORK,
+  buildContractChallenge,
+  contractAuthConfig,
+  isReady,
+  readSignedContractChallenge,
+  verifyOnEveryProvider,
+  type ContractAuthConfig,
+  type ContractAuthNetwork,
+} from "./contract-auth";
+import {
+  buildChallenge,
+  isClassicAddress,
+  isContractAddress,
+  issueSession,
+  verifyChallenge,
+} from "./wallet-auth";
+import { USED_CHALLENGE_STORE, type UsedChallengeStore } from "./used-challenge-store";
 
 const MAX_ACTIVE_KEYS_PER_OWNER = 5;
 
@@ -69,7 +91,9 @@ export class IntegratorController {
     @Inject(API_KEY_STORE) private readonly store: ApiKeyStore,
     private readonly metering: MeteringService,
     private readonly directory: ApiKeyDirectory,
-    private readonly audit: AuditLogger
+    private readonly audit: AuditLogger,
+    @Inject(USED_CHALLENGE_STORE) private readonly usedChallenges: UsedChallengeStore,
+    @Inject(CONTRACT_AUTH_NETWORK) private readonly contractNetwork: ContractAuthNetwork
   ) {}
 
   @ApiErrorResponse(400, "Missing or invalid address.", ["invalid_address", "invalid_body"])
@@ -118,6 +142,100 @@ export class IntegratorController {
       fail("invalid_challenge", "The signed challenge is invalid or has expired.", 401);
     }
     return issueSession(secret, address);
+  }
+
+  @ApiErrorResponse(400, "Missing or invalid contract address or network.", [
+    "invalid_address",
+    "invalid_network",
+    "invalid_body",
+  ])
+  @ApiErrorResponse(503, "Contract-account sign-in is not available on this network.", [
+    "integrator_api_not_configured",
+    "contract_sign_in_unavailable",
+    "service_unavailable",
+  ])
+  @ApiBodyErrorResponses()
+  @Post("auth/contract/:network/challenge")
+  @ApiParam({ name: "network", enum: ["testnet", "mainnet"] })
+  @HttpCode(200)
+  @ApiOperation({
+    summary: "Get authorization entries for a contract account to sign.",
+    description:
+      "SEP-45 style: the account's entry for `web_auth_verify` on the web authentication contract, unsigned, and the server account's, signed. Sign the account's entry with the account's own signer, valid until at most `validUntilLedger`, and return both.",
+  })
+  @ApiBody({ type: ContractChallengeRequestDto })
+  @ApiResponse({
+    status: 200,
+    description: "The entries to sign.",
+    type: ContractChallengeResponseDto,
+  })
+  async contractChallenge(
+    @Param("network", new NetworkPipe()) network: Network,
+    @Body() body: { address?: unknown }
+  ) {
+    const { account, config } = this.contractRequest(network, body);
+    await this.requireReady(config);
+    let latestLedger: number;
+    try {
+      latestLedger = await this.contractNetwork.latestLedger(config.network);
+    } catch {
+      fail("service_unavailable", "The network could not be read. Retry.", 503);
+    }
+    return buildContractChallenge(config, account, latestLedger);
+  }
+
+  @ApiErrorResponse(400, "Missing or invalid address, network or authorization entries.", [
+    "invalid_address",
+    "invalid_network",
+    "invalid_request",
+    "invalid_body",
+  ])
+  @ApiErrorResponse(401, "The signed challenge is invalid, used or has expired.", [
+    "invalid_challenge",
+  ])
+  @ApiErrorResponse(503, "Contract-account sign-in is not available on this network.", [
+    "integrator_api_not_configured",
+    "contract_sign_in_unavailable",
+    "service_unavailable",
+  ])
+  @ApiBodyErrorResponses()
+  @Post("auth/contract/:network/session")
+  @ApiParam({ name: "network", enum: ["testnet", "mainnet"] })
+  @HttpCode(200)
+  @ApiOperation({
+    summary: "Exchange a contract account's signed challenge for a session token.",
+    description:
+      "The signed entries are accepted only when an enforcing simulation of `web_auth_verify` succeeds on every RPC provider the API is configured with, and only once.",
+  })
+  @ApiBody({ type: ContractSessionRequestDto })
+  @ApiResponse({ status: 200, description: "A session token.", type: SessionResponseDto })
+  async contractSession(
+    @Param("network", new NetworkPipe()) network: Network,
+    @Body() body: { address?: unknown; authorizationEntries?: unknown }
+  ) {
+    const { account, config } = this.contractRequest(network, body);
+    if (typeof body.authorizationEntries !== "string") {
+      fail("invalid_request", "authorizationEntries is required.", 400);
+    }
+    const signed = readSignedContractChallenge(config, account, body.authorizationEntries);
+    if (!signed) fail("invalid_challenge", "The signed challenge is invalid or has expired.", 401);
+    const verdict = await verifyOnEveryProvider(
+      config,
+      account,
+      signed,
+      this.contractNetwork.providers(config.network)
+    );
+    if (verdict === "invalid") {
+      fail("invalid_challenge", "The signed challenge is invalid or has expired.", 401);
+    }
+    if (verdict === "misconfigured") this.unavailable();
+    if (verdict === "unavailable") {
+      fail("service_unavailable", "The network could not be read. Retry.", 503);
+    }
+    if (!(await this.usedChallenges.claim(signed.nonce, signed.expiresAt))) {
+      fail("invalid_challenge", "The signed challenge is invalid or has expired.", 401);
+    }
+    return issueSession(config.secret, account);
   }
 
   @ApiErrorResponse(401, "Missing, invalid or expired session token.", ["unauthorized"])
@@ -249,6 +367,41 @@ export class IntegratorController {
       this.directory.invalidate(id);
       return { key: result.raw, record: toDto(result.record) };
     });
+  }
+
+  private contractRequest(
+    network: Network,
+    body: { address?: unknown }
+  ): {
+    account: string;
+    config: ContractAuthConfig;
+  } {
+    const secret = requireIntegratorConfig();
+    if (!isContractAddress(body.address)) {
+      fail("invalid_address", "A valid contract account address (C...) is required.", 400);
+    }
+    const config = contractAuthConfig(secret, network);
+    if (!config) this.unavailable();
+    return { account: body.address, config };
+  }
+
+  private async requireReady(config: ContractAuthConfig): Promise<void> {
+    const providers = this.contractNetwork.providers(config.network);
+    let readiness: boolean[];
+    try {
+      readiness = await Promise.all(providers.map((p) => isReady(config, p)));
+    } catch {
+      fail("service_unavailable", "The network could not be read. Retry.", 503);
+    }
+    if (providers.length === 0 || readiness.includes(false)) this.unavailable();
+  }
+
+  private unavailable(): never {
+    fail(
+      "contract_sign_in_unavailable",
+      "Contract-account sign-in is not available on this network.",
+      503
+    );
   }
 
   private async requireOwned(owner: string, id: string): Promise<void> {

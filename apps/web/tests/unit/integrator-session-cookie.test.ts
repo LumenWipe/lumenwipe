@@ -34,10 +34,19 @@ describe("parseSessionToken", () => {
       "a bad checksum",
       `lws.${ADDRESS.slice(0, -1)}${ADDRESS.endsWith("A") ? "B" : "A"}.${NOW_S}.mac`,
     ],
-    ["a contract address", `lws.CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA.1.mac`],
+    [
+      "a contract address with a bad checksum",
+      `lws.CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMB.1.mac`,
+    ],
+    ["a secret seed in the address part", `lws.${"S".padEnd(56, "A")}.1.mac`],
     ["a space in the mac", `lws.${ADDRESS}.${NOW_S}.ma c`],
   ])("refuses a token with %s", (_, value) => {
     expect(parseSessionToken(value)).toBeNull();
+  });
+
+  test("reads a contract account's token", () => {
+    const contract = "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA";
+    expect(parseSessionToken(`lws.${contract}.${NOW_S}.mac`)?.address).toBe(contract);
   });
 
   test("refuses anything but a string", () => {

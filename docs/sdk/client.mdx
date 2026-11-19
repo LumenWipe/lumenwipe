@@ -61,7 +61,7 @@ Every method on a network route takes an optional trailing `network` that overri
 
 ## Integrator client
 
-`LumenWipeIntegratorClient` manages a wallet's own API keys. It takes `baseUrl` and the optional `fetch`, `timeout`, `retry` and `logger`, and no API key: it never sends one. Sign in by signing the challenge message with the wallet (SEP-53) and exchanging it for a session token, valid for 30 minutes. The key methods send only that token.
+`LumenWipeIntegratorClient` manages a wallet's own API keys. It takes `baseUrl` and the optional `fetch`, `timeout`, `retry` and `logger`, and no API key: it never sends one. Sign in by signing the challenge message with the wallet (SEP-53) and exchanging it for a session token, valid for 30 minutes. A contract account signs the account's entry of `contractChallenge` with its own signer instead, for example with `authorizeEntry` from `@stellar/stellar-sdk`, and exchanges the list through `contractSession`. The key methods send only that token.
 
 ```ts
 import { LumenWipeIntegratorClient } from "@lumenwipe/sdk";
@@ -78,14 +78,16 @@ const { token } = await integrator.session({
 const { key } = await integrator.createKey(token, { label: "production", networks: ["mainnet"] });
 ```
 
-| Method                                     | Description                                                                                              |
-| ------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
-| `challenge(address)`                       | A SEP-53 message for the wallet to sign.                                                                 |
-| `session({ address, message, signature })` | Exchanges the signed challenge for a session token.                                                      |
-| `listKeys(token)`                          | The wallet's keys, each with its label, networks, last use and request counts, plus the wallet's totals. |
-| `createKey(token, { label?, networks? })`  | Creates a key. The raw `key` is in this response only.                                                   |
-| `revokeKey(token, id)`                     | Revokes one of the wallet's keys.                                                                        |
-| `rotateKey(token, id)`                     | Revokes a key and issues its replacement with the same label and networks.                               |
+| Method                                                        | Description                                                                                              |
+| ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `challenge(address)`                                          | A SEP-53 message for the wallet to sign.                                                                 |
+| `session({ address, message, signature })`                    | Exchanges the signed challenge for a session token.                                                      |
+| `contractChallenge(network, address)`                         | SEP-45 style authorization entries for a contract account (`C...`) to sign.                              |
+| `contractSession(network, { address, authorizationEntries })` | Exchanges a contract account's signed entries for a session token, once per challenge.                   |
+| `listKeys(token)`                                             | The wallet's keys, each with its label, networks, last use and request counts, plus the wallet's totals. |
+| `createKey(token, { label?, networks? })`                     | Creates a key. The raw `key` is in this response only.                                                   |
+| `revokeKey(token, id)`                                        | Revokes one of the wallet's keys.                                                                        |
+| `rotateKey(token, id)`                                        | Revokes a key and issues its replacement with the same label and networks.                               |
 
 Creating, revoking and rotating a key are never retried.
 

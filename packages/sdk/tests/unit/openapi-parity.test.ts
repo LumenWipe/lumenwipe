@@ -94,6 +94,15 @@ const SDK_OPERATIONS: Record<string, [method: string, call: (c: Clients) => Prom
     "session",
     ({ integrator }) => integrator.session({ address: "G", message: "m", signature: "s" }),
   ],
+  "POST /v1/integrator/auth/contract/{network}/challenge": [
+    "contractChallenge",
+    ({ integrator }) => integrator.contractChallenge("testnet", "C"),
+  ],
+  "POST /v1/integrator/auth/contract/{network}/session": [
+    "contractSession",
+    ({ integrator }) =>
+      integrator.contractSession("testnet", { address: "C", authorizationEntries: "e" }),
+  ],
   "GET /v1/integrator/keys": ["listKeys", ({ integrator }) => integrator.listKeys("t")],
   "POST /v1/integrator/keys": ["createKey", ({ integrator }) => integrator.createKey("t")],
   "POST /v1/integrator/keys/{id}/revoke": [
@@ -264,7 +273,7 @@ describe("wire format of the signing and submission calls", () => {
 
   test("the integrator client never sends an API key, even one passed to it", async () => {
     const ops = Object.entries(SDK_OPERATIONS).filter(([op]) => op.includes("/integrator/"));
-    expect(ops).toHaveLength(6);
+    expect(ops).toHaveLength(8);
     for (const [operation, [, call]] of ops) {
       const c = clients();
       const integrator = new LumenWipeIntegratorClient({

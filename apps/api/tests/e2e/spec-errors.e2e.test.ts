@@ -55,7 +55,7 @@ function documentedCodes(responses: Responses, status: number): string[] | undef
 }
 
 function invalidInput(path: string): { path: string; status: number; code: string } {
-  if (path.startsWith("/v1/integrator/")) {
+  if (path.startsWith("/v1/integrator/") && !path.includes("{network}")) {
     return { path, status: 503, code: "integrator_api_not_configured" };
   }
   return { path: path.replace("{network}", "nope"), status: 400, code: "invalid_network" };

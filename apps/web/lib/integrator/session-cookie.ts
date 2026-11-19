@@ -17,7 +17,7 @@ export interface SessionToken {
 }
 
 /**
- * Reads the shape of an API session token, `lws.<G-address>.<exp>.<mac>`. The web cannot check
+ * Reads the shape of an API session token, `lws.<G or C address>.<exp>.<mac>`. The web cannot check
  * the MAC (only the API holds its secret), so a well-formed token is only a claim: the API still
  * verifies it on every keys call, and a forged one gets a 401 there.
  */
@@ -26,7 +26,7 @@ export function parseSessionToken(token: unknown): SessionToken | null {
   const match = TOKEN.exec(token);
   if (!match) return null;
   const [, address, expRaw] = match;
-  if (!StrKey.isValidEd25519PublicKey(address)) return null;
+  if (!StrKey.isValidEd25519PublicKey(address) && !StrKey.isValidContract(address)) return null;
   return { token, address, exp: Number(expRaw) };
 }
 

@@ -216,7 +216,7 @@ These come from the allowance endpoints. `revoke_needs_restore` means ledger ent
 
 ## API keys, operator routes and stats
 
-These belong to key management, the operator routes and the public stats counter. `invalid_challenge` means the signed sign-in message is invalid or has expired: request a new one. `tx_not_verified` means the transaction is not a confirmed account merge that LumenWipe built, on that network. Check the hash and the network before sending it again.
+These belong to key management, the operator routes and the public stats counter. `invalid_challenge` means the signed sign-in message or authorization is invalid, already used or has expired: request a new one. `tx_not_verified` means the transaction is not a confirmed account merge that LumenWipe built, on that network. Check the hash and the network before sending it again.
 
 | Code                            | Status | Retry       | Meaning                                                                    |
 | ------------------------------- | ------ | ----------- | -------------------------------------------------------------------------- |
@@ -230,6 +230,7 @@ These belong to key management, the operator routes and the public stats counter
 | `key_limit_reached`             | 409    | After fix   | The wallet already has the maximum number of active keys.                  |
 | `admin_api_not_configured`      | 503    | No          | Operator key management is not configured on this server.                  |
 | `integrator_api_not_configured` | 503    | No          | Self-serve key management is not configured on this server.                |
+| `contract_sign_in_unavailable`  | 503    | No          | Contract-account sign-in is not available on this network.                 |
 | `tx_not_verified`               | 400    | Check first | The transaction could not be verified as a LumenWipe close on the network. |
 | `stats_unavailable`             | 503    | Yes         | The stats store is unreachable. Retry.                                     |
 

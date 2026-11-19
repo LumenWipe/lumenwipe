@@ -16,18 +16,27 @@ export interface Session {
   expiresAt: string;
 }
 
-function hmac(secret: string, label: string, ...parts: string[]): Buffer {
+export function hmac(secret: string, label: string, ...parts: string[]): Buffer {
   return createHmac("sha256", secret)
     .update([label, ...parts].join("\n"))
     .digest();
 }
 
-function safeEqual(a: Buffer, b: Buffer): boolean {
+export function safeEqual(a: Buffer, b: Buffer): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
 export function isClassicAddress(address: unknown): address is string {
   return typeof address === "string" && StrKey.isValidEd25519PublicKey(address);
+}
+
+export function isContractAddress(address: unknown): address is string {
+  return typeof address === "string" && StrKey.isValidContract(address);
+}
+
+/** A session can be issued to a classic account or to a contract account, never anything else. */
+function isSessionOwner(address: unknown): address is string {
+  return isClassicAddress(address) || isContractAddress(address);
 }
 
 function windowStart(now: Date, windowsAgo = 0): number {
@@ -93,7 +102,7 @@ export function verifySession(
   now: Date = new Date()
 ): string | null {
   const [prefix, address, expRaw, mac, ...rest] = token.split(".");
-  if (prefix !== "lws" || rest.length > 0 || !mac || !isClassicAddress(address)) return null;
+  if (prefix !== "lws" || rest.length > 0 || !mac || !isSessionOwner(address)) return null;
   const exp = Number(expRaw);
   if (!Number.isInteger(exp) || exp < Math.floor(now.getTime() / 1000)) return null;
   const expected = hmac(secret, "session", address, String(exp));
