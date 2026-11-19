@@ -1,4 +1,6 @@
-export type Network = "mainnet" | "testnet";
+import { NETWORK_IDS } from "@/config/network-ids.mjs";
+
+export type Network = (typeof NETWORK_IDS)[number];
 
 export const NETWORK_PASSPHRASES: Record<Network, string> = {
   mainnet: "Public Global Stellar Network ; September 2015",
@@ -36,7 +38,7 @@ export const NETWORK_LABELS: Record<Network, string> = {
   testnet: "Testnet",
 };
 
-export const VALID_NETWORKS: Network[] = ["mainnet", "testnet"];
+export const VALID_NETWORKS: Network[] = [...NETWORK_IDS];
 
 export function isValidNetwork(value: string): value is Network {
   return VALID_NETWORKS.includes(value as Network);
