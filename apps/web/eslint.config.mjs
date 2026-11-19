@@ -128,6 +128,7 @@ export const DICTIONARY_COPY = [
   "lib/site/pages.ts",
   "lib/site/root-metadata.ts",
   "lib/site/status.ts",
+  "lib/site/structured-data.ts",
   "lib/site/trust.ts",
 ];
 

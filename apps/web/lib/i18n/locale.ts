@@ -13,11 +13,13 @@ export interface LocaleTags {
   intl: string;
   /** The Open Graph `og:locale` value. */
   openGraph: string;
+  /** The `hreflang` value search engines read, a language Google supports. */
+  hreflang: "en" | "es";
 }
 
 export const LOCALE_TAGS: Record<Locale, LocaleTags> = {
-  en: { html: "en", intl: "en-US", openGraph: "en_US" },
-  es: { html: "es-419", intl: "es-419", openGraph: "es_LA" },
+  en: { html: "en", intl: "en-US", openGraph: "en_US", hreflang: "en" },
+  es: { html: "es-419", intl: "es-419", openGraph: "es_LA", hreflang: "es" },
 };
 
 /** Each locale's name in its own language, as the language switch shows it. */

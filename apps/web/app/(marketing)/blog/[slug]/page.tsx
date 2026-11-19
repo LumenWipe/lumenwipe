@@ -15,6 +15,7 @@ import {
 } from "@/lib/blog";
 import { pageMetadata, postShareImage } from "@/lib/site/pages";
 import { postTimestamp } from "@/lib/blog-date";
+import { SITE_LOCALE } from "@/lib/i18n/locale";
 import { postJsonLd } from "@/lib/site/structured-data";
 import JsonLd from "@/components/seo/JsonLd";
 import CategoryBadge from "@/components/blog/CategoryBadge";
@@ -121,7 +122,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
 
   return (
     <>
-      <JsonLd data={postJsonLd(post)} />
+      <JsonLd data={postJsonLd(post, SITE_LOCALE)} />
 
       <div className="max-w-5xl mx-auto px-5 lg:px-8 py-12">
         {/* Breadcrumb */}
