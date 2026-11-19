@@ -72,6 +72,14 @@ const en = {
       </>
     ),
     continue: "Continue to close",
+    errors: {
+      invalid: "Enter a valid Stellar account address.",
+      missing:
+        "No account with this address exists on this network, so there is nothing to recover.",
+      limited: "Too many estimates from this connection today. You can still continue to close.",
+      unreadable:
+        "We couldn't read this account right now, so there is no estimate. Try again in a moment, or continue to close.",
+    },
   },
 };
 

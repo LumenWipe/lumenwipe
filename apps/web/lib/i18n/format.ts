@@ -18,6 +18,17 @@ export function formatDate(
   return new Intl.DateTimeFormat(LOCALE_TAGS[locale].intl, options).format(new Date(value));
 }
 
+/** "A, B and C" as a reader of `locale` joins them. */
+export function formatList(locale: Locale, items: readonly string[]): string {
+  return new Intl.ListFormat(LOCALE_TAGS[locale].intl, { type: "conjunction" }).format(items);
+}
+
+/** `n` with the form of its noun that `locale`'s plural rules pick for it. */
+export function plural(locale: Locale, n: number, forms: { one: string; other: string }): string {
+  const form = new Intl.PluralRules(LOCALE_TAGS[locale].intl).select(n) === "one" ? "one" : "other";
+  return `${formatNumber(locale, n)} ${forms[form]}`;
+}
+
 /** Two decimal places, the way amounts of XLM are shown. */
 export const TWO_DECIMALS: Intl.NumberFormatOptions = {
   minimumFractionDigits: 2,

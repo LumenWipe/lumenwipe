@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { formatPostDate } from "@/lib/blog-date";
-import { formatDate, formatNumber, TWO_DECIMALS } from "@/lib/i18n/format";
+import { formatXlmDown } from "@/lib/api/estimate-client";
+import { formatDate, formatList, formatNumber, plural, TWO_DECIMALS } from "@/lib/i18n/format";
 import { LOCALE_TAGS, LOCALES, SITE_LOCALE } from "@/lib/i18n/locale";
 
 describe("locale-aware formatting", () => {
@@ -79,6 +80,29 @@ describe("locale-aware formatting", () => {
         formatDate("en", monday + day * 86_400_000, { weekday: "short", timeZone: "UTC" })
       )
     ).toEqual(["Mon", "Wed", "Fri"]);
+  });
+});
+
+describe("sentences built from numbers and names", () => {
+  test("a count takes the form its locale's plural rules pick", () => {
+    const forms = { one: "elemento", other: "elementos" };
+    expect(plural("es", 1, forms)).toBe("1 elemento");
+    expect(plural("es", 0, forms)).toBe("0 elementos");
+    expect(plural("es", 2, forms)).toBe("2 elementos");
+    expect(plural("es", 1500, forms)).toBe("1,500 elementos");
+  });
+
+  test("a list joins with the locale's conjunction", () => {
+    expect(formatList("es", ["Blend"])).toBe("Blend");
+    expect(formatList("es", ["Blend", "Aquarius"])).toBe("Blend y Aquarius");
+    expect(formatList("es", ["Blend", "Aquarius", "Iris"])).toBe("Blend, Aquarius e Iris");
+  });
+
+  test("an XLM amount is rounded down and written for the reader's locale", () => {
+    expect(formatXlmDown("12345678999999")).toBe("1,234,567.89");
+    expect(formatXlmDown("12345678999999", "es")).toBe("1,234,567.89");
+    expect(formatXlmDown("19999999", "es")).toBe("1.99");
+    expect(formatXlmDown("500000000000000000")).toBe("50,000,000,000.00");
   });
 });
 

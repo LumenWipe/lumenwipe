@@ -4,7 +4,13 @@ import * as navigation from "next/navigation";
 import LanguageSwitch from "@/components/marketing/LanguageSwitch";
 import MarketingFooter from "@/components/marketing/MarketingFooter";
 import MarketingNav from "@/components/marketing/MarketingNav";
-import { languageAlternate, SPANISH_PAGES, type SpanishPage } from "@/lib/site/pages";
+import {
+  isTranslated,
+  languageAlternate,
+  localeHref,
+  SPANISH_PAGES,
+  type SpanishPage,
+} from "@/lib/site/pages";
 
 const TRANSLATED: readonly SpanishPage[] = [
   { path: "/", translated: true },
@@ -113,5 +119,22 @@ describe("the language switch", () => {
       cleanup();
       mock.restore();
     }
+  });
+});
+
+describe("links between the locales", () => {
+  test("English reads every page; Spanish only the translated ones", () => {
+    expect(isTranslated("en", "/security", TRANSLATED)).toBe(true);
+    expect(isTranslated("en", "/stats", TRANSLATED)).toBe(true);
+    expect(isTranslated("es", "/faq", TRANSLATED)).toBe(true);
+    expect(isTranslated("es", "/security", TRANSLATED)).toBe(false);
+    expect(isTranslated("es", "/stats", TRANSLATED)).toBe(false);
+  });
+
+  test("a Spanish page links to the Spanish version only when it is translated", () => {
+    expect(localeHref("es", "/", TRANSLATED)).toBe("/es");
+    expect(localeHref("es", "/faq", TRANSLATED)).toBe("/es/faq");
+    expect(localeHref("es", "/security", TRANSLATED)).toBe("/security");
+    expect(localeHref("en", "/faq", TRANSLATED)).toBe("/faq");
   });
 });

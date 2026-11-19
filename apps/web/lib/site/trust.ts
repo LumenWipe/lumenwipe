@@ -1,19 +1,25 @@
-import { SITE_LOCALE } from "@/lib/i18n/locale";
+import { SITE_LOCALE, type Locale } from "@/lib/i18n/locale";
 import { SITE } from "@/lib/i18n/messages/site";
-import { feature, STATUS_LABEL, type FeatureId } from "@/lib/site/status";
+import { feature, statusLabels, type FeatureId } from "@/lib/site/status";
 
 export const REPO_URL = "https://github.com/LumenWipe/lumenwipe";
 export const VERIFY_SOURCE_URL = `${REPO_URL}/blob/main/apps/web/lib/stellar/verify.ts`;
 
-const COPY = SITE[SITE_LOCALE].trust;
+/** The trust statements as a reader of `locale` reads them. */
+export function trustStatements(locale: Locale) {
+  const copy = SITE[locale].trust;
+  return { key: copy.key, check: copy.check, serverKeysIntro: copy.serverKeysIntro };
+}
+
+const STATEMENTS = trustStatements(SITE_LOCALE);
 
 /** Where the key lives. Enforced by the signing flow: no request carries a secret key. */
-export const KEY_STATEMENT = COPY.key;
+export const KEY_STATEMENT = STATEMENTS.key;
 
 /** What the API does and what the browser checks (apps/web/lib/stellar/verify.ts). */
-export const CHECK_STATEMENT = COPY.check;
+export const CHECK_STATEMENT = STATEMENTS.check;
 
-export const SERVER_KEYS_INTRO = COPY.serverKeysIntro;
+export const SERVER_KEYS_INTRO = STATEMENTS.serverKeysIntro;
 
 export interface ServerKey {
   feature: FeatureId;
@@ -23,12 +29,17 @@ export interface ServerKey {
 
 /** Enforced by apps/api/src/mediator/mediator-signing.service.ts and verify.ts (relay), and by
  *  apps/api/src/fee-bump/fee-bump.controller.ts (fee sponsor). */
-export const SERVER_KEYS: readonly ServerKey[] = (
-  ["exchange-close", "sponsored-fees"] as const
-).map((id) => ({ feature: id, ...COPY.serverKeys[id] }));
+export function serverKeys(locale: Locale): readonly ServerKey[] {
+  return (["exchange-close", "sponsored-fees"] as const).map((id) => ({
+    feature: id,
+    ...SITE[locale].trust.serverKeys[id],
+  }));
+}
+
+export const SERVER_KEYS: readonly ServerKey[] = serverKeys(SITE_LOCALE);
 
 /** "Testnet only today." for a key whose feature is not live on mainnet, else "". */
-export function serverKeyScope(key: ServerKey): string {
+export function serverKeyScope(key: ServerKey, locale: Locale = SITE_LOCALE): string {
   const status = feature(key.feature).status;
-  return status === "live" ? "" : COPY.scope(STATUS_LABEL[status]);
+  return status === "live" ? "" : SITE[locale].trust.scope(statusLabels(locale)[status]);
 }

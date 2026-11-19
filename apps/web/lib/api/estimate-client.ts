@@ -1,4 +1,7 @@
 import type { Network } from "@/config/networks";
+import { formatNumber, TWO_DECIMALS } from "@/lib/i18n/format";
+import { SITE_LOCALE, type Locale } from "@/lib/i18n/locale";
+import { HERO } from "@/lib/i18n/messages/hero";
 import type { RecoveryRange } from "@/lib/plan/expected-receive";
 
 /** The estimate route's answer: derived figures and when the account was read, nothing else. */
@@ -8,22 +11,25 @@ export interface RecoveryEstimate {
   range: RecoveryRange;
 }
 
+/** Why an estimate failed, which the visitor reads in their own language. */
+export type EstimateFailure = "invalid" | "missing" | "limited" | "unreadable";
+
 /** A failed estimate, with text written for the visitor. */
 export class EstimateError extends Error {
-  constructor(message: string) {
-    super(message);
+  readonly reason: EstimateFailure;
+
+  constructor(reason: EstimateFailure) {
+    super(HERO[SITE_LOCALE].estimate.errors[reason]);
     this.name = "EstimateError";
+    this.reason = reason;
   }
 }
 
-const UNREADABLE =
-  "We couldn't read this account right now, so there is no estimate. Try again in a moment, or continue to close.";
-
-/** One message per status the route answers with; the route's own text is never shown. */
-const MESSAGES: Record<number, string> = {
-  400: "Enter a valid Stellar account address.",
-  404: "No account with this address exists on this network, so there is nothing to recover.",
-  429: "Too many estimates from this connection today. You can still continue to close.",
+/** One reason per status the route answers with; the route's own text is never shown. */
+const FAILURES: Record<number, EstimateFailure> = {
+  400: "invalid",
+  404: "missing",
+  429: "limited",
 };
 
 const STROOPS = /^\d+$/;
@@ -62,18 +68,17 @@ export async function fetchEstimate(
     signal,
   }).catch((e: unknown) => {
     if (signal?.aborted) throw e;
-    throw new EstimateError(UNREADABLE);
+    throw new EstimateError("unreadable");
   });
-  if (!res.ok) throw new EstimateError(MESSAGES[res.status] ?? UNREADABLE);
+  if (!res.ok) throw new EstimateError(FAILURES[res.status] ?? "unreadable");
   const body: unknown = await res.json().catch(() => null);
-  if (!isEstimate(body)) throw new EstimateError(UNREADABLE);
+  if (!isEstimate(body)) throw new EstimateError("unreadable");
   return body;
 }
 
 /** Stroops as XLM rounded down to two decimals, so a shown figure never rounds up. */
-export function formatXlmDown(stroops: string): string {
-  const value = BigInt(stroops);
-  const whole = value / BigInt(10_000_000);
-  const cents = (value % BigInt(10_000_000)) / BigInt(100_000);
-  return `${whole.toLocaleString("en-US")}.${cents.toString().padStart(2, "0")}`;
+export function formatXlmDown(stroops: string, locale: Locale = SITE_LOCALE): string {
+  // Whole cents stay exact as a float for any XLM amount the network can hold.
+  const cents = BigInt(stroops) / BigInt(100_000);
+  return formatNumber(locale, Number(cents) / 100, TWO_DECIMALS);
 }

@@ -86,6 +86,26 @@ export interface SpanishPage {
 /** The English pages that have a Spanish version under `/es` (docs/contributing/localization.mdx). */
 export const SPANISH_PAGES: readonly SpanishPage[] = [{ path: "/", translated: false }];
 
+/** Whether the page at English `path` reads in `locale`: always in English, and in Spanish once
+ *  its entry is translated. */
+export function isTranslated(
+  locale: Locale,
+  path: string,
+  pages: readonly SpanishPage[] = SPANISH_PAGES
+): boolean {
+  return locale === "en" || pages.some((page) => page.translated && page.path === path);
+}
+
+/** Where a link to English `path` leads from a page in `locale`: its version in that locale when
+ *  it is translated, else the English page. */
+export function localeHref(
+  locale: Locale,
+  path: string,
+  pages: readonly SpanishPage[] = SPANISH_PAGES
+): string {
+  return isTranslated(locale, path, pages) ? localePath(locale, path) : path;
+}
+
 /** The sitemap entries of the translated Spanish pages, ranked as their English page. */
 export function spanishIndexedPages(pages: readonly SpanishPage[] = SPANISH_PAGES): IndexedPage[] {
   return pages
