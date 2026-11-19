@@ -15,6 +15,9 @@ import * as navigation from "next/navigation";
 import type { Metadata } from "next";
 import SpanishLandingPage, { metadata as landingMetadata } from "@/app/(marketing-es)/es/page";
 import SpanishFaqPage, { metadata as faqMetadata } from "@/app/(marketing-es)/es/faq/page";
+import SpanishHowItWorksPage, {
+  metadata as howItWorksMetadata,
+} from "@/app/(marketing-es)/es/how-it-works/page";
 import SpanishSecurityPage, {
   metadata as securityMetadata,
 } from "@/app/(marketing-es)/es/security/page";
@@ -33,6 +36,7 @@ const SURFACES: Record<string, () => ReactElement> = {
   landing: () => <SpanishLandingPage />,
   faq: () => <SpanishFaqPage />,
   security: () => <SpanishSecurityPage />,
+  "how it works": () => <SpanishHowItWorksPage />,
   nav: () => <MarketingNav locale="es" />,
   footer: () => <MarketingFooter locale="es" />,
   "not found": () => <NotFoundView locale="es" />,
@@ -43,6 +47,7 @@ const METADATA: Record<string, Metadata> = {
   landing: landingMetadata,
   faq: faqMetadata,
   security: securityMetadata,
+  "how it works": howItWorksMetadata,
   "not found": notFoundMetadata("es"),
 };
 
@@ -116,5 +121,26 @@ describe("Spanish marketing copy", () => {
       locale: "es_LA",
       alternateLocale: ["en_US"],
     });
+  });
+
+  test("how it works is indexed, with both languages and the other Open Graph locale", () => {
+    expect(howItWorksMetadata.robots).toBeUndefined();
+    expect(howItWorksMetadata.alternates?.canonical).toBe(siteUrl("/es/how-it-works"));
+    expect(howItWorksMetadata.alternates?.languages).toEqual({
+      en: siteUrl("/how-it-works"),
+      es: siteUrl("/es/how-it-works"),
+      "x-default": siteUrl("/how-it-works"),
+    });
+    expect(howItWorksMetadata.openGraph).toMatchObject({
+      locale: "es_LA",
+      alternateLocale: ["en_US"],
+    });
+  });
+
+  test("how it works embeds the FAQ in Spanish and leads to the Spanish FAQ", () => {
+    const html = serverRender(<SpanishHowItWorksPage />);
+    expect(html).toContain("¿LumenWipe es realmente no custodial?");
+    expect(html).not.toContain("Is LumenWipe really non-custodial?");
+    expect(html).toContain('href="/es/faq"');
   });
 });

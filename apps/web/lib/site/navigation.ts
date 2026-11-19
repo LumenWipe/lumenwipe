@@ -25,7 +25,7 @@ export function siteLinks(locale: Locale): SiteLinks {
   const label = NAV[locale].links;
   return {
     primary: [
-      { href: "/how-it-works", label: label.howItWorks },
+      { href: localeHref(locale, "/how-it-works"), label: label.howItWorks },
       { href: localeHref(locale, "/security"), label: label.security },
       { href: "/content", label: label.guides },
       { href: PLAYGROUND_URL, label: label.playground, external: true },

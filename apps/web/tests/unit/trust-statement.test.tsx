@@ -11,6 +11,9 @@ import SpanishSecurityPage, {
   metadata as esSecurityMeta,
 } from "@/app/(marketing-es)/es/security/page";
 import SpanishFaqPage, { metadata as esFaqMeta } from "@/app/(marketing-es)/es/faq/page";
+import SpanishHowItWorksPage, {
+  metadata as esHowMeta,
+} from "@/app/(marketing-es)/es/how-it-works/page";
 import { GET } from "@/app/llms.txt/route";
 import HeroConsole from "@/components/marketing/HeroConsole";
 import MarketingFooter from "@/components/marketing/MarketingFooter";
@@ -109,6 +112,7 @@ describe("no Spanish surface overstates the trust model", () => {
   const pages = {
     landing: <SpanishLandingPage />,
     security: <SpanishSecurityPage />,
+    howItWorks: <SpanishHowItWorksPage />,
     faq: <SpanishFaqPage />,
     footer: <MarketingFooter locale="es" />,
   };
@@ -119,10 +123,10 @@ describe("no Spanish surface overstates the trust model", () => {
   }
 
   test("page metadata and the dictionaries make none", () => {
-    for (const meta of [esLandingMeta, esSecurityMeta, esFaqMeta]) {
+    for (const meta of [esLandingMeta, esSecurityMeta, esHowMeta, esFaqMeta]) {
       expect(overclaims(String(meta.description), SPANISH_OVERCLAIMS)).toEqual([]);
     }
-    for (const file of ["site.ts", "security.tsx", "faq.tsx", "landing.tsx"]) {
+    for (const file of ["site.ts", "security.tsx", "how-it-works.tsx", "faq.tsx", "landing.tsx"]) {
       const source = readFileSync(join(WEB, "lib", "i18n", "messages", file), "utf8");
       expect(overclaims(source, SPANISH_OVERCLAIMS)).toEqual([]);
     }

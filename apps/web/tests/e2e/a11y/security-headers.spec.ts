@@ -168,6 +168,8 @@ for (const [path, lang] of [
   ["/es/faq", "es-419"],
   ["/security", "en"],
   ["/es/security", "es-419"],
+  ["/how-it-works", "en"],
+  ["/es/how-it-works", "es-419"],
   ["/registry", "en"],
   ["/blog", "en"],
   ["/blog/account-merge-on-stellar", "en"],

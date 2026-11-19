@@ -5,6 +5,7 @@ import { COMMON } from "@/lib/i18n/messages/common";
 import { FAQ, type FaqFacts } from "@/lib/i18n/messages/faq";
 import { FOOTER } from "@/lib/i18n/messages/footer";
 import { HERO } from "@/lib/i18n/messages/hero";
+import { HOW_IT_WORKS } from "@/lib/i18n/messages/how-it-works";
 import { LANDING } from "@/lib/i18n/messages/landing";
 import { NAV } from "@/lib/i18n/messages/nav";
 import { NOT_FOUND } from "@/lib/i18n/messages/not-found";
@@ -12,15 +13,16 @@ import { SECURITY } from "@/lib/i18n/messages/security";
 import { SITE } from "@/lib/i18n/messages/site";
 import { nodeText } from "@/lib/site/node-text";
 
-// The sections the navigation, footer, 404, landing, FAQ and security pages read, and what the
-// landing's own components read (the hero, the registry sentences, the trust statements, the reserve
-// figures).
+// The sections the navigation, footer, 404, landing, FAQ, security and how it works pages read, and
+// what the landing's own components read (the hero, the registry sentences, the trust statements,
+// the reserve figures).
 const SECTIONS: Record<string, { en: unknown; es: unknown }> = {
   address: ADDRESS,
   common: COMMON,
   faq: FAQ,
   footer: FOOTER,
   hero: HERO,
+  "how-it-works": HOW_IT_WORKS,
   landing: LANDING,
   nav: NAV,
   "not-found": NOT_FOUND,
@@ -48,6 +50,8 @@ const SAME_IN_SPANISH = new Set([
   "signer",
   "signers",
   "trustlines",
+  "relay account",
+  "Relay account",
 ]);
 
 /** Whether `value` holds nothing but those names, numbers and separators. */
@@ -57,14 +61,30 @@ function onlyNames(value: string): boolean {
   return /^[\s\d.,·-]*$/.test(rest);
 }
 
-// Terminal output and code identifiers in the 404 console, which stay as a program prints them, and
-// the names of the services the security page's network layer reads.
+// Terminal output and code identifiers in the 404 console, which stay as a program prints them, the
+// names of the services the security and how it works pages' network layers read, and the RPC
+// methods, operations and close phases the how it works page names as code.
 const CODE = new Set([
   "not-found.consoleTitle",
   "not-found.command",
   "not-found.failure",
   "not-found.infoLabel",
   "security.layers.network.sub",
+  "how-it-works.loop.steps.reread.note",
+  "how-it-works.loop.steps.simulate.note",
+  "how-it-works.plan.opLabel",
+  "how-it-works.plan.steps.analyze.op",
+  "how-it-works.plan.steps.signers.op",
+  "how-it-works.plan.steps.data.op",
+  "how-it-works.plan.steps.offers.op",
+  "how-it-works.plan.steps.defi.op",
+  "how-it-works.plan.steps.convert.op",
+  "how-it-works.plan.steps.trustlines.op",
+  "how-it-works.plan.steps.merge.op",
+  "how-it-works.relay.nodes.merge",
+  "how-it-works.relay.nodes.payment",
+  "how-it-works.resume.phases",
+  "how-it-works.architecture.rows.network.sub",
 ]);
 
 const accent = (text: string): ReactNode => text;
@@ -103,6 +123,7 @@ const CALLS: Record<string, unknown[][]> = {
   "hero.estimate.announcement": [["10 to 12 XLM", "Nothing.", "Caveat"]],
   "hero.estimate.readAt": [["12:00"]],
   "faq.items": [[faqFacts(true, "")], [faqFacts(false, "Aquarius")]],
+  "how-it-works.relay.body": [[accent]],
   "landing.description": [[true], [false]],
   "security.lede": [["KEY", "CHECK"]],
   "security.openSource": [[element, element]],
@@ -145,10 +166,11 @@ function readable(value: unknown): unknown {
 /** Every way the Spanish copy at `path` is missing or still reads as the English. */
 function untranslated(path: string, en: unknown, es: unknown): string[] {
   if (es === undefined) return [`${path}: missing`];
+  if (CODE.has(path)) return typeof es === typeof en ? [] : [`${path}: not a ${typeof en}`];
   if (typeof en === "string") {
     if (typeof es !== "string") return [`${path}: not a string`];
     if (es.trim() === "") return [`${path}: empty`];
-    return es === en && !onlyNames(en) && !CODE.has(path) ? [`${path}: "${es}"`] : [];
+    return es === en && !onlyNames(en) ? [`${path}: "${es}"`] : [];
   }
   if (typeof en === "function") {
     if (typeof es !== "function") return [`${path}: not a function`];
@@ -194,7 +216,7 @@ function untranslated(path: string, en: unknown, es: unknown): string[] {
   return [];
 }
 
-describe("the Spanish copy of the navigation, footer, 404, landing, FAQ and security pages", () => {
+describe("the Spanish copy of the navigation, footer, 404 and marketing pages", () => {
   for (const [name, section] of Object.entries(SECTIONS)) {
     test(`${name}: every entry is filled and reads in Spanish`, () => {
       expect(untranslated(name, section.en, section.es)).toEqual([]);

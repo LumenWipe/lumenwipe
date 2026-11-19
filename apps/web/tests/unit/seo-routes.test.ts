@@ -85,6 +85,7 @@ const PAGE_TITLES: Record<string, Metadata["title"]> = {
   "/content": "Content",
   "/es": { absolute: SITE.es.metadata.homeTitle },
   "/es/faq": "Preguntas frecuentes",
+  "/es/how-it-works": "Cómo funciona",
   "/es/security": "Seguridad",
   "/faq": "FAQ",
   "/how-it-works": "How it works",
@@ -271,6 +272,21 @@ describe("the sitemap", () => {
       alternates: { languages: pair },
     });
     expect(entry(siteUrl("/security"))).toMatchObject({ alternates: { languages: pair } });
+  });
+
+  test("lists the Spanish how it works page with its rank and both languages", () => {
+    const pair = {
+      en: siteUrl("/how-it-works"),
+      es: siteUrl("/es/how-it-works"),
+      "x-default": siteUrl("/how-it-works"),
+    };
+    const entry = (url: string) => SITEMAP.find((e) => e.url === url);
+    expect(entry(siteUrl("/es/how-it-works"))).toMatchObject({
+      priority: 0.9,
+      changeFrequency: "monthly",
+      alternates: { languages: pair },
+    });
+    expect(entry(siteUrl("/how-it-works"))).toMatchObject({ alternates: { languages: pair } });
   });
 
   test("ranks the app entry below the pages that explain it and leaves testnet out", () => {

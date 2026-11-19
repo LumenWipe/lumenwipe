@@ -144,4 +144,137 @@ const en = {
 
 export type HowItWorksCopy = typeof en;
 
-export const HOW_IT_WORKS: Record<Locale, HowItWorksCopy> = { en, es: en };
+const es: HowItWorksCopy = {
+  metadata: {
+    title: "Cómo funciona",
+    description:
+      "Cómo LumenWipe cierra una cuenta de Stellar: un plan determinista y ordenado, simulación y confirmación en cada paso, el flujo de relay para exchanges centralizados y sesiones reanudables que se concilian con el estado on-chain.",
+  },
+  hero: {
+    eyebrow: "Cómo funciona",
+    heading: "Un plan determinista para una acción irreversible.",
+    body: "Cerrar una cuenta toma una o más transacciones en el orden correcto. LumenWipe te muestra el plan completo desde el inicio y luego lo ejecuta una transacción a la vez, cada una confirmada antes de la siguiente, volviendo a leer el estado en vivo y simulando antes de cada firma, para que nunca se firme nada con datos desactualizados.",
+    openApp: "Abrir la app",
+    faq: "Ir a las preguntas frecuentes",
+  },
+  loop: {
+    eyebrow: "El ciclo de ejecución",
+    heading: "Cada paso sigue el mismo ciclo seguro.",
+    body: "Ningún paso confía en un valor guardado en caché. Cada uno se concilia con el ledger en vivo, se simula y espera tu aprobación explícita antes de firmar un solo byte.",
+    steps: {
+      reread: { label: "Volver a leer el estado en vivo", note: "getLedgerEntries" },
+      simulate: { label: "Simular", note: "simulateTransaction" },
+      confirm: { label: "Confirmar", note: "tú lo apruebas" },
+      sign: { label: "Firmar en el navegador", note: "tu billetera" },
+      submit: { label: "Enviar el XDR", note: "a Stellar RPC" },
+      poll: { label: "Consultar y avanzar", note: "siguiente paso" },
+    },
+    repeats: "se repite en cada paso del plan",
+  },
+  plan: {
+    eyebrow: "El plan",
+    heading: "Ocho pasos ordenados, con cada reserva contabilizada.",
+    opLabel: "op",
+    steps: {
+      analyze: {
+        title: "Analizar la cuenta",
+        body: "Enumera cada subentry (elemento que bloquea reserva): trustlines (líneas de confianza con un emisor de activos), offers (órdenes abiertas en el libro de órdenes), data entries (datos guardados en la cuenta) y signers (firmantes adicionales de la cuenta), y detecta las posiciones de DeFi con OctoPos. El resultado es un único plan de ejecución ordenado.",
+        op: "Horizon + Stellar RPC",
+      },
+      signers: {
+        title: "Normalizar los signers",
+        body: "Quita los signers adicionales y restablece los umbrales para que una sola clave pueda autorizar todos los pasos restantes sin sorpresas a mitad del flujo.",
+        op: "SetOptions",
+      },
+      data: {
+        title: "Quitar los data entries",
+        body: "Borra cada data entry con ManageData, por lotes, y libera 0.5 XLM de reserva por cada uno.",
+        op: "ManageData (value = null)",
+      },
+      offers: {
+        title: "Cancelar las offers del DEX",
+        body: "Cierra todas las offers abiertas del libro de órdenes y libera la reserva que bloquea cada una.",
+        op: "ManageSellOffer / ManageBuyOffer · amount = 0",
+      },
+      defi: {
+        title: "Salir de las posiciones de DeFi",
+        body: "Sale de cada posición en un protocolo de Soroban compatible, pagando préstamos y retirando lo que está en staking primero cuando hace falta, con el adaptador propio de cada protocolo. Las pool shares (participaciones en un pool de liquidez AMM) clásicas se reportan como un bloqueo: primero debes retirarlas en otro lugar.",
+        op: en.plan.steps.defi.op,
+      },
+      convert: {
+        title: "Convertir los activos a XLM",
+        body: "Cambia cada token restante a XLM por la mejor ruta disponible entre los mercados de Soroban y los clásicos.",
+        op: "Soroswap API · SDEX path payments",
+      },
+      trustlines: {
+        title: "Quitar las trustlines",
+        body: "Cuando un saldo queda en cero, quita su trustline y libera los 0.5 XLM de reserva.",
+        op: "ChangeTrust · limit = 0",
+      },
+      merge: {
+        title: "Hacer el merge de la cuenta",
+        body: "Ejecuta el merge (fusión que cierra la cuenta y envía su saldo) final, directo a una billetera o a través de una relay account (cuenta intermedia que reenvía el saldo) si el destino es un exchange. La base reserve (unidad de reserva que fija la red) también vuelve.",
+        op: "AccountMerge",
+      },
+    },
+  },
+  relay: {
+    eyebrow: "Destinos en exchanges",
+    heading: "El flujo de relay para exchanges centralizados.",
+    body: (code: (text: string) => ReactNode): ReactNode => (
+      <>
+        {"Los exchanges no admiten"} {code("ACCOUNT_MERGE")}
+        {
+          ". LumenWipe resuelve esto con una sola relay account compartida: el merge envía tu saldo a ella y, en la misma transacción, ella reenvía ese saldo a tu dirección de depósito con el memo (memo que identifica el depósito). Su clave se queda en la API de LumenWipe, que solo cofirma ese pago, y tu navegador verifica que el pago vaya a la dirección que escribiste antes de que firmes."
+        }
+      </>
+    ),
+    nodes: {
+      source: { label: "Cuenta de origen", sub: "la cuenta que estás cerrando" },
+      merge: "AccountMerge",
+      relay: { label: "Relay account", sub: "compartida · cofirmada por la API" },
+      payment: "Payment + memo",
+      exchange: { label: "Depósito en el exchange", sub: "dirección y memo validados" },
+    },
+    footnote:
+      "La relay account reenvía todo tu saldo menos una comisión de red de dos operaciones, así que nada de tu reserva se queda atrás, y la revisión te muestra el exchange y la ruta por la relay account antes de que firmes. Los exchanges conocidos se validan contra un registro que exige el tipo de memo correcto.",
+  },
+  resume: {
+    eyebrow: "Reanudable por diseño",
+    heading: "Cierra la pestaña. Retoma donde lo dejaste.",
+    body: "El cierre pasa por estas fases en tu navegador. Una vez que confirmas el plan, el navegador guarda un pequeño registro del cierre, nunca tus claves. Cuando vuelves, LumenWipe vuelve a leer la cuenta y arma un plan nuevo con lo que falta, que revisas y firmas de nuevo, así que el trabajo ya confirmado no se repite.",
+    phases: en.resume.phases,
+  },
+  architecture: {
+    eyebrow: "Arquitectura",
+    heading: "Tres capas, un límite de confianza.",
+    body: "Sin un indexador propio. Cada fuente de lectura está detrás de un adaptador, así que se puede cambiar por cualquier proveedor compatible sin tocar el resto del sistema.",
+    rows: {
+      browser: {
+        label: "Navegador",
+        sub: "UI · billetera · verificación de transacciones · firma · sesión",
+        note: "tu clave se queda aquí",
+      },
+      api: {
+        label: "API de LumenWipe",
+        sub: "lecturas · adaptadores de DeFi · rutas · arma transacciones sin firmar",
+        note: "nunca tiene tu clave",
+      },
+      network: {
+        label: "Red de Stellar",
+        sub: "Stellar RPC · Horizon · Soroswap",
+        note: "lectura · envío",
+      },
+    },
+  },
+  faq: {
+    eyebrow: "Preguntas frecuentes",
+    heading: "Tus preguntas, respondidas.",
+  },
+  ready: {
+    heading: "Empieza cuando quieras.",
+    openApp: "Abrir la app",
+  },
+};
+
+export const HOW_IT_WORKS: Record<Locale, HowItWorksCopy> = { en, es };

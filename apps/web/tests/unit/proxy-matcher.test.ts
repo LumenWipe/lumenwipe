@@ -47,6 +47,7 @@ describe("the proxy matcher", () => {
     expect(paths).toContain("/es");
     expect(paths).toContain("/es/faq");
     expect(paths).toContain("/es/security");
+    expect(paths).toContain("/es/how-it-works");
     expect(paths.filter((p) => p.startsWith("/blog/"))).toHaveLength(getAllSlugs().length);
   });
 
