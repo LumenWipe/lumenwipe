@@ -1,5 +1,8 @@
-import { afterAll, afterEach, beforeAll, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, expect, mock, spyOn, test } from "bun:test";
+import { Keypair, xdr } from "@stellar/stellar-sdk";
 import { PATH_ROUTING_API_URLS } from "@/config/networks";
+import { poolShareTrustlineKey } from "@/lib/stellar/live-ledger";
+import * as rpcModule from "@/lib/stellar/rpc";
 import {
   enumerateSponsoredEntries,
   fetchOwnerLiveState,
@@ -413,4 +416,199 @@ test("fetchOwnerLiveStatesBounded › owner fan-out narrows once a 429 has been 
   expect(result.size).toBe(14);
   expect([...result.values()].every((s) => !s.fetchFailed)).toBe(true);
   expect(Math.max(...laterMax)).toBeLessThanOrEqual(2);
+});
+
+// ─── pool share trustlines ──────────────────────────────────────────────────────
+
+const POOL_OWNER = Keypair.random().publicKey();
+const POOL_SPONSOR = Keypair.random();
+const POOL_ID = "d714bc2e56f74a4a4de2e81284a35b6fe09582f081bf785fc698310895c2d845";
+
+/** A ledger extension naming `sponsor`, as the RPC sends it in `extXdr`. */
+function sponsoredExt(sponsor: Keypair): string {
+  return xdr.LedgerEntryExt.v1(
+    new xdr.LedgerEntryExtensionV1({
+      sponsoringId: sponsor.xdrAccountId(),
+      ext: xdr.LedgerEntryExtensionV1Ext.v0(),
+    })
+  ).toXDR("base64");
+}
+
+/** Answers the raw ledger read for every key asked with `extXdr`, or fails it when null. */
+function rpcAnswering(extXdr: string | null) {
+  const asked: string[] = [];
+  spyOn(rpcModule, "getRpcServer").mockReturnValue({
+    async _getLedgerEntries(...keys: xdr.LedgerKey[]) {
+      asked.push(...keys.map((k) => k.toXDR("base64")));
+      if (extXdr === null) throw new Error("rpc down");
+      return {
+        entries: keys.map((k) => ({ key: k.toXDR("base64"), xdr: "AAAAAQ==", extXdr })),
+      };
+    },
+  } as unknown as ReturnType<typeof rpcModule.getRpcServer>);
+  return asked;
+}
+
+// Horizon's account resource as testnet sends it for a sponsored pool share line: the pool
+// balance carries `liquidity_pool_id` and no `sponsor`.
+function poolOwnerAccount(poolBalance: Record<string, unknown>) {
+  return jsonResponse({
+    subentry_count: 1,
+    num_sponsored: 2,
+    balances: [{ asset_type: "native", balance: "5.0000000" }, poolBalance],
+    signers: [],
+  });
+}
+
+const POOL_BALANCE = {
+  asset_type: "liquidity_pool_shares",
+  liquidity_pool_id: POOL_ID,
+  balance: "0.0000000",
+};
+
+afterEach(() => {
+  mock.restore();
+});
+
+test("fetchOwnerLiveState › a pool share line's sponsor is read from its ledger entry, not Horizon", async () => {
+  const asked = rpcAnswering(sponsoredExt(POOL_SPONSOR));
+  globalThis.fetch = routedFetch([
+    [`/accounts/${POOL_OWNER}/offers`, () => jsonResponse({ _embedded: { records: [] } })],
+    [`/accounts/${POOL_OWNER}`, () => poolOwnerAccount(POOL_BALANCE)],
+  ]);
+
+  const result = await fetchOwnerLiveState(POOL_OWNER, "testnet");
+
+  expect(result.fetchFailed).toBe(false);
+  expect(result.poolShareSponsors).toEqual({ [POOL_ID]: POOL_SPONSOR.publicKey() });
+  expect(result.trustlineSponsors).toEqual({ native: null });
+  expect(asked).toEqual([poolShareTrustlineKey(POOL_OWNER, POOL_ID).toXDR("base64")]);
+});
+
+test("fetchOwnerLiveState › a pool share sponsor that cannot be read fails the owner's read", async () => {
+  rpcAnswering(null);
+  globalThis.fetch = routedFetch([
+    [`/accounts/${POOL_OWNER}/offers`, () => jsonResponse({ _embedded: { records: [] } })],
+    [`/accounts/${POOL_OWNER}`, () => poolOwnerAccount(POOL_BALANCE)],
+  ]);
+
+  const result = await fetchOwnerLiveState(POOL_OWNER, "testnet");
+
+  expect(result.fetchFailed).toBe(true);
+  expect(result.reserve).toBeNull();
+});
+
+test("fetchOwnerLiveState › a pool share balance without a pool id fails the owner's read", async () => {
+  const asked = rpcAnswering(sponsoredExt(POOL_SPONSOR));
+  globalThis.fetch = routedFetch([
+    [`/accounts/${POOL_OWNER}/offers`, () => jsonResponse({ _embedded: { records: [] } })],
+    [
+      `/accounts/${POOL_OWNER}`,
+      () => poolOwnerAccount({ asset_type: "liquidity_pool_shares", balance: "0.0000000" }),
+    ],
+  ]);
+
+  const result = await fetchOwnerLiveState(POOL_OWNER, "testnet");
+
+  expect(result.fetchFailed).toBe(true);
+  expect(asked).toEqual([]);
+});
+
+test("enumerateSponsoredEntries › a sponsored pool share trustline is listed, and the count of 2 reserves completes the enumeration", async () => {
+  rpcAnswering(sponsoredExt(POOL_SPONSOR));
+  const sponsor = POOL_SPONSOR.publicKey();
+  globalThis.fetch = routedFetch([
+    [
+      `/accounts/${sponsor}/operations`,
+      () =>
+        jsonResponse({
+          _embedded: {
+            records: [
+              {
+                type: "change_trust",
+                source_account: POOL_OWNER,
+                sponsor,
+                asset_type: "liquidity_pool_shares",
+                liquidity_pool_id: POOL_ID,
+              },
+            ],
+          },
+        }),
+    ],
+    [`/claimable_balances`, () => jsonResponse({ _embedded: { records: [] } })],
+    [`/accounts/${POOL_OWNER}/offers`, () => jsonResponse({ _embedded: { records: [] } })],
+    [`/accounts/${POOL_OWNER}`, () => poolOwnerAccount(POOL_BALANCE)],
+  ]);
+
+  const result = await enumerateSponsoredEntries(sponsor, "testnet", 2, true);
+
+  expect(result.sponsoredEntries).toEqual([
+    { kind: "pool_share_trustline", owner: POOL_OWNER, poolId: POOL_ID },
+  ]);
+  expect(result.sponsorshipEnumerationIncomplete).toBe(false);
+});
+
+test("enumerateSponsoredEntries › an earlier revoke of a pool share line's sponsorship names its owner", async () => {
+  rpcAnswering(sponsoredExt(POOL_SPONSOR));
+  const sponsor = POOL_SPONSOR.publicKey();
+  globalThis.fetch = routedFetch([
+    [
+      `/accounts/${sponsor}/operations`,
+      () =>
+        jsonResponse({
+          _embedded: {
+            records: [
+              {
+                type: "revoke_sponsorship",
+                source_account: sponsor,
+                trustline_account_id: POOL_OWNER,
+                trustline_liquidity_pool_id: POOL_ID,
+              },
+            ],
+          },
+        }),
+    ],
+    [`/claimable_balances`, () => jsonResponse({ _embedded: { records: [] } })],
+    [`/accounts/${POOL_OWNER}/offers`, () => jsonResponse({ _embedded: { records: [] } })],
+    [`/accounts/${POOL_OWNER}`, () => poolOwnerAccount(POOL_BALANCE)],
+  ]);
+
+  const result = await enumerateSponsoredEntries(sponsor, "testnet", 2, true);
+
+  expect(result.sponsoredEntries).toEqual([
+    { kind: "pool_share_trustline", owner: POOL_OWNER, poolId: POOL_ID },
+  ]);
+  expect(result.sponsorshipEnumerationIncomplete).toBe(false);
+});
+
+test("enumerateSponsoredEntries › a pool share line sponsored by someone else is not listed, and the reserves stay unexplained", async () => {
+  rpcAnswering(sponsoredExt(Keypair.random()));
+  const sponsor = POOL_SPONSOR.publicKey();
+  globalThis.fetch = routedFetch([
+    [
+      `/accounts/${sponsor}/operations`,
+      () =>
+        jsonResponse({
+          _embedded: {
+            records: [
+              {
+                type: "change_trust",
+                source_account: POOL_OWNER,
+                sponsor,
+                asset_type: "liquidity_pool_shares",
+                liquidity_pool_id: POOL_ID,
+              },
+            ],
+          },
+        }),
+    ],
+    [`/claimable_balances`, () => jsonResponse({ _embedded: { records: [] } })],
+    [`/accounts/${POOL_OWNER}/offers`, () => jsonResponse({ _embedded: { records: [] } })],
+    [`/accounts/${POOL_OWNER}`, () => poolOwnerAccount(POOL_BALANCE)],
+  ]);
+
+  const result = await enumerateSponsoredEntries(sponsor, "testnet", 2, true);
+
+  expect(result.sponsoredEntries).toEqual([]);
+  expect(result.sponsorshipEnumerationIncomplete).toBe(true);
 });

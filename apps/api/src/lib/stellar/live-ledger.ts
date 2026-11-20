@@ -45,6 +45,16 @@ export function poolShareKey(poolId: string): string {
   return `pool:${poolId}`;
 }
 
+/** The ledger key of `account`'s share trustline in the pool with this hex id. */
+export function poolShareTrustlineKey(account: string, poolId: string): xdr.LedgerKey {
+  return xdr.LedgerKey.trustline(
+    new xdr.LedgerKeyTrustLine({
+      accountId: Keypair.fromPublicKey(account).xdrAccountId(),
+      asset: new LiquidityPoolId(poolId).toXDRObject(),
+    })
+  );
+}
+
 type Target =
   | { kind: "account" }
   | { kind: "trustline"; id: string }
@@ -73,7 +83,7 @@ function keysFor(state: AccountState): Array<{ key: xdr.LedgerKey; target: Targe
       target: { kind: "trustline" as const, id: tl.asset },
     })),
     ...state.poolShares.map((share) => ({
-      key: trustline(new LiquidityPoolId(share.poolId).toXDRObject()),
+      key: poolShareTrustlineKey(state.address, share.poolId),
       target: { kind: "trustline" as const, id: poolShareKey(share.poolId) },
     })),
     ...state.openOffers.map((offer) => ({

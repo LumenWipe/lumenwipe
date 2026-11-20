@@ -836,6 +836,7 @@ export type IntentOperationBody = {
     type: "revoke_sponsorship";
     entryKind: "account" | "trustline" | "offer" | "data_entry" | "signer";
     owner: string;
+    poolId?: string;
 } | {
     type: "invoke_host_function";
     contract: string;
@@ -1291,6 +1292,12 @@ export type SponsoredEntry = {
     kind: "trustline";
     owner: string;
     asset: string;
+}
+/** A liquidity pool share trustline, named by its 64-character hex pool id. */
+| {
+    kind: "pool_share_trustline";
+    owner: string;
+    poolId: string;
 } | {
     kind: "offer";
     owner: string;

@@ -13,6 +13,9 @@ import {
   Asset,
   BASE_FEE,
   Horizon,
+  LiquidityPoolAsset,
+  LiquidityPoolFeeV18,
+  getLiquidityPoolId,
 } from "@stellar/stellar-sdk";
 import { getAccountState } from "@/lib/stellar/account-state";
 import { assessSponsorshipAffordability } from "@/lib/stellar/sponsorship-affordability";
@@ -226,6 +229,91 @@ test.skipIf(!RUN_INTEGRATION)(
       owner: sponsored.publicKey(),
       asset: assetString,
     });
+  },
+  120000
+);
+
+/** Reads the account until `done` holds, absorbing RPC lagging Horizon in either direction. */
+async function readAccountStateUntil(
+  publicKey: string,
+  done: (state: AccountState) => boolean
+): Promise<AccountState> {
+  let lastState: AccountState | null = null;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < ACCOUNT_STATE_POLL_MAX_ATTEMPTS; attempt++) {
+    try {
+      lastState = await getAccountState(publicKey, "testnet");
+      if (done(lastState)) return lastState;
+    } catch (err) {
+      lastError = err;
+    }
+    await new Promise((resolve) => setTimeout(resolve, ACCOUNT_STATE_POLL_DELAY_MS));
+  }
+  if (lastState) return lastState;
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
+test.skipIf(!RUN_INTEGRATION)(
+  "a pool share trustline sponsored on testnet is enumerated by pool id, affordable, and revoked for 2 reserves",
+  async () => {
+    const server = new Horizon.Server(HORIZON_URL);
+    const sponsor = Keypair.random();
+    const sponsored = Keypair.random();
+    const issuer = Keypair.random();
+
+    await Promise.all([
+      fund(sponsor.publicKey()),
+      fund(sponsored.publicKey()),
+      fund(issuer.publicKey()),
+    ]);
+    const asset = new Asset("LWPOOL", issuer.publicKey());
+    const line = new LiquidityPoolAsset(Asset.native(), asset, LiquidityPoolFeeV18);
+    const poolId = Buffer.from(
+      getLiquidityPoolId("constant_product", line.getLiquidityPoolParameters())
+    ).toString("hex");
+    const entry = { kind: "pool_share_trustline", owner: sponsored.publicKey(), poolId } as const;
+
+    // The asset line is the owner's own; only the pool share line is sponsored. Horizon reports no
+    // `sponsor` on that pool share balance, so finding it proves the ledger-entry read.
+    const setupTx = new TransactionBuilder(await server.loadAccount(sponsor.publicKey()), {
+      fee: BASE_FEE,
+      networkPassphrase: Networks.TESTNET,
+    })
+      .addOperation(Operation.changeTrust({ asset, source: sponsored.publicKey() }))
+      .addOperation(Operation.beginSponsoringFutureReserves({ sponsoredId: sponsored.publicKey() }))
+      .addOperation(Operation.changeTrust({ asset: line, source: sponsored.publicKey() }))
+      .addOperation(Operation.endSponsoringFutureReserves({ source: sponsored.publicKey() }))
+      .setTimeout(60)
+      .build();
+    setupTx.sign(sponsor);
+    setupTx.sign(sponsored);
+    await server.submitTransaction(setupTx);
+
+    const state = await readAccountStateUntil(sponsor.publicKey(), (s) => s.numSponsoring >= 2);
+    expect(state.numSponsoring).toBe(2);
+    expect(state.sponsoredEntries).toEqual([entry]);
+    expect(state.sponsorshipEnumerationIncomplete).toBe(false);
+
+    const affordability = await assessSponsorshipAffordability(
+      sponsor.publicKey(),
+      state.sponsoredEntries,
+      "testnet"
+    );
+    expect(affordability.revocable).toEqual([entry]);
+
+    const revokeTx = new TransactionBuilder(await server.loadAccount(sponsor.publicKey()), {
+      fee: BASE_FEE,
+      networkPassphrase: Networks.TESTNET,
+    })
+      .addOperation(revokeSponsorshipOps(affordability.revocable)[0]!)
+      .setTimeout(60)
+      .build();
+    revokeTx.sign(sponsor);
+    expect((await server.submitTransaction(revokeTx)).successful).toBe(true);
+
+    const after = await readAccountStateUntil(sponsor.publicKey(), (s) => s.numSponsoring === 0);
+    expect(after.numSponsoring).toBe(0);
+    expect(after.sponsoredEntries).toEqual([]);
   },
   120000
 );

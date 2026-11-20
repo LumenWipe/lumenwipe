@@ -44,6 +44,7 @@ test("assessSponsorshipAffordability › owner with enough spendable balance →
     [OWNER]: {
       accountSponsor: null,
       trustlineSponsors: { "USDC:GISSUER": SPONSOR },
+      poolShareSponsors: {},
       signerSponsors: {},
       offerSponsors: {},
       dataSponsors: {},
@@ -69,6 +70,7 @@ test("assessSponsorshipAffordability › owner without enough spendable balance 
     [OWNER]: {
       accountSponsor: null,
       trustlineSponsors: { "USDC:GISSUER": SPONSOR },
+      poolShareSponsors: {},
       signerSponsors: {},
       offerSponsors: {},
       dataSponsors: {},
@@ -96,6 +98,7 @@ test("assessSponsorshipAffordability › owner with sufficient raw balance but s
     [OWNER]: {
       accountSponsor: null,
       trustlineSponsors: { "USDC:GISSUER": SPONSOR },
+      poolShareSponsors: {},
       signerSponsors: {},
       offerSponsors: {},
       dataSponsors: {},
@@ -128,6 +131,7 @@ test("assessSponsorshipAffordability › entry no longer live-sponsored by us �
       trustlineSponsors: {
         "USDC:GISSUER": "GSOMEONEELSE0000000000000000000000000000000000000000000AAAA",
       },
+      poolShareSponsors: {},
       signerSponsors: {},
       offerSponsors: {},
       dataSponsors: {},
@@ -153,6 +157,7 @@ test("assessSponsorshipAffordability › mixed owners → affordable owner's ent
     [OWNER]: {
       accountSponsor: null,
       trustlineSponsors: { "USDC:GISSUER": SPONSOR },
+      poolShareSponsors: {},
       signerSponsors: {},
       offerSponsors: {},
       dataSponsors: {},
@@ -168,6 +173,7 @@ test("assessSponsorshipAffordability › mixed owners → affordable owner's ent
     [OWNER_B]: {
       accountSponsor: null,
       trustlineSponsors: { "USDC:GISSUER": SPONSOR },
+      poolShareSponsors: {},
       signerSponsors: {},
       offerSponsors: {},
       dataSponsors: {},
@@ -196,6 +202,7 @@ test("assessSponsorshipAffordability › owner whose read fails → reported unv
     [OWNER]: {
       accountSponsor: null,
       trustlineSponsors: {},
+      poolShareSponsors: {},
       signerSponsors: {},
       offerSponsors: {},
       dataSponsors: {},
@@ -215,6 +222,7 @@ test("assessSponsorshipAffordability › owner read without its reserve → repo
     [OWNER]: {
       accountSponsor: null,
       trustlineSponsors: { "USDC:GISSUER": SPONSOR },
+      poolShareSponsors: {},
       signerSponsors: {},
       offerSponsors: {},
       dataSponsors: {},
@@ -226,4 +234,59 @@ test("assessSponsorshipAffordability › owner read without its reserve → repo
   const result = await assessSponsorshipAffordability(SPONSOR, entries, "testnet");
   expect(result.revocable).toEqual([]);
   expect(result.unverifiedOwners).toEqual([OWNER]);
+});
+
+const POOL_ID = "d714bc2e56f74a4a4de2e81284a35b6fe09582f081bf785fc698310895c2d845";
+
+function poolLineOwner(balanceLumens: string): OwnerLiveState {
+  return {
+    accountSponsor: null,
+    trustlineSponsors: {},
+    poolShareSponsors: { [POOL_ID]: SPONSOR },
+    signerSponsors: {},
+    offerSponsors: {},
+    dataSponsors: {},
+    fetchFailed: false,
+    // A pool share line counts 2 sub-entries and is sponsored for both: the minimum balance today
+    // is (2 + 2 - 2) * 0.5 = 1.0, and taking the line over costs 2 more base reserves, 1.0 XLM.
+    reserve: {
+      balanceLumens,
+      numSubEntries: 2,
+      numSponsoring: 0,
+      numSponsored: 2,
+      sellingLiabilities: "0",
+    },
+  };
+}
+
+test("assessSponsorshipAffordability › a pool share line is revocable when its owner can hold 2 base reserves of its own", async () => {
+  statesFor({ [OWNER]: poolLineOwner("2.0000000") });
+  const entries: SponsoredEntry[] = [
+    { kind: "pool_share_trustline", owner: OWNER, poolId: POOL_ID },
+  ];
+  const result = await assessSponsorshipAffordability(SPONSOR, entries, "testnet");
+  expect(result.revocable).toEqual(entries);
+  expect(result.unaffordableOwners.size).toBe(0);
+});
+
+test("assessSponsorshipAffordability › a pool share line is unaffordable when its owner can hold only 1 base reserve more", async () => {
+  statesFor({ [OWNER]: poolLineOwner("1.5000000") });
+  const entries: SponsoredEntry[] = [
+    { kind: "pool_share_trustline", owner: OWNER, poolId: POOL_ID },
+  ];
+  const result = await assessSponsorshipAffordability(SPONSOR, entries, "testnet");
+  expect(result.revocable).toEqual([]);
+  expect(result.unaffordableOwners.get(OWNER)).toEqual({ entries, shortfallXlm: "0.5000000" });
+});
+
+test("assessSponsorshipAffordability › a pool share line someone else now sponsors needs no revoke", async () => {
+  statesFor({
+    [OWNER]: { ...poolLineOwner("2.0000000"), poolShareSponsors: { [POOL_ID]: OWNER } },
+  });
+  const entries: SponsoredEntry[] = [
+    { kind: "pool_share_trustline", owner: OWNER, poolId: POOL_ID },
+  ];
+  const result = await assessSponsorshipAffordability(SPONSOR, entries, "testnet");
+  expect(result.revocable).toEqual([]);
+  expect(result.unaffordableOwners.size).toBe(0);
 });

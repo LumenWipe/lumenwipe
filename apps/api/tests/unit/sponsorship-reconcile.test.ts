@@ -14,6 +14,7 @@ function liveState(overrides: Partial<OwnerLiveState> = {}): OwnerLiveState {
   return {
     accountSponsor: null,
     trustlineSponsors: {},
+    poolShareSponsors: {},
     signerSponsors: {},
     offerSponsors: {},
     dataSponsors: {},
@@ -388,4 +389,61 @@ test("reconcileSponsoredEntries › enumerated reserves exceed a stale numSponso
 
   expect(result.sponsoredEntries).toHaveLength(1);
   expect(result.sponsorshipEnumerationIncomplete).toBe(false);
+});
+
+const POOL_ID = "d714bc2e56f74a4a4de2e81284a35b6fe09582f081bf785fc698310895c2d845";
+
+test("reconcileSponsoredEntries › a pool share line still sponsored → included by pool id, its 2 reserves completing the count", () => {
+  const candidates: SponsorshipCandidate[] = [
+    { kind: "pool_share_trustline", owner: OWNER, key: POOL_ID },
+  ];
+  const result = reconcileSponsoredEntries(
+    SPONSOR,
+    candidates,
+    new Map([[OWNER, liveState({ poolShareSponsors: { [POOL_ID]: SPONSOR } })]]),
+    [],
+    false,
+    false,
+    2
+  );
+
+  expect(result.sponsoredEntries).toEqual([
+    { kind: "pool_share_trustline", owner: OWNER, poolId: POOL_ID },
+  ]);
+  expect(result.sponsorshipEnumerationIncomplete).toBe(false);
+});
+
+test("reconcileSponsoredEntries › a pool share line with NO candidate is still swept from a fetched owner", () => {
+  const candidates: SponsorshipCandidate[] = [{ kind: "account", owner: OWNER, key: "" }];
+  const result = reconcileSponsoredEntries(
+    SPONSOR,
+    candidates,
+    new Map([[OWNER, liveState({ poolShareSponsors: { [POOL_ID]: SPONSOR, other: null } })]]),
+    [],
+    false,
+    false,
+    2
+  );
+
+  expect(result.sponsoredEntries).toEqual([
+    { kind: "pool_share_trustline", owner: OWNER, poolId: POOL_ID },
+  ]);
+});
+
+test("reconcileSponsoredEntries › a pool share line sponsored by someone else is excluded, leaving its reserves unexplained", () => {
+  const candidates: SponsorshipCandidate[] = [
+    { kind: "pool_share_trustline", owner: OWNER, key: POOL_ID },
+  ];
+  const result = reconcileSponsoredEntries(
+    SPONSOR,
+    candidates,
+    new Map([[OWNER, liveState({ poolShareSponsors: { [POOL_ID]: OTHER_SPONSOR } })]]),
+    [],
+    false,
+    false,
+    2
+  );
+
+  expect(result.sponsoredEntries).toEqual([]);
+  expect(result.sponsorshipEnumerationIncomplete).toBe(true);
 });

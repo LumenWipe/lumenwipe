@@ -130,7 +130,14 @@ function normalizeOp(op: Transaction["operations"][number]): IntentOperationBody
     case "revokeAccountSponsorship":
       return { type: "revoke_sponsorship", entryKind: "account", owner: op.account };
     case "revokeTrustlineSponsorship":
-      return { type: "revoke_sponsorship", entryKind: "trustline", owner: op.account };
+      return "getLiquidityPoolId" in op.asset
+        ? {
+            type: "revoke_sponsorship",
+            entryKind: "trustline",
+            owner: op.account,
+            poolId: op.asset.getLiquidityPoolId(),
+          }
+        : { type: "revoke_sponsorship", entryKind: "trustline", owner: op.account };
     case "revokeOfferSponsorship":
       return { type: "revoke_sponsorship", entryKind: "offer", owner: op.seller };
     case "revokeDataSponsorship":

@@ -122,6 +122,8 @@ export type IntentOperationBody =
       type: "revoke_sponsorship";
       entryKind: "account" | "trustline" | "offer" | "data_entry" | "signer";
       owner: string;
+      /** The 64-character hex pool id of a pool share trustline. Absent for every other entry. */
+      poolId?: string;
     }
   // A Soroban contract invocation - a DeFi exit. `accountsReferenced` lists every Stellar
   // account address anywhere in the arguments, so verification can insist an exit only ever acts

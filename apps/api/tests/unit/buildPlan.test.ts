@@ -853,6 +853,51 @@ test("buildPlan › affordable sponsored entry → REVOKE_SPONSORSHIP step, no s
   expect(blockers.some((b) => b.message.toLowerCase().includes("sponsor"))).toBe(false);
 });
 
+test("buildPlan › a sponsored pool share line the owner can afford → REVOKE_SPONSORSHIP step, no sponsoring blocker", () => {
+  const entry: SponsoredEntry = {
+    kind: "pool_share_trustline",
+    owner: SPONSORED_OWNER,
+    poolId: "d714bc2e56f74a4a4de2e81284a35b6fe09582f081bf785fc698310895c2d845",
+  };
+  const account = makeAccount({ numSponsoring: 2, sponsoredEntries: [entry] });
+  const { steps, blockers } = buildPlan(
+    ALL_ON,
+    account,
+    false,
+    false,
+    {},
+    { revocable: [entry], unverifiedOwners: [], unaffordableOwners: new Map() }
+  );
+  expect(steps.find((s) => s.type === "REVOKE_SPONSORSHIP")?.operationCount).toBe(1);
+  expect(blockers).toEqual([]);
+});
+
+test("buildPlan › a sponsored pool share line the owner cannot afford names the pool in its blocker", () => {
+  const entry: SponsoredEntry = {
+    kind: "pool_share_trustline",
+    owner: SPONSORED_OWNER,
+    poolId: "d714bc2e56f74a4a4de2e81284a35b6fe09582f081bf785fc698310895c2d845",
+  };
+  const account = makeAccount({ numSponsoring: 2, sponsoredEntries: [entry] });
+  const { steps, blockers } = buildPlan(
+    ALL_ON,
+    account,
+    false,
+    false,
+    {},
+    {
+      revocable: [],
+      unverifiedOwners: [],
+      unaffordableOwners: new Map([
+        [SPONSORED_OWNER, { entries: [entry], shortfallXlm: "1.0000000" }],
+      ]),
+    }
+  );
+  expect(steps.some((s) => s.type === "REVOKE_SPONSORSHIP")).toBe(false);
+  expect(blockers.map((b) => b.code)).toEqual(["sponsorship_unaffordable"]);
+  expect(blockers[0]!.message).toContain("a share trustline for liquidity pool d714bc2e");
+});
+
 test("buildPlan › unaffordable sponsored entry → per-owner blocker, no REVOKE_SPONSORSHIP step", () => {
   const entry: SponsoredEntry = {
     kind: "trustline",

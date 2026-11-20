@@ -21,6 +21,7 @@ import {
   Keypair,
   LiquidityPoolAsset,
   LiquidityPoolFeeV18,
+  LiquidityPoolId,
   Memo,
   nativeToScVal,
   Networks,
@@ -521,6 +522,42 @@ reject(
   build([poolWithdraw(), poolLineRemoval(EURT_USDC_POOL)]),
   "pool_not_held",
   "A trustline change names a liquidity pool your account holds no shares in."
+);
+
+// --- The sponsorship of a pool share trustline on another account, revoked before the merge ---
+
+const revokePoolLineSponsorship = (account = FRIEND, poolId = POOL_ID) =>
+  Operation.revokeTrustlineSponsorship({ account, asset: new LiquidityPoolId(poolId) });
+
+const poolLineSponsorshipRevoke = accept(
+  "pool-share-line-sponsorship-revoke",
+  "Revokes the sponsorship of the XLM/USDC pool share trustline the account read shows this account sponsoring on another account, then merges.",
+  build([revokePoolLineSponsorship(), merge()]),
+  expectation({ sponsoredPoolShareLines: { [FRIEND]: [POOL_ID] } })
+);
+reject(
+  poolLineSponsorshipRevoke,
+  "pool-share-line-sponsorship-other-pool",
+  "Revokes the sponsorship of the same account's share trustline in the EURT/USDC pool, which this account is not known to sponsor.",
+  build([revokePoolLineSponsorship(FRIEND, poolIdOf(EURT_USDC_POOL)), merge()]),
+  "pool_line_sponsorship_unknown",
+  "A sponsorship revoke names a pool share trustline your account is not known to sponsor."
+);
+reject(
+  poolLineSponsorshipRevoke,
+  "pool-share-line-sponsorship-other-account",
+  "Revokes the sponsorship of another account's share trustline in the same pool.",
+  build([revokePoolLineSponsorship(OTHER_ACCOUNT), merge()]),
+  "pool_line_sponsorship_unknown",
+  "A sponsorship revoke names a pool share trustline your account is not known to sponsor."
+);
+reject(
+  poolLineSponsorshipRevoke,
+  "pool-share-line-sponsorship-twice",
+  "Revokes the sponsorship of the same pool share trustline twice.",
+  build([revokePoolLineSponsorship(), revokePoolLineSponsorship(), merge()]),
+  "pool_line_sponsorship_duplicate",
+  "The transaction would revoke the sponsorship of the same pool share trustline more than once."
 );
 
 // --- A multisig close -----------------------------------------------------------------------

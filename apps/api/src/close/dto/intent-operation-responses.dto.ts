@@ -195,6 +195,12 @@ export class RevokeSponsorshipOpDto {
 
   @ApiProperty()
   owner!: string;
+
+  @ApiProperty({
+    required: false,
+    description: "The 64-character hex pool id of a pool share trustline. Absent otherwise.",
+  })
+  poolId?: string;
 }
 
 export class InvokeHostFunctionOpDto {

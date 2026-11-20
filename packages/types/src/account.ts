@@ -97,11 +97,13 @@ export interface LiquidityPoolState {
  * A ledger entry this account currently sponsors, on another account (or itself, for
  * "account" - a fully-sponsored account creation). Mirrors the ledger-key kinds
  * RevokeSponsorship supports. Claimable balances have no owning-account concept in
- * their ledger key (unlike the other five kinds), so they carry only balanceId.
+ * their ledger key (unlike every other kind), so they carry only balanceId.
  */
 export type SponsoredEntry =
   | { kind: "account"; owner: string }
   | { kind: "trustline"; owner: string; asset: string }
+  /** A liquidity pool share trustline, named by its 64-character hex pool id. */
+  | { kind: "pool_share_trustline"; owner: string; poolId: string }
   | { kind: "offer"; owner: string; offerId: string }
   | { kind: "data_entry"; owner: string; name: string }
   | { kind: "signer"; owner: string; signerKey: string }

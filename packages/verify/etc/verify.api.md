@@ -98,6 +98,7 @@ export interface CloseExpectationInput extends ExitExpectations {
     nativeBalance: string;
     poolWithdrawals?: Record<string, PoolWithdrawalExpectation>;
     source: string;
+    sponsoredPoolShareLines?: Record<string, string[]>;
     tokenConversions: Record<string, TokenConversionChoice>;
     tokenTransfers: Record<string, TransferChoice>;
     transfers: Record<string, TransferChoice>;
@@ -180,6 +181,9 @@ export interface ServedRegistry {
     lastVerified: string;
     validUntil: string;
 }
+
+// @public
+export function sponsoredPoolShareLineExpectations(accountState: AccountState | null | undefined): Record<string, string[]>;
 
 // @public
 export interface TokenConversionChoice {

@@ -30,7 +30,11 @@ import {
   chosenTransfers,
   closeDecisions,
 } from "@/lib/api/close-decisions";
-import { poolWithdrawalExpectations, verifyCloseTransaction } from "@/lib/stellar/verify";
+import {
+  poolWithdrawalExpectations,
+  sponsoredPoolShareLineExpectations,
+  verifyCloseTransaction,
+} from "@/lib/stellar/verify";
 import { confirmedMemo } from "@/lib/plan/memo-field";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import { requiredSignatureWeight } from "@/lib/stellar/thresholds";
@@ -578,6 +582,7 @@ export function useCloseExecution() {
                   ),
                   ...exitExpectations(accountState, network),
                   poolWithdrawals: poolWithdrawalExpectations(accountState),
+                  sponsoredPoolShareLines: sponsoredPoolShareLineExpectations(accountState),
                 },
               });
             },
@@ -1181,6 +1186,7 @@ export function useCloseExecution() {
           ),
           ...exitExpectations(accountState, network),
           poolWithdrawals: poolWithdrawalExpectations(accountState),
+          sponsoredPoolShareLines: sponsoredPoolShareLineExpectations(accountState),
         },
       });
 
