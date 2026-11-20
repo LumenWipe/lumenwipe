@@ -154,7 +154,10 @@ function healthyWorld(): World {
         billingAccountName: "billingAccounts/000000-000000-000000",
       },
       "billing budgets list": [
-        { displayName: "monthly", thresholdRules: [{ thresholdPercent: 0.5 }] },
+        {
+          displayName: "monthly",
+          thresholdRules: [{ thresholdPercent: 0.5 }, { thresholdPercent: 0.7 }],
+        },
       ],
       "logging buckets list": [
         { name: `projects/${PROJECT}/locations/global/buckets/_Default`, retentionDays: 30 },
@@ -422,6 +425,15 @@ const FAILURES: Array<[string, string, (w: World) => void]> = [
     "no budget alert exists",
     "billing",
     (w) => (w.gcloud["billing budgets list"] = [{ displayName: "no alerts" }]),
+  ],
+  [
+    "no budget alerts at 70 percent",
+    "billing",
+    (w) =>
+      (w.gcloud["billing budgets list"] = [
+        { displayName: "monthly", thresholdRules: [{ thresholdPercent: 0.5 }] },
+        { displayName: "other", thresholdRules: [{ thresholdPercent: 0.9 }] },
+      ]),
   ],
   [
     "log retention dropped",

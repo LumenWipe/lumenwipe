@@ -8,7 +8,9 @@ import {
   LabRefusal,
   assertOutsideCheckout,
   checkoutRoot,
+  LOAD_KEY_ENV,
   labHome,
+  loadTestApiKey,
   productionApiKey,
   readPrivateFile,
   withoutLabEnv,
@@ -53,6 +55,23 @@ describe("the lab folder", () => {
 
   test("is accepted outside the checkout", () => {
     expect(labHome({ LUMENWIPE_LAB_HOME: home }, root)).toBe(home);
+  });
+});
+
+describe("the load-test key", () => {
+  test("comes from the environment first, then from keys/load-api-key", () => {
+    expect(loadTestApiKey({ [LOAD_KEY_ENV]: " from-env " }, home, root)).toBe("from-env");
+    writePrivate(join(home, "keys", "load-api-key"), "from-file\n");
+    expect(loadTestApiKey({}, home, root)).toBe("from-file");
+  });
+
+  test("is never the production key file, and is refused when missing or readable by others", () => {
+    writePrivate(join(home, "keys", "api-key"), "production-key");
+    expect(() => loadTestApiKey({ [API_KEY_ENV]: "production-key" }, home, root)).toThrow(
+      /load-test service's key/
+    );
+    writePrivate(join(home, "keys", "load-api-key"), "key", 0o644);
+    expect(() => loadTestApiKey({}, home, root)).toThrow(/readable by others/);
   });
 });
 

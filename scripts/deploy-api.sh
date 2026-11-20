@@ -32,7 +32,13 @@ DEEP_DELAY="${DEEP_DELAY:-10}"
 # A mainnet analyze takes about 10 s on any account, past the 10 s every other check waits. It waits
 # longer than the API's own deadline (REQUEST_DEADLINE_MS, 40 s), so the API's answer decides.
 ANALYZE_TIMEOUT="${ANALYZE_TIMEOUT:-45}"
-RESOURCE_FLAGS=(--min-instances=0 --max-instances=1 --cpu=1 --memory=512Mi --execution-environment=gen1 --cpu-boost)
+# Every deploy and restore sets these, so the service never drifts from this file (docs/architecture.md,
+# "Instance cap"). One instance at most: four pieces of per-process state degrade above one. None kept
+# warm: the first request after an idle period pays a cold start (about 12 s at p50). Eight requests in
+# flight at most: the last stage of the load ramp before the providers refused it. CPU is billed per
+# request: nothing runs between requests (upstream counts flush inside one, SIGTERM gets CPU for the rest).
+RESOURCE_FLAGS=(--min-instances=0 --max-instances=1 --concurrency=8 --cpu-throttling --cpu=1
+  --memory=512Mi --execution-environment=gen1 --cpu-boost)
 
 note() { printf '%s\n' "$*" >> "$SUMMARY"; }
 error() { echo "::error::$*"; note "**Error:** $*"; }

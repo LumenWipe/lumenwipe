@@ -65,6 +65,7 @@
           "runbooks/rotate-fee-sponsor",
           "runbooks/rotate-secrets",
           "runbooks/provider-outage",
+          "runbooks/provider-quotas",
           "runbooks/firestore-outage",
           "runbooks/restore-api-keys",
           "runbooks/bad-deploy",

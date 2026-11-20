@@ -1,5 +1,6 @@
 import type { Network } from "@lumenwipe/types";
 import { xlmContractId, floorUnderQuote } from "@/lib/soroswap/conversion-quotes";
+import { countedFetch } from "@/lib/stellar/upstream-metrics";
 import type {
   ProviderQuoteOutcome,
   TokenConversionQuote,
@@ -45,7 +46,7 @@ export interface XBullConversionDeps {
 export function defaultXBullConversionDeps(): XBullConversionDeps {
   const env = readXBullEnv();
   return {
-    fetch: isXBullEnabled(env) ? globalThis.fetch : null,
+    fetch: isXBullEnabled(env) ? countedFetch("xbull", "mainnet", globalThis.fetch) : null,
     baseUrl: env.baseUrl,
     now: () => Date.now(),
   };
