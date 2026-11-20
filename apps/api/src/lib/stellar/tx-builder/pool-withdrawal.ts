@@ -184,55 +184,67 @@ export function poolWithdrawalOpCount(withdrawals: PoolWithdrawal[]): number {
 }
 
 /**
- * The pool shares the close cannot withdraw: a pool the read could not see into, or a side whose
- * trustline could not take what the withdrawal pays. A line the issuer only lets keep its offers
- * would receive the withdrawal and then hold it where it can be neither spent nor removed.
+ * The sides of `w` the account's trustlines could not take: a line the issuer only lets keep its
+ * offers would receive the withdrawal and then hold it where it can be neither spent nor removed,
+ * and a line whose limit, less its balance and what its open offers are buying, leaves less room
+ * than the pool pays fails the withdrawal (LINE_FULL) every time it is built.
  */
-export function assessPoolShareBlockers(
-  account: Pick<AccountState, "address" | "poolShares" | "trustlines">
+export function poolSideBlockers(
+  w: PoolWithdrawal,
+  account: Pick<AccountState, "address" | "trustlines">
 ): PlanBlocker[] {
   const blockers: PlanBlocker[] = [];
-  for (const share of account.poolShares) {
-    if (!share.pool) {
+  for (const [asset, expected] of [
+    [w.pool.assetA, w.expectedA],
+    [w.pool.assetB, w.expectedB],
+  ] as const) {
+    if (asset === "native" || isIssuedBy(asset, account.address) || expected <= 0n) continue;
+    const code = formatAsset(asset);
+    const tl = account.trustlines.find((t) => t.asset === asset);
+    if (!tl || tl.authorization !== "authorized") {
       blockers.push({
         code: "liquidity_pool_shares_held",
         message:
-          `The liquidity pool ${shortPoolId(share.poolId)} this account holds shares in could ` +
-          "not be read, so its withdrawal cannot be planned. Analyze the account again.",
+          `Withdrawing from the ${poolPairName(w.pool)} pool would pay ${code} into a ` +
+          "trustline its issuer has not fully authorized, where it could not be sold, sent or " +
+          "removed. Ask the issuer to restore authorization, then plan again.",
       });
       continue;
     }
-    const w = planPoolWithdrawal(share, share.pool);
-    for (const [asset, expected] of [
-      [w.pool.assetA, w.expectedA],
-      [w.pool.assetB, w.expectedB],
-    ] as const) {
-      if (asset === "native" || isIssuedBy(asset, account.address) || expected <= 0n) continue;
-      const code = formatAsset(asset);
-      const tl = account.trustlines.find((t) => t.asset === asset);
-      if (!tl || tl.authorization !== "authorized") {
-        blockers.push({
-          code: "liquidity_pool_shares_held",
-          message:
-            `Withdrawing from the ${poolPairName(w.pool)} pool would pay ${code} into a ` +
-            "trustline its issuer has not fully authorized, where it could not be sold, sent or " +
-            "removed. Ask the issuer to restore authorization, then plan again.",
-        });
-        continue;
-      }
-      if (
-        tl.limit !== undefined &&
-        BigInt(xlmToStroops(tl.limit)) - BigInt(xlmToStroops(tl.balance)) < expected
-      ) {
-        blockers.push({
-          code: "liquidity_pool_shares_held",
-          message:
-            `Withdrawing from the ${poolPairName(w.pool)} pool would pay ` +
-            `${stroopsToFixedXlm(expected)} ${code}, more than the ${code} trustline's limit ` +
-            "leaves room for. Raise the limit, then plan again.",
-        });
-      }
+    if (tl.limit === undefined) continue;
+    const room =
+      BigInt(xlmToStroops(tl.limit)) -
+      BigInt(xlmToStroops(tl.balance)) -
+      BigInt(xlmToStroops(tl.buyingLiabilities ?? "0"));
+    if (room < expected) {
+      blockers.push({
+        code: "liquidity_pool_shares_held",
+        message:
+          `Withdrawing from the ${poolPairName(w.pool)} pool would pay ` +
+          `${stroopsToFixedXlm(expected)} ${code}, more than the ${code} trustline has room for ` +
+          "under its limit once its open offers to buy it are counted. Cancel those offers or " +
+          "raise the limit, then plan again.",
+      });
     }
   }
   return blockers;
+}
+
+/** The pool shares the close cannot withdraw: a pool the read could not see into, or a side
+ *  `poolSideBlockers` refuses. */
+export function assessPoolShareBlockers(
+  account: Pick<AccountState, "address" | "poolShares" | "trustlines">
+): PlanBlocker[] {
+  return account.poolShares.flatMap((share) =>
+    share.pool
+      ? poolSideBlockers(planPoolWithdrawal(share, share.pool), account)
+      : [
+          {
+            code: "liquidity_pool_shares_held",
+            message:
+              `The liquidity pool ${shortPoolId(share.poolId)} this account holds shares in ` +
+              "could not be read, so its withdrawal cannot be planned. Analyze the account again.",
+          },
+        ]
+  );
 }

@@ -49,6 +49,9 @@ export interface Trustline {
   // Only provided by the Horizon-compatible reader; rpc getAssetBalance does not
   // expose it. Nothing consumes it (trustline removal always uses ChangeTrust limit 0).
   limit?: string;
+  /** What the account's open offers are buying of this asset; from the Horizon-compatible
+   *  reader only. */
+  buyingLiabilities?: string;
   /** True only when `authorization` is `authorized`. */
   authorized: boolean;
   authorization: TrustlineAuthorization;

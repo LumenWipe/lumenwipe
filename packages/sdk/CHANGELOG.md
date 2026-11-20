@@ -19,6 +19,8 @@ version number before 0.4.0. Neither has a git tag.
   `liquidity_pool_withdraw` and an optional `pool` on `change_trust` for a pool share line. A close
   of an account holding pool shares now withdraws them in a round of its own instead of refusing
   with `liquidity_pool_shares_held`, which is kept for a pool that cannot be withdrawn safely.
+  `Trustline` gains an optional `buyingLiabilities`, what the account's open offers are buying of
+  the asset, which the API counts against a pool withdrawal's room under the trustline limit.
 
 - `LumenWipeIntegratorClient.contractChallenge(network, address)` and
   `contractSession(network, { address, authorizationEntries })`: a contract account (`C...`)

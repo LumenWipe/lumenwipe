@@ -1466,6 +1466,7 @@ export interface Trustline {
     authorized: boolean;
     // (undocumented)
     balance: string;
+    buyingLiabilities?: string;
     clawbackEnabled: boolean;
     // (undocumented)
     code: string;

@@ -194,6 +194,22 @@ describe("blockers", () => {
     expect(assessPoolShareBlockers(roomy)).toEqual([]);
   });
 
+  test("what open offers are buying counts against the room, to the stroop", () => {
+    // EURC pays 30 in: limit 100, balance 40, offers buying 30 leaves exactly 30.
+    const at = (buyingLiabilities: string): AccountState =>
+      makeState({
+        poolShares: [share],
+        trustlines: [
+          line(EURC, "40.0000000", { limit: "100.0000000", buyingLiabilities }),
+          line(USDC),
+        ],
+      });
+    expect(assessPoolShareBlockers(at("30.0000000"))).toEqual([]);
+    const [blocker] = assessPoolShareBlockers(at("30.0000001"));
+    expect(blocker?.code).toBe("liquidity_pool_shares_held");
+    expect(blocker?.message).toContain("Cancel those offers or raise the limit");
+  });
+
   test("an XLM side and an asset the account issues need no trustline", () => {
     const own = `OWN:${SOURCE}`;
     const pool = poolState("native", own, 1_000_000_000n, 1_000_000_000n, 1_000_000_000n);
@@ -437,6 +453,28 @@ describe("the pool round", () => {
     expect(
       buildCloseTransactions(ALL_ON, state, DEST, { [USDC]: "issuer" }, "testnet")
     ).rejects.toMatchObject({ code: "close_fee_balance_short" });
+  });
+
+  test("a side the open offers leave no room for at the live reserves is refused, not rebuilt", async () => {
+    // At the read's reserves USDC pays 50 and fits exactly; the pool moved to pay 50.0000001.
+    const live = poolState("native", USDC, 10_000_000_000n, 5_000_000_010n, 7_000_000_000n);
+    serve([live]);
+    const { buildCloseTransactions } = await import("@/lib/close-api/build-transactions");
+    const state = makeState({
+      numSubEntries: 3,
+      trustlines: [
+        line(USDC, "0.0000000", { limit: "80.0000000", buyingLiabilities: "30.0000000" }),
+      ],
+      poolShares: [poolShare(XLM_USDC, "70.0000000")],
+    });
+    snapshot = state.trustlines;
+    expect(
+      buildCloseTransactions(ALL_ON, state, DEST, { [USDC]: "issuer" }, "testnet")
+    ).rejects.toMatchObject({ code: "liquidity_pool_shares_held" });
+
+    serve([XLM_USDC]);
+    const fits = await buildCloseTransactions(ALL_ON, state, DEST, { [USDC]: "issuer" }, "testnet");
+    expect(fits.transactions[0]!.covers).toEqual(["WITHDRAW_POOL_SHARES"]);
   });
 
   test("more pools than one round holds carry on in the next call", async () => {

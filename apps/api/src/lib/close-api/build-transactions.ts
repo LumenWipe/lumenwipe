@@ -103,6 +103,7 @@ import { LiveReadError } from "@/lib/stellar/live-trustline";
 import {
   POOL_ROUND_BATCH_SIZE,
   planPoolWithdrawal,
+  poolSideBlockers,
   proceedsPerAsset,
 } from "@/lib/stellar/tx-builder/pool-withdrawal";
 import { assessIssuance, type IssuanceDeps } from "@/lib/close-api/issuance-preflight";
@@ -623,6 +624,12 @@ export async function buildCloseTransactions(
       if (!pool) throw new LiveReadError(LIQUIDITY_POOLS_LABEL);
       return planPoolWithdrawal(share, pool);
     });
+    // Held to the reserves the round is built at: a side that grew past its line's room since the
+    // read would fail every round built from them.
+    const unwithdrawable = withdrawals.flatMap((w) => poolSideBlockers(w, accountState))[0];
+    if (unwithdrawable) {
+      throw new CloseBuildError("liquidity_pool_shares_held", unwithdrawable.message, 422);
+    }
     // Answers the close can never honour are refused before the first share is withdrawn, as the
     // token round does: what arrives must have somewhere to go, or the account is left half closed.
     const pooled = proceedsPerAsset(withdrawals, accountState.address);

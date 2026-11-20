@@ -67,6 +67,12 @@ export class TrustlineDto implements Trustline {
   })
   limit?: string;
 
+  @ApiPropertyOptional({
+    description:
+      "What the account's open offers are buying of this asset. Only from the Horizon-compatible reader.",
+  })
+  buyingLiabilities?: string;
+
   @ApiProperty({ description: "True only when `authorization` is `authorized`." })
   authorized!: boolean;
 

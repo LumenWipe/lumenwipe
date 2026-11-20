@@ -198,6 +198,7 @@ function toTrustline(b: ApiBalance): Trustline {
     // is indistinguishable from a trustline with no room at all, which would make every
     // transfer into that line look impossible (see hasRoomFor in close-api/transfer-destinations).
     limit: b.limit,
+    ...(b.buying_liabilities === undefined ? {} : { buyingLiabilities: b.buying_liabilities }),
     authorized: authorization === "authorized",
     authorization,
     clawbackEnabled: b.is_clawback_enabled === true,
@@ -597,7 +598,7 @@ export async function readTrustlinesOnly(
   fallbacks: HorizonDeps[] = horizonFallbacksFor(network)
 ): Promise<{
   address: string;
-  trustlines: Array<Trustline & { buyingLiabilities?: string }>;
+  trustlines: Trustline[];
   memoRequired: boolean;
 } | null> {
   return withHorizonFailover(network, deps, fallbacks, async (attempt, isPrimary) => {
@@ -618,9 +619,7 @@ function trustlinesOf(account: ApiAccount, address: string) {
   if (unusable.length > 0) throw new UnusableProviderResponseError(address, unusable);
   return {
     address,
-    trustlines: account.balances
-      .filter(isCreditBalance)
-      .map((b) => ({ ...toTrustline(b), buyingLiabilities: b.buying_liabilities })),
+    trustlines: account.balances.filter(isCreditBalance).map(toTrustline),
     memoRequired: dataValue(account.data, MEMO_REQUIRED_DATA_NAME) === "1",
   };
 }
