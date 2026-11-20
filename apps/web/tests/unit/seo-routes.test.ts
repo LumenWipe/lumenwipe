@@ -94,11 +94,13 @@ const PAGE_TITLES: Record<string, Metadata["title"]> = {
   "/es/blog": "Blog",
   "/es/how-it-works": "Cómo funciona",
   "/es/security": "Seguridad",
+  "/es/security/reports": "Reportes de seguridad",
   "/faq": "FAQ",
   "/how-it-works": "How it works",
   "/playground": "Playground",
   "/registry": "Exchange registry",
   "/security": "Security",
+  "/security/reports": "Security reports",
   "/stats": "Stats",
 };
 

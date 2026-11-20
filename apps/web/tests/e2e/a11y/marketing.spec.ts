@@ -39,6 +39,8 @@ for (const path of [
   "/es/faq",
   "/es/security",
   "/security",
+  "/security/reports",
+  "/es/security/reports",
   "/es/how-it-works",
   "/registry",
   "/content",

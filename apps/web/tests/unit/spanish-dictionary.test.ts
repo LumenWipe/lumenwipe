@@ -11,6 +11,7 @@ import { LANDING } from "@/lib/i18n/messages/landing";
 import { NAV } from "@/lib/i18n/messages/nav";
 import { NOT_FOUND } from "@/lib/i18n/messages/not-found";
 import { SECURITY } from "@/lib/i18n/messages/security";
+import { SECURITY_REPORTS } from "@/lib/i18n/messages/security-reports";
 import { SITE } from "@/lib/i18n/messages/site";
 import { nodeText } from "@/lib/site/node-text";
 
@@ -29,6 +30,7 @@ const SECTIONS: Record<string, { en: unknown; es: unknown }> = {
   nav: NAV,
   "not-found": NOT_FOUND,
   security: SECURITY,
+  "security-reports": SECURITY_REPORTS,
   site: SITE,
 };
 
@@ -72,6 +74,7 @@ const CODE = new Set([
   "not-found.failure",
   "not-found.infoLabel",
   "security.layers.network.sub",
+  "security.disclosure.policyLink",
   "how-it-works.loop.steps.reread.note",
   "how-it-works.loop.steps.simulate.note",
   "how-it-works.plan.opLabel",
@@ -134,6 +137,10 @@ const CALLS: Record<string, unknown[][]> = {
   "landing.problem.body": [["1", "0.5"]],
   "security.lede": [["KEY", "CHECK"]],
   "security.openSource": [[element, element]],
+  "security.fees.network": [["100", "0.00001"]],
+  "security.fees.relay": [["200"]],
+  "security.build.deployed": [[element]],
+  "security.disclosure.body": [[element, element, element]],
   "landing.hero.headline": [[accent]],
   "landing.stats.asOf": [["Nov 2026", element]],
   "landing.problem.truths.exchanges.body": [[1]],

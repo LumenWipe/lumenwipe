@@ -171,6 +171,8 @@ for (const [path, lang] of [
   ["/es/faq", "es-419"],
   ["/security", "en"],
   ["/es/security", "es-419"],
+  ["/security/reports", "en"],
+  ["/es/security/reports", "es-419"],
   ["/how-it-works", "en"],
   ["/es/how-it-works", "es-419"],
   ["/registry", "en"],
@@ -275,4 +277,11 @@ test("the report receiver answers 204 and echoes nothing", async ({ request }) =
   expect(res.status()).toBe(204);
   expect(res.headers()["cache-control"]).toBe("no-store");
   expect(await res.text()).toBe("");
+});
+
+test("security.txt is served as UTF-8 plain text with its contact", async ({ request }) => {
+  const res = await request.get("/.well-known/security.txt");
+  expect(res.status()).toBe(200);
+  expect(res.headers()["content-type"]).toMatch(/^text\/plain; charset=utf-8$/i);
+  expect(await res.text()).toContain("Contact: mailto:security@lumenwipe.com");
 });

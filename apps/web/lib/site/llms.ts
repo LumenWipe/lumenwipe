@@ -55,6 +55,7 @@ export function renderLlmsTxt(siteUrl: string): string {
     "## Links",
     "",
     `- [Security](${site("/security")}): the trust model and the keys on the server`,
+    `- [Security reports](${site("/security/reports")}): every published security report, and the self-assessed threat model and remediation plan until one exists`,
     `- [How it works](${site("/how-it-works")}): the close, step by step`,
     `- [FAQ](${site("/faq")})`,
     `- [Documentation](${DOCS_URL})`,

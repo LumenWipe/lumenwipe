@@ -10,6 +10,9 @@ icon: "clipboard-check"
 > records what three security tools found against the codebase on **2026-09-02** and gives
 > every critical, high, and medium finding a resolution or an explicit accepted-risk
 > rationale, never a silent backlog entry.
+>
+> **Self-assessed.** Written by the LumenWipe maintainers, not by an outside reviewer. Published security reports
+> are listed at [lumenwipe.com/security/reports](https://www.lumenwipe.com/security/reports).
 
 > **Status as of 2026-10-30.** Sections 1 to 6 record the 2026-09-02 pass, Section 7 the 2026-09-29
 > refresh, Section 8 the 2026-10-13 pass (commit `d1ab2cb`) and Section 9 the 2026-10-30 dependency refresh; findings, counts and versions are as of

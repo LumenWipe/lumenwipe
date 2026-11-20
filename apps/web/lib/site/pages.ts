@@ -56,6 +56,7 @@ export const INDEXED_PAGES: readonly IndexedPage[] = [
   { path: "/", priority: 1, changeFrequency: "weekly" },
   { path: "/how-it-works", priority: 0.9, changeFrequency: "monthly" },
   { path: "/security", priority: 0.9, changeFrequency: "monthly" },
+  { path: "/security/reports", priority: 0.6, changeFrequency: "monthly" },
   { path: "/faq", priority: 0.8, changeFrequency: "monthly" },
   { path: "/blog", priority: 0.8, changeFrequency: "weekly" },
   { path: "/content", priority: 0.7, changeFrequency: "weekly" },
@@ -96,6 +97,7 @@ export const SPANISH_PAGES: readonly SpanishPage[] = [
   { path: "/", translated: true },
   { path: "/faq", translated: true },
   { path: "/security", translated: true },
+  { path: "/security/reports", translated: true },
   { path: "/how-it-works", translated: true },
   { path: "/blog", translated: true },
 ];

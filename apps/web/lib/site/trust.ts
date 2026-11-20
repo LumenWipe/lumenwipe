@@ -38,8 +38,18 @@ export function serverKeys(locale: Locale): readonly ServerKey[] {
 
 export const SERVER_KEYS: readonly ServerKey[] = serverKeys(SITE_LOCALE);
 
-/** "Testnet only today." for a key whose feature is not live on mainnet, else "". */
-export function serverKeyScope(key: ServerKey, locale: Locale = SITE_LOCALE): string {
-  const status = feature(key.feature).status;
+/** "Testnet only today." for a feature that is not live on mainnet, else "". */
+export function featureScope(id: FeatureId, locale: Locale = SITE_LOCALE): string {
+  const status = feature(id).status;
   return status === "live" ? "" : SITE[locale].trust.scope(statusLabels(locale)[status]);
 }
+
+/** "Testnet only today." for a key whose feature is not live on mainnet, else "". */
+export function serverKeyScope(key: ServerKey, locale: Locale = SITE_LOCALE): string {
+  return featureScope(key.feature, locale);
+}
+
+/** Where security reports go, as SECURITY.md and /.well-known/security.txt publish it. */
+export const SECURITY_EMAIL = "security@lumenwipe.com";
+export const SECURITY_POLICY_URL = `${REPO_URL}/blob/main/SECURITY.md`;
+export const SECURITY_TXT_PATH = "/.well-known/security.txt";
