@@ -10,9 +10,13 @@ import {
   scriptHash,
   WEBUSB_PATHS,
 } from "../../../scripts/marketing-csp.mjs";
+import { routeUmamiCollector } from "./fixtures";
 
 // Headers do not depend on the viewport: one project is enough.
-test.beforeEach(() => test.skip(test.info().project.name !== "desktop", "viewport-independent"));
+test.beforeEach(async ({ page }) => {
+  test.skip(test.info().project.name !== "desktop", "viewport-independent");
+  await routeUmamiCollector(page);
+});
 
 const readJson = (file: string) => JSON.parse(readFileSync(file, "utf8"));
 const NEXT_DIR = join(process.cwd(), ".next");
@@ -145,6 +149,33 @@ test("every marketing page loads the pinned Umami tracker with its redaction, re
       path
     ).toMatch(/^script-src 'self'( 'sha256-[A-Za-z0-9+/=]+')+$/);
     expect(directives, path).toContain("connect-src 'self' https://gateway.umami.is");
+  }
+});
+
+test("a marketing page reports its view to Umami with no query, fragment or account", async ({
+  page,
+}) => {
+  const beacons = await routeUmamiCollector(page);
+  const account = "GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUVW";
+  await page.goto(`/faq?source=${account}#${account}`);
+  if (!UMAMI_ID) {
+    await page.waitForLoadState("networkidle");
+    expect(beacons).toEqual([]);
+    return;
+  }
+  await expect.poll(() => beacons.length).toBeGreaterThan(0);
+  for (const beacon of beacons) {
+    expect(beacon.method()).toBe("POST");
+    expect(new URL(beacon.url()).pathname).toBe("/api/send");
+    const { payload } = beacon.postDataJSON() as {
+      payload: { website: string; url: string; referrer?: string };
+    };
+    expect(payload.website).toBe(UMAMI_ID);
+    const url = new URL(payload.url, page.url());
+    expect(url.pathname).toBe("/faq");
+    expect(url.search).toBe("");
+    expect(url.hash).toBe("");
+    expect(JSON.stringify(payload)).not.toContain(account);
   }
 });
 
