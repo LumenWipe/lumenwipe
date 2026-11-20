@@ -53,9 +53,9 @@ const items = (ctx: FaqFacts): readonly FaqItem[] => [
     a: (
       <>
         No. The final merge permanently removes the account from the Stellar ledger. Because the
-        action is irreversible, LumenWipe shows the complete plan up front, simulates each step, and
-        asks for explicit confirmation (with the raw transaction available to review) before every
-        signature.
+        action is irreversible, LumenWipe shows the complete plan up front, your browser checks
+        every transaction before you sign it, and each signature waits for your explicit
+        confirmation. Soroban steps are also simulated when they are built.
       </>
     ),
   },
@@ -139,8 +139,8 @@ const items = (ctx: FaqFacts): readonly FaqItem[] => [
         Both. Run the entire flow on testnet with no real funds at risk to see exactly what will
         happen, then switch to mainnet for the real close.{" "}
         <span data-site-status="testnet-only">{ctx.testnetOnlySentence}</span> Closing an account on
-        mainnet is irreversible and entirely at your own risk: review each step, the simulation
-        result, and the destination address before you sign anything.
+        mainnet is irreversible and entirely at your own risk: review each step and the destination
+        address before you sign anything.
       </>
     ),
   },
@@ -192,8 +192,9 @@ const esItems = (ctx: FaqFacts): readonly FaqItem[] => [
       <>
         No. El merge final (fusión que cierra la cuenta y envía su saldo) elimina la cuenta del
         ledger de Stellar para siempre. Como la acción es irreversible, LumenWipe te muestra el plan
-        completo desde el principio, simula cada paso y te pide una confirmación explícita (con la
-        transacción en bruto disponible para revisar) antes de cada firma.
+        completo desde el principio, tu navegador verifica cada transacción antes de que la firmes y
+        cada firma espera tu confirmación explícita. Los pasos de Soroban además se simulan cuando
+        se arman.
       </>
     ),
   },
@@ -281,8 +282,8 @@ const esItems = (ctx: FaqFacts): readonly FaqItem[] => [
         Las dos. Haz todo el flujo en testnet, sin fondos reales en riesgo, para ver exactamente qué
         va a pasar, y después cambia a mainnet para el cierre real.{" "}
         <span data-site-status="testnet-only">{ctx.testnetOnlySentence}</span> Cerrar una cuenta en
-        mainnet es irreversible y corre por tu cuenta y riesgo: revisa cada paso, el resultado de la
-        simulación y la dirección de destino antes de firmar.
+        mainnet es irreversible y corre por tu cuenta y riesgo: revisa cada paso y la dirección de
+        destino antes de firmar.
       </>
     ),
   },

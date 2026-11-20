@@ -20,7 +20,7 @@ The full wind-down runs. The API reads account state from the sources described 
 
 ## How it works
 
-Analyze the account, generate a deterministic ordered plan, execute it step by step with explicit confirmation, then merge. A full close is several sequential transactions, so the tool shows the complete plan up front and simulates each step before asking for a signature. A resumable session exists only after the user confirms the plan; see [how closing works](/guides/how-closing-works#interruptions-are-safe).
+Analyze the account, generate a deterministic ordered plan, execute it step by step with explicit confirmation, then merge. A full close is several sequential transactions, so the tool shows the complete plan up front and checks each transaction in the browser before asking for a signature, simulating Soroban steps as they are built. A resumable session exists only after the user confirms the plan; see [how closing works](/guides/how-closing-works#interruptions-are-safe).
 
 ## Technical pillars
 
@@ -28,7 +28,7 @@ Analyze the account, generate a deterministic ordered plan, execute it step by s
 - No bespoke indexer. Stellar RPC reads live state, simulates, and submits; existing indexers handle enumeration and classic path finding, and OctoPos provides DeFi position detection (sources are listed in [the architecture](/architecture#5-data-sources-and-why-we-run-no-indexer)).
 - Per-protocol exit adapters and a versioned contract registry. Detect positions with the DeFi Position API, build the exit with each protocol's SDK, public API, or contract, and simulate before signing. A protocol upgrade is a registry update, not a rewrite.
 - CEX compatibility through a shared mediator account and an atomic forwarding payment, since exchanges do not support `ACCOUNT_MERGE`. The user recovers essentially all of their XLM.
-- Safety for irreversible operations. Per-step confirmation, simulation before signing, resumable sessions reconciled against on-chain state, and security reviews throughout development.
+- Safety for irreversible operations. Per-step confirmation, simulation of Soroban steps before signing, resumable sessions reconciled against on-chain state, and security reviews throughout development.
 
 ## What it covers
 
