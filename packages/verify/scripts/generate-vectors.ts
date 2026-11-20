@@ -26,6 +26,7 @@ import {
   nativeToScVal,
   Networks,
   Operation,
+  StrKey,
   TransactionBuilder,
   xdr,
 } from "@stellar/stellar-sdk";
@@ -524,40 +525,118 @@ reject(
   "A trustline change names a liquidity pool your account holds no shares in."
 );
 
-// --- The sponsorship of a pool share trustline on another account, revoked before the merge ---
+// --- Sponsorships of entries on other accounts, revoked before the merge ----------------------
 
-const revokePoolLineSponsorship = (account = FRIEND, poolId = POOL_ID) =>
-  Operation.revokeTrustlineSponsorship({ account, asset: new LiquidityPoolId(poolId) });
+const PRE_AUTH = hash(Buffer.from("lumenwipe close-v1 pre-auth signer"));
+const HASH_X = hash(Buffer.from("lumenwipe close-v1 hash-x signer"));
+const SPONSORED_OFFER = "4815162342";
+const SPONSORED_DATA = "config";
+const sponsored = {
+  account: { kind: "account", owner: FRIEND },
+  trustline: { kind: "trustline", owner: FRIEND, asset: USDC_KEY },
+  poolLine: { kind: "pool_share_trustline", owner: FRIEND, poolId: POOL_ID },
+  offer: { kind: "offer", owner: FRIEND, offerId: SPONSORED_OFFER },
+  data: { kind: "data_entry", owner: FRIEND, name: SPONSORED_DATA },
+  ed25519: { kind: "signer", owner: FRIEND, signerKey: COSIGNER },
+  preAuth: { kind: "signer", owner: FRIEND, signerKey: StrKey.encodePreAuthTx(PRE_AUTH) },
+  hashX: { kind: "signer", owner: FRIEND, signerKey: StrKey.encodeSha256Hash(HASH_X) },
+} as const;
+const revokes = (owner: string) => ({
+  account: Operation.revokeAccountSponsorship({ account: owner }),
+  trustline: Operation.revokeTrustlineSponsorship({ account: owner, asset: USDC }),
+  poolLine: Operation.revokeTrustlineSponsorship({
+    account: owner,
+    asset: new LiquidityPoolId(POOL_ID),
+  }),
+  offer: Operation.revokeOfferSponsorship({ seller: owner, offerId: SPONSORED_OFFER }),
+  data: Operation.revokeDataSponsorship({ account: owner, name: SPONSORED_DATA }),
+  ed25519: Operation.revokeSignerSponsorship({
+    account: owner,
+    signer: { ed25519PublicKey: COSIGNER },
+  }),
+  preAuth: Operation.revokeSignerSponsorship({ account: owner, signer: { preAuthTx: PRE_AUTH } }),
+  hashX: Operation.revokeSignerSponsorship({ account: owner, signer: { sha256Hash: HASH_X } }),
+});
+const friendRevokes = revokes(FRIEND);
+const otherRevokes = revokes(OTHER_ACCOUNT);
+type SponsoredKind = keyof typeof sponsored;
+const sponsoredKinds = Object.keys(sponsored) as SponsoredKind[];
+const SPONSORSHIP_UNKNOWN_MESSAGE =
+  "A sponsorship revoke names an entry your account is not known to sponsor.";
 
-const poolLineSponsorshipRevoke = accept(
-  "pool-share-line-sponsorship-revoke",
-  "Revokes the sponsorship of the XLM/USDC pool share trustline the account read shows this account sponsoring on another account, then merges.",
-  build([revokePoolLineSponsorship(), merge()]),
-  expectation({ sponsoredPoolShareLines: { [FRIEND]: [POOL_ID] } })
+const sponsorshipRevokes = accept(
+  "sponsorship-revokes",
+  "Revokes the sponsorship of one entry of every kind the account read shows this account sponsoring on another account (its account, an asset trustline, a pool share trustline, an offer, a data entry, and an ed25519, a pre-authorized transaction and a hash signer), then merges.",
+  build([...sponsoredKinds.map((kind) => friendRevokes[kind]), merge()]),
+  expectation({ sponsoredEntries: Object.values(sponsored) })
+);
+for (const kind of sponsoredKinds) {
+  const others = sponsoredKinds.filter((k) => k !== kind).map((k) => friendRevokes[k]);
+  reject(
+    sponsorshipRevokes,
+    `sponsorship-revoke-${kind}-other-account`,
+    `Revokes the sponsorship of the same ${kind} entry on another account, which this account is not known to sponsor.`,
+    build([...others, otherRevokes[kind], merge()]),
+    "sponsorship_revoke_unknown",
+    SPONSORSHIP_UNKNOWN_MESSAGE
+  );
+  reject(
+    sponsorshipRevokes,
+    `sponsorship-revoke-${kind}-twice`,
+    `Revokes the sponsorship of the same ${kind} entry twice.`,
+    build([...sponsoredKinds.map((k) => friendRevokes[k]), friendRevokes[kind], merge()]),
+    "sponsorship_revoke_duplicate",
+    "The transaction would revoke the sponsorship of the same entry more than once."
+  );
+}
+reject(
+  sponsorshipRevokes,
+  "sponsorship-revoke-other-asset",
+  "Revokes the sponsorship of the same account's EURT trustline, which this account is not known to sponsor.",
+  build([Operation.revokeTrustlineSponsorship({ account: FRIEND, asset: EURT }), merge()]),
+  "sponsorship_revoke_unknown",
+  SPONSORSHIP_UNKNOWN_MESSAGE
 );
 reject(
-  poolLineSponsorshipRevoke,
-  "pool-share-line-sponsorship-other-pool",
+  sponsorshipRevokes,
+  "sponsorship-revoke-other-pool",
   "Revokes the sponsorship of the same account's share trustline in the EURT/USDC pool, which this account is not known to sponsor.",
-  build([revokePoolLineSponsorship(FRIEND, poolIdOf(EURT_USDC_POOL)), merge()]),
-  "pool_line_sponsorship_unknown",
-  "A sponsorship revoke names a pool share trustline your account is not known to sponsor."
+  build([
+    Operation.revokeTrustlineSponsorship({
+      account: FRIEND,
+      asset: new LiquidityPoolId(poolIdOf(EURT_USDC_POOL)),
+    }),
+    merge(),
+  ]),
+  "sponsorship_revoke_unknown",
+  SPONSORSHIP_UNKNOWN_MESSAGE
 );
 reject(
-  poolLineSponsorshipRevoke,
-  "pool-share-line-sponsorship-other-account",
-  "Revokes the sponsorship of another account's share trustline in the same pool.",
-  build([revokePoolLineSponsorship(OTHER_ACCOUNT), merge()]),
-  "pool_line_sponsorship_unknown",
-  "A sponsorship revoke names a pool share trustline your account is not known to sponsor."
+  sponsorshipRevokes,
+  "sponsorship-revoke-other-offer",
+  "Revokes the sponsorship of another offer of the same account.",
+  build([Operation.revokeOfferSponsorship({ seller: FRIEND, offerId: "4815162343" }), merge()]),
+  "sponsorship_revoke_unknown",
+  SPONSORSHIP_UNKNOWN_MESSAGE
 );
 reject(
-  poolLineSponsorshipRevoke,
-  "pool-share-line-sponsorship-twice",
-  "Revokes the sponsorship of the same pool share trustline twice.",
-  build([revokePoolLineSponsorship(), revokePoolLineSponsorship(), merge()]),
-  "pool_line_sponsorship_duplicate",
-  "The transaction would revoke the sponsorship of the same pool share trustline more than once."
+  sponsorshipRevokes,
+  "sponsorship-revoke-other-data-name",
+  "Revokes the sponsorship of another data entry of the same account.",
+  build([Operation.revokeDataSponsorship({ account: FRIEND, name: "config2" }), merge()]),
+  "sponsorship_revoke_unknown",
+  SPONSORSHIP_UNKNOWN_MESSAGE
+);
+reject(
+  sponsorshipRevokes,
+  "sponsorship-revoke-other-signer",
+  "Revokes the sponsorship of another signer of the same account.",
+  build([
+    Operation.revokeSignerSponsorship({ account: FRIEND, signer: { ed25519PublicKey: SOURCE } }),
+    merge(),
+  ]),
+  "sponsorship_revoke_unknown",
+  SPONSORSHIP_UNKNOWN_MESSAGE
 );
 
 // --- A multisig close -----------------------------------------------------------------------

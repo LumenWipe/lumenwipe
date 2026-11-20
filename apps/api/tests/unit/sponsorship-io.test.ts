@@ -1,13 +1,23 @@
 import { afterAll, afterEach, beforeAll, expect, mock, spyOn, test } from "bun:test";
-import { Keypair, xdr } from "@stellar/stellar-sdk";
+import {
+  Account,
+  hash,
+  Keypair,
+  Networks,
+  StrKey,
+  TransactionBuilder,
+  xdr,
+} from "@stellar/stellar-sdk";
 import { PATH_ROUTING_API_URLS } from "@/config/networks";
 import { poolShareTrustlineKey } from "@/lib/stellar/live-ledger";
+import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import * as rpcModule from "@/lib/stellar/rpc";
 import {
   enumerateSponsoredEntries,
   fetchOwnerLiveState,
   fetchOwnerLiveStatesBounded,
 } from "@/lib/stellar/sponsorship";
+import { revokeSponsorshipOps } from "@/lib/stellar/tx-builder/sponsorship";
 import { fakeFetch } from "../support/fetch";
 
 // sponsorship.ts reads its Horizon-compatible base URL from PATH_ROUTING_API_URLS, which
@@ -611,4 +621,58 @@ test("enumerateSponsoredEntries › a pool share line sponsored by someone else 
 
   expect(result.sponsoredEntries).toEqual([]);
   expect(result.sponsorshipEnumerationIncomplete).toBe(true);
+});
+
+test("enumerateSponsoredEntries › a sponsored T or X signer is revoked under the strkey the read lists", async () => {
+  const sponsor = Keypair.random().publicKey();
+  const owner = Keypair.random().publicKey();
+  const preAuth = StrKey.encodePreAuthTx(hash(Buffer.from("pre-auth signer")));
+  const hashX = StrKey.encodeSha256Hash(hash(Buffer.from("hash-x signer")));
+  globalThis.fetch = routedFetch([
+    [
+      `/accounts/${sponsor}/operations`,
+      () =>
+        jsonResponse({
+          _embedded: {
+            records: [preAuth, hashX].map((key) => ({
+              type: "set_options",
+              source_account: owner,
+              sponsor,
+              signer_key: key,
+            })),
+          },
+        }),
+    ],
+    [`/claimable_balances`, () => jsonResponse({ _embedded: { records: [] } })],
+    [`/accounts/${owner}/offers`, () => jsonResponse({ _embedded: { records: [] } })],
+    [
+      `/accounts/${owner}`,
+      () =>
+        jsonResponse({
+          subentry_count: 2,
+          balances: [{ asset_type: "native", balance: "5.0000000" }],
+          signers: [
+            { key: owner, weight: 1, type: "ed25519_public_key" },
+            { key: preAuth, weight: 1, type: "preauth_tx", sponsor },
+            { key: hashX, weight: 1, type: "sha256_hash", sponsor },
+          ],
+        }),
+    ],
+  ]);
+
+  const { sponsoredEntries } = await enumerateSponsoredEntries(sponsor, "testnet", 2, true);
+  expect(sponsoredEntries).toEqual([
+    { kind: "signer", owner, signerKey: preAuth },
+    { kind: "signer", owner, signerKey: hashX },
+  ]);
+
+  const builder = new TransactionBuilder(new Account(sponsor, "1"), {
+    fee: "300",
+    networkPassphrase: Networks.TESTNET,
+  });
+  for (const op of revokeSponsorshipOps(sponsoredEntries)) builder.addOperation(op);
+  const intent = intentFromXdr(builder.setTimeout(60).build().toXDR(), Networks.TESTNET);
+  expect(
+    intent.operations.map((op) => (op.type === "revoke_sponsorship" ? op.signerKey : null))
+  ).toEqual([preAuth, hashX]);
 });

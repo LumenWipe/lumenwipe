@@ -9870,6 +9870,22 @@
           "poolId": {
             "type": "string",
             "description": "The 64-character hex pool id of a pool share trustline. Absent otherwise."
+          },
+          "asset": {
+            "type": "string",
+            "description": "A trustline's asset, as CODE:ISSUER. Absent otherwise."
+          },
+          "offerId": {
+            "type": "string",
+            "description": "An offer's id, in decimal. Absent otherwise."
+          },
+          "name": {
+            "type": "string",
+            "description": "A data entry's name. Absent otherwise, or when the name is not valid UTF-8."
+          },
+          "signerKey": {
+            "type": "string",
+            "description": "A signer's key, as a strkey (G, T, X or P). Absent otherwise."
           }
         },
         "required": [

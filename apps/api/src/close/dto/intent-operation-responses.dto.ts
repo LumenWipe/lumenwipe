@@ -201,6 +201,27 @@ export class RevokeSponsorshipOpDto {
     description: "The 64-character hex pool id of a pool share trustline. Absent otherwise.",
   })
   poolId?: string;
+
+  @ApiProperty({
+    required: false,
+    description: "A trustline's asset, as CODE:ISSUER. Absent otherwise.",
+  })
+  asset?: string;
+
+  @ApiProperty({ required: false, description: "An offer's id, in decimal. Absent otherwise." })
+  offerId?: string;
+
+  @ApiProperty({
+    required: false,
+    description: "A data entry's name. Absent otherwise, or when the name is not valid UTF-8.",
+  })
+  name?: string;
+
+  @ApiProperty({
+    required: false,
+    description: "A signer's key, as a strkey (G, T, X or P). Absent otherwise.",
+  })
+  signerKey?: string;
 }
 
 export class InvokeHostFunctionOpDto {

@@ -48,6 +48,7 @@ await runClose({
         tokenTransfers: {},
         classicConversions: {},
         tokenConversions: {},
+        sponsoredEntries: account.sponsoredEntries,
         ...exitExpectations(account, "testnet"),
       },
     }),
@@ -117,6 +118,8 @@ try {
 | Removal       | `trustline_not_removal`                 | A trustline is created or raised.                                                                           |
 | Removal       | `data_entry_not_removal`                | A data entry is written.                                                                                    |
 | Removal       | `offer_not_cancellation`                | An offer is created.                                                                                        |
+| Sponsorship   | `sponsorship_revoke_unknown`            | A sponsorship revoke names an entry the account read does not list as sponsored by this account.            |
+| Sponsorship   | `sponsorship_revoke_duplicate`          | A sponsorship revoke names the same entry twice in one transaction.                                         |
 | SetOptions    | `signer_added`                          | A signer is added or given more weight.                                                                     |
 | SetOptions    | `signer_unknown`                        | A signer is touched that was not on the account at the last read.                                           |
 | SetOptions    | `master_weight_changed`                 | The master key's weight changes.                                                                            |
@@ -157,6 +160,7 @@ try {
 | `claimTrustlineAssets`                                                  | The `CODE:ISSUER` of each claimable balance the user chose to claim into a new trustline.                                                  |
 | `source`, `nativeBalance`, `accountSigners`, `accountThresholds`        | The account read the user reviewed (`client.getAccount`). Empty signers fail closed.                                                       |
 | The DeFi fields                                                         | `exitExpectations(account, network)`, from the same read and the contract registry bundled in the package. With no read, every exit fails. |
+| `sponsoredEntries`                                                      | The same read's `sponsoredEntries`, as is. Omitted, every sponsorship revoke is refused.                                                   |
 
 Never take an input from the transaction under verification or from its `intent` summary. The values from the account read come from the same API that builds the transaction, so they catch a builder bug or a partial compromise, not an API that keeps both consistent.
 

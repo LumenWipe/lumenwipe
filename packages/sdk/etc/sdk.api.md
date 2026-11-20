@@ -837,6 +837,10 @@ export type IntentOperationBody = {
     entryKind: "account" | "trustline" | "offer" | "data_entry" | "signer";
     owner: string;
     poolId?: string;
+    asset?: string;
+    offerId?: string;
+    name?: string;
+    signerKey?: string;
 } | {
     type: "invoke_host_function";
     contract: string;

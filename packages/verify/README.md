@@ -52,6 +52,7 @@ await runClose({
         tokenTransfers: {},
         classicConversions: {},
         tokenConversions: {},
+        sponsoredEntries: account.sponsoredEntries,
         ...exitExpectations(account, "testnet"),
       },
       servedRegistry,
@@ -70,6 +71,7 @@ Never from the transaction under verification, and never from the API's `intent`
 | `claimTrustlineAssets`                                                  | The `CODE:ISSUER` of each claimable balance the user chose to claim.                                               |
 | `source`, `nativeBalance`, `accountSigners`, `accountThresholds`        | The account read the user reviewed (`client.getAccount`, or a round's `sourceAccount`). Empty signers fail closed. |
 | The DeFi fields (`exitContracts` and the rest)                          | `exitExpectations(account, network)`: the same read plus the contract registry bundled here.                       |
+| `sponsoredEntries`                                                      | The same read's `sponsoredEntries`, as is. Omitted, every sponsorship revoke is refused.                           |
 
 Whether a destination is a listed exchange, whether it needs a memo and of which type, and
 whether the merge must go through the shared intermediary are not inputs. The verifier derives

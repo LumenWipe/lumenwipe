@@ -696,7 +696,7 @@ describe("what a playground close never contains", () => {
 
   test("a sponsorship revocation the session did not record is refused", () => {
     const op = Operation.revokeDataSponsorship({ account: demo, name: "promo_code" });
-    expect(outcome(envelope([op]))).toBe("revoke_not_recorded");
+    expect(outcome(envelope([op]))).toBe("sponsorship_revoke_unknown");
   });
 });
 
@@ -752,13 +752,13 @@ describe("the playground's close operation types", () => {
     );
   });
 
-  test("a type the shared anchor allows but no scenario creates is refused", () => {
+  test("a revoke of a kind no scenario sponsors is refused", () => {
     for (const op of [
       Operation.revokeAccountSponsorship({ account: demo }),
       Operation.revokeOfferSponsorship({ seller: demo, offerId: "1" }),
       Operation.revokeSignerSponsorship({ account: demo, signer: { ed25519PublicKey: forgotten } }),
     ]) {
-      expect(outcome(envelope([op]))).toBe("operation_not_allowed");
+      expect(outcome(envelope([op]), claimsExpectation())).toBe("sponsorship_revoke_unknown");
     }
   });
 });
@@ -1145,7 +1145,7 @@ describe("sponsorships the session recorded", () => {
       revokeData(beneficiary, "promo_code"),
       revokeData(demo, "sponsored_by_demo"),
     ]) {
-      expect(outcome(envelope([op]), claimsExpectation())).toBe("revoke_not_recorded");
+      expect(outcome(envelope([op]), claimsExpectation())).toBe("sponsorship_revoke_unknown");
     }
   });
 
@@ -1157,7 +1157,7 @@ describe("sponsorships the session recorded", () => {
 
   test("a second revoke of one entry is refused", () => {
     const op = revokeData(beneficiary, "sponsored_by_demo");
-    expect(outcome(envelope([op, op]), claimsExpectation())).toBe("revoke_duplicate");
+    expect(outcome(envelope([op, op]), claimsExpectation())).toBe("sponsorship_revoke_duplicate");
   });
 
   test("a claimable balance's sponsorship is never revoked", () => {
@@ -1272,18 +1272,25 @@ describe("the API's real transactions for the claims and sponsoring recipes", ()
         sponsoring.transactions[0]!,
         claimsRecipeExpectation(sponsoring, { beneficiary: Keypair.random().publicKey() })
       )
-    ).toBe("revoke_not_recorded");
+    ).toBe("sponsorship_revoke_unknown");
   });
 });
 
-describe("pool share trustline sponsorships", () => {
-  test("the shared expectation records none, so a revoke of one is refused", () => {
+describe("the shared expectation's sponsored entries", () => {
+  test("are exactly the entries the session recorded the demo sponsoring", () => {
+    expect(sharedExpectation(claimsExpectation()).sponsoredEntries).toEqual([
+      { kind: "trustline", owner: beneficiary, asset: `PERK:${perkIssuer}` },
+      { kind: "data_entry", owner: beneficiary, name: "sponsored_by_demo" },
+    ]);
+    expect(sharedExpectation(expectation()).sponsoredEntries).toEqual([]);
+  });
+
+  test("record no pool share trustline, so a revoke of one is refused", () => {
     const poolId = "d714bc2e56f74a4a4de2e81284a35b6fe09582f081bf785fc698310895c2d845";
-    expect(sharedExpectation(claimsExpectation()).sponsoredPoolShareLines).toEqual({});
     const op = Operation.revokeTrustlineSponsorship({
       account: beneficiary,
       asset: new LiquidityPoolId(poolId),
     });
-    expect(outcome(envelope([op]), claimsExpectation())).toBe("pool_line_sponsorship_unknown");
+    expect(outcome(envelope([op]), claimsExpectation())).toBe("sponsorship_revoke_unknown");
   });
 });

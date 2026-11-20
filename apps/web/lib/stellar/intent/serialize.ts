@@ -1,6 +1,12 @@
-import { TransactionBuilder, StrKey, type Asset, type Transaction } from "@stellar/stellar-sdk";
+import {
+  TransactionBuilder,
+  StrKey,
+  type Asset,
+  type Transaction,
+  type xdr,
+} from "@stellar/stellar-sdk";
 import { describeInvocation } from "./invocation";
-import { toBase64, toHex } from "@/lib/stellar/hex";
+import { fromHex, toBase64, toHex } from "@/lib/stellar/hex";
 import { VerificationError } from "@/lib/stellar/verification-error";
 import type { AccountSigner } from "@/types/account";
 import type { IntentOperation, IntentOperationBody, TxIntent } from "@/types/close-api";
@@ -79,10 +85,49 @@ function decodeSigner(signer: NonNullable<DecodedSetOptions["signer"]>): Account
   return null;
 }
 
+type DecodedRevokeSigner = Extract<
+  Transaction["operations"][number],
+  { type: "revokeSignerSponsorship" }
+>["signer"];
+
+// The SDK reads a revoked T or X signer back as hex, while an account read names it by strkey.
+const keyBytes = (value: Uint8Array | string): Uint8Array =>
+  typeof value === "string" ? fromHex(value) : value;
+
+function revokedSignerKey(signer: DecodedRevokeSigner): string {
+  if ("ed25519PublicKey" in signer) return signer.ed25519PublicKey!;
+  if ("ed25519SignedPayload" in signer) return signer.ed25519SignedPayload!;
+  if ("preAuthTx" in signer) return StrKey.encodePreAuthTx(keyBytes(signer.preAuthTx!));
+  return StrKey.encodeSha256Hash(keyBytes(signer.sha256Hash!));
+}
+
+// From the raw bytes: the SDK's own decode replaces invalid UTF-8, so two different names could
+// read back as the same string. A name that is not valid UTF-8 is left out and the revoke refused.
+function revokedDataName(raw: xdr.Operation | undefined): string | undefined {
+  const body = raw?.body;
+  const revoke = body?.type === "revokeSponsorship" ? body.revokeSponsorshipOp : undefined;
+  const key = revoke?.type === "revokeSponsorshipLedgerEntry" ? revoke.ledgerKey : undefined;
+  if (key?.type !== "data") return undefined;
+  try {
+    return STRICT_UTF8.decode(key.data.dataName.bytes);
+  } catch {
+    return undefined;
+  }
+}
+
+function rawOperations(tx: Transaction): xdr.Operation[] {
+  const envelope = tx.toEnvelope();
+  if (envelope.type === "envelopeTypeTxV0") return envelope.v0.tx.operations;
+  return envelope.type === "envelopeTypeTx" ? envelope.v1.tx.operations : [];
+}
+
 // Normalizes a single SDK operation to the safety-critical fields the intent declares.
 // Returns null for operation types the close flow never emits, so they cannot smuggle
 // effects past verification unnoticed.
-function normalizeOp(op: Transaction["operations"][number]): IntentOperationBody {
+function normalizeOp(
+  op: Transaction["operations"][number],
+  raw: xdr.Operation | undefined
+): IntentOperationBody {
   switch (op.type) {
     case "pathPaymentStrictSend":
       return {
@@ -166,13 +211,32 @@ function normalizeOp(op: Transaction["operations"][number]): IntentOperationBody
             owner: op.account,
             poolId: op.asset.getLiquidityPoolId(),
           }
-        : { type: "revoke_sponsorship", entryKind: "trustline", owner: op.account };
+        : {
+            type: "revoke_sponsorship",
+            entryKind: "trustline",
+            owner: op.account,
+            asset: assetToString(op.asset),
+          };
     case "revokeOfferSponsorship":
-      return { type: "revoke_sponsorship", entryKind: "offer", owner: op.seller };
-    case "revokeDataSponsorship":
-      return { type: "revoke_sponsorship", entryKind: "data_entry", owner: op.account };
+      return {
+        type: "revoke_sponsorship",
+        entryKind: "offer",
+        owner: op.seller,
+        offerId: op.offerId,
+      };
+    case "revokeDataSponsorship": {
+      const name = revokedDataName(raw);
+      return name === undefined
+        ? { type: "revoke_sponsorship", entryKind: "data_entry", owner: op.account }
+        : { type: "revoke_sponsorship", entryKind: "data_entry", owner: op.account, name };
+    }
     case "revokeSignerSponsorship":
-      return { type: "revoke_sponsorship", entryKind: "signer", owner: op.account };
+      return {
+        type: "revoke_sponsorship",
+        entryKind: "signer",
+        owner: op.account,
+        signerKey: revokedSignerKey(op.signer),
+      };
     case "invokeHostFunction":
       return describeInvocation(op);
     default:
@@ -195,8 +259,9 @@ export function intentFromXdr(xdr: string, networkPassphrase: string): TxIntent 
   // `op.source ?? tx.source` is the account an operation acts as. Carrying it per operation is
   // what lets verification check relationships between operations - that the account which
   // received a merge is the one forwarding the payment - instead of trusting each in isolation.
-  const operations: IntentOperation[] = tx.operations.map((op) => ({
-    ...normalizeOp(op),
+  const raw = rawOperations(tx);
+  const operations: IntentOperation[] = tx.operations.map((op, index) => ({
+    ...normalizeOp(op, raw[index]),
     source: op.source ?? tx.source,
   }));
 

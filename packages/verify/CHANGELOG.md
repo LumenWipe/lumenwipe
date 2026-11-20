@@ -21,17 +21,22 @@ release is cut.
   `pool_withdraw_min_above_reserves` and `pool_line_mismatch`. A new accepted vector withdraws
   from a pool, with rejected mutations for a swapped pool, a changed share amount, a zero, a low
   and an inflated minimum, and the removal of another pool's share line.
-- Revokes of a liquidity pool share trustline's sponsorship. `verify()` accepts one only for a
-  line in the new optional `sponsoredPoolShareLines` expectation (per sponsored account, the hex
-  pool ids the account read shows this account sponsoring), at most once per transaction. Without
-  `sponsoredPoolShareLines` every such revoke is refused. Build it with the new
-  `sponsoredPoolShareLineExpectations` from the account read. New codes:
-  `pool_line_sponsorship_unknown` and `pool_line_sponsorship_duplicate`. A new accepted vector
-  revokes a sponsored pool share line before the merge, with rejected mutations for another pool,
-  another account and a second revoke of the same line.
+- Sponsorship revokes of a liquidity pool share trustline, alongside every other kind (see
+  Changed). A new accepted vector revokes one sponsorship of each kind before the merge: an
+  account, an asset trustline, a pool share trustline, an offer, a data entry, and an ed25519, a
+  pre-authorized transaction and a hash signer. Its rejected mutations name the same entry on
+  another account and the same entry twice, for each kind, then another asset, pool, offer, data
+  name and signer of the same account.
+- `SponsoredEntry` is exported, the type of an account read's `sponsoredEntries`.
 
 ### Changed
 
+- **Breaking:** `verify()` accepts a sponsorship revoke of any kind only for an entry in the new
+  optional `sponsoredEntries` expectation, matched by kind, owner and key (the asset, the pool id,
+  the offer id, the data name, the signer's strkey), at most once per transaction. Without
+  `sponsoredEntries` every sponsorship revoke is refused, where 0.6.0 accepted every one. A data name that is not valid UTF-8 names no entry. New codes:
+  `sponsorship_revoke_unknown` and `sponsorship_revoke_duplicate`. To migrate, pass the account
+  read's list as is: `sponsoredEntries: account.sponsoredEntries`.
 - `verify()` refuses the mediator hand-off when the observed native balance is not above the
   0.01 XLM tolerance (`mediator_forward_balance_unknown`). Below it the forward floor was zero or
   negative, so a check run with no balance read (`nativeBalance: "0"`) accepted any forward. A new

@@ -24,7 +24,8 @@ version number before 0.4.0. Neither has a git tag.
 
 - Sponsorships of liquidity pool share trustlines. `SponsoredEntry` gains the additive kind
   `pool_share_trustline` (`owner` and the hex `poolId`), and the `revoke_sponsorship` operation of
-  `IntentOperationBody` gains an optional `poolId` when it revokes a pool share trustline. An
+  `IntentOperationBody` gains an optional `poolId` when it revokes a pool share trustline, and
+  `asset`, `offerId`, `name` or `signerKey` for the entry every other revoke names. An
   account that sponsors a pool share trustline on another account now has that sponsorship
   revoked in its close, when the other account can hold the line's 2 base reserves itself,
   instead of being refused with `sponsorship_unenumerated`.

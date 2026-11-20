@@ -20,7 +20,6 @@ import {
 import {
   assertCloseIntent,
   poolWithdrawalExpectations,
-  sponsoredPoolShareLineExpectations,
   verifyCloseTransaction,
   VerificationError,
   type CloseExpectation,
@@ -37,7 +36,7 @@ import { activeRegistry, bundledRegistry, setRegistry } from "@/lib/exchange-reg
 import { MAX_EXTENSION_DAYS } from "@/lib/exchange-registry/merge";
 import { confirmedMemo } from "@/lib/plan/memo-field";
 import { exitExpectations } from "@/lib/stellar/exit-expectations";
-import type { AccountState } from "@/types/account";
+import type { AccountState, SponsoredEntry } from "@/types/account";
 import type { BlendBorrowPosition, BlendSupplyPosition, DefiPosition } from "@lumenwipe/types";
 import { sorobanTokensOf } from "./fixtures/soroban-tokens";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
@@ -701,15 +700,14 @@ test("rejects a pasted pre-auth-tx transaction carrying an unrecognized operatio
   );
 });
 
-// CAP-33's reserve-burden reversion makes this op family safe by construction (see the comment
-// on the switch case) - there is nothing on the operation itself to check, but that "nothing to
-// check" must still mean "passes", not "falls through to the fail-closed default and gets
-// rejected as unrecognized".
-test("allows a revoke_sponsorship operation", () => {
+test("allows a revoke_sponsorship operation of a listed entry", () => {
+  const owner = Keypair.random().publicKey();
+  const asset = `USDC:${ISSUER}`;
   const i = intent({
-    operations: [{ source: SRC, type: "revoke_sponsorship", entryKind: "trustline", owner: SRC }],
+    operations: [{ source: SRC, type: "revoke_sponsorship", entryKind: "trustline", owner, asset }],
   });
-  expect(() => assertCloseIntent(i, expectation())).not.toThrow();
+  const sponsoredEntries: SponsoredEntry[] = [{ kind: "trustline", owner, asset }];
+  expect(() => assertCloseIntent(i, expectation({ sponsoredEntries }))).not.toThrow();
 });
 
 test("allows a claim_claimable_balance operation", () => {
@@ -2690,9 +2688,14 @@ test("every operation must act for the account being closed", () => {
     { source: ATTACKER, type: "revoke_sponsorship", entryKind: "account", owner: ATTACKER },
     { ...conversion(), source: ATTACKER },
   ];
+  const sponsoredEntries: SponsoredEntry[] = [{ kind: "account", owner: ATTACKER }];
   for (const op of others) {
     expectRefusal(
-      () => assertCloseIntent(intent({ operations: [op, merge(DEST)] }), expectation()),
+      () =>
+        assertCloseIntent(
+          intent({ operations: [op, merge(DEST)] }),
+          expectation({ sponsoredEntries })
+        ),
       "operation_source_mismatch",
       /^The transaction would act for an account other than the one being closed\.$/
     );
@@ -5274,12 +5277,17 @@ describe("classic liquidity pool withdrawals", () => {
   });
 });
 
-describe("revoking the sponsorship of a pool share trustline on another account", () => {
+describe("revoking the sponsorship of an entry on another account", () => {
   const OWNER = Keypair.random().publicKey();
   const STRANGER = Keypair.random().publicKey();
   const POOL = "d714bc2e56f74a4a4de2e81284a35b6fe09582f081bf785fc698310895c2d845";
   const OTHER_POOL = "68c2effe683511c8a4c57279651751e15d55d546f646fc12b7c54aa807966a0b";
-  const sponsored = { [OWNER]: [POOL] };
+  const line = (owner: string, poolId: string): SponsoredEntry => ({
+    kind: "pool_share_trustline",
+    owner,
+    poolId,
+  });
+  const sponsored = [line(OWNER, POOL)];
 
   const revoke = (account = OWNER, poolId = POOL): xdr.Operation =>
     Operation.revokeTrustlineSponsorship({ account, asset: new LiquidityPoolId(poolId) });
@@ -5288,58 +5296,41 @@ describe("revoking the sponsorship of a pool share trustline on another account"
   }
   function check(
     operations: IntentOperation[],
-    sponsoredPoolShareLines: CloseExpectation["sponsoredPoolShareLines"] = sponsored
+    sponsoredEntries: CloseExpectation["sponsoredEntries"] = sponsored
   ): void {
-    assertCloseIntent(intent({ operations }), expectation({ sponsoredPoolShareLines }));
+    assertCloseIntent(intent({ operations }), expectation({ sponsoredEntries }));
   }
 
   test("a revoke of a line the account read shows this account sponsoring passes", () => {
     expect(() => check(opsOf([revoke()]))).not.toThrow();
     expect(() =>
-      check(opsOf([revoke(), revoke(OWNER, OTHER_POOL)]), { [OWNER]: [POOL, OTHER_POOL] })
+      check(opsOf([revoke(), revoke(OWNER, OTHER_POOL)]), [...sponsored, line(OWNER, OTHER_POOL)])
     ).not.toThrow();
-  });
-
-  test("the expectation lists every sponsored pool share line from the account read, by owner", () => {
-    const account: AccountState = {
-      ...freshAccount(SRC),
-      sponsoredEntries: [
-        { kind: "pool_share_trustline", owner: OWNER, poolId: POOL },
-        { kind: "trustline", owner: OWNER, asset: `USDC:${ISSUER}` },
-        { kind: "pool_share_trustline", owner: OWNER, poolId: OTHER_POOL },
-        { kind: "pool_share_trustline", owner: STRANGER, poolId: POOL },
-      ],
-    };
-    expect(sponsoredPoolShareLineExpectations(account)).toEqual({
-      [OWNER]: [POOL, OTHER_POOL],
-      [STRANGER]: [POOL],
-    });
-    expect(sponsoredPoolShareLineExpectations(null)).toEqual({});
   });
 
   test("a revoke naming a different pool for a sponsored owner is refused", () => {
     expectRefusal(
       () => check(opsOf([revoke(OWNER, OTHER_POOL)])),
-      "pool_line_sponsorship_unknown",
+      "sponsorship_revoke_unknown",
       "not known to sponsor"
     );
   });
 
   test("a revoke of a line on an account this account does not sponsor is refused", () => {
-    expectRefusal(() => check(opsOf([revoke(STRANGER)])), "pool_line_sponsorship_unknown");
+    expectRefusal(() => check(opsOf([revoke(STRANGER)])), "sponsorship_revoke_unknown");
   });
 
   test("a revoke on another account's own, unsponsored line is refused", () => {
-    // The read lists no sponsored pool share line at all: the line is its owner's own.
-    expectRefusal(() => check(opsOf([revoke()]), {}), "pool_line_sponsorship_unknown");
+    // The read lists no sponsored entry at all: the line is its owner's own.
+    expectRefusal(() => check(opsOf([revoke()]), []), "sponsorship_revoke_unknown");
     expectRefusal(
       () => assertCloseIntent(intent({ operations: opsOf([revoke()]) }), expectation()),
-      "pool_line_sponsorship_unknown"
+      "sponsorship_revoke_unknown"
     );
   });
 
   test("a second revoke of the same line is refused", () => {
-    expectRefusal(() => check(opsOf([revoke(), revoke()])), "pool_line_sponsorship_duplicate");
+    expectRefusal(() => check(opsOf([revoke(), revoke()])), "sponsorship_revoke_duplicate");
   });
 
   test("a revoke alongside an operation the close does not expect is refused", () => {
@@ -5424,12 +5415,12 @@ describe("revoking the sponsorship of a pool share trustline on another account"
       verifyCloseTransaction({
         unsignedXdr,
         network: "testnet",
-        expected: { ...expected, sponsoredPoolShareLines: sponsored },
+        expected: { ...expected, sponsoredEntries: sponsored },
       })
     ).not.toThrow();
     expectRefusal(
       () => verifyCloseTransaction({ unsignedXdr, network: "testnet", expected }),
-      "pool_line_sponsorship_unknown"
+      "sponsorship_revoke_unknown"
     );
   });
 });

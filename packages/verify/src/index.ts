@@ -12,10 +12,10 @@ import type {
   AccountState,
   AccountThresholds,
   ExchangeRegistryEntry,
+  SponsoredEntry,
 } from "@lumenwipe/types";
 import {
   poolWithdrawalExpectations as webPoolWithdrawalExpectations,
-  sponsoredPoolShareLineExpectations as webSponsoredPoolShareLineExpectations,
   verifyCloseTransaction as webVerifyCloseTransaction,
 } from "../../../apps/web/lib/stellar/verify";
 import { exitExpectations as webExitExpectations } from "../../../apps/web/lib/stellar/exit-expectations";
@@ -30,7 +30,13 @@ export {
   RevokeAllowanceVerificationError,
   type RevokeAllowanceVerificationErrorCode,
 } from "../../../apps/web/lib/stellar/verify-revoke-allowance";
-export type { AccountSigner, AccountState, AccountThresholds, ExchangeRegistryEntry };
+export type {
+  AccountSigner,
+  AccountState,
+  AccountThresholds,
+  ExchangeRegistryEntry,
+  SponsoredEntry,
+};
 
 /** The Stellar network a transaction is verified for. Selects the network passphrase the XDR is
  *  decoded with and the bundled registry entries that apply. */
@@ -158,12 +164,12 @@ export interface CloseExpectationInput extends ExitExpectations {
    */
   poolWithdrawals?: Record<string, PoolWithdrawalExpectation>;
   /**
-   * The pool share trustlines this account sponsors on other accounts: per sponsored account, the
-   * hex pool ids. Build it with {@link sponsoredPoolShareLineExpectations} from the account read,
-   * never from a plan or a transactions response. A revoke of a pool share line's sponsorship must
-   * name one of these lines, at most once. Omitted, every such revoke is refused.
+   * The entries this account sponsors, as the account read lists them: pass its
+   * `sponsoredEntries` as is, never a list from a plan or a transactions response. A sponsorship
+   * revoke must name one of these entries, by kind, owner and key, at most once per transaction.
+   * Omitted, every sponsorship revoke is refused.
    */
-  sponsoredPoolShareLines?: Record<string, string[]>;
+  sponsoredEntries?: SponsoredEntry[];
 }
 
 /**
@@ -265,16 +271,6 @@ export function poolWithdrawalExpectations(
   accountState: AccountState | null | undefined
 ): Record<string, PoolWithdrawalExpectation> {
   return webPoolWithdrawalExpectations(accountState);
-}
-
-/**
- * The sponsorship half of a close expectation, from the account read the user reviewed: per account
- * this one sponsors a pool share trustline on, the hex ids of those pools.
- */
-export function sponsoredPoolShareLineExpectations(
-  accountState: AccountState | null | undefined
-): Record<string, string[]> {
-  return webSponsoredPoolShareLineExpectations(accountState);
 }
 
 /**

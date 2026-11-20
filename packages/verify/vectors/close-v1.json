@@ -291,12 +291,12 @@
       }
     },
     {
-      "name": "pool-share-line-sponsorship-revoke",
+      "name": "sponsorship-revokes",
       "verdict": "accept",
-      "description": "Revokes the sponsorship of the XLM/USDC pool share trustline the account read shows this account sponsoring on another account, then merges.",
+      "description": "Revokes the sponsorship of one entry of every kind the account read shows this account sponsoring on another account (its account, an asset trustline, a pool share trustline, an offer, a data entry, and an ed25519, a pre-authorized transaction and a hash signer), then merges.",
       "nowSeconds": 1793491200,
       "input": {
-        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAAMgAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAIAAAAAAAAAEgAAAAAAAAABAAAAAPh209zx77b0C7CEqRMikz3wtHbaD56oWdhUfieW8qCYAAAAA6tlt4nkBGe6TTSdSsjfNvkMDivOsqewBAfDSlK1sNELAAAAAAAAAAgAAAAAqYWBEkQrsCh9jm9VLr4ucFTCiTPQHJzkV0PJPvmNrFsAAAAAAAAAAA==",
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAA4QAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAkAAAAAAAAAEgAAAAAAAAAAAAAAAPh209zx77b0C7CEqRMikz3wtHbaD56oWdhUfieW8qCYAAAAAAAAABIAAAAAAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAFVU0RDAAAAAHgrQWPLBOQ+K+Sh6cVtVcdDZ7BJpiU2uheYsBesSECTAAAAAAAAABIAAAAAAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAOrZbeJ5ARnuk00nUrI3zb5DA4rzrKnsAQHw0pStbDRCwAAAAAAAAASAAAAAAAAAAIAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAABHwGL5gAAAAAAAAASAAAAAAAAAAMAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAAGY29uZmlnAAAAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAAA03y7O3NoA/IUo0QdcWOg9z7oM0p9hzKHDy119Sh8CwsAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAABSUByOhK9FQQ+I98D6r2VwsrsloO+g99WAcZ8p8wF4zoAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAACwze8qbrGRwGn45xmHkGNepdRbubCWkO+gBxhhEeCRdQAAAAAAAAACAAAAACphYESRCuwKH2Ob1Uuvi5wVMKJM9AcnORXQ8k++Y2sWwAAAAAAAAAA",
         "network": "testnet",
         "expected": {
           "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
@@ -356,11 +356,47 @@
           "repayTokensByPool": {},
           "shareTokenContracts": [],
           "debtTokenContracts": [],
-          "sponsoredPoolShareLines": {
-            "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T": [
-              "ab65b789e40467ba4d349d4ac8df36f90c0e2bceb2a7b00407c34a52b5b0d10b"
-            ]
-          }
+          "sponsoredEntries": [
+            {
+              "kind": "account",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T"
+            },
+            {
+              "kind": "trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "asset": "USDC:GB4CWQLDZMCOIPRL4SQ6TRLNKXDUGZ5QJGTCKNV2C6MLAF5MJBAJHZJY"
+            },
+            {
+              "kind": "pool_share_trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "poolId": "ab65b789e40467ba4d349d4ac8df36f90c0e2bceb2a7b00407c34a52b5b0d10b"
+            },
+            {
+              "kind": "offer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "offerId": "4815162342"
+            },
+            {
+              "kind": "data_entry",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "name": "config"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "GDJXZOZ3ONUAH4QUUNCB24LDUD3T52BTJJ6YOMUHB4WXL5JIPQFQXBNT"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "TBEUA4R2CK6RKBB6EPPQH2V5SXBMV3EWQO7IHX2WAHDHZJ6MAXRTVIKR"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "XDBTPPFJXLDEOANH4OOGMHSBRV5JOULO43BFUQ56QAOGDBCHQJC5JMU6"
+            }
+          ]
         }
       }
     },
@@ -3282,9 +3318,1981 @@
       }
     },
     {
-      "name": "pool-share-line-sponsorship-other-pool",
+      "name": "sponsorship-revoke-account-other-account",
       "verdict": "reject",
-      "base": "pool-share-line-sponsorship-revoke",
+      "base": "sponsorship-revokes",
+      "mutation": "Revokes the sponsorship of the same account entry on another account, which this account is not known to sponsor.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAA4QAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAkAAAAAAAAAEgAAAAAAAAABAAAAAPh209zx77b0C7CEqRMikz3wtHbaD56oWdhUfieW8qCYAAAAAVVTREMAAAAAeCtBY8sE5D4r5KHpxW1Vx0NnsEmmJTa6F5iwF6xIQJMAAAAAAAAAEgAAAAAAAAABAAAAAPh209zx77b0C7CEqRMikz3wtHbaD56oWdhUfieW8qCYAAAAA6tlt4nkBGe6TTSdSsjfNvkMDivOsqewBAfDSlK1sNELAAAAAAAAABIAAAAAAAAAAgAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAEfAYvmAAAAAAAAABIAAAAAAAAAAwAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAZjb25maWcAAAAAAAAAAAASAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAADTfLs7c2gD8hSjRB1xY6D3PugzSn2HMocPLXX1KHwLCwAAAAAAAAASAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAFJQHI6Er0VBD4j3wPqvZXCyuyWg76D31YBxnynzAXjOgAAAAAAAAASAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAALDN7ypusZHAafjnGYeQY16l1Fu5sJaQ76AHGGER4JF1AAAAAAAAAASAAAAAAAAAAAAAAAAm/9uFKvLLw2st271BJu/CR4B7oFib8C2j2u/E3wgC2wAAAAAAAAACAAAAACphYESRCuwKH2Ob1Uuvi5wVMKJM9AcnORXQ8k++Y2sWwAAAAAAAAAA",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+          "nativeBalance": "100.0000000",
+          "memo": null,
+          "memoType": null,
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CA4V7YVUC3EE2EFVTEYJ47ZD34K4DCAKEYV6AHRR73KTKO5GDGNZLLMT",
+            "CBYFZPJ2DP5IK74JOXUPUM2RAM7N42OVOLK7K5UOIK7QQQKQTN2PZJWU"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": [],
+          "sponsoredEntries": [
+            {
+              "kind": "account",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T"
+            },
+            {
+              "kind": "trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "asset": "USDC:GB4CWQLDZMCOIPRL4SQ6TRLNKXDUGZ5QJGTCKNV2C6MLAF5MJBAJHZJY"
+            },
+            {
+              "kind": "pool_share_trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "poolId": "ab65b789e40467ba4d349d4ac8df36f90c0e2bceb2a7b00407c34a52b5b0d10b"
+            },
+            {
+              "kind": "offer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "offerId": "4815162342"
+            },
+            {
+              "kind": "data_entry",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "name": "config"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "GDJXZOZ3ONUAH4QUUNCB24LDUD3T52BTJJ6YOMUHB4WXL5JIPQFQXBNT"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "TBEUA4R2CK6RKBB6EPPQH2V5SXBMV3EWQO7IHX2WAHDHZJ6MAXRTVIKR"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "XDBTPPFJXLDEOANH4OOGMHSBRV5JOULO43BFUQ56QAOGDBCHQJC5JMU6"
+            }
+          ]
+        }
+      },
+      "error": {
+        "name": "VerificationError",
+        "code": "sponsorship_revoke_unknown",
+        "message": "A sponsorship revoke names an entry your account is not known to sponsor."
+      }
+    },
+    {
+      "name": "sponsorship-revoke-account-twice",
+      "verdict": "reject",
+      "base": "sponsorship-revokes",
+      "mutation": "Revokes the sponsorship of the same account entry twice.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAA+gAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAoAAAAAAAAAEgAAAAAAAAAAAAAAAPh209zx77b0C7CEqRMikz3wtHbaD56oWdhUfieW8qCYAAAAAAAAABIAAAAAAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAFVU0RDAAAAAHgrQWPLBOQ+K+Sh6cVtVcdDZ7BJpiU2uheYsBesSECTAAAAAAAAABIAAAAAAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAOrZbeJ5ARnuk00nUrI3zb5DA4rzrKnsAQHw0pStbDRCwAAAAAAAAASAAAAAAAAAAIAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAABHwGL5gAAAAAAAAASAAAAAAAAAAMAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAAGY29uZmlnAAAAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAAA03y7O3NoA/IUo0QdcWOg9z7oM0p9hzKHDy119Sh8CwsAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAABSUByOhK9FQQ+I98D6r2VwsrsloO+g99WAcZ8p8wF4zoAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAACwze8qbrGRwGn45xmHkGNepdRbubCWkO+gBxhhEeCRdQAAAAAAAAAEgAAAAAAAAAAAAAAAPh209zx77b0C7CEqRMikz3wtHbaD56oWdhUfieW8qCYAAAAAAAAAAgAAAAAqYWBEkQrsCh9jm9VLr4ucFTCiTPQHJzkV0PJPvmNrFsAAAAAAAAAAA==",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+          "nativeBalance": "100.0000000",
+          "memo": null,
+          "memoType": null,
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CA4V7YVUC3EE2EFVTEYJ47ZD34K4DCAKEYV6AHRR73KTKO5GDGNZLLMT",
+            "CBYFZPJ2DP5IK74JOXUPUM2RAM7N42OVOLK7K5UOIK7QQQKQTN2PZJWU"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": [],
+          "sponsoredEntries": [
+            {
+              "kind": "account",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T"
+            },
+            {
+              "kind": "trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "asset": "USDC:GB4CWQLDZMCOIPRL4SQ6TRLNKXDUGZ5QJGTCKNV2C6MLAF5MJBAJHZJY"
+            },
+            {
+              "kind": "pool_share_trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "poolId": "ab65b789e40467ba4d349d4ac8df36f90c0e2bceb2a7b00407c34a52b5b0d10b"
+            },
+            {
+              "kind": "offer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "offerId": "4815162342"
+            },
+            {
+              "kind": "data_entry",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "name": "config"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "GDJXZOZ3ONUAH4QUUNCB24LDUD3T52BTJJ6YOMUHB4WXL5JIPQFQXBNT"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "TBEUA4R2CK6RKBB6EPPQH2V5SXBMV3EWQO7IHX2WAHDHZJ6MAXRTVIKR"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "XDBTPPFJXLDEOANH4OOGMHSBRV5JOULO43BFUQ56QAOGDBCHQJC5JMU6"
+            }
+          ]
+        }
+      },
+      "error": {
+        "name": "VerificationError",
+        "code": "sponsorship_revoke_duplicate",
+        "message": "The transaction would revoke the sponsorship of the same entry more than once."
+      }
+    },
+    {
+      "name": "sponsorship-revoke-trustline-other-account",
+      "verdict": "reject",
+      "base": "sponsorship-revokes",
+      "mutation": "Revokes the sponsorship of the same trustline entry on another account, which this account is not known to sponsor.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAA4QAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAkAAAAAAAAAEgAAAAAAAAAAAAAAAPh209zx77b0C7CEqRMikz3wtHbaD56oWdhUfieW8qCYAAAAAAAAABIAAAAAAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAOrZbeJ5ARnuk00nUrI3zb5DA4rzrKnsAQHw0pStbDRCwAAAAAAAAASAAAAAAAAAAIAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAABHwGL5gAAAAAAAAASAAAAAAAAAAMAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAAGY29uZmlnAAAAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAAA03y7O3NoA/IUo0QdcWOg9z7oM0p9hzKHDy119Sh8CwsAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAABSUByOhK9FQQ+I98D6r2VwsrsloO+g99WAcZ8p8wF4zoAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAACwze8qbrGRwGn45xmHkGNepdRbubCWkO+gBxhhEeCRdQAAAAAAAAAEgAAAAAAAAABAAAAAJv/bhSryy8NrLdu9QSbvwkeAe6BYm/Ato9rvxN8IAtsAAAAAVVTREMAAAAAeCtBY8sE5D4r5KHpxW1Vx0NnsEmmJTa6F5iwF6xIQJMAAAAAAAAACAAAAACphYESRCuwKH2Ob1Uuvi5wVMKJM9AcnORXQ8k++Y2sWwAAAAAAAAAA",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+          "nativeBalance": "100.0000000",
+          "memo": null,
+          "memoType": null,
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CA4V7YVUC3EE2EFVTEYJ47ZD34K4DCAKEYV6AHRR73KTKO5GDGNZLLMT",
+            "CBYFZPJ2DP5IK74JOXUPUM2RAM7N42OVOLK7K5UOIK7QQQKQTN2PZJWU"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": [],
+          "sponsoredEntries": [
+            {
+              "kind": "account",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T"
+            },
+            {
+              "kind": "trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "asset": "USDC:GB4CWQLDZMCOIPRL4SQ6TRLNKXDUGZ5QJGTCKNV2C6MLAF5MJBAJHZJY"
+            },
+            {
+              "kind": "pool_share_trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "poolId": "ab65b789e40467ba4d349d4ac8df36f90c0e2bceb2a7b00407c34a52b5b0d10b"
+            },
+            {
+              "kind": "offer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "offerId": "4815162342"
+            },
+            {
+              "kind": "data_entry",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "name": "config"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "GDJXZOZ3ONUAH4QUUNCB24LDUD3T52BTJJ6YOMUHB4WXL5JIPQFQXBNT"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "TBEUA4R2CK6RKBB6EPPQH2V5SXBMV3EWQO7IHX2WAHDHZJ6MAXRTVIKR"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "XDBTPPFJXLDEOANH4OOGMHSBRV5JOULO43BFUQ56QAOGDBCHQJC5JMU6"
+            }
+          ]
+        }
+      },
+      "error": {
+        "name": "VerificationError",
+        "code": "sponsorship_revoke_unknown",
+        "message": "A sponsorship revoke names an entry your account is not known to sponsor."
+      }
+    },
+    {
+      "name": "sponsorship-revoke-trustline-twice",
+      "verdict": "reject",
+      "base": "sponsorship-revokes",
+      "mutation": "Revokes the sponsorship of the same trustline entry twice.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAA+gAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAoAAAAAAAAAEgAAAAAAAAAAAAAAAPh209zx77b0C7CEqRMikz3wtHbaD56oWdhUfieW8qCYAAAAAAAAABIAAAAAAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAFVU0RDAAAAAHgrQWPLBOQ+K+Sh6cVtVcdDZ7BJpiU2uheYsBesSECTAAAAAAAAABIAAAAAAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAOrZbeJ5ARnuk00nUrI3zb5DA4rzrKnsAQHw0pStbDRCwAAAAAAAAASAAAAAAAAAAIAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAABHwGL5gAAAAAAAAASAAAAAAAAAAMAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAAGY29uZmlnAAAAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAAA03y7O3NoA/IUo0QdcWOg9z7oM0p9hzKHDy119Sh8CwsAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAABSUByOhK9FQQ+I98D6r2VwsrsloO+g99WAcZ8p8wF4zoAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAACwze8qbrGRwGn45xmHkGNepdRbubCWkO+gBxhhEeCRdQAAAAAAAAAEgAAAAAAAAABAAAAAPh209zx77b0C7CEqRMikz3wtHbaD56oWdhUfieW8qCYAAAAAVVTREMAAAAAeCtBY8sE5D4r5KHpxW1Vx0NnsEmmJTa6F5iwF6xIQJMAAAAAAAAACAAAAACphYESRCuwKH2Ob1Uuvi5wVMKJM9AcnORXQ8k++Y2sWwAAAAAAAAAA",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+          "nativeBalance": "100.0000000",
+          "memo": null,
+          "memoType": null,
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CA4V7YVUC3EE2EFVTEYJ47ZD34K4DCAKEYV6AHRR73KTKO5GDGNZLLMT",
+            "CBYFZPJ2DP5IK74JOXUPUM2RAM7N42OVOLK7K5UOIK7QQQKQTN2PZJWU"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": [],
+          "sponsoredEntries": [
+            {
+              "kind": "account",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T"
+            },
+            {
+              "kind": "trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "asset": "USDC:GB4CWQLDZMCOIPRL4SQ6TRLNKXDUGZ5QJGTCKNV2C6MLAF5MJBAJHZJY"
+            },
+            {
+              "kind": "pool_share_trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "poolId": "ab65b789e40467ba4d349d4ac8df36f90c0e2bceb2a7b00407c34a52b5b0d10b"
+            },
+            {
+              "kind": "offer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "offerId": "4815162342"
+            },
+            {
+              "kind": "data_entry",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "name": "config"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "GDJXZOZ3ONUAH4QUUNCB24LDUD3T52BTJJ6YOMUHB4WXL5JIPQFQXBNT"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "TBEUA4R2CK6RKBB6EPPQH2V5SXBMV3EWQO7IHX2WAHDHZJ6MAXRTVIKR"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "XDBTPPFJXLDEOANH4OOGMHSBRV5JOULO43BFUQ56QAOGDBCHQJC5JMU6"
+            }
+          ]
+        }
+      },
+      "error": {
+        "name": "VerificationError",
+        "code": "sponsorship_revoke_duplicate",
+        "message": "The transaction would revoke the sponsorship of the same entry more than once."
+      }
+    },
+    {
+      "name": "sponsorship-revoke-poolLine-other-account",
+      "verdict": "reject",
+      "base": "sponsorship-revokes",
+      "mutation": "Revokes the sponsorship of the same poolLine entry on another account, which this account is not known to sponsor.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAA4QAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAkAAAAAAAAAEgAAAAAAAAAAAAAAAPh209zx77b0C7CEqRMikz3wtHbaD56oWdhUfieW8qCYAAAAAAAAABIAAAAAAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAFVU0RDAAAAAHgrQWPLBOQ+K+Sh6cVtVcdDZ7BJpiU2uheYsBesSECTAAAAAAAAABIAAAAAAAAAAgAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAEfAYvmAAAAAAAAABIAAAAAAAAAAwAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAZjb25maWcAAAAAAAAAAAASAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAADTfLs7c2gD8hSjRB1xY6D3PugzSn2HMocPLXX1KHwLCwAAAAAAAAASAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAFJQHI6Er0VBD4j3wPqvZXCyuyWg76D31YBxnynzAXjOgAAAAAAAAASAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAALDN7ypusZHAafjnGYeQY16l1Fu5sJaQ76AHGGER4JF1AAAAAAAAAASAAAAAAAAAAEAAAAAm/9uFKvLLw2st271BJu/CR4B7oFib8C2j2u/E3wgC2wAAAADq2W3ieQEZ7pNNJ1KyN82+QwOK86yp7AEB8NKUrWw0QsAAAAAAAAACAAAAACphYESRCuwKH2Ob1Uuvi5wVMKJM9AcnORXQ8k++Y2sWwAAAAAAAAAA",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+          "nativeBalance": "100.0000000",
+          "memo": null,
+          "memoType": null,
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CA4V7YVUC3EE2EFVTEYJ47ZD34K4DCAKEYV6AHRR73KTKO5GDGNZLLMT",
+            "CBYFZPJ2DP5IK74JOXUPUM2RAM7N42OVOLK7K5UOIK7QQQKQTN2PZJWU"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": [],
+          "sponsoredEntries": [
+            {
+              "kind": "account",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T"
+            },
+            {
+              "kind": "trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "asset": "USDC:GB4CWQLDZMCOIPRL4SQ6TRLNKXDUGZ5QJGTCKNV2C6MLAF5MJBAJHZJY"
+            },
+            {
+              "kind": "pool_share_trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "poolId": "ab65b789e40467ba4d349d4ac8df36f90c0e2bceb2a7b00407c34a52b5b0d10b"
+            },
+            {
+              "kind": "offer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "offerId": "4815162342"
+            },
+            {
+              "kind": "data_entry",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "name": "config"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "GDJXZOZ3ONUAH4QUUNCB24LDUD3T52BTJJ6YOMUHB4WXL5JIPQFQXBNT"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "TBEUA4R2CK6RKBB6EPPQH2V5SXBMV3EWQO7IHX2WAHDHZJ6MAXRTVIKR"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "XDBTPPFJXLDEOANH4OOGMHSBRV5JOULO43BFUQ56QAOGDBCHQJC5JMU6"
+            }
+          ]
+        }
+      },
+      "error": {
+        "name": "VerificationError",
+        "code": "sponsorship_revoke_unknown",
+        "message": "A sponsorship revoke names an entry your account is not known to sponsor."
+      }
+    },
+    {
+      "name": "sponsorship-revoke-poolLine-twice",
+      "verdict": "reject",
+      "base": "sponsorship-revokes",
+      "mutation": "Revokes the sponsorship of the same poolLine entry twice.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAA+gAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAoAAAAAAAAAEgAAAAAAAAAAAAAAAPh209zx77b0C7CEqRMikz3wtHbaD56oWdhUfieW8qCYAAAAAAAAABIAAAAAAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAFVU0RDAAAAAHgrQWPLBOQ+K+Sh6cVtVcdDZ7BJpiU2uheYsBesSECTAAAAAAAAABIAAAAAAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAOrZbeJ5ARnuk00nUrI3zb5DA4rzrKnsAQHw0pStbDRCwAAAAAAAAASAAAAAAAAAAIAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAABHwGL5gAAAAAAAAASAAAAAAAAAAMAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAAGY29uZmlnAAAAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAAA03y7O3NoA/IUo0QdcWOg9z7oM0p9hzKHDy119Sh8CwsAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAABSUByOhK9FQQ+I98D6r2VwsrsloO+g99WAcZ8p8wF4zoAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAACwze8qbrGRwGn45xmHkGNepdRbubCWkO+gBxhhEeCRdQAAAAAAAAAEgAAAAAAAAABAAAAAPh209zx77b0C7CEqRMikz3wtHbaD56oWdhUfieW8qCYAAAAA6tlt4nkBGe6TTSdSsjfNvkMDivOsqewBAfDSlK1sNELAAAAAAAAAAgAAAAAqYWBEkQrsCh9jm9VLr4ucFTCiTPQHJzkV0PJPvmNrFsAAAAAAAAAAA==",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+          "nativeBalance": "100.0000000",
+          "memo": null,
+          "memoType": null,
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CA4V7YVUC3EE2EFVTEYJ47ZD34K4DCAKEYV6AHRR73KTKO5GDGNZLLMT",
+            "CBYFZPJ2DP5IK74JOXUPUM2RAM7N42OVOLK7K5UOIK7QQQKQTN2PZJWU"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": [],
+          "sponsoredEntries": [
+            {
+              "kind": "account",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T"
+            },
+            {
+              "kind": "trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "asset": "USDC:GB4CWQLDZMCOIPRL4SQ6TRLNKXDUGZ5QJGTCKNV2C6MLAF5MJBAJHZJY"
+            },
+            {
+              "kind": "pool_share_trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "poolId": "ab65b789e40467ba4d349d4ac8df36f90c0e2bceb2a7b00407c34a52b5b0d10b"
+            },
+            {
+              "kind": "offer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "offerId": "4815162342"
+            },
+            {
+              "kind": "data_entry",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "name": "config"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "GDJXZOZ3ONUAH4QUUNCB24LDUD3T52BTJJ6YOMUHB4WXL5JIPQFQXBNT"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "TBEUA4R2CK6RKBB6EPPQH2V5SXBMV3EWQO7IHX2WAHDHZJ6MAXRTVIKR"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "XDBTPPFJXLDEOANH4OOGMHSBRV5JOULO43BFUQ56QAOGDBCHQJC5JMU6"
+            }
+          ]
+        }
+      },
+      "error": {
+        "name": "VerificationError",
+        "code": "sponsorship_revoke_duplicate",
+        "message": "The transaction would revoke the sponsorship of the same entry more than once."
+      }
+    },
+    {
+      "name": "sponsorship-revoke-offer-other-account",
+      "verdict": "reject",
+      "base": "sponsorship-revokes",
+      "mutation": "Revokes the sponsorship of the same offer entry on another account, which this account is not known to sponsor.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAA4QAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAkAAAAAAAAAEgAAAAAAAAAAAAAAAPh209zx77b0C7CEqRMikz3wtHbaD56oWdhUfieW8qCYAAAAAAAAABIAAAAAAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAFVU0RDAAAAAHgrQWPLBOQ+K+Sh6cVtVcdDZ7BJpiU2uheYsBesSECTAAAAAAAAABIAAAAAAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAOrZbeJ5ARnuk00nUrI3zb5DA4rzrKnsAQHw0pStbDRCwAAAAAAAAASAAAAAAAAAAMAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAAGY29uZmlnAAAAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAAA03y7O3NoA/IUo0QdcWOg9z7oM0p9hzKHDy119Sh8CwsAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAABSUByOhK9FQQ+I98D6r2VwsrsloO+g99WAcZ8p8wF4zoAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAACwze8qbrGRwGn45xmHkGNepdRbubCWkO+gBxhhEeCRdQAAAAAAAAAEgAAAAAAAAACAAAAAJv/bhSryy8NrLdu9QSbvwkeAe6BYm/Ato9rvxN8IAtsAAAAAR8Bi+YAAAAAAAAACAAAAACphYESRCuwKH2Ob1Uuvi5wVMKJM9AcnORXQ8k++Y2sWwAAAAAAAAAA",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+          "nativeBalance": "100.0000000",
+          "memo": null,
+          "memoType": null,
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CA4V7YVUC3EE2EFVTEYJ47ZD34K4DCAKEYV6AHRR73KTKO5GDGNZLLMT",
+            "CBYFZPJ2DP5IK74JOXUPUM2RAM7N42OVOLK7K5UOIK7QQQKQTN2PZJWU"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": [],
+          "sponsoredEntries": [
+            {
+              "kind": "account",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T"
+            },
+            {
+              "kind": "trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "asset": "USDC:GB4CWQLDZMCOIPRL4SQ6TRLNKXDUGZ5QJGTCKNV2C6MLAF5MJBAJHZJY"
+            },
+            {
+              "kind": "pool_share_trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "poolId": "ab65b789e40467ba4d349d4ac8df36f90c0e2bceb2a7b00407c34a52b5b0d10b"
+            },
+            {
+              "kind": "offer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "offerId": "4815162342"
+            },
+            {
+              "kind": "data_entry",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "name": "config"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "GDJXZOZ3ONUAH4QUUNCB24LDUD3T52BTJJ6YOMUHB4WXL5JIPQFQXBNT"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "TBEUA4R2CK6RKBB6EPPQH2V5SXBMV3EWQO7IHX2WAHDHZJ6MAXRTVIKR"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "XDBTPPFJXLDEOANH4OOGMHSBRV5JOULO43BFUQ56QAOGDBCHQJC5JMU6"
+            }
+          ]
+        }
+      },
+      "error": {
+        "name": "VerificationError",
+        "code": "sponsorship_revoke_unknown",
+        "message": "A sponsorship revoke names an entry your account is not known to sponsor."
+      }
+    },
+    {
+      "name": "sponsorship-revoke-offer-twice",
+      "verdict": "reject",
+      "base": "sponsorship-revokes",
+      "mutation": "Revokes the sponsorship of the same offer entry twice.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAA+gAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAoAAAAAAAAAEgAAAAAAAAAAAAAAAPh209zx77b0C7CEqRMikz3wtHbaD56oWdhUfieW8qCYAAAAAAAAABIAAAAAAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAFVU0RDAAAAAHgrQWPLBOQ+K+Sh6cVtVcdDZ7BJpiU2uheYsBesSECTAAAAAAAAABIAAAAAAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAOrZbeJ5ARnuk00nUrI3zb5DA4rzrKnsAQHw0pStbDRCwAAAAAAAAASAAAAAAAAAAIAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAABHwGL5gAAAAAAAAASAAAAAAAAAAMAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAAGY29uZmlnAAAAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAAA03y7O3NoA/IUo0QdcWOg9z7oM0p9hzKHDy119Sh8CwsAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAABSUByOhK9FQQ+I98D6r2VwsrsloO+g99WAcZ8p8wF4zoAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAACwze8qbrGRwGn45xmHkGNepdRbubCWkO+gBxhhEeCRdQAAAAAAAAAEgAAAAAAAAACAAAAAPh209zx77b0C7CEqRMikz3wtHbaD56oWdhUfieW8qCYAAAAAR8Bi+YAAAAAAAAACAAAAACphYESRCuwKH2Ob1Uuvi5wVMKJM9AcnORXQ8k++Y2sWwAAAAAAAAAA",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+          "nativeBalance": "100.0000000",
+          "memo": null,
+          "memoType": null,
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CA4V7YVUC3EE2EFVTEYJ47ZD34K4DCAKEYV6AHRR73KTKO5GDGNZLLMT",
+            "CBYFZPJ2DP5IK74JOXUPUM2RAM7N42OVOLK7K5UOIK7QQQKQTN2PZJWU"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": [],
+          "sponsoredEntries": [
+            {
+              "kind": "account",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T"
+            },
+            {
+              "kind": "trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "asset": "USDC:GB4CWQLDZMCOIPRL4SQ6TRLNKXDUGZ5QJGTCKNV2C6MLAF5MJBAJHZJY"
+            },
+            {
+              "kind": "pool_share_trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "poolId": "ab65b789e40467ba4d349d4ac8df36f90c0e2bceb2a7b00407c34a52b5b0d10b"
+            },
+            {
+              "kind": "offer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "offerId": "4815162342"
+            },
+            {
+              "kind": "data_entry",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "name": "config"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "GDJXZOZ3ONUAH4QUUNCB24LDUD3T52BTJJ6YOMUHB4WXL5JIPQFQXBNT"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "TBEUA4R2CK6RKBB6EPPQH2V5SXBMV3EWQO7IHX2WAHDHZJ6MAXRTVIKR"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "XDBTPPFJXLDEOANH4OOGMHSBRV5JOULO43BFUQ56QAOGDBCHQJC5JMU6"
+            }
+          ]
+        }
+      },
+      "error": {
+        "name": "VerificationError",
+        "code": "sponsorship_revoke_duplicate",
+        "message": "The transaction would revoke the sponsorship of the same entry more than once."
+      }
+    },
+    {
+      "name": "sponsorship-revoke-data-other-account",
+      "verdict": "reject",
+      "base": "sponsorship-revokes",
+      "mutation": "Revokes the sponsorship of the same data entry on another account, which this account is not known to sponsor.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAA4QAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAkAAAAAAAAAEgAAAAAAAAAAAAAAAPh209zx77b0C7CEqRMikz3wtHbaD56oWdhUfieW8qCYAAAAAAAAABIAAAAAAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAFVU0RDAAAAAHgrQWPLBOQ+K+Sh6cVtVcdDZ7BJpiU2uheYsBesSECTAAAAAAAAABIAAAAAAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAOrZbeJ5ARnuk00nUrI3zb5DA4rzrKnsAQHw0pStbDRCwAAAAAAAAASAAAAAAAAAAIAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAABHwGL5gAAAAAAAAASAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAADTfLs7c2gD8hSjRB1xY6D3PugzSn2HMocPLXX1KHwLCwAAAAAAAAASAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAFJQHI6Er0VBD4j3wPqvZXCyuyWg76D31YBxnynzAXjOgAAAAAAAAASAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAALDN7ypusZHAafjnGYeQY16l1Fu5sJaQ76AHGGER4JF1AAAAAAAAAASAAAAAAAAAAMAAAAAm/9uFKvLLw2st271BJu/CR4B7oFib8C2j2u/E3wgC2wAAAAGY29uZmlnAAAAAAAAAAAACAAAAACphYESRCuwKH2Ob1Uuvi5wVMKJM9AcnORXQ8k++Y2sWwAAAAAAAAAA",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+          "nativeBalance": "100.0000000",
+          "memo": null,
+          "memoType": null,
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CA4V7YVUC3EE2EFVTEYJ47ZD34K4DCAKEYV6AHRR73KTKO5GDGNZLLMT",
+            "CBYFZPJ2DP5IK74JOXUPUM2RAM7N42OVOLK7K5UOIK7QQQKQTN2PZJWU"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": [],
+          "sponsoredEntries": [
+            {
+              "kind": "account",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T"
+            },
+            {
+              "kind": "trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "asset": "USDC:GB4CWQLDZMCOIPRL4SQ6TRLNKXDUGZ5QJGTCKNV2C6MLAF5MJBAJHZJY"
+            },
+            {
+              "kind": "pool_share_trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "poolId": "ab65b789e40467ba4d349d4ac8df36f90c0e2bceb2a7b00407c34a52b5b0d10b"
+            },
+            {
+              "kind": "offer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "offerId": "4815162342"
+            },
+            {
+              "kind": "data_entry",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "name": "config"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "GDJXZOZ3ONUAH4QUUNCB24LDUD3T52BTJJ6YOMUHB4WXL5JIPQFQXBNT"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "TBEUA4R2CK6RKBB6EPPQH2V5SXBMV3EWQO7IHX2WAHDHZJ6MAXRTVIKR"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "XDBTPPFJXLDEOANH4OOGMHSBRV5JOULO43BFUQ56QAOGDBCHQJC5JMU6"
+            }
+          ]
+        }
+      },
+      "error": {
+        "name": "VerificationError",
+        "code": "sponsorship_revoke_unknown",
+        "message": "A sponsorship revoke names an entry your account is not known to sponsor."
+      }
+    },
+    {
+      "name": "sponsorship-revoke-data-twice",
+      "verdict": "reject",
+      "base": "sponsorship-revokes",
+      "mutation": "Revokes the sponsorship of the same data entry twice.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAA+gAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAoAAAAAAAAAEgAAAAAAAAAAAAAAAPh209zx77b0C7CEqRMikz3wtHbaD56oWdhUfieW8qCYAAAAAAAAABIAAAAAAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAFVU0RDAAAAAHgrQWPLBOQ+K+Sh6cVtVcdDZ7BJpiU2uheYsBesSECTAAAAAAAAABIAAAAAAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAOrZbeJ5ARnuk00nUrI3zb5DA4rzrKnsAQHw0pStbDRCwAAAAAAAAASAAAAAAAAAAIAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAABHwGL5gAAAAAAAAASAAAAAAAAAAMAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAAGY29uZmlnAAAAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAAA03y7O3NoA/IUo0QdcWOg9z7oM0p9hzKHDy119Sh8CwsAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAABSUByOhK9FQQ+I98D6r2VwsrsloO+g99WAcZ8p8wF4zoAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAACwze8qbrGRwGn45xmHkGNepdRbubCWkO+gBxhhEeCRdQAAAAAAAAAEgAAAAAAAAADAAAAAPh209zx77b0C7CEqRMikz3wtHbaD56oWdhUfieW8qCYAAAABmNvbmZpZwAAAAAAAAAAAAgAAAAAqYWBEkQrsCh9jm9VLr4ucFTCiTPQHJzkV0PJPvmNrFsAAAAAAAAAAA==",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+          "nativeBalance": "100.0000000",
+          "memo": null,
+          "memoType": null,
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CA4V7YVUC3EE2EFVTEYJ47ZD34K4DCAKEYV6AHRR73KTKO5GDGNZLLMT",
+            "CBYFZPJ2DP5IK74JOXUPUM2RAM7N42OVOLK7K5UOIK7QQQKQTN2PZJWU"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": [],
+          "sponsoredEntries": [
+            {
+              "kind": "account",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T"
+            },
+            {
+              "kind": "trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "asset": "USDC:GB4CWQLDZMCOIPRL4SQ6TRLNKXDUGZ5QJGTCKNV2C6MLAF5MJBAJHZJY"
+            },
+            {
+              "kind": "pool_share_trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "poolId": "ab65b789e40467ba4d349d4ac8df36f90c0e2bceb2a7b00407c34a52b5b0d10b"
+            },
+            {
+              "kind": "offer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "offerId": "4815162342"
+            },
+            {
+              "kind": "data_entry",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "name": "config"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "GDJXZOZ3ONUAH4QUUNCB24LDUD3T52BTJJ6YOMUHB4WXL5JIPQFQXBNT"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "TBEUA4R2CK6RKBB6EPPQH2V5SXBMV3EWQO7IHX2WAHDHZJ6MAXRTVIKR"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "XDBTPPFJXLDEOANH4OOGMHSBRV5JOULO43BFUQ56QAOGDBCHQJC5JMU6"
+            }
+          ]
+        }
+      },
+      "error": {
+        "name": "VerificationError",
+        "code": "sponsorship_revoke_duplicate",
+        "message": "The transaction would revoke the sponsorship of the same entry more than once."
+      }
+    },
+    {
+      "name": "sponsorship-revoke-ed25519-other-account",
+      "verdict": "reject",
+      "base": "sponsorship-revokes",
+      "mutation": "Revokes the sponsorship of the same ed25519 entry on another account, which this account is not known to sponsor.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAA4QAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAkAAAAAAAAAEgAAAAAAAAAAAAAAAPh209zx77b0C7CEqRMikz3wtHbaD56oWdhUfieW8qCYAAAAAAAAABIAAAAAAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAFVU0RDAAAAAHgrQWPLBOQ+K+Sh6cVtVcdDZ7BJpiU2uheYsBesSECTAAAAAAAAABIAAAAAAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAOrZbeJ5ARnuk00nUrI3zb5DA4rzrKnsAQHw0pStbDRCwAAAAAAAAASAAAAAAAAAAIAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAABHwGL5gAAAAAAAAASAAAAAAAAAAMAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAAGY29uZmlnAAAAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAABSUByOhK9FQQ+I98D6r2VwsrsloO+g99WAcZ8p8wF4zoAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAACwze8qbrGRwGn45xmHkGNepdRbubCWkO+gBxhhEeCRdQAAAAAAAAAEgAAAAEAAAAAm/9uFKvLLw2st271BJu/CR4B7oFib8C2j2u/E3wgC2wAAAAA03y7O3NoA/IUo0QdcWOg9z7oM0p9hzKHDy119Sh8CwsAAAAAAAAACAAAAACphYESRCuwKH2Ob1Uuvi5wVMKJM9AcnORXQ8k++Y2sWwAAAAAAAAAA",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+          "nativeBalance": "100.0000000",
+          "memo": null,
+          "memoType": null,
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CA4V7YVUC3EE2EFVTEYJ47ZD34K4DCAKEYV6AHRR73KTKO5GDGNZLLMT",
+            "CBYFZPJ2DP5IK74JOXUPUM2RAM7N42OVOLK7K5UOIK7QQQKQTN2PZJWU"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": [],
+          "sponsoredEntries": [
+            {
+              "kind": "account",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T"
+            },
+            {
+              "kind": "trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "asset": "USDC:GB4CWQLDZMCOIPRL4SQ6TRLNKXDUGZ5QJGTCKNV2C6MLAF5MJBAJHZJY"
+            },
+            {
+              "kind": "pool_share_trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "poolId": "ab65b789e40467ba4d349d4ac8df36f90c0e2bceb2a7b00407c34a52b5b0d10b"
+            },
+            {
+              "kind": "offer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "offerId": "4815162342"
+            },
+            {
+              "kind": "data_entry",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "name": "config"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "GDJXZOZ3ONUAH4QUUNCB24LDUD3T52BTJJ6YOMUHB4WXL5JIPQFQXBNT"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "TBEUA4R2CK6RKBB6EPPQH2V5SXBMV3EWQO7IHX2WAHDHZJ6MAXRTVIKR"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "XDBTPPFJXLDEOANH4OOGMHSBRV5JOULO43BFUQ56QAOGDBCHQJC5JMU6"
+            }
+          ]
+        }
+      },
+      "error": {
+        "name": "VerificationError",
+        "code": "sponsorship_revoke_unknown",
+        "message": "A sponsorship revoke names an entry your account is not known to sponsor."
+      }
+    },
+    {
+      "name": "sponsorship-revoke-ed25519-twice",
+      "verdict": "reject",
+      "base": "sponsorship-revokes",
+      "mutation": "Revokes the sponsorship of the same ed25519 entry twice.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAA+gAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAoAAAAAAAAAEgAAAAAAAAAAAAAAAPh209zx77b0C7CEqRMikz3wtHbaD56oWdhUfieW8qCYAAAAAAAAABIAAAAAAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAFVU0RDAAAAAHgrQWPLBOQ+K+Sh6cVtVcdDZ7BJpiU2uheYsBesSECTAAAAAAAAABIAAAAAAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAOrZbeJ5ARnuk00nUrI3zb5DA4rzrKnsAQHw0pStbDRCwAAAAAAAAASAAAAAAAAAAIAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAABHwGL5gAAAAAAAAASAAAAAAAAAAMAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAAGY29uZmlnAAAAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAAA03y7O3NoA/IUo0QdcWOg9z7oM0p9hzKHDy119Sh8CwsAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAABSUByOhK9FQQ+I98D6r2VwsrsloO+g99WAcZ8p8wF4zoAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAACwze8qbrGRwGn45xmHkGNepdRbubCWkO+gBxhhEeCRdQAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAAA03y7O3NoA/IUo0QdcWOg9z7oM0p9hzKHDy119Sh8CwsAAAAAAAAACAAAAACphYESRCuwKH2Ob1Uuvi5wVMKJM9AcnORXQ8k++Y2sWwAAAAAAAAAA",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+          "nativeBalance": "100.0000000",
+          "memo": null,
+          "memoType": null,
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CA4V7YVUC3EE2EFVTEYJ47ZD34K4DCAKEYV6AHRR73KTKO5GDGNZLLMT",
+            "CBYFZPJ2DP5IK74JOXUPUM2RAM7N42OVOLK7K5UOIK7QQQKQTN2PZJWU"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": [],
+          "sponsoredEntries": [
+            {
+              "kind": "account",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T"
+            },
+            {
+              "kind": "trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "asset": "USDC:GB4CWQLDZMCOIPRL4SQ6TRLNKXDUGZ5QJGTCKNV2C6MLAF5MJBAJHZJY"
+            },
+            {
+              "kind": "pool_share_trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "poolId": "ab65b789e40467ba4d349d4ac8df36f90c0e2bceb2a7b00407c34a52b5b0d10b"
+            },
+            {
+              "kind": "offer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "offerId": "4815162342"
+            },
+            {
+              "kind": "data_entry",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "name": "config"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "GDJXZOZ3ONUAH4QUUNCB24LDUD3T52BTJJ6YOMUHB4WXL5JIPQFQXBNT"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "TBEUA4R2CK6RKBB6EPPQH2V5SXBMV3EWQO7IHX2WAHDHZJ6MAXRTVIKR"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "XDBTPPFJXLDEOANH4OOGMHSBRV5JOULO43BFUQ56QAOGDBCHQJC5JMU6"
+            }
+          ]
+        }
+      },
+      "error": {
+        "name": "VerificationError",
+        "code": "sponsorship_revoke_duplicate",
+        "message": "The transaction would revoke the sponsorship of the same entry more than once."
+      }
+    },
+    {
+      "name": "sponsorship-revoke-preAuth-other-account",
+      "verdict": "reject",
+      "base": "sponsorship-revokes",
+      "mutation": "Revokes the sponsorship of the same preAuth entry on another account, which this account is not known to sponsor.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAA4QAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAkAAAAAAAAAEgAAAAAAAAAAAAAAAPh209zx77b0C7CEqRMikz3wtHbaD56oWdhUfieW8qCYAAAAAAAAABIAAAAAAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAFVU0RDAAAAAHgrQWPLBOQ+K+Sh6cVtVcdDZ7BJpiU2uheYsBesSECTAAAAAAAAABIAAAAAAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAOrZbeJ5ARnuk00nUrI3zb5DA4rzrKnsAQHw0pStbDRCwAAAAAAAAASAAAAAAAAAAIAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAABHwGL5gAAAAAAAAASAAAAAAAAAAMAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAAGY29uZmlnAAAAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAAA03y7O3NoA/IUo0QdcWOg9z7oM0p9hzKHDy119Sh8CwsAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAACwze8qbrGRwGn45xmHkGNepdRbubCWkO+gBxhhEeCRdQAAAAAAAAAEgAAAAEAAAAAm/9uFKvLLw2st271BJu/CR4B7oFib8C2j2u/E3wgC2wAAAABSUByOhK9FQQ+I98D6r2VwsrsloO+g99WAcZ8p8wF4zoAAAAAAAAACAAAAACphYESRCuwKH2Ob1Uuvi5wVMKJM9AcnORXQ8k++Y2sWwAAAAAAAAAA",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+          "nativeBalance": "100.0000000",
+          "memo": null,
+          "memoType": null,
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CA4V7YVUC3EE2EFVTEYJ47ZD34K4DCAKEYV6AHRR73KTKO5GDGNZLLMT",
+            "CBYFZPJ2DP5IK74JOXUPUM2RAM7N42OVOLK7K5UOIK7QQQKQTN2PZJWU"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": [],
+          "sponsoredEntries": [
+            {
+              "kind": "account",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T"
+            },
+            {
+              "kind": "trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "asset": "USDC:GB4CWQLDZMCOIPRL4SQ6TRLNKXDUGZ5QJGTCKNV2C6MLAF5MJBAJHZJY"
+            },
+            {
+              "kind": "pool_share_trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "poolId": "ab65b789e40467ba4d349d4ac8df36f90c0e2bceb2a7b00407c34a52b5b0d10b"
+            },
+            {
+              "kind": "offer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "offerId": "4815162342"
+            },
+            {
+              "kind": "data_entry",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "name": "config"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "GDJXZOZ3ONUAH4QUUNCB24LDUD3T52BTJJ6YOMUHB4WXL5JIPQFQXBNT"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "TBEUA4R2CK6RKBB6EPPQH2V5SXBMV3EWQO7IHX2WAHDHZJ6MAXRTVIKR"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "XDBTPPFJXLDEOANH4OOGMHSBRV5JOULO43BFUQ56QAOGDBCHQJC5JMU6"
+            }
+          ]
+        }
+      },
+      "error": {
+        "name": "VerificationError",
+        "code": "sponsorship_revoke_unknown",
+        "message": "A sponsorship revoke names an entry your account is not known to sponsor."
+      }
+    },
+    {
+      "name": "sponsorship-revoke-preAuth-twice",
+      "verdict": "reject",
+      "base": "sponsorship-revokes",
+      "mutation": "Revokes the sponsorship of the same preAuth entry twice.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAA+gAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAoAAAAAAAAAEgAAAAAAAAAAAAAAAPh209zx77b0C7CEqRMikz3wtHbaD56oWdhUfieW8qCYAAAAAAAAABIAAAAAAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAFVU0RDAAAAAHgrQWPLBOQ+K+Sh6cVtVcdDZ7BJpiU2uheYsBesSECTAAAAAAAAABIAAAAAAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAOrZbeJ5ARnuk00nUrI3zb5DA4rzrKnsAQHw0pStbDRCwAAAAAAAAASAAAAAAAAAAIAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAABHwGL5gAAAAAAAAASAAAAAAAAAAMAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAAGY29uZmlnAAAAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAAA03y7O3NoA/IUo0QdcWOg9z7oM0p9hzKHDy119Sh8CwsAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAABSUByOhK9FQQ+I98D6r2VwsrsloO+g99WAcZ8p8wF4zoAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAACwze8qbrGRwGn45xmHkGNepdRbubCWkO+gBxhhEeCRdQAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAABSUByOhK9FQQ+I98D6r2VwsrsloO+g99WAcZ8p8wF4zoAAAAAAAAACAAAAACphYESRCuwKH2Ob1Uuvi5wVMKJM9AcnORXQ8k++Y2sWwAAAAAAAAAA",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+          "nativeBalance": "100.0000000",
+          "memo": null,
+          "memoType": null,
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CA4V7YVUC3EE2EFVTEYJ47ZD34K4DCAKEYV6AHRR73KTKO5GDGNZLLMT",
+            "CBYFZPJ2DP5IK74JOXUPUM2RAM7N42OVOLK7K5UOIK7QQQKQTN2PZJWU"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": [],
+          "sponsoredEntries": [
+            {
+              "kind": "account",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T"
+            },
+            {
+              "kind": "trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "asset": "USDC:GB4CWQLDZMCOIPRL4SQ6TRLNKXDUGZ5QJGTCKNV2C6MLAF5MJBAJHZJY"
+            },
+            {
+              "kind": "pool_share_trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "poolId": "ab65b789e40467ba4d349d4ac8df36f90c0e2bceb2a7b00407c34a52b5b0d10b"
+            },
+            {
+              "kind": "offer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "offerId": "4815162342"
+            },
+            {
+              "kind": "data_entry",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "name": "config"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "GDJXZOZ3ONUAH4QUUNCB24LDUD3T52BTJJ6YOMUHB4WXL5JIPQFQXBNT"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "TBEUA4R2CK6RKBB6EPPQH2V5SXBMV3EWQO7IHX2WAHDHZJ6MAXRTVIKR"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "XDBTPPFJXLDEOANH4OOGMHSBRV5JOULO43BFUQ56QAOGDBCHQJC5JMU6"
+            }
+          ]
+        }
+      },
+      "error": {
+        "name": "VerificationError",
+        "code": "sponsorship_revoke_duplicate",
+        "message": "The transaction would revoke the sponsorship of the same entry more than once."
+      }
+    },
+    {
+      "name": "sponsorship-revoke-hashX-other-account",
+      "verdict": "reject",
+      "base": "sponsorship-revokes",
+      "mutation": "Revokes the sponsorship of the same hashX entry on another account, which this account is not known to sponsor.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAA4QAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAkAAAAAAAAAEgAAAAAAAAAAAAAAAPh209zx77b0C7CEqRMikz3wtHbaD56oWdhUfieW8qCYAAAAAAAAABIAAAAAAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAFVU0RDAAAAAHgrQWPLBOQ+K+Sh6cVtVcdDZ7BJpiU2uheYsBesSECTAAAAAAAAABIAAAAAAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAOrZbeJ5ARnuk00nUrI3zb5DA4rzrKnsAQHw0pStbDRCwAAAAAAAAASAAAAAAAAAAIAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAABHwGL5gAAAAAAAAASAAAAAAAAAAMAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAAGY29uZmlnAAAAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAAA03y7O3NoA/IUo0QdcWOg9z7oM0p9hzKHDy119Sh8CwsAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAABSUByOhK9FQQ+I98D6r2VwsrsloO+g99WAcZ8p8wF4zoAAAAAAAAAEgAAAAEAAAAAm/9uFKvLLw2st271BJu/CR4B7oFib8C2j2u/E3wgC2wAAAACwze8qbrGRwGn45xmHkGNepdRbubCWkO+gBxhhEeCRdQAAAAAAAAACAAAAACphYESRCuwKH2Ob1Uuvi5wVMKJM9AcnORXQ8k++Y2sWwAAAAAAAAAA",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+          "nativeBalance": "100.0000000",
+          "memo": null,
+          "memoType": null,
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CA4V7YVUC3EE2EFVTEYJ47ZD34K4DCAKEYV6AHRR73KTKO5GDGNZLLMT",
+            "CBYFZPJ2DP5IK74JOXUPUM2RAM7N42OVOLK7K5UOIK7QQQKQTN2PZJWU"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": [],
+          "sponsoredEntries": [
+            {
+              "kind": "account",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T"
+            },
+            {
+              "kind": "trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "asset": "USDC:GB4CWQLDZMCOIPRL4SQ6TRLNKXDUGZ5QJGTCKNV2C6MLAF5MJBAJHZJY"
+            },
+            {
+              "kind": "pool_share_trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "poolId": "ab65b789e40467ba4d349d4ac8df36f90c0e2bceb2a7b00407c34a52b5b0d10b"
+            },
+            {
+              "kind": "offer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "offerId": "4815162342"
+            },
+            {
+              "kind": "data_entry",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "name": "config"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "GDJXZOZ3ONUAH4QUUNCB24LDUD3T52BTJJ6YOMUHB4WXL5JIPQFQXBNT"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "TBEUA4R2CK6RKBB6EPPQH2V5SXBMV3EWQO7IHX2WAHDHZJ6MAXRTVIKR"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "XDBTPPFJXLDEOANH4OOGMHSBRV5JOULO43BFUQ56QAOGDBCHQJC5JMU6"
+            }
+          ]
+        }
+      },
+      "error": {
+        "name": "VerificationError",
+        "code": "sponsorship_revoke_unknown",
+        "message": "A sponsorship revoke names an entry your account is not known to sponsor."
+      }
+    },
+    {
+      "name": "sponsorship-revoke-hashX-twice",
+      "verdict": "reject",
+      "base": "sponsorship-revokes",
+      "mutation": "Revokes the sponsorship of the same hashX entry twice.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAA+gAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAoAAAAAAAAAEgAAAAAAAAAAAAAAAPh209zx77b0C7CEqRMikz3wtHbaD56oWdhUfieW8qCYAAAAAAAAABIAAAAAAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAFVU0RDAAAAAHgrQWPLBOQ+K+Sh6cVtVcdDZ7BJpiU2uheYsBesSECTAAAAAAAAABIAAAAAAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAOrZbeJ5ARnuk00nUrI3zb5DA4rzrKnsAQHw0pStbDRCwAAAAAAAAASAAAAAAAAAAIAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAABHwGL5gAAAAAAAAASAAAAAAAAAAMAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAAGY29uZmlnAAAAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAAA03y7O3NoA/IUo0QdcWOg9z7oM0p9hzKHDy119Sh8CwsAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAABSUByOhK9FQQ+I98D6r2VwsrsloO+g99WAcZ8p8wF4zoAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAACwze8qbrGRwGn45xmHkGNepdRbubCWkO+gBxhhEeCRdQAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAACwze8qbrGRwGn45xmHkGNepdRbubCWkO+gBxhhEeCRdQAAAAAAAAACAAAAACphYESRCuwKH2Ob1Uuvi5wVMKJM9AcnORXQ8k++Y2sWwAAAAAAAAAA",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+          "nativeBalance": "100.0000000",
+          "memo": null,
+          "memoType": null,
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CA4V7YVUC3EE2EFVTEYJ47ZD34K4DCAKEYV6AHRR73KTKO5GDGNZLLMT",
+            "CBYFZPJ2DP5IK74JOXUPUM2RAM7N42OVOLK7K5UOIK7QQQKQTN2PZJWU"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": [],
+          "sponsoredEntries": [
+            {
+              "kind": "account",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T"
+            },
+            {
+              "kind": "trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "asset": "USDC:GB4CWQLDZMCOIPRL4SQ6TRLNKXDUGZ5QJGTCKNV2C6MLAF5MJBAJHZJY"
+            },
+            {
+              "kind": "pool_share_trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "poolId": "ab65b789e40467ba4d349d4ac8df36f90c0e2bceb2a7b00407c34a52b5b0d10b"
+            },
+            {
+              "kind": "offer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "offerId": "4815162342"
+            },
+            {
+              "kind": "data_entry",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "name": "config"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "GDJXZOZ3ONUAH4QUUNCB24LDUD3T52BTJJ6YOMUHB4WXL5JIPQFQXBNT"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "TBEUA4R2CK6RKBB6EPPQH2V5SXBMV3EWQO7IHX2WAHDHZJ6MAXRTVIKR"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "XDBTPPFJXLDEOANH4OOGMHSBRV5JOULO43BFUQ56QAOGDBCHQJC5JMU6"
+            }
+          ]
+        }
+      },
+      "error": {
+        "name": "VerificationError",
+        "code": "sponsorship_revoke_duplicate",
+        "message": "The transaction would revoke the sponsorship of the same entry more than once."
+      }
+    },
+    {
+      "name": "sponsorship-revoke-other-asset",
+      "verdict": "reject",
+      "base": "sponsorship-revokes",
+      "mutation": "Revokes the sponsorship of the same account's EURT trustline, which this account is not known to sponsor.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAAMgAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAIAAAAAAAAAEgAAAAAAAAABAAAAAPh209zx77b0C7CEqRMikz3wtHbaD56oWdhUfieW8qCYAAAAAUVVUlQAAAAAeCtBY8sE5D4r5KHpxW1Vx0NnsEmmJTa6F5iwF6xIQJMAAAAAAAAACAAAAACphYESRCuwKH2Ob1Uuvi5wVMKJM9AcnORXQ8k++Y2sWwAAAAAAAAAA",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+          "nativeBalance": "100.0000000",
+          "memo": null,
+          "memoType": null,
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CA4V7YVUC3EE2EFVTEYJ47ZD34K4DCAKEYV6AHRR73KTKO5GDGNZLLMT",
+            "CBYFZPJ2DP5IK74JOXUPUM2RAM7N42OVOLK7K5UOIK7QQQKQTN2PZJWU"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": [],
+          "sponsoredEntries": [
+            {
+              "kind": "account",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T"
+            },
+            {
+              "kind": "trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "asset": "USDC:GB4CWQLDZMCOIPRL4SQ6TRLNKXDUGZ5QJGTCKNV2C6MLAF5MJBAJHZJY"
+            },
+            {
+              "kind": "pool_share_trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "poolId": "ab65b789e40467ba4d349d4ac8df36f90c0e2bceb2a7b00407c34a52b5b0d10b"
+            },
+            {
+              "kind": "offer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "offerId": "4815162342"
+            },
+            {
+              "kind": "data_entry",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "name": "config"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "GDJXZOZ3ONUAH4QUUNCB24LDUD3T52BTJJ6YOMUHB4WXL5JIPQFQXBNT"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "TBEUA4R2CK6RKBB6EPPQH2V5SXBMV3EWQO7IHX2WAHDHZJ6MAXRTVIKR"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "XDBTPPFJXLDEOANH4OOGMHSBRV5JOULO43BFUQ56QAOGDBCHQJC5JMU6"
+            }
+          ]
+        }
+      },
+      "error": {
+        "name": "VerificationError",
+        "code": "sponsorship_revoke_unknown",
+        "message": "A sponsorship revoke names an entry your account is not known to sponsor."
+      }
+    },
+    {
+      "name": "sponsorship-revoke-other-pool",
+      "verdict": "reject",
+      "base": "sponsorship-revokes",
       "mutation": "Revokes the sponsorship of the same account's share trustline in the EURT/USDC pool, which this account is not known to sponsor.",
       "nowSeconds": 1793491200,
       "input": {
@@ -3348,27 +5356,63 @@
           "repayTokensByPool": {},
           "shareTokenContracts": [],
           "debtTokenContracts": [],
-          "sponsoredPoolShareLines": {
-            "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T": [
-              "ab65b789e40467ba4d349d4ac8df36f90c0e2bceb2a7b00407c34a52b5b0d10b"
-            ]
-          }
+          "sponsoredEntries": [
+            {
+              "kind": "account",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T"
+            },
+            {
+              "kind": "trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "asset": "USDC:GB4CWQLDZMCOIPRL4SQ6TRLNKXDUGZ5QJGTCKNV2C6MLAF5MJBAJHZJY"
+            },
+            {
+              "kind": "pool_share_trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "poolId": "ab65b789e40467ba4d349d4ac8df36f90c0e2bceb2a7b00407c34a52b5b0d10b"
+            },
+            {
+              "kind": "offer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "offerId": "4815162342"
+            },
+            {
+              "kind": "data_entry",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "name": "config"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "GDJXZOZ3ONUAH4QUUNCB24LDUD3T52BTJJ6YOMUHB4WXL5JIPQFQXBNT"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "TBEUA4R2CK6RKBB6EPPQH2V5SXBMV3EWQO7IHX2WAHDHZJ6MAXRTVIKR"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "XDBTPPFJXLDEOANH4OOGMHSBRV5JOULO43BFUQ56QAOGDBCHQJC5JMU6"
+            }
+          ]
         }
       },
       "error": {
         "name": "VerificationError",
-        "code": "pool_line_sponsorship_unknown",
-        "message": "A sponsorship revoke names a pool share trustline your account is not known to sponsor."
+        "code": "sponsorship_revoke_unknown",
+        "message": "A sponsorship revoke names an entry your account is not known to sponsor."
       }
     },
     {
-      "name": "pool-share-line-sponsorship-other-account",
+      "name": "sponsorship-revoke-other-offer",
       "verdict": "reject",
-      "base": "pool-share-line-sponsorship-revoke",
-      "mutation": "Revokes the sponsorship of another account's share trustline in the same pool.",
+      "base": "sponsorship-revokes",
+      "mutation": "Revokes the sponsorship of another offer of the same account.",
       "nowSeconds": 1793491200,
       "input": {
-        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAAMgAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAIAAAAAAAAAEgAAAAAAAAABAAAAAJv/bhSryy8NrLdu9QSbvwkeAe6BYm/Ato9rvxN8IAtsAAAAA6tlt4nkBGe6TTSdSsjfNvkMDivOsqewBAfDSlK1sNELAAAAAAAAAAgAAAAAqYWBEkQrsCh9jm9VLr4ucFTCiTPQHJzkV0PJPvmNrFsAAAAAAAAAAA==",
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAAMgAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAIAAAAAAAAAEgAAAAAAAAACAAAAAPh209zx77b0C7CEqRMikz3wtHbaD56oWdhUfieW8qCYAAAAAR8Bi+cAAAAAAAAACAAAAACphYESRCuwKH2Ob1Uuvi5wVMKJM9AcnORXQ8k++Y2sWwAAAAAAAAAA",
         "network": "testnet",
         "expected": {
           "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
@@ -3428,27 +5472,63 @@
           "repayTokensByPool": {},
           "shareTokenContracts": [],
           "debtTokenContracts": [],
-          "sponsoredPoolShareLines": {
-            "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T": [
-              "ab65b789e40467ba4d349d4ac8df36f90c0e2bceb2a7b00407c34a52b5b0d10b"
-            ]
-          }
+          "sponsoredEntries": [
+            {
+              "kind": "account",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T"
+            },
+            {
+              "kind": "trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "asset": "USDC:GB4CWQLDZMCOIPRL4SQ6TRLNKXDUGZ5QJGTCKNV2C6MLAF5MJBAJHZJY"
+            },
+            {
+              "kind": "pool_share_trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "poolId": "ab65b789e40467ba4d349d4ac8df36f90c0e2bceb2a7b00407c34a52b5b0d10b"
+            },
+            {
+              "kind": "offer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "offerId": "4815162342"
+            },
+            {
+              "kind": "data_entry",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "name": "config"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "GDJXZOZ3ONUAH4QUUNCB24LDUD3T52BTJJ6YOMUHB4WXL5JIPQFQXBNT"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "TBEUA4R2CK6RKBB6EPPQH2V5SXBMV3EWQO7IHX2WAHDHZJ6MAXRTVIKR"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "XDBTPPFJXLDEOANH4OOGMHSBRV5JOULO43BFUQ56QAOGDBCHQJC5JMU6"
+            }
+          ]
         }
       },
       "error": {
         "name": "VerificationError",
-        "code": "pool_line_sponsorship_unknown",
-        "message": "A sponsorship revoke names a pool share trustline your account is not known to sponsor."
+        "code": "sponsorship_revoke_unknown",
+        "message": "A sponsorship revoke names an entry your account is not known to sponsor."
       }
     },
     {
-      "name": "pool-share-line-sponsorship-twice",
+      "name": "sponsorship-revoke-other-data-name",
       "verdict": "reject",
-      "base": "pool-share-line-sponsorship-revoke",
-      "mutation": "Revokes the sponsorship of the same pool share trustline twice.",
+      "base": "sponsorship-revokes",
+      "mutation": "Revokes the sponsorship of another data entry of the same account.",
       "nowSeconds": 1793491200,
       "input": {
-        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAASwAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAMAAAAAAAAAEgAAAAAAAAABAAAAAPh209zx77b0C7CEqRMikz3wtHbaD56oWdhUfieW8qCYAAAAA6tlt4nkBGe6TTSdSsjfNvkMDivOsqewBAfDSlK1sNELAAAAAAAAABIAAAAAAAAAAQAAAAD4dtPc8e+29AuwhKkTIpM98LR22g+eqFnYVH4nlvKgmAAAAAOrZbeJ5ARnuk00nUrI3zb5DA4rzrKnsAQHw0pStbDRCwAAAAAAAAAIAAAAAKmFgRJEK7AofY5vVS6+LnBUwokz0Byc5FdDyT75jaxbAAAAAAAAAAA=",
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAAMgAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAIAAAAAAAAAEgAAAAAAAAADAAAAAPh209zx77b0C7CEqRMikz3wtHbaD56oWdhUfieW8qCYAAAAB2NvbmZpZzIAAAAAAAAAAAgAAAAAqYWBEkQrsCh9jm9VLr4ucFTCiTPQHJzkV0PJPvmNrFsAAAAAAAAAAA==",
         "network": "testnet",
         "expected": {
           "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
@@ -3508,17 +5588,169 @@
           "repayTokensByPool": {},
           "shareTokenContracts": [],
           "debtTokenContracts": [],
-          "sponsoredPoolShareLines": {
-            "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T": [
-              "ab65b789e40467ba4d349d4ac8df36f90c0e2bceb2a7b00407c34a52b5b0d10b"
-            ]
-          }
+          "sponsoredEntries": [
+            {
+              "kind": "account",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T"
+            },
+            {
+              "kind": "trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "asset": "USDC:GB4CWQLDZMCOIPRL4SQ6TRLNKXDUGZ5QJGTCKNV2C6MLAF5MJBAJHZJY"
+            },
+            {
+              "kind": "pool_share_trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "poolId": "ab65b789e40467ba4d349d4ac8df36f90c0e2bceb2a7b00407c34a52b5b0d10b"
+            },
+            {
+              "kind": "offer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "offerId": "4815162342"
+            },
+            {
+              "kind": "data_entry",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "name": "config"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "GDJXZOZ3ONUAH4QUUNCB24LDUD3T52BTJJ6YOMUHB4WXL5JIPQFQXBNT"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "TBEUA4R2CK6RKBB6EPPQH2V5SXBMV3EWQO7IHX2WAHDHZJ6MAXRTVIKR"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "XDBTPPFJXLDEOANH4OOGMHSBRV5JOULO43BFUQ56QAOGDBCHQJC5JMU6"
+            }
+          ]
         }
       },
       "error": {
         "name": "VerificationError",
-        "code": "pool_line_sponsorship_duplicate",
-        "message": "The transaction would revoke the sponsorship of the same pool share trustline more than once."
+        "code": "sponsorship_revoke_unknown",
+        "message": "A sponsorship revoke names an entry your account is not known to sponsor."
+      }
+    },
+    {
+      "name": "sponsorship-revoke-other-signer",
+      "verdict": "reject",
+      "base": "sponsorship-revokes",
+      "mutation": "Revokes the sponsorship of another signer of the same account.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAAMgAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAIAAAAAAAAAEgAAAAEAAAAA+HbT3PHvtvQLsISpEyKTPfC0dtoPnqhZ2FR+J5byoJgAAAAAZkhbSxxyZfnXkXyhYsgZOJ1yLT4RUUq3AHHlDsmdQAMAAAAAAAAACAAAAACphYESRCuwKH2Ob1Uuvi5wVMKJM9AcnORXQ8k++Y2sWwAAAAAAAAAA",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+          "nativeBalance": "100.0000000",
+          "memo": null,
+          "memoType": null,
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CA4V7YVUC3EE2EFVTEYJ47ZD34K4DCAKEYV6AHRR73KTKO5GDGNZLLMT",
+            "CBYFZPJ2DP5IK74JOXUPUM2RAM7N42OVOLK7K5UOIK7QQQKQTN2PZJWU"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": [],
+          "sponsoredEntries": [
+            {
+              "kind": "account",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T"
+            },
+            {
+              "kind": "trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "asset": "USDC:GB4CWQLDZMCOIPRL4SQ6TRLNKXDUGZ5QJGTCKNV2C6MLAF5MJBAJHZJY"
+            },
+            {
+              "kind": "pool_share_trustline",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "poolId": "ab65b789e40467ba4d349d4ac8df36f90c0e2bceb2a7b00407c34a52b5b0d10b"
+            },
+            {
+              "kind": "offer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "offerId": "4815162342"
+            },
+            {
+              "kind": "data_entry",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "name": "config"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "GDJXZOZ3ONUAH4QUUNCB24LDUD3T52BTJJ6YOMUHB4WXL5JIPQFQXBNT"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "TBEUA4R2CK6RKBB6EPPQH2V5SXBMV3EWQO7IHX2WAHDHZJ6MAXRTVIKR"
+            },
+            {
+              "kind": "signer",
+              "owner": "GD4HNU646HX3N5ALWCCKSEZCSM67BNDW3IHZ5KCZ3BKH4J4W6KQJQN4T",
+              "signerKey": "XDBTPPFJXLDEOANH4OOGMHSBRV5JOULO43BFUQ56QAOGDBCHQJC5JMU6"
+            }
+          ]
+        }
+      },
+      "error": {
+        "name": "VerificationError",
+        "code": "sponsorship_revoke_unknown",
+        "message": "A sponsorship revoke names an entry your account is not known to sponsor."
       }
     },
     {
