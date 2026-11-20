@@ -126,6 +126,8 @@ export default function PlanAccordion({
           {revocableSponsorships.map((entry, i) => (
             <li key={i} className="text-xs text-fg-muted">
               {entry.kind === "trustline" && `Trustline for ${entry.asset.split(":")[0]}`}
+              {entry.kind === "pool_share_trustline" &&
+                `Share trustline for liquidity pool ${shortAddr(entry.poolId)}`}
               {entry.kind === "offer" && `Offer ${entry.offerId}`}
               {entry.kind === "data_entry" && `Data entry "${entry.name}"`}
               {entry.kind === "signer" && "Signer"}

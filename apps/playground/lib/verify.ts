@@ -555,6 +555,9 @@ export function sharedExpectation(expected: PlaygroundCloseExpectation): CloseEx
     tokenTransfers: tokenTransfers(expected.token),
     classicConversions,
     tokenConversions: {},
+    // No scenario sponsors a pool share trustline, so a session records none and the shared
+    // verifier refuses every revoke of one's sponsorship.
+    sponsoredPoolShareLines: {},
   };
 }
 
