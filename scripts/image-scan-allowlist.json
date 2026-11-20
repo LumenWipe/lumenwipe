@@ -88,6 +88,14 @@
     "expires": "2027-02-14"
   },
   {
+    "advisory": "CVE-2026-84786",
+    "package": "libssl3t64",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie and trixie-security openssl 3.5.7-1~deb13u3: vulnerable, no fixed version (upstream fix not yet merged). A DANE-enabled TLS client dereferences a NULL pointer when its TLSA RRset mixes a PKIX-TA(0) or PKIX-EE(1) record with a DANE-TA(2) SPKI(1) Full(0) record and the server presents a trusted self-signed leaf. From the distroless base image, which ships libssl3t64 3.5.7-1~deb13u3; nothing in the image loads the system libssl or libcrypto: a DT_NEEDED scan of every ELF in the pinned amd64 image (285 files, layers fetched by digest) finds libcrypto.so.3 only in libssl3t64's own libssl.so.3 and engines-3, node links neither (it bundles OpenSSL 3.5.9), and the API's production node_modules hold no ELF file. The API enables no DANE verification, and node's tls module exposes no DANE API.",
+    "added": "2026-11-20",
+    "expires": "2026-12-17"
+  },
+  {
     "advisory": "CVE-2026-88823",
     "package": "libssl3t64",
     "severity": "high",
