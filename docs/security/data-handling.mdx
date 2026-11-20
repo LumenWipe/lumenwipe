@@ -78,8 +78,7 @@ The web server's Redis store (Upstash) holds rate-limit counters only. Each key 
 day and the first 16 hex characters of an HMAC-SHA-256 of the route, the UTC day and the visitor's IP address, under
 a secret held by the operator (`RATE_LIMIT_HASH_KEY`). The address cannot be recovered by enumerating IPs, and the
 value changes every day and differs per route (`apps/web/lib/upstash-redis.ts#checkNamespacedRateLimit`, used by
-`apps/web/lib/api/rate-limit.ts#rateLimitProxy`). The playground's rate-limit counters, in its own Redis store,
-hash the IP the same way under its own `RATE_LIMIT_HASH_KEY`, with `playground:` before the route
+`apps/web/lib/api/rate-limit.ts#rateLimitProxy`). The playground's rate-limit counters hash the IP the same way under its own `RATE_LIMIT_HASH_KEY`, with `playground:` before the route
 (`apps/playground/lib/rate-limit.ts#createRateLimiter`).
 
 ## What stays in the browser
