@@ -73,7 +73,9 @@ export default function PlaygroundClient() {
           <TxLogPanel />
         </div>
 
-        <div className="mkt-panel relative min-w-0 overflow-hidden rounded-lg p-4 sm:p-8 lg:col-start-1 lg:row-start-1">
+        {/* On a tall enough desktop screen the scene stays in view while the controls beside it
+            scroll, so a toggle in the picker shows its effect at once. */}
+        <div className="mkt-panel scene-sticky relative min-w-0 overflow-hidden rounded-lg p-4 sm:p-8 lg:col-start-1 lg:row-start-1">
           {batch ? <BatchPanel onResolve={batchRun.resolveMember} /> : <OrbitalScene />}
         </div>
       </div>

@@ -32,6 +32,10 @@
     --mkt-bg: 197 30% 4.5%;
     --mkt-panel: 198 17% 10.5%;
     --mkt-line: 190 30% 84%;
+    /* The site header's link, menu and button colors. */
+    --fg-muted: 205 8% 66%;
+    --surface-raised: 198 17% 10.5%;
+    --line-strong: 205 10% 42%;
     /* Hint text: at least 4.5:1 on the background and on every panel. */
     --subtle-foreground: 200 8% 64%;
     /* Scene node kinds: each at least 3:1 on the node fill and on every panel (WCAG 1.4.11). */
@@ -123,6 +127,16 @@
     linear-gradient(180deg, hsl(0 0% 100% / 0.025), transparent 40%), hsl(200 16% 8% / 0.7);
   border: 1px solid hsl(0 0% 100% / 0.08);
   backdrop-filter: blur(8px);
+}
+
+/* The scene beside the controls: pinned below the header while the controls scroll, only where
+   the whole panel fits under it, so no part of the scene is ever cut off. */
+@media (min-width: 1024px) and (min-height: 760px) {
+  .scene-sticky {
+    position: sticky;
+    top: 5rem;
+    align-self: start;
+  }
 }
 
 /* Animated corner ticks for the instrument panel */

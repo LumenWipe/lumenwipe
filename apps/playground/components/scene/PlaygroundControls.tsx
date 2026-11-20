@@ -112,16 +112,8 @@ export default function PlaygroundControls({
           {batchSize === 0 && <ScenarioPicker />}
           {batchSize === 0 && validation.ok && <WillCreateList steps={validation.plan.steps} />}
 
-          <div className="my-4 flex items-start gap-2 rounded-md border border-white/10 bg-white/[0.03] px-3 py-2.5 text-xs text-subtle">
-            <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-stellar/60" />
-            <span>
-              This sandbox is the <em>only</em> custodial part of LumenWipe - we create a throwaway
-              testnet account so you can explore the full flow without a wallet.
-            </span>
-          </div>
-
           <button
-            className={`${primaryButton} bg-stellar text-black hover:opacity-90`}
+            className={`${primaryButton} mt-4 bg-stellar text-black hover:opacity-90`}
             onClick={startRun}
             disabled={batchSize > 0 ? linkPending : !runnable}
           >
@@ -130,6 +122,14 @@ export default function PlaygroundControls({
               ? `Create & trash ${batchSize} demo accounts`
               : "Create & trash a demo account"}
           </button>
+
+          <p className="mt-3 flex items-start gap-2 text-[11px] leading-relaxed text-subtle">
+            <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-stellar/60" aria-hidden />
+            <span>
+              This sandbox is the <em>only</em> custodial part of LumenWipe - we create a throwaway
+              testnet account so you can explore the full flow without a wallet.
+            </span>
+          </p>
         </>
       )}
 

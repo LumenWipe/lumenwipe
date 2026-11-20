@@ -1,6 +1,8 @@
 interface LogoProps {
   className?: string;
   showWord?: boolean;
+  /** Extra classes for the word, e.g. to hide it where the bar is narrow. */
+  wordClassName?: string;
 }
 
 /**
@@ -9,10 +11,14 @@ interface LogoProps {
  * Duplicated from apps/web/components/marketing/Logo.tsx (isolated apps
  * don't share components across the boundary).
  */
-export default function Logo({ className = "h-7 w-auto", showWord = true }: LogoProps) {
+export default function Logo({
+  className = "h-7 w-auto",
+  showWord = true,
+  wordClassName = "",
+}: LogoProps) {
   return (
     <span className="inline-flex items-center gap-2.5">
-      <svg viewBox="0 0 32 32" fill="none" className={className} aria-hidden="true" role="img">
+      <svg viewBox="0 0 32 32" fill="none" className={className} aria-hidden="true">
         <rect
           x="1"
           y="1"
@@ -36,7 +42,9 @@ export default function Logo({ className = "h-7 w-auto", showWord = true }: Logo
         />
       </svg>
       {showWord && (
-        <span className="mkt-display text-[1.05rem] font-bold tracking-tight text-white">
+        <span
+          className={`mkt-display text-base font-bold tracking-tight text-white ${wordClassName}`}
+        >
           Lumen<span className="text-stellar">Wipe</span>
         </span>
       )}
