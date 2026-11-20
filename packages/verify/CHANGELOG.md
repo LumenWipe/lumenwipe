@@ -21,6 +21,14 @@ release is cut.
   `pool_withdraw_min_above_reserves` and `pool_line_mismatch`. A new accepted vector withdraws
   from a pool, with rejected mutations for a swapped pool, a changed share amount, a zero, a low
   and an inflated minimum, and the removal of another pool's share line.
+- Revokes of a liquidity pool share trustline's sponsorship. `verify()` accepts one only for a
+  line in the new optional `sponsoredPoolShareLines` expectation (per sponsored account, the hex
+  pool ids the account read shows this account sponsoring), at most once per transaction. Without
+  `sponsoredPoolShareLines` every such revoke is refused. Build it with the new
+  `sponsoredPoolShareLineExpectations` from the account read. New codes:
+  `pool_line_sponsorship_unknown` and `pool_line_sponsorship_duplicate`. A new accepted vector
+  revokes a sponsored pool share line before the merge, with rejected mutations for another pool,
+  another account and a second revoke of the same line.
 
 ### Changed
 

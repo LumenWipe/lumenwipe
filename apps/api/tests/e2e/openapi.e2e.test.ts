@@ -166,6 +166,7 @@ test("account response schema, including its discriminated unions, is present an
       "FxdaoCdpPositionDto",
       "SponsoredAccountDto",
       "SponsoredTrustlineDto",
+      "SponsoredPoolShareTrustlineDto",
       "SponsoredOfferDto",
       "SponsoredDataEntryDto",
       "SponsoredSignerDto",
@@ -202,6 +203,7 @@ test("account response schema, including its discriminated unions, is present an
     expect.arrayContaining([
       "account",
       "trustline",
+      "pool_share_trustline",
       "offer",
       "data_entry",
       "signer",

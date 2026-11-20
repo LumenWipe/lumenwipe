@@ -63,6 +63,8 @@ function describeSponsoredEntry(entry: SponsoredEntry): string {
       return "an account creation";
     case "trustline":
       return `a trustline for ${entry.asset.split(":")[0]}`;
+    case "pool_share_trustline":
+      return `a share trustline for liquidity pool ${entry.poolId.slice(0, 8)}…`;
     case "offer":
       return `offer ${entry.offerId}`;
     case "data_entry":

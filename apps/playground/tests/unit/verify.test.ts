@@ -4,6 +4,7 @@ import {
   Account,
   Asset,
   Keypair,
+  LiquidityPoolId,
   Memo,
   Networks,
   Operation,
@@ -25,6 +26,7 @@ import {
   PLAYGROUND_CLOSE_OPERATION_TYPES,
   PlaygroundVerificationError,
   sessionThresholds,
+  sharedExpectation,
   verifyDemolishTransaction,
   type PlaygroundCloseExpectation,
 } from "@/lib/verify";
@@ -1271,5 +1273,17 @@ describe("the API's real transactions for the claims and sponsoring recipes", ()
         claimsRecipeExpectation(sponsoring, { beneficiary: Keypair.random().publicKey() })
       )
     ).toBe("revoke_not_recorded");
+  });
+});
+
+describe("pool share trustline sponsorships", () => {
+  test("the shared expectation records none, so a revoke of one is refused", () => {
+    const poolId = "d714bc2e56f74a4a4de2e81284a35b6fe09582f081bf785fc698310895c2d845";
+    expect(sharedExpectation(claimsExpectation()).sponsoredPoolShareLines).toEqual({});
+    const op = Operation.revokeTrustlineSponsorship({
+      account: beneficiary,
+      asset: new LiquidityPoolId(poolId),
+    });
+    expect(outcome(envelope([op]), claimsExpectation())).toBe("pool_line_sponsorship_unknown");
   });
 });

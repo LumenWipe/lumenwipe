@@ -9866,6 +9866,10 @@
           },
           "owner": {
             "type": "string"
+          },
+          "poolId": {
+            "type": "string",
+            "description": "The 64-character hex pool id of a pool share trustline. Absent otherwise."
           }
         },
         "required": [
@@ -10692,6 +10696,29 @@
           "kind",
           "owner",
           "asset"
+        ]
+      },
+      "SponsoredPoolShareTrustlineDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "pool_share_trustline"
+            ]
+          },
+          "owner": {
+            "type": "string"
+          },
+          "poolId": {
+            "type": "string",
+            "description": "64-character hex pool id."
+          }
+        },
+        "required": [
+          "kind",
+          "owner",
+          "poolId"
         ]
       },
       "SponsoredOfferDto": {
@@ -11885,6 +11912,9 @@
                   "$ref": "#/components/schemas/SponsoredTrustlineDto"
                 },
                 {
+                  "$ref": "#/components/schemas/SponsoredPoolShareTrustlineDto"
+                },
+                {
                   "$ref": "#/components/schemas/SponsoredOfferDto"
                 },
                 {
@@ -11902,6 +11932,7 @@
                 "mapping": {
                   "account": "#/components/schemas/SponsoredAccountDto",
                   "trustline": "#/components/schemas/SponsoredTrustlineDto",
+                  "pool_share_trustline": "#/components/schemas/SponsoredPoolShareTrustlineDto",
                   "offer": "#/components/schemas/SponsoredOfferDto",
                   "data_entry": "#/components/schemas/SponsoredDataEntryDto",
                   "signer": "#/components/schemas/SponsoredSignerDto",

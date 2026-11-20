@@ -147,7 +147,15 @@ export class PoolShareEntryDto implements PoolShareEntry {
 
 abstract class SponsoredEntryBaseDto {
   @ApiProperty({
-    enum: ["account", "trustline", "offer", "data_entry", "signer", "claimable_balance"],
+    enum: [
+      "account",
+      "trustline",
+      "pool_share_trustline",
+      "offer",
+      "data_entry",
+      "signer",
+      "claimable_balance",
+    ],
   })
   kind!: SponsoredEntry["kind"];
 }
@@ -169,6 +177,17 @@ export class SponsoredTrustlineDto extends SponsoredEntryBaseDto {
 
   @ApiProperty()
   asset!: string;
+}
+
+export class SponsoredPoolShareTrustlineDto extends SponsoredEntryBaseDto {
+  @ApiProperty({ enum: ["pool_share_trustline"] })
+  override kind!: "pool_share_trustline";
+
+  @ApiProperty()
+  owner!: string;
+
+  @ApiProperty({ description: "64-character hex pool id." })
+  poolId!: string;
 }
 
 export class SponsoredOfferDto extends SponsoredEntryBaseDto {
@@ -219,6 +238,7 @@ export class SponsoredClaimableBalanceDto extends SponsoredEntryBaseDto {
 const SPONSORED_ENTRY_MODELS = [
   { kind: "account", model: SponsoredAccountDto },
   { kind: "trustline", model: SponsoredTrustlineDto },
+  { kind: "pool_share_trustline", model: SponsoredPoolShareTrustlineDto },
   { kind: "offer", model: SponsoredOfferDto },
   { kind: "data_entry", model: SponsoredDataEntryDto },
   { kind: "signer", model: SponsoredSignerDto },

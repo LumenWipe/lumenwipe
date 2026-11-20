@@ -157,7 +157,9 @@ export function describeOperation(op: IntentOperation, raw: RawOperation | undef
     case "claim_claimable_balance":
       return `Claim balance ${op.balanceId}`;
     case "revoke_sponsorship":
-      return `Revoke the sponsorship of a ${op.entryKind.replace("_", " ")} of ${op.owner}`;
+      return op.poolId === undefined
+        ? `Revoke the sponsorship of a ${op.entryKind.replace("_", " ")} of ${op.owner}`
+        : `Revoke the sponsorship of the share trustline for liquidity pool ${op.poolId} of ${op.owner}`;
     case "invoke_host_function":
       return describeCall(op.function, op.contract, raw);
     default: {

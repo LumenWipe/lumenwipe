@@ -1,4 +1,4 @@
-import { Operation, StrKey, xdr } from "@stellar/stellar-sdk";
+import { LiquidityPoolId, Operation, StrKey, xdr } from "@stellar/stellar-sdk";
 import type { SponsoredEntry } from "@lumenwipe/types";
 import { assetToSdkAsset } from "@/lib/utils/assets";
 
@@ -64,6 +64,14 @@ export function revokeSponsorshipOps(entries: SponsoredEntry[]): xdr.Operation[]
           Operation.revokeTrustlineSponsorship({
             account: entry.owner,
             asset: assetToSdkAsset(entry.asset),
+          })
+        );
+        break;
+      case "pool_share_trustline":
+        ops.push(
+          Operation.revokeTrustlineSponsorship({
+            account: entry.owner,
+            asset: new LiquidityPoolId(entry.poolId),
           })
         );
         break;

@@ -516,3 +516,32 @@ test("a send and a simulation refused with a short Retry-After are sent once", a
     expect(hostsOf(calls, method)).toEqual([lone]);
   }
 });
+
+const readRawEntries = (): Promise<unknown> =>
+  inRequestContext(() => getRpcServer("testnet")._getLedgerEntries(KEY)).catch((e: unknown) => e);
+
+test("the raw ledger read stays on the request's provider and keeps its extXdr", async () => {
+  useProviders(A, B);
+  const entry = { key: KEY.toXDR("base64"), xdr: "AAAA", extXdr: "AAAAAA==" };
+  const calls = fakeRpc({
+    [A]: provider({ result: { entries: [entry], latestLedger: 100 } }),
+    [B]: provider(EMPTY_ENTRIES),
+  });
+  const both = await inRequestContext(async () => {
+    const server = getRpcServer("testnet");
+    return [await server._getLedgerEntries(KEY), await server._getLedgerEntries(KEY)];
+  });
+  expect(both).toMatchObject([{ entries: [entry] }, { entries: [entry] }]);
+  expect(calls.map((c) => c.host)).toEqual([A, A, A]);
+});
+
+test("a raw ledger read the provider fails is a typed outage, and one short Retry-After is retried", async () => {
+  let lone = useLoneProvider();
+  fakeRpc({ [lone]: provider({ status: 503 }) });
+  expect(await readRawEntries()).toMatchObject({ kind: "unavailable" });
+
+  lone = useLoneProvider();
+  const calls = fakeRpc({ [lone]: scripted("getLedgerEntries", ASKS_SHORT_WAIT, EMPTY_ENTRIES) });
+  expect(await readRawEntries()).toMatchObject({ entries: [] });
+  expect(hostsOf(calls, "getLedgerEntries")).toEqual([lone, lone]);
+});

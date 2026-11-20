@@ -7,6 +7,7 @@ import {
   TransactionBuilder,
   Networks,
   Keypair,
+  LiquidityPoolId,
   StrKey,
   nativeToScVal,
   xdr,
@@ -143,6 +144,22 @@ test("intentFromXdr normalizes all revoke-sponsorship operation types", () => {
     entryKind: "signer",
     owner: account,
   });
+});
+
+test("intentFromXdr names the pool of a pool share trustline's sponsorship revoke, and only there", () => {
+  const account = Keypair.random().publicKey();
+  const poolId = "d714bc2e56f74a4a4de2e81284a35b6fe09582f081bf785fc698310895c2d845";
+  const intent = intentFromXdr(
+    txWith(
+      Operation.revokeTrustlineSponsorship({ account, asset: new LiquidityPoolId(poolId) }),
+      Operation.revokeTrustlineSponsorship({ account, asset: new Asset("USDC", ISSUER) })
+    ),
+    Networks.TESTNET
+  );
+  expect(intent.operations).toEqual([
+    { source: SRC, type: "revoke_sponsorship", entryKind: "trustline", owner: account, poolId },
+    { source: SRC, type: "revoke_sponsorship", entryKind: "trustline", owner: account },
+  ]);
 });
 
 test("intentFromXdr decodes an ed25519 signer removal with its type and key", () => {

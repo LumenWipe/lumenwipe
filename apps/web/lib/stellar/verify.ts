@@ -133,6 +133,14 @@ export interface CloseExpectation {
    * pool share line removal is refused.
    */
   poolWithdrawals?: Record<string, PoolWithdrawalExpectation>;
+  /**
+   * Per account the closing account sponsors a pool share trustline on, the hex ids of those
+   * pools. The only pool share lines whose sponsorship a revoke may name, each at most once.
+   *
+   * Taken from the same analysis-time account read as `poolWithdrawals`, never from the plan or the
+   * transactions. Absent, every revoke of a pool share line's sponsorship is refused.
+   */
+  sponsoredPoolShareLines?: Record<string, string[]>;
   /** Every contract the bundled registry names on this network. */
   registryContracts: string[];
   /** XLM's contract and the contract of every classic asset the account holds. A DeFi exit
@@ -211,6 +219,19 @@ export function poolWithdrawalExpectations(
   return pools;
 }
 
+/** The pool share trustlines the account read shows the account sponsoring on other accounts, by
+ *  sponsored account. */
+export function sponsoredPoolShareLineExpectations(
+  accountState: AccountState | null | undefined
+): Record<string, string[]> {
+  const lines: Record<string, string[]> = {};
+  for (const entry of accountState?.sponsoredEntries ?? []) {
+    if (entry.kind !== "pool_share_trustline") continue;
+    (lines[entry.owner] ??= []).push(entry.poolId);
+  }
+  return lines;
+}
+
 /** A minimum may sit at most 2% under what the read's reserves give: the bound that protects the
  *  user. The API builds at 1% under the reserves at build time, which leaves room for the pool to
  *  move between the read and the build. */
@@ -279,6 +300,30 @@ function sdkAsset(asset: string): Asset {
   if (asset === "native") return Asset.native();
   const [code, issuer] = asset.split(":");
   return new Asset(code ?? "", issuer);
+}
+
+/** A revoke of a pool share line's sponsorship names a line the account read shows the account
+ *  sponsoring, once. */
+function assertSponsoredPoolLine(
+  owner: string,
+  poolId: string,
+  expected: CloseExpectation,
+  seen: Set<string>
+): void {
+  if (!expected.sponsoredPoolShareLines?.[owner]?.includes(poolId)) {
+    throw new VerificationError(
+      "pool_line_sponsorship_unknown",
+      "A sponsorship revoke names a pool share trustline your account is not known to sponsor."
+    );
+  }
+  const line = `${owner}:${poolId}`;
+  if (seen.has(line)) {
+    throw new VerificationError(
+      "pool_line_sponsorship_duplicate",
+      "The transaction would revoke the sponsorship of the same pool share trustline more than once."
+    );
+  }
+  seen.add(line);
 }
 
 /**
@@ -922,6 +967,7 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
   const seenTransfers = new Set<string>();
   const seenConversions = new Set<string>();
   const seenWithdrawals = new Set<string>();
+  const seenSponsoredPoolLines = new Set<string>();
 
   for (const op of intent.operations) {
     switch (op.type) {
@@ -1567,10 +1613,6 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
           "operation_unknown",
           "The transaction contains an unrecognized operation."
         );
-      // Stryker disable next-line ConditionalExpression: this case's entire body is a no-op
-      // `break` (see the comment below for why revoke_sponsorship needs no check). Collapsing it
-      // just falls through to the next case, which is also a no-op `break` - unobservable either
-      // way.
       case "revoke_sponsorship":
         // CAP-33: RevokeSponsorship always reverts the entry's reserve burden to its own
         // owning account UNLESS the operation's source account is sandwiched inside a
@@ -1581,7 +1623,11 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
         // here, wherever in the operation list it sits. That is the entire safety guarantee
         // for this op family: it structurally cannot redirect reserve to a third party once
         // sponsorship-transfer brackets are unreachable. The op itself carries no field that
-        // could name a beneficiary, so there is nothing further to check here.
+        // could name a beneficiary. A pool share line is further held to the lines the account
+        // read shows this account sponsoring.
+        if (op.poolId !== undefined) {
+          assertSponsoredPoolLine(op.owner, op.poolId, expected, seenSponsoredPoolLines);
+        }
         break;
       case "account_merge":
       case "claim_claimable_balance":
@@ -1835,6 +1881,7 @@ export function verifyCloseTransaction(opts: {
     shareTokenContracts: string[];
     debtTokenContracts: string[];
     poolWithdrawals?: Record<string, PoolWithdrawalExpectation>;
+    sponsoredPoolShareLines?: Record<string, string[]>;
   };
 }): void {
   const intent = intentFromXdr(opts.unsignedXdr, NETWORK_PASSPHRASES[opts.network]);

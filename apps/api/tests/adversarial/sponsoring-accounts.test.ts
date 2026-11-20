@@ -143,3 +143,29 @@ test("build-transactions includes the revoke when the live read confirms it's af
   const ops = opsOf(result.transactions[0]!.xdr);
   expect(ops.some((o) => o.type === "revokeTrustlineSponsorship")).toBe(true);
 });
+
+test("build-transactions revokes a sponsored pool share line on its owner's line in that pool", async () => {
+  spyOn(rpcModule, "getRpcServer").mockReturnValue(
+    ledgerRpcServer(
+      SOURCE,
+      mirrorSnapshot(SOURCE, () => snapshot)
+    )
+  );
+  const poolId = "d714bc2e56f74a4a4de2e81284a35b6fe09582f081bf785fc698310895c2d845";
+  const entries: SponsoredEntry[] = [{ kind: "pool_share_trustline", owner: OWNER, poolId }];
+  spyOn(sponsorshipAffordabilityModule, "assessSponsorshipAffordability").mockResolvedValue({
+    revocable: entries,
+    unverifiedOwners: [],
+    unaffordableOwners: new Map(),
+  });
+  const state = { ...accountState(), numSponsoring: 2, sponsoredEntries: entries };
+
+  const result = await buildCloseTransactions(ALL_ON, state, DEST, {}, "testnet");
+
+  const revokes = result.transactions
+    .flatMap((t) => t.intent.operations)
+    .filter((o) => o.type === "revoke_sponsorship");
+  expect(revokes).toEqual([
+    { type: "revoke_sponsorship", entryKind: "trustline", owner: OWNER, poolId, source: SOURCE },
+  ]);
+});

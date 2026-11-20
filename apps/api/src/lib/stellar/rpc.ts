@@ -42,6 +42,8 @@ function withLegacyAuth(prop: PropertyKey, args: unknown[]): unknown[] {
 // someone decides it is safe to race. Submission is deliberately absent: abandoning a submit
 // mid-flight would leave a transaction that may still land with no one watching it.
 const READ_METHODS = new Set<PropertyKey>([
+  // The unparsed getLedgerEntries, read only for the `extXdr` the parsed one drops.
+  "_getLedgerEntries",
   "getAccount",
   "getAccountEntry",
   "getAssetBalance",
@@ -344,6 +346,7 @@ function typedRead(network: Network, provider: ProviderEndpoint, call: unknown):
 
 // Idempotent reads only: never a submit, and never a simulation, whose cost a retry would double.
 const RETRIED_ON_RATE_LIMIT = new Set<PropertyKey>([
+  "_getLedgerEntries",
   "getHealth",
   "getLedgerEntries",
   "getLatestLedger",

@@ -26,6 +26,8 @@ function currentSponsorFor(live: OwnerLiveState, entry: OwnedEntry): string | nu
       return live.accountSponsor;
     case "trustline":
       return live.trustlineSponsors[entry.asset] ?? null;
+    case "pool_share_trustline":
+      return live.poolShareSponsors[entry.poolId] ?? null;
     case "offer":
       return live.offerSponsors[entry.offerId] ?? null;
     case "data_entry":

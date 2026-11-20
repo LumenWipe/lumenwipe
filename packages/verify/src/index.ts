@@ -15,6 +15,7 @@ import type {
 } from "@lumenwipe/types";
 import {
   poolWithdrawalExpectations as webPoolWithdrawalExpectations,
+  sponsoredPoolShareLineExpectations as webSponsoredPoolShareLineExpectations,
   verifyCloseTransaction as webVerifyCloseTransaction,
 } from "../../../apps/web/lib/stellar/verify";
 import { exitExpectations as webExitExpectations } from "../../../apps/web/lib/stellar/exit-expectations";
@@ -156,6 +157,13 @@ export interface CloseExpectationInput extends ExitExpectations {
    * every withdrawal and pool share line removal is refused.
    */
   poolWithdrawals?: Record<string, PoolWithdrawalExpectation>;
+  /**
+   * The pool share trustlines this account sponsors on other accounts: per sponsored account, the
+   * hex pool ids. Build it with {@link sponsoredPoolShareLineExpectations} from the account read,
+   * never from a plan or a transactions response. A revoke of a pool share line's sponsorship must
+   * name one of these lines, at most once. Omitted, every such revoke is refused.
+   */
+  sponsoredPoolShareLines?: Record<string, string[]>;
 }
 
 /**
@@ -257,6 +265,16 @@ export function poolWithdrawalExpectations(
   accountState: AccountState | null | undefined
 ): Record<string, PoolWithdrawalExpectation> {
   return webPoolWithdrawalExpectations(accountState);
+}
+
+/**
+ * The sponsorship half of a close expectation, from the account read the user reviewed: per account
+ * this one sponsors a pool share trustline on, the hex ids of those pools.
+ */
+export function sponsoredPoolShareLineExpectations(
+  accountState: AccountState | null | undefined
+): Record<string, string[]> {
+  return webSponsoredPoolShareLineExpectations(accountState);
 }
 
 /**

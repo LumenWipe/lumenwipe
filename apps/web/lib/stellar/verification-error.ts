@@ -58,6 +58,8 @@ export const VERIFICATION_ERROR_CODES = [
   "pool_withdraw_min_below_floor",
   "pool_withdraw_min_above_reserves",
   "pool_line_mismatch",
+  "pool_line_sponsorship_unknown",
+  "pool_line_sponsorship_duplicate",
   // Removals and SetOptions
   "trustline_not_removal",
   "data_entry_not_removal",

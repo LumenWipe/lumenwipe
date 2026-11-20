@@ -53,6 +53,7 @@ test("exports exactly the documented surface, in both formats", async () => {
     "exitExpectations",
     "poolWithdrawalExpectations",
     "requiresMediator",
+    "sponsoredPoolShareLineExpectations",
     "verifyCloseTransaction",
     "verifyRevokeAllowanceTransaction",
   ];

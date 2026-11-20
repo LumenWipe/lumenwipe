@@ -8,6 +8,7 @@ import {
   Keypair,
   LiquidityPoolAsset,
   LiquidityPoolFeeV18,
+  LiquidityPoolId,
   Memo,
   nativeToScVal,
   Networks,
@@ -19,6 +20,7 @@ import {
 import {
   assertCloseIntent,
   poolWithdrawalExpectations,
+  sponsoredPoolShareLineExpectations,
   verifyCloseTransaction,
   VerificationError,
   type CloseExpectation,
@@ -5269,6 +5271,166 @@ describe("classic liquidity pool withdrawals", () => {
 
   test("a share line can only be removed, never raised", () => {
     expectRefusal(() => check(opsOf([removal(XLM_USDC, "1")])), "trustline_not_removal");
+  });
+});
+
+describe("revoking the sponsorship of a pool share trustline on another account", () => {
+  const OWNER = Keypair.random().publicKey();
+  const STRANGER = Keypair.random().publicKey();
+  const POOL = "d714bc2e56f74a4a4de2e81284a35b6fe09582f081bf785fc698310895c2d845";
+  const OTHER_POOL = "68c2effe683511c8a4c57279651751e15d55d546f646fc12b7c54aa807966a0b";
+  const sponsored = { [OWNER]: [POOL] };
+
+  const revoke = (account = OWNER, poolId = POOL): xdr.Operation =>
+    Operation.revokeTrustlineSponsorship({ account, asset: new LiquidityPoolId(poolId) });
+  function opsOf(ops: xdr.Operation[]): IntentOperation[] {
+    return intentFromXdr(buildXdr(ops), Networks.TESTNET).operations;
+  }
+  function check(
+    operations: IntentOperation[],
+    sponsoredPoolShareLines: CloseExpectation["sponsoredPoolShareLines"] = sponsored
+  ): void {
+    assertCloseIntent(intent({ operations }), expectation({ sponsoredPoolShareLines }));
+  }
+
+  test("a revoke of a line the account read shows this account sponsoring passes", () => {
+    expect(() => check(opsOf([revoke()]))).not.toThrow();
+    expect(() =>
+      check(opsOf([revoke(), revoke(OWNER, OTHER_POOL)]), { [OWNER]: [POOL, OTHER_POOL] })
+    ).not.toThrow();
+  });
+
+  test("the expectation lists every sponsored pool share line from the account read, by owner", () => {
+    const account: AccountState = {
+      ...freshAccount(SRC),
+      sponsoredEntries: [
+        { kind: "pool_share_trustline", owner: OWNER, poolId: POOL },
+        { kind: "trustline", owner: OWNER, asset: `USDC:${ISSUER}` },
+        { kind: "pool_share_trustline", owner: OWNER, poolId: OTHER_POOL },
+        { kind: "pool_share_trustline", owner: STRANGER, poolId: POOL },
+      ],
+    };
+    expect(sponsoredPoolShareLineExpectations(account)).toEqual({
+      [OWNER]: [POOL, OTHER_POOL],
+      [STRANGER]: [POOL],
+    });
+    expect(sponsoredPoolShareLineExpectations(null)).toEqual({});
+  });
+
+  test("a revoke naming a different pool for a sponsored owner is refused", () => {
+    expectRefusal(
+      () => check(opsOf([revoke(OWNER, OTHER_POOL)])),
+      "pool_line_sponsorship_unknown",
+      "not known to sponsor"
+    );
+  });
+
+  test("a revoke of a line on an account this account does not sponsor is refused", () => {
+    expectRefusal(() => check(opsOf([revoke(STRANGER)])), "pool_line_sponsorship_unknown");
+  });
+
+  test("a revoke on another account's own, unsponsored line is refused", () => {
+    // The read lists no sponsored pool share line at all: the line is its owner's own.
+    expectRefusal(() => check(opsOf([revoke()]), {}), "pool_line_sponsorship_unknown");
+    expectRefusal(
+      () => assertCloseIntent(intent({ operations: opsOf([revoke()]) }), expectation()),
+      "pool_line_sponsorship_unknown"
+    );
+  });
+
+  test("a second revoke of the same line is refused", () => {
+    expectRefusal(() => check(opsOf([revoke(), revoke()])), "pool_line_sponsorship_duplicate");
+  });
+
+  test("a revoke alongside an operation the close does not expect is refused", () => {
+    expectRefusal(
+      () =>
+        check(
+          opsOf([
+            Operation.beginSponsoringFutureReserves({ sponsoredId: STRANGER }),
+            revoke(),
+            Operation.endSponsoringFutureReserves({ source: STRANGER }),
+          ])
+        ),
+      "operation_unknown"
+    );
+    expectRefusal(
+      () => check(opsOf([revoke(), Operation.bumpSequence({ bumpTo: "1000" })])),
+      "operation_unknown"
+    );
+    expectRefusal(
+      () =>
+        check(
+          opsOf([
+            revoke(),
+            Operation.liquidityPoolWithdraw({
+              liquidityPoolId: POOL,
+              amount: "1",
+              minAmountA: "0",
+              minAmountB: "0",
+            }),
+          ])
+        ),
+      "pool_not_held"
+    );
+  });
+
+  test("a revoke sourced from another account is refused", () => {
+    expectRefusal(
+      () =>
+        check(
+          opsOf([
+            Operation.revokeTrustlineSponsorship({
+              account: OWNER,
+              asset: new LiquidityPoolId(POOL),
+              source: STRANGER,
+            }),
+          ])
+        ),
+      "operation_source_mismatch"
+    );
+  });
+
+  test("verifyCloseTransaction holds the revoke to the expectation it is given", () => {
+    const unsignedXdr = buildXdr([revoke(), Operation.accountMerge({ destination: DEST })]);
+    const expected = {
+      source: SRC,
+      destination: DEST,
+      nativeBalance: "100.0000000",
+      memo: null,
+      memoType: null,
+      claimTrustlineAssets: [],
+      transfers: {},
+      tokenTransfers: {},
+      classicConversions: {},
+      tokenConversions: {},
+      conversionContracts: [],
+      xlmContract: XLM_SAC,
+      exitContracts: [],
+      heldTokenContracts: [],
+      positionTokenContracts: [],
+      exitFunctions: {},
+      accountSigners: [{ key: SRC, weight: 1, type: "ed25519_public_key" as const }],
+      accountThresholds: { low: 0, med: 0, high: 0 },
+      registryContracts: [],
+      protectedTokenContracts: [],
+      xbullAssets: {},
+      ownTokensByContract: {},
+      shareTokenContracts: [],
+      debtTokenContracts: [],
+      repayTokensByPool: {},
+    };
+    expect(() =>
+      verifyCloseTransaction({
+        unsignedXdr,
+        network: "testnet",
+        expected: { ...expected, sponsoredPoolShareLines: sponsored },
+      })
+    ).not.toThrow();
+    expectRefusal(
+      () => verifyCloseTransaction({ unsignedXdr, network: "testnet", expected }),
+      "pool_line_sponsorship_unknown"
+    );
   });
 });
 

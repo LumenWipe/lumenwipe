@@ -11,6 +11,8 @@ import {
 import { horizonAssetToString } from "@/lib/utils/assets";
 import { parseClaimPredicate } from "@/lib/stellar/horizon-adapter";
 import { pinnedHorizonSource, type HorizonSource } from "@/lib/stellar/provider-failover";
+import { getRpcServer } from "@/lib/stellar/rpc";
+import { readPoolShareSponsors } from "@/lib/stellar/pool-share-sponsors";
 import {
   reconcileSponsoredEntries,
   type SponsorshipCandidate,
@@ -72,11 +74,13 @@ interface HorizonOperation {
   asset_type?: string; // change_trust
   asset_code?: string;
   asset_issuer?: string;
+  liquidity_pool_id?: string; // change_trust on a pool share line
   name?: string; // manage_data
   signer_key?: string; // set_options / revoke_sponsorship
   account_id?: string; // revoke_sponsorship
   trustline_account_id?: string; // revoke_sponsorship
   trustline_asset?: string; // revoke_sponsorship, already "CODE:ISSUER"
+  trustline_liquidity_pool_id?: string; // revoke_sponsorship of a pool share line
   data_account_id?: string; // revoke_sponsorship
   data_name?: string; // revoke_sponsorship
   signer_account_id?: string; // revoke_sponsorship
@@ -136,6 +140,16 @@ async function discoverSponsorshipCandidates(
           continue;
         }
         if (op.type === "change_trust" && op.sponsor === address) {
+          if (op.asset_type === "liquidity_pool_shares") {
+            if (op.liquidity_pool_id) {
+              candidates.push({
+                kind: "pool_share_trustline",
+                owner: op.source_account,
+                key: op.liquidity_pool_id,
+              });
+            }
+            continue;
+          }
           candidates.push({
             kind: "trustline",
             owner: op.source_account,
@@ -171,6 +185,13 @@ async function discoverSponsorshipCandidates(
               key: op.trustline_asset,
             });
           }
+          if (op.trustline_account_id && op.trustline_liquidity_pool_id) {
+            candidates.push({
+              kind: "pool_share_trustline",
+              owner: op.trustline_account_id,
+              key: op.trustline_liquidity_pool_id,
+            });
+          }
           if (op.data_account_id && op.data_name) {
             candidates.push({ kind: "data_entry", owner: op.data_account_id, key: op.data_name });
           }
@@ -204,6 +225,7 @@ interface HorizonAccountForSponsorship {
     asset_type: string;
     asset_code?: string;
     asset_issuer?: string;
+    liquidity_pool_id?: string;
     balance?: string;
     sponsor?: string;
     selling_liabilities?: string;
@@ -244,6 +266,7 @@ export async function fetchOwnerLiveState(
   const empty: OwnerLiveState = {
     accountSponsor: null,
     trustlineSponsors: {},
+    poolShareSponsors: {},
     signerSponsors: {},
     offerSponsors: {},
     dataSponsors: {},
@@ -277,10 +300,23 @@ export async function fetchOwnerLiveState(
     };
 
     const trustlineSponsors: Record<string, string | null> = {};
+    const poolIds: string[] = [];
     for (const b of account.balances) {
-      if (b.asset_type === "liquidity_pool_shares") continue;
+      if (b.asset_type === "liquidity_pool_shares") {
+        // Horizon sends no `sponsor` on a pool share balance, so its sponsor is read from the
+        // ledger entry below. A pool share balance without an id cannot be looked up there.
+        if (!b.liquidity_pool_id) return { ...empty, accountSponsor: account.sponsor ?? null };
+        poolIds.push(b.liquidity_pool_id);
+        continue;
+      }
       trustlineSponsors[horizonAssetToString(b)] = b.sponsor ?? null;
     }
+
+    // Throws on any read it cannot trust, which the outer catch turns into fetchFailed.
+    const poolShareSponsors: Record<string, string | null> =
+      poolIds.length === 0
+        ? {}
+        : Object.fromEntries(await readPoolShareSponsors(getRpcServer(network), owner, poolIds));
 
     const signerSponsors: Record<string, string | null> = {};
     for (const s of account.signers) {
@@ -362,6 +398,7 @@ export async function fetchOwnerLiveState(
     return {
       accountSponsor: account.sponsor ?? null,
       trustlineSponsors,
+      poolShareSponsors,
       signerSponsors,
       offerSponsors,
       dataSponsors,

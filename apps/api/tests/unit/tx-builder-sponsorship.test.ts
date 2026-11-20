@@ -28,6 +28,14 @@ test("revokeSponsorshipOps › builds one op per non-claimable-balance kind", ()
   ]);
 });
 
+test("revokeSponsorshipOps › a pool share trustline is revoked on its owner's line in that pool", () => {
+  const poolId = "d714bc2e56f74a4a4de2e81284a35b6fe09582f081bf785fc698310895c2d845";
+  const entries: SponsoredEntry[] = [{ kind: "pool_share_trustline", owner: OWNER, poolId }];
+  const decoded = decodeOperation(revokeSponsorshipOps(entries)[0], "revokeTrustlineSponsorship");
+  expect(decoded.account).toBe(OWNER);
+  expect("getLiquidityPoolId" in decoded.asset && decoded.asset.getLiquidityPoolId()).toBe(poolId);
+});
+
 test("revokeSponsorshipOps › claimable_balance entries never produce an op (CAP-33: unrevocable without a new sponsor)", () => {
   const entries: SponsoredEntry[] = [
     { kind: "claimable_balance", balanceId: "00000000" + "ab".repeat(32) },

@@ -7,6 +7,7 @@
 import { expect, test } from "bun:test";
 import type {
   poolWithdrawalExpectations as webPoolWithdrawalExpectations,
+  sponsoredPoolShareLineExpectations as webSponsoredPoolShareLineExpectations,
   verifyCloseTransaction as webVerifyCloseTransaction,
 } from "../../../apps/web/lib/stellar/verify";
 import type {
@@ -25,6 +26,7 @@ import type {
   exitExpectations,
   poolWithdrawalExpectations,
   requiresMediator,
+  sponsoredPoolShareLineExpectations,
   RevokeAllowanceExpectation,
   RevokeAllowanceVerificationError,
   RevokeAllowanceVerificationErrorCode,
@@ -89,6 +91,18 @@ const pins = {
   poolReturn: true satisfies Pinned<
     ReturnType<typeof poolWithdrawalExpectations>,
     ReturnType<typeof webPoolWithdrawalExpectations>
+  >,
+  sponsoredPoolLines: true satisfies Pinned<
+    NonNullable<CloseExpectationInput["sponsoredPoolShareLines"]>,
+    NonNullable<WebExpected["sponsoredPoolShareLines"]>
+  >,
+  sponsoredPoolLineParams: true satisfies Pinned<
+    Parameters<typeof sponsoredPoolShareLineExpectations>,
+    Parameters<typeof webSponsoredPoolShareLineExpectations>
+  >,
+  sponsoredPoolLineReturn: true satisfies Pinned<
+    ReturnType<typeof sponsoredPoolShareLineExpectations>,
+    ReturnType<typeof webSponsoredPoolShareLineExpectations>
   >,
   exit: true satisfies Pinned<ExitExpectations, WebExitExpectations>,
   exitParams: true satisfies Pinned<
