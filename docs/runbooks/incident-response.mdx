@@ -87,6 +87,15 @@ Funds: <no funds are at risk | <what is known, without speculation>>.
 Next update: <time UTC> or sooner if this changes.
 ```
 
+## Status page
+
+Once the hosted status page is live (its probes are listed in the [monitoring plan](/monitoring-plan#status-page-probes-planned)), the maintainer who declares the incident also updates the page. The probes set the component states on their own; the incident log and its subscriber notifications are written by hand.
+
+- **Who declares:** the maintainer who acts, as in [Who may act](#who-may-act). A second maintainer reviews the entry afterwards.
+- **States:** mark a component `outage` for a SEV1, or a SEV2 that stops the path for everyone; `degraded` for any other SEV2 and for a SEV3 users can notice. A dependency outage goes on the dependency's row, not the API's.
+- **Text:** the [public update template](#public-update-template), posted at the same times as the GitHub update.
+- **Resolve** the incident on the page only after step 3 of [Resolving](#resolving) confirms the path works.
+
 ## Post-mortem template
 
 Blameless: describe what the system and the procedure allowed, not who made the mistake.

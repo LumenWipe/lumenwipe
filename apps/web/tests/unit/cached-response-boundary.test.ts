@@ -33,6 +33,7 @@ const FETCH_TARGETS: Record<string, "no-store" | "cached, gate only" | "display 
   "/api/integrator/*": "no-store",
   "/api/stats": "display only",
   "/api/stats/feed": "display only",
+  "/api/status": "display only",
   "/api/v1/*/close/delivered?*": "display only",
   "/api/v1/*/close/plan": "no-store",
   "/api/v1/*/close/transactions": "no-store",

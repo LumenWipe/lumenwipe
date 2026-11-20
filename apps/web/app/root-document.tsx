@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Toaster } from "sonner";
 import RedactedAnalytics from "@/components/analytics/RedactedAnalytics";
+import StatusBannerSlot from "@/components/layout/StatusBannerSlot";
 import { LOCALE_TAGS, type Locale } from "@/lib/i18n/locale";
 import { siteFontVars } from "./fonts";
 import "./globals.css";
@@ -20,6 +21,7 @@ export default function RootDocument({
   return (
     <html lang={LOCALE_TAGS[locale].html} className="dark">
       <body className={`${siteFontVars} font-body`}>
+        <StatusBannerSlot locale={locale} />
         <div id="app-root" className="contents">
           {children}
         </div>
