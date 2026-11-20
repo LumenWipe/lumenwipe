@@ -134,10 +134,16 @@ export function describeOperation(op: IntentOperation, raw: RawOperation | undef
       return `Convert ${op.sendAmount} ${assetName(op.sendAsset)} into at least ${op.destMin} ${assetName(op.destAsset)}, sent to ${op.destination}`;
     case "payment":
       return `Pay ${op.amount} ${assetName(op.asset)} to ${op.destination}`;
-    case "change_trust":
+    case "change_trust": {
+      const line = op.pool
+        ? `${assetName(op.pool.assetA)}/${assetName(op.pool.assetB)} pool share`
+        : op.asset;
       return Number(op.limit) === 0
-        ? `Remove the ${op.asset} trustline`
-        : `Set the ${op.asset} trustline limit to ${op.limit}`;
+        ? `Remove the ${line} trustline`
+        : `Set the ${line} trustline limit to ${op.limit}`;
+    }
+    case "liquidity_pool_withdraw":
+      return `Withdraw ${op.amount} shares from liquidity pool ${op.poolId}, receiving at least ${op.minAmountA} of its first asset and ${op.minAmountB} of its second`;
     case "account_merge":
       return `Merge account ${op.source} into ${op.destination}`;
     case "manage_sell_offer":

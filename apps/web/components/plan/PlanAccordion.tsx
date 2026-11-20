@@ -8,6 +8,7 @@ import { PROTOCOL_LABELS, describeDefiPosition } from "@/lib/plan/describe-posit
 import type { AssetConvertibility, ClaimableBalanceDecision } from "@/lib/api/plan-adapters";
 import type { AssetDisposition, ClaimableBalanceSelection } from "@/types/plan";
 import { StepTypeIcon } from "@/lib/utils/stepIcons";
+import { poolWithdrawalOutcomes } from "@/lib/plan/pool-withdrawals";
 import { formatAsset } from "@/lib/utils/assets";
 import AssetDispositionCard from "./AssetDispositionCard";
 import TokenDispositionCard from "./TokenDispositionCard";
@@ -239,6 +240,33 @@ export default function PlanAccordion({
             </ul>
           )}
         </div>
+      ),
+    });
+  }
+
+  const pools = poolWithdrawalOutcomes(account.poolShares, account.address);
+  if (pools.length > 0) {
+    groups.push({
+      type: "WITHDRAW_POOL_SHARES",
+      title: "Withdraw from liquidity pools",
+      summary: `${pools.length} pool${pools.length === 1 ? "" : "s"}, withdrawn before the close`,
+      body: (
+        <ul className="space-y-1">
+          {pools.map((p) => (
+            <li key={p.poolId} className="text-xs text-fg-muted">
+              {p.pair} <span className="text-fg-subtle">· {p.shares} shares withdrawn</span>
+              <span className="block text-fg-subtle">
+                {p.sides
+                  .map((s) =>
+                    s.retired
+                      ? `${s.minimum} ${s.code} retired, as you issue it`
+                      : `at least ${s.minimum} ${s.code}`
+                  )
+                  .join(" and ")}
+              </span>
+            </li>
+          ))}
+        </ul>
       ),
     });
   }

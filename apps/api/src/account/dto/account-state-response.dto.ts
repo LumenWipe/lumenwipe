@@ -1,5 +1,6 @@
 import { ApiExtraModels, ApiProperty, ApiPropertyOptional, getSchemaPath } from "@nestjs/swagger";
 import type {
+  LiquidityPoolState,
   AccountSigner,
   AccountState,
   AccountThresholds,
@@ -103,9 +104,39 @@ export class OpenOfferDto implements OpenOffer {
   price!: string;
 }
 
+export class LiquidityPoolStateDto implements LiquidityPoolState {
+  @ApiProperty({ description: '"native" or "CODE:ISSUER", in the pool\'s own order.' })
+  assetA!: string;
+
+  @ApiProperty({ description: '"native" or "CODE:ISSUER", in the pool\'s own order.' })
+  assetB!: string;
+
+  @ApiProperty({ description: "Fee in basis points; 30 for every classic pool." })
+  fee!: number;
+
+  @ApiProperty({ description: "Reserve of assetA, in stroops." })
+  reserveA!: string;
+
+  @ApiProperty({ description: "Reserve of assetB, in stroops." })
+  reserveB!: string;
+
+  @ApiProperty({ description: "Pool shares outstanding, in stroops." })
+  totalShares!: string;
+}
+
 export class PoolShareEntryDto implements PoolShareEntry {
   @ApiProperty({ description: "64-char hex, without the L prefix." })
   poolId!: string;
+
+  @ApiProperty({ description: "Pool shares held, with 7 decimals." })
+  balance!: string;
+
+  @ApiProperty({
+    type: LiquidityPoolStateDto,
+    nullable: true,
+    description: "The pool's ledger entry, or null when it could not be read.",
+  })
+  pool!: LiquidityPoolState | null;
 }
 
 abstract class SponsoredEntryBaseDto {

@@ -37,16 +37,17 @@ For a given account state the plan is always the same. It runs in this order, wh
 1. Normalize signers first, as a transaction of its own, when no single key of the account can sign the close, so the master key alone signs every step after it
 2. Exit DeFi positions, each as its own transaction
 3. Move Soroban tokens, each as its own transaction: every transfer first, then every conversion to XLM
-4. Claim claimable balances, adding a trustline first where a claim needs one, in a transaction before the close
-5. Normalize signers, when extra signers exist and this did not run first
-6. Revoke the sponsorships this account provides, when the owners can absorb the reserve
-7. Remove data entries
-8. Cancel offers
-9. Handle each asset
-10. Remove trustlines
-11. Merge the account, through the mediator transaction last for an exchange destination
+4. Withdraw every share of each classic liquidity pool and remove its share trustline, in a transaction before the claims
+5. Claim claimable balances, adding a trustline first where a claim needs one, in a transaction before the close
+6. Normalize signers, when extra signers exist and this did not run first
+7. Revoke the sponsorships this account provides, when the owners can absorb the reserve
+8. Remove data entries
+9. Cancel offers
+10. Handle each asset
+11. Remove trustlines
+12. Merge the account, through the mediator transaction last for an exchange destination
 
-Liquidity pool shares are not unwound by LumenWipe. An account that holds them is reported as a blocker, and the shares have to be withdrawn with another tool first.
+Classic liquidity pool shares are withdrawn in full. Each withdrawal accepts no less than 1% under what the pool's reserves give when its transaction is built, so a pool that moves further before it lands fails that transaction whole and nothing is withdrawn; the next round builds it again. What the pool pays in is then converted, sent or returned like any other balance, as you choose, and an asset you issue yourself is retired. A pool is refused only when it cannot be read, or when an asset's trustline is not fully authorized or has no room for the withdrawal.
 
 ## One transaction, or several
 
@@ -54,6 +55,7 @@ Most accounts close in a single transaction, signed once. More are needed in a f
 
 - **An exchange destination** adds one transaction, the [mediator](/reference/glossary#mediator) transfer. See [exchange closes](/guides/exchanges-and-the-mediator).
 - **An account no single key can sign** removes its other signers first, in a transaction of its own, so the rest of the close needs only the master key.
+- **Liquidity pool shares** are withdrawn in a transaction of their own, because what a pool returns is only known once it lands.
 - **Claimable balances** are claimed first and the account is closed second, so the proceeds are not lost.
 - **A Soroban step**, such as a DeFi exit or a Soroswap aggregator swap, is its own transaction, because it cannot be mixed with other operations.
 - **More than 100 operations** are split into the fewest transactions the protocol limit allows.

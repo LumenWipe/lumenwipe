@@ -3,8 +3,11 @@ import {
   Account,
   Address,
   Asset,
+  getLiquidityPoolId,
   hash,
   Keypair,
+  LiquidityPoolAsset,
+  LiquidityPoolFeeV18,
   Memo,
   nativeToScVal,
   Networks,
@@ -15,6 +18,7 @@ import {
 } from "@stellar/stellar-sdk";
 import {
   assertCloseIntent,
+  poolWithdrawalExpectations,
   verifyCloseTransaction,
   VerificationError,
   type CloseExpectation,
@@ -5079,6 +5083,192 @@ describe("a Phoenix withdrawal after the account's stakes were unbonded", () => 
       "exit_foreign_contract",
       /has no position, balance, or pool token in/
     );
+  });
+});
+
+describe("classic liquidity pool withdrawals", () => {
+  const USDC = new Asset("USDC", ISSUER);
+  const EURC = new Asset("EURC", ISSUER);
+  const XLM_USDC = new LiquidityPoolAsset(Asset.native(), USDC, LiquidityPoolFeeV18);
+  const EURC_USDC = new LiquidityPoolAsset(EURC, USDC, LiquidityPoolFeeV18);
+  const idOf = (line: LiquidityPoolAsset): string =>
+    toHex(getLiquidityPoolId("constant_product", line.getLiquidityPoolParameters()));
+  const POOL_ID = idOf(XLM_USDC);
+  // 70 of 700 shares in a pool of 1000 XLM and 500 USDC: 100 XLM and 50 USDC.
+  const held = {
+    [POOL_ID]: {
+      shares: "700000000",
+      reserveA: "10000000000",
+      reserveB: "5000000000",
+      totalShares: "7000000000",
+    },
+  };
+
+  function opsOf(ops: xdr.Operation[]): IntentOperation[] {
+    return intentFromXdr(buildXdr(ops), Networks.TESTNET).operations;
+  }
+  function withdraw(
+    minAmountA = "99.0000000",
+    minAmountB = "49.5000000",
+    amount = "70.0000000",
+    liquidityPoolId = POOL_ID
+  ): xdr.Operation {
+    return Operation.liquidityPoolWithdraw({ liquidityPoolId, amount, minAmountA, minAmountB });
+  }
+  const removal = (line: LiquidityPoolAsset = XLM_USDC, limit = "0"): xdr.Operation =>
+    Operation.changeTrust({ asset: line, limit });
+  function check(
+    operations: IntentOperation[],
+    poolWithdrawals: CloseExpectation["poolWithdrawals"] = held
+  ): void {
+    assertCloseIntent(intent({ operations }), expectation({ poolWithdrawals }));
+  }
+
+  test("the round the API builds passes: every share withdrawn, then the share line removed", () => {
+    expect(() => check(opsOf([withdraw(), removal()]))).not.toThrow();
+  });
+
+  test("passes end to end through verifyCloseTransaction from the account read", () => {
+    const account: AccountState = {
+      ...freshAccount(SRC),
+      poolShares: [
+        {
+          poolId: POOL_ID,
+          balance: "70.0000000",
+          pool: {
+            assetA: "native",
+            assetB: `USDC:${ISSUER}`,
+            fee: 30,
+            reserveA: "10000000000",
+            reserveB: "5000000000",
+            totalShares: "7000000000",
+          },
+        },
+      ],
+    };
+    expect(poolWithdrawalExpectations(account)).toEqual(held);
+    expect(poolWithdrawalExpectations(null)).toEqual({});
+    expect(
+      poolWithdrawalExpectations({
+        ...account,
+        poolShares: [{ ...account.poolShares[0]!, pool: null }],
+      })
+    ).toEqual({});
+  });
+
+  test("a pool the account holds no shares in is refused", () => {
+    const other = idOf(EURC_USDC);
+    expectRefusal(
+      () => check(opsOf([withdraw(undefined, undefined, undefined, other)])),
+      "pool_not_held",
+      "holds no shares in"
+    );
+    expectRefusal(
+      () => assertCloseIntent(intent({ operations: opsOf([withdraw()]) }), expectation()),
+      "pool_not_held"
+    );
+    expectRefusal(() => check(opsOf([withdraw()]), {}), "pool_not_held");
+  });
+
+  test("a withdrawal of any other share amount is refused", () => {
+    expectRefusal(
+      () => check(opsOf([withdraw(undefined, undefined, "69.9999999")])),
+      "pool_withdraw_amount_mismatch"
+    );
+    expectRefusal(
+      () => check(opsOf([withdraw(undefined, undefined, "70.0000001")])),
+      "pool_withdraw_amount_mismatch"
+    );
+  });
+
+  test("a second withdrawal from the same pool is refused", () => {
+    expectRefusal(() => check(opsOf([withdraw(), withdraw()])), "pool_withdraw_duplicate");
+  });
+
+  test("a zero minimum for a side the pool pays out is refused", () => {
+    expectRefusal(() => check(opsOf([withdraw("0")])), "pool_withdraw_min_missing");
+    expectRefusal(() => check(opsOf([withdraw(undefined, "0")])), "pool_withdraw_min_missing");
+  });
+
+  test("the lower bound sits at 98% of what the reserves give, to the stroop", () => {
+    expect(() => check(opsOf([withdraw("98.0000000", "49.0000000")]))).not.toThrow();
+    expectRefusal(
+      () => check(opsOf([withdraw("97.9999999")])),
+      "pool_withdraw_min_below_floor",
+      "less than the pool's reserves give"
+    );
+    expectRefusal(
+      () => check(opsOf([withdraw(undefined, "48.9999999")])),
+      "pool_withdraw_min_below_floor"
+    );
+  });
+
+  test("the upper bound sits at 101% of what the reserves give, to the stroop", () => {
+    expect(() => check(opsOf([withdraw("101.0000000", "50.5000000")]))).not.toThrow();
+    expectRefusal(
+      () => check(opsOf([withdraw("101.0000001")])),
+      "pool_withdraw_min_above_reserves",
+      "more than the pool's reserves give"
+    );
+    expectRefusal(
+      () => check(opsOf([withdraw(undefined, "50.5000001")])),
+      "pool_withdraw_min_above_reserves"
+    );
+  });
+
+  test("a side the reserves give nothing of takes exactly a zero minimum", () => {
+    const dust = { [POOL_ID]: { ...held[POOL_ID]!, reserveB: "9" } };
+    expect(() => check(opsOf([withdraw(undefined, "0")]), dust)).not.toThrow();
+    expectRefusal(
+      () => check(opsOf([withdraw(undefined, "0.0000001")]), dust),
+      "pool_withdraw_min_above_reserves"
+    );
+  });
+
+  test("a share line removal must name a held pool through its own asset pair and fee", () => {
+    expectRefusal(() => check(opsOf([removal(EURC_USDC)])), "pool_not_held");
+    const [line] = opsOf([removal()]) as [Extract<IntentOperation, { type: "change_trust" }>];
+    // The line's name and its parameters disagree: the id is derived, never read from the name.
+    expectRefusal(
+      () => check([{ ...line, asset: `pool:liquidity_pool:${idOf(EURC_USDC)}` }]),
+      "pool_line_mismatch",
+      "does not match the pool it names"
+    );
+    expectRefusal(
+      () =>
+        check(
+          [
+            {
+              ...line,
+              asset: `pool:liquidity_pool:${idOf(EURC_USDC)}`,
+              pool: { assetA: `EURC:${ISSUER}`, assetB: `USDC:${ISSUER}`, fee: 30 },
+            },
+          ],
+          {}
+        ),
+      "pool_not_held"
+    );
+    expectRefusal(
+      () => check([{ ...line, pool: { ...line.pool!, fee: 31 } }]),
+      "pool_line_mismatch"
+    );
+    expectRefusal(
+      () => check([{ ...line, pool: { ...line.pool!, assetB: `EURC:${ISSUER}` } }]),
+      "pool_line_mismatch"
+    );
+    expectRefusal(
+      () =>
+        check([
+          { ...line, pool: { assetA: line.pool!.assetB, assetB: line.pool!.assetA, fee: 30 } },
+        ]),
+      "pool_line_mismatch"
+    );
+    const { pool: _pool, ...unparameterized } = line;
+    expectRefusal(() => check([unparameterized]), "pool_line_mismatch");
+  });
+
+  test("a share line can only be removed, never raised", () => {
+    expectRefusal(() => check(opsOf([removal(XLM_USDC, "1")])), "trustline_not_removal");
   });
 });
 

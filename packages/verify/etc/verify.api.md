@@ -96,6 +96,7 @@ export interface CloseExpectationInput extends ExitExpectations {
     memo: string | null;
     memoType: "text" | "id" | "hash" | null;
     nativeBalance: string;
+    poolWithdrawals?: Record<string, PoolWithdrawalExpectation>;
     source: string;
     tokenConversions: Record<string, TokenConversionChoice>;
     tokenTransfers: Record<string, TransferChoice>;
@@ -140,6 +141,17 @@ export function exitExpectations(accountState: AccountState | null | undefined, 
 
 // @public
 export type Network = "mainnet" | "testnet";
+
+// @public
+export interface PoolWithdrawalExpectation {
+    reserveA: string;
+    reserveB: string;
+    shares: string;
+    totalShares: string;
+}
+
+// @public
+export function poolWithdrawalExpectations(accountState: AccountState | null | undefined): Record<string, PoolWithdrawalExpectation>;
 
 // @public
 export function requiresMediator(address: string, network: Network): boolean;

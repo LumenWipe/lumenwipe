@@ -98,6 +98,13 @@ import {
 } from "@/lib/close-api/token-conversion-round";
 import { assessIssuanceBlockers } from "@/lib/close-api/issuance-blocker";
 import { confirmLedgerState } from "@/lib/close-api/state-drift";
+import { LIQUIDITY_POOLS_LABEL, readLiquidityPools } from "@/lib/stellar/liquidity-pools";
+import { LiveReadError } from "@/lib/stellar/live-trustline";
+import {
+  POOL_ROUND_BATCH_SIZE,
+  planPoolWithdrawal,
+  proceedsPerAsset,
+} from "@/lib/stellar/tx-builder/pool-withdrawal";
 import { assessIssuance, type IssuanceDeps } from "@/lib/close-api/issuance-preflight";
 import type { KillSwitches } from "@/config/kill-switches";
 import { killSwitchBlockers } from "@/lib/kill-switches/blockers";
@@ -222,6 +229,11 @@ function assertOwnFeesFit(
     claimTrustlineCostStroops(state, claimSelections);
   const short = ownFeeShortfallStroops(state, owed);
   if (short > 0n) throw feeBalanceShortError(short);
+}
+
+/** The pool rounds still ahead: one per batch of pools. */
+function poolRoundsAhead(state: AccountState): number {
+  return Math.ceil(state.poolShares.length / POOL_ROUND_BATCH_SIZE);
 }
 
 function assertTransfersFit(problems: TransferDestinationProblem[]): void {
@@ -479,6 +491,7 @@ export async function buildCloseTransactions(
       requiresAnotherCall: true,
       remainingSteps:
         sorobanRounds +
+        poolRoundsAhead(accountState) +
         (plan.steps.some((s) => s.type === "CLAIM_BALANCES") ? 1 : 0) +
         1 +
         (needsMediator ? 1 : 0),
@@ -592,6 +605,81 @@ export async function buildCloseTransactions(
       throw new CloseBuildError(e.code, e.message, e.code === "quote_drifted" ? 409 : 422);
     }
     throw e;
+  }
+
+  // Pool shares come out in a round of their own, ahead of the claims and the close: what a
+  // withdrawal returns depends on the reserves when it lands, so the operations that dispose of
+  // it are built from the balances the next call reads. Each minimum is taken from the pool as
+  // the ledger holds it now; a pool that moves further before the round lands fails the whole
+  // transaction, the withdrawal and the line's removal together, and the next call builds again.
+  if (accountState.poolShares.length > 0) {
+    const batch = accountState.poolShares.slice(0, POOL_ROUND_BATCH_SIZE);
+    const livePools = await readLiquidityPools(
+      server,
+      batch.map((share) => share.poolId)
+    );
+    const withdrawals = batch.map((share) => {
+      const pool = livePools.get(share.poolId);
+      if (!pool) throw new LiveReadError(LIQUIDITY_POOLS_LABEL);
+      return planPoolWithdrawal(share, pool);
+    });
+    // Answers the close can never honour are refused before the first share is withdrawn, as the
+    // token round does: what arrives must have somewhere to go, or the account is left half closed.
+    const pooled = proceedsPerAsset(withdrawals, accountState.address);
+    const projected: TransferCheck[] = [];
+    for (const tl of accountState.trustlines) {
+      const arriving = pooled.get(tl.asset) ?? 0n;
+      if (dispositions[tl.asset] === "leave") {
+        throw new CloseBuildError(
+          "trustline_cannot_be_left",
+          trustlineCannotBeLeftMessage(tl.code),
+          422
+        );
+      }
+      if (dispositions[tl.asset] !== "transfer" || arriving === 0n) continue;
+      const destination = transferDestinations[tl.asset];
+      if (!destination) throw new MissingTransferDestinationError(tl.asset);
+      const held = await fetchLiveTrustlineBalance(tl, accountState.address, server);
+      projected.push({
+        asset: tl.asset,
+        destination,
+        amount: BigInt(xlmToStroops(held)) + arriving,
+      });
+    }
+    assertTransfersFit(await findTransferProblems(server, projected));
+    const more = accountState.poolShares.length > batch.length;
+    return {
+      transactions: packCloseTransactions(
+        sdkAccount,
+        {
+          needsSignerNormalization: false,
+          signers: accountState.signers,
+          revokeSponsorshipEntries: [],
+          dataEntries: [],
+          openOffers: [],
+          poolWithdrawals: withdrawals,
+          claimableBalances: [],
+          trustlinesToAddForClaim: [],
+          assetActions: [],
+          trustlines: [],
+          destinationAddress,
+          memo: null,
+          memoType: null,
+          includeMerge: false,
+        },
+        network,
+        validUntilLedger,
+        accountState,
+        sponsorConfigured,
+        laterOwnStroops.afterPools
+      ),
+      requiresAnotherCall: true,
+      remainingSteps:
+        (more ? 1 : 0) +
+        (plan.steps.some((s) => s.type === "CLAIM_BALANCES") ? 1 : 0) +
+        1 +
+        (needsMediator ? 1 : 0),
+    };
   }
 
   // Round 1 for claimable-balance accounts: claim first (re-reading which are still

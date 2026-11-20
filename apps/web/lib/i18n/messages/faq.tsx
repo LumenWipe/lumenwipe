@@ -100,9 +100,8 @@ const items = (ctx: FaqFacts): readonly FaqItem[] => [
             </span>
           </>
         )}
-        . Classic order-book offers are cancelled as part of every close. Classic AMM pool shares
-        are not unwound: they are reported as a blocker, so withdraw your liquidity from the pool
-        first.
+        . Classic order-book offers are cancelled as part of every close, and classic AMM pool
+        shares are withdrawn in full before it.
       </>
     ),
   },
@@ -243,9 +242,8 @@ const esItems = (ctx: FaqFacts): readonly FaqItem[] => [
             </span>
           </>
         )}
-        . Las offers del libro de órdenes clásico se cancelan en cada cierre. Las pool shares
-        (participaciones en un pool de liquidez AMM) clásicas no se deshacen: se reportan como un
-        bloqueo, así que primero retira tu liquidez del pool.
+        . Las offers del libro de órdenes clásico se cancelan en cada cierre, y las pool shares
+        (participaciones en un pool de liquidez AMM) clásicas se retiran por completo antes.
       </>
     ),
   },

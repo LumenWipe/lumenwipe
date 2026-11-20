@@ -1,3 +1,4 @@
+import { Asset, getLiquidityPoolId } from "@stellar/stellar-sdk";
 import { NETWORK_PASSPHRASES, type Network } from "@/config/networks";
 import {
   bundledExchange,
@@ -10,9 +11,10 @@ import {
 } from "@/lib/exchange-registry";
 import { appliesOn, isUsableAt, mergeServedRegistry } from "@/lib/exchange-registry/merge";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
+import { toHex } from "@/lib/stellar/hex";
 import { VerificationError } from "@/lib/stellar/verification-error";
 import { xlmToStroops } from "@/lib/utils/amounts";
-import type { AccountSigner, AccountThresholds } from "@/types/account";
+import type { AccountSigner, AccountState, AccountThresholds } from "@/types/account";
 import type { IntentOperation, TxIntent } from "@/types/close-api";
 
 /** A DeFi exit's fee comes from the API's simulation, not from a fixed per-operation rate, so it
@@ -119,6 +121,18 @@ export interface CloseExpectation {
    * quote, so only the choice and a positive minimum are held. Only these assets may be sold.
    */
   classicConversions: Record<string, { minAmountOut: string | null }>;
+  /**
+   * Per pool the account holds shares in, by hex pool id: the shares held and the pool's reserves,
+   * in stroops. The only pools a withdrawal may name, for exactly those shares, with each minimum
+   * held to a window around what those reserves give (`assertPoolWithdrawal`).
+   *
+   * Taken from the account read made at analysis time, a separate request from the plan and the
+   * transactions, never from either response. Like `accountSigners`, it comes from the API that
+   * builds the transaction, so it catches a builder bug or an inconsistent transactions path, not
+   * a wholly hostile API that keeps both responses consistent. Absent, every withdrawal and every
+   * pool share line removal is refused.
+   */
+  poolWithdrawals?: Record<string, PoolWithdrawalExpectation>;
   /** Every contract the bundled registry names on this network. */
   registryContracts: string[];
   /** XLM's contract and the contract of every classic asset the account holds. A DeFi exit
@@ -169,6 +183,137 @@ export interface CloseExpectation {
   /** The user's own transaction, already authorized by a pre-auth-tx signer and only submitted
    *  here: its expiry and fee are the user's, set before this close existed. */
   preAuthorized?: boolean;
+}
+
+/** A pool the account read shows the account holding shares in. Amounts in stroops. */
+export interface PoolWithdrawalExpectation {
+  shares: string;
+  reserveA: string;
+  reserveB: string;
+  totalShares: string;
+}
+
+/** The pool half of a close expectation, from the account read made at analysis time. A pool the
+ *  read could not see into is left out, so a withdrawal from it is refused. */
+export function poolWithdrawalExpectations(
+  accountState: AccountState | null | undefined
+): Record<string, PoolWithdrawalExpectation> {
+  const pools: Record<string, PoolWithdrawalExpectation> = {};
+  for (const share of accountState?.poolShares ?? []) {
+    if (!share.pool) continue;
+    pools[share.poolId] = {
+      shares: xlmToStroops(share.balance),
+      reserveA: share.pool.reserveA,
+      reserveB: share.pool.reserveB,
+      totalShares: share.pool.totalShares,
+    };
+  }
+  return pools;
+}
+
+/** A minimum may sit at most 2% under what the read's reserves give: the bound that protects the
+ *  user. The API builds at 1% under the reserves at build time, which leaves room for the pool to
+ *  move between the read and the build. */
+const POOL_MIN_FLOOR_BPS = BigInt(9_800);
+/** And at most 1% over: a sanity limit only, since a minimum the pool cannot meet makes the
+ *  transaction fail whole on the ledger and loses nothing. */
+const POOL_MIN_CEILING_BPS = BigInt(10_100);
+
+function assertPoolMinimum(min: bigint, shares: bigint, reserve: bigint, total: bigint): void {
+  const given = total > BigInt(0) ? (shares * reserve) / total : BigInt(0);
+  if (given > BigInt(0) && min <= BigInt(0)) {
+    throw new VerificationError(
+      "pool_withdraw_min_missing",
+      "A pool withdrawal has no minimum for an asset the pool pays out."
+    );
+  }
+  if (min < (given * POOL_MIN_FLOOR_BPS) / BigInt(10_000)) {
+    throw new VerificationError(
+      "pool_withdraw_min_below_floor",
+      "A pool withdrawal would accept less than the pool's reserves give. If the pool moved " +
+        "since the analysis, run it again."
+    );
+  }
+  if (min > (given * POOL_MIN_CEILING_BPS) / BigInt(10_000)) {
+    throw new VerificationError(
+      "pool_withdraw_min_above_reserves",
+      "A pool withdrawal asks for more than the pool's reserves give. If the pool moved since " +
+        "the analysis, run it again."
+    );
+  }
+}
+
+/** A withdrawal of exactly the shares the account holds, from a pool it holds them in. */
+function assertPoolWithdrawal(
+  op: Extract<IntentOperation, { type: "liquidity_pool_withdraw" }>,
+  expected: CloseExpectation,
+  seen: Set<string>
+): void {
+  const held = expected.poolWithdrawals?.[op.poolId];
+  if (!held) {
+    throw new VerificationError(
+      "pool_not_held",
+      "A withdrawal names a liquidity pool your account holds no shares in."
+    );
+  }
+  if (seen.has(op.poolId)) {
+    throw new VerificationError(
+      "pool_withdraw_duplicate",
+      "The transaction would withdraw from the same liquidity pool more than once."
+    );
+  }
+  seen.add(op.poolId);
+  const shares = BigInt(held.shares);
+  if (BigInt(xlmToStroops(op.amount)) !== shares) {
+    throw new VerificationError(
+      "pool_withdraw_amount_mismatch",
+      "A pool withdrawal does not withdraw exactly the shares your account holds."
+    );
+  }
+  const total = BigInt(held.totalShares);
+  assertPoolMinimum(BigInt(xlmToStroops(op.minAmountA)), shares, BigInt(held.reserveA), total);
+  assertPoolMinimum(BigInt(xlmToStroops(op.minAmountB)), shares, BigInt(held.reserveB), total);
+}
+
+function sdkAsset(asset: string): Asset {
+  if (asset === "native") return Asset.native();
+  const [code, issuer] = asset.split(":");
+  return new Asset(code ?? "", issuer);
+}
+
+/**
+ * A pool share line is named by the hash of its parameters, so the id is derived here from the
+ * asset pair and fee the operation carries, never read from the line's name: the removal must be
+ * of a line, of a pool the account holds, that the operation itself pins.
+ */
+function assertPoolLine(
+  op: Extract<IntentOperation, { type: "change_trust" }>,
+  expected: CloseExpectation
+): void {
+  const mismatch = new VerificationError(
+    "pool_line_mismatch",
+    "A pool share trustline change does not match the pool it names."
+  );
+  if (!op.pool) throw mismatch;
+  let poolId: string;
+  try {
+    poolId = toHex(
+      getLiquidityPoolId("constant_product", {
+        assetA: sdkAsset(op.pool.assetA),
+        assetB: sdkAsset(op.pool.assetB),
+        fee: op.pool.fee,
+      })
+    );
+  } catch {
+    throw mismatch;
+  }
+  if (op.asset !== `pool:liquidity_pool:${poolId}`) throw mismatch;
+  if (!expected.poolWithdrawals?.[poolId]) {
+    throw new VerificationError(
+      "pool_not_held",
+      "A trustline change names a liquidity pool your account holds no shares in."
+    );
+  }
 }
 
 /**
@@ -776,6 +921,7 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
   // approved and drain the balance in multiples - each copy individually matching the choice.
   const seenTransfers = new Set<string>();
   const seenConversions = new Set<string>();
+  const seenWithdrawals = new Set<string>();
 
   for (const op of intent.operations) {
     switch (op.type) {
@@ -849,7 +995,11 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
         }
         break;
       }
+      case "liquidity_pool_withdraw":
+        assertPoolWithdrawal(op, expected, seenWithdrawals);
+        break;
       case "change_trust":
+        if (op.pool || op.asset.startsWith("pool:")) assertPoolLine(op, expected);
         // The close only removes trustlines (limit 0, however the amount decodes) - with one
         // narrow exception: a raised trustline for an asset the user themselves chose to add
         // in order to claim an otherwise-unreachable balance ("add trustline and claim").
@@ -1684,6 +1834,7 @@ export function verifyCloseTransaction(opts: {
     repayTokensByPool: Record<string, string[]>;
     shareTokenContracts: string[];
     debtTokenContracts: string[];
+    poolWithdrawals?: Record<string, PoolWithdrawalExpectation>;
   };
 }): void {
   const intent = intentFromXdr(opts.unsignedXdr, NETWORK_PASSPHRASES[opts.network]);

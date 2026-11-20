@@ -13,7 +13,10 @@ import type {
   AccountThresholds,
   ExchangeRegistryEntry,
 } from "@lumenwipe/types";
-import { verifyCloseTransaction as webVerifyCloseTransaction } from "../../../apps/web/lib/stellar/verify";
+import {
+  poolWithdrawalExpectations as webPoolWithdrawalExpectations,
+  verifyCloseTransaction as webVerifyCloseTransaction,
+} from "../../../apps/web/lib/stellar/verify";
 import { exitExpectations as webExitExpectations } from "../../../apps/web/lib/stellar/exit-expectations";
 import { mediatorAllowedFor } from "../../../apps/web/lib/exchange-registry";
 import { verifyRevokeAllowanceTransaction as webVerifyRevokeAllowanceTransaction } from "../../../apps/web/lib/stellar/verify-revoke-allowance";
@@ -144,6 +147,15 @@ export interface CloseExpectationInput extends ExitExpectations {
   classicConversions: Record<string, ClassicConversionChoice>;
   /** The Soroban token conversions the user chose, keyed by token contract. */
   tokenConversions: Record<string, TokenConversionChoice>;
+  /**
+   * The classic liquidity pools the account holds shares in, by hex pool id. Build it with
+   * {@link poolWithdrawalExpectations} from the account read, never from a plan or a transactions
+   * response. A withdrawal must name one of these pools, for exactly its shares, with each minimum
+   * at least 98% and at most 101% of what these reserves give; a pool share line may be removed
+   * only for one of these pools, named by the asset pair and fee its operation carries. Omitted,
+   * every withdrawal and pool share line removal is refused.
+   */
+  poolWithdrawals?: Record<string, PoolWithdrawalExpectation>;
 }
 
 /**
@@ -178,6 +190,19 @@ export interface ServedRegistry {
   lastVerified: string;
   /** The date (YYYY-MM-DD) after which the registry is not relied on. */
   validUntil: string;
+}
+
+/** A classic liquidity pool the account holds shares in, as the account read showed it. Every
+ *  amount is in stroops. */
+export interface PoolWithdrawalExpectation {
+  /** The pool shares the account holds. A withdrawal must name exactly these. */
+  shares: string;
+  /** The pool's reserve of its first asset. */
+  reserveA: string;
+  /** The pool's reserve of its second asset. */
+  reserveB: string;
+  /** The pool shares outstanding. */
+  totalShares: string;
 }
 
 /** The input to {@link verifyCloseTransaction}. */
@@ -222,6 +247,16 @@ export function exitExpectations(
   network: Network
 ): ExitExpectations {
   return webExitExpectations(accountState, network);
+}
+
+/**
+ * The pool half of a close expectation, from the account read the user reviewed. A pool the read
+ * could not see into is left out, so a withdrawal from it is refused.
+ */
+export function poolWithdrawalExpectations(
+  accountState: AccountState | null | undefined
+): Record<string, PoolWithdrawalExpectation> {
+  return webPoolWithdrawalExpectations(accountState);
 }
 
 /**

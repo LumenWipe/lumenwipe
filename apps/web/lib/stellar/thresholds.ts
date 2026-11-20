@@ -31,6 +31,7 @@ export function operationThresholdCategory(op: IntentOperation): ThresholdCatego
     case "payment":
     case "path_payment_strict_send":
     case "change_trust":
+    case "liquidity_pool_withdraw":
     case "manage_sell_offer":
     case "revoke_sponsorship":
     // InvokeHostFunction does not override getThresholdLevel() either: medium, like ManageData.

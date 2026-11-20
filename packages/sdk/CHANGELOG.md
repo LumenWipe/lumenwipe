@@ -13,6 +13,13 @@ version number before 0.4.0. Neither has a git tag.
 
 ### Added
 
+- Classic liquidity pool withdrawal. `PoolShareEntry` gains `balance` and `pool` (the pool's
+  `LiquidityPoolState`: asset pair, fee, reserves and total shares, or null when it could not be
+  read), `StepType` gains `"WITHDRAW_POOL_SHARES"`, and `IntentOperationBody` gains
+  `liquidity_pool_withdraw` and an optional `pool` on `change_trust` for a pool share line. A close
+  of an account holding pool shares now withdraws them in a round of its own instead of refusing
+  with `liquidity_pool_shares_held`, which is kept for a pool that cannot be withdrawn safely.
+
 - `LumenWipeIntegratorClient.contractChallenge(network, address)` and
   `contractSession(network, { address, authorizationEntries })`: a contract account (`C...`)
   signs in for key management by signing SEP-45 style authorization entries with its own signer.

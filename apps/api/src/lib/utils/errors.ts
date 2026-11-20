@@ -158,6 +158,19 @@ const RESULT_CODE_MESSAGES: Record<string, string> = {
   claim_claimable_balance_low_reserve:
     "Insufficient XLM to cover the reserve required to claim this balance.",
 
+  // ── LiquidityPoolWithdraw (WITHDRAW_POOL_SHARES) ────────────────────────────
+  liquidity_pool_withdraw_malformed: "The pool withdrawal is malformed.",
+  liquidity_pool_withdraw_no_trust:
+    "This account no longer holds shares in the pool - they may have already been withdrawn.",
+  liquidity_pool_withdraw_underfunded:
+    "This account holds fewer pool shares than the withdrawal names. Plan the close again.",
+  liquidity_pool_withdraw_line_full:
+    "A trustline of the pool's assets is at its limit and cannot receive the withdrawal.",
+  liquidity_pool_withdraw_under_minimum:
+    "The pool's reserves moved before the withdrawal landed, so it would return less than its minimum. Nothing was withdrawn; build the round again.",
+  liquidity_pool_withdraw_trustline_frozen:
+    "A trustline of the pool's assets is frozen by the network, so the withdrawal cannot run.",
+
   // ── RevokeSponsorship (REVOKE_SPONSORSHIP) ──────────────────────────────────
   revoke_sponsorship_does_not_exist:
     "The sponsored entry no longer exists - it may have already been removed.",

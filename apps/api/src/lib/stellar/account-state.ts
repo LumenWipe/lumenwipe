@@ -34,6 +34,7 @@ import { assessDefiPositionsGate } from "@/lib/defi-positions/positions-gate";
 import { parseLedgerCloseTime } from "./claim-predicates";
 import { getRpcServer, pinRpcProvider, readLatestLedger, rpcReferenceLedger } from "./rpc";
 import { MEMO_REQUIRED_DATA_NAME } from "./memo-required";
+import { readLiquidityPools } from "./liquidity-pools";
 import { Logger } from "@nestjs/common";
 
 // Nest's logger, not console: these lines are how an operator learns the reader silently
@@ -47,6 +48,7 @@ import type {
   OpenOffer,
   Trustline,
   TrustlineAuthorization,
+  LiquidityPoolState,
   PoolShareEntry,
   SorobanTokensResult,
 } from "@lumenwipe/types";
@@ -246,6 +248,24 @@ export interface AccountReadOptions {
   fallbacks?: HorizonDeps[];
   /** The ledger a snapshot is judged against; the pinned RPC's when absent. */
   referenceLedger?: () => Promise<number>;
+  /** The ledger entries of the pools the account holds shares in; read over RPC when absent. */
+  liquidityPools?: (poolIds: string[]) => Promise<Map<string, LiquidityPoolState>>;
+}
+
+/** A pool that could not be read is left out, and the plan refuses to withdraw from it. */
+async function readPoolsOrNone(
+  poolIds: string[],
+  network: Network,
+  read?: (poolIds: string[]) => Promise<Map<string, LiquidityPoolState>>
+): Promise<Map<string, LiquidityPoolState>> {
+  if (poolIds.length === 0) return new Map();
+  try {
+    if (read) return await read(poolIds);
+    await pinRpcProvider(network);
+    return await readLiquidityPools(getRpcServer(network), poolIds);
+  } catch {
+    return new Map();
+  }
 }
 
 export async function readLedgerCloseTime(network: Network): Promise<number | null> {
@@ -424,9 +444,19 @@ export async function readAccountStateFrom(
 
   const trustlines: Trustline[] = account.balances.filter(isCreditBalance).map(toTrustline);
 
-  const poolShares: PoolShareEntry[] = account.balances
-    .filter((b) => b.asset_type === "liquidity_pool_shares" && b.liquidity_pool_id)
-    .map((b) => ({ poolId: b.liquidity_pool_id! }));
+  const heldShares = account.balances.filter(
+    (b) => b.asset_type === "liquidity_pool_shares" && b.liquidity_pool_id
+  );
+  const pools = await readPoolsOrNone(
+    heldShares.map((b) => b.liquidity_pool_id!),
+    network,
+    options.liquidityPools
+  );
+  const poolShares: PoolShareEntry[] = heldShares.map((b) => ({
+    poolId: b.liquidity_pool_id!,
+    balance: b.balance,
+    pool: pools.get(b.liquidity_pool_id!) ?? null,
+  }));
 
   const dataEntries: DataEntry[] = Object.entries(account.data ?? {}).map(([key, value]) => ({
     key,

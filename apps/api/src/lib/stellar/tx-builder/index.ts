@@ -39,6 +39,13 @@ import {
   trustlineShortfallNote,
 } from "@/lib/stellar/claim-reserve";
 import { batchItems } from "./batching";
+import {
+  assessPoolShareBlockers,
+  plannedPoolWithdrawals,
+  poolProceedsPerAsset,
+  poolWithdrawalLabels,
+  poolWithdrawalOpCount,
+} from "./pool-withdrawal";
 import type { KillSwitches } from "@/config/kill-switches";
 import { killSwitchBlockers, type ConversionProvider } from "@/lib/kill-switches/blockers";
 import { computeNeedsSignerNormalization, normalizesSignersFirst } from "./signers";
@@ -382,16 +389,8 @@ export function buildPlan(
     }
   }
 
-  // Pool share blocker: liquidity pool share trustlines cost 2 base reserves each and must
-  // be withdrawn from the pool (via a DEX UI) before the trustline can be removed.
-  if (accountState.poolShares.length > 0) {
-    blockers.push({
-      code: "liquidity_pool_shares_held",
-      message:
-        `This account holds ${accountState.poolShares.length} liquidity pool share(s). ` +
-        `Withdraw from the pool using a DEX interface (e.g. Stellar Expert) before continuing.`,
-    });
-  }
+  // Pool shares are withdrawn in a round of their own; only the ones that cannot be block.
+  blockers.push(...assessPoolShareBlockers(accountState));
 
   // Sub-entry mismatch blocker: we enumerated fewer sub-entries than the ledger reports.
   // Proceeding would leave unknown entries behind - block rather than build an incomplete plan.
@@ -623,6 +622,7 @@ export function buildPlan(
     !tokenTransactions &&
     exitBlockers.steps.length === 0 &&
     accountState.sponsoredEntries.length === 0 &&
+    accountState.poolShares.length === 0 &&
     singleTxOpCount <= OP_BATCH_LIMIT
   ) {
     const cleanupOps = singleTxOpCount - 1; // ops without the merge
@@ -683,7 +683,14 @@ export function buildPlan(
   // token out, and the token round then moves it before anything classic.
   pushTokenSteps();
 
-  // Claims follow the token rounds, exactly where the round builder runs them: in a round of
+  // Pool withdrawals follow the token rounds, in a round of their own: what a pool returns depends
+  // on its reserves when the round lands, so the steps that dispose of it are built only after.
+  for (const w of plannedPoolWithdrawals(accountState)) {
+    const { title, description } = poolWithdrawalLabels(w, masterKey);
+    steps.push(step(idx++, "WITHDRAW_POOL_SHARES", title, description, poolWithdrawalOpCount([w])));
+  }
+
+  // Claims follow the pool round, exactly where the round builder runs them: in a round of
   // their own, before the close that holds every step below.
   // Balances that need a trustline added before they can be claimed (the remediation path).
   // Always emitted immediately before the CLAIM_BALANCES step so the claim never runs against
@@ -849,11 +856,14 @@ export function buildPlan(
     code: asset.split(":")[0],
   }));
 
+  // What the pool withdrawals pay in, at the reserves the plan was read at.
+  const pooled = poolProceedsPerAsset(accountState);
+  const arrivingAt = (asset: string): number =>
+    (claimableNonXlmByAsset.get(asset) ?? 0) + Number(pooled.get(asset) ?? 0n) / 1e7;
+
   const trustlinesNeedingAction = [
     ...trustlines.filter(
-      (tl) =>
-        tl.authorized &&
-        (parseFloat(tl.balance) > 0 || (claimableNonXlmByAsset.get(tl.asset) ?? 0) > 0)
+      (tl) => tl.authorized && (parseFloat(tl.balance) > 0 || arrivingAt(tl.asset) > 0)
     ),
     ...arrivingByClaim,
   ];
@@ -862,7 +872,7 @@ export function buildPlan(
     // The amount the step will actually move, not the one sitting there while the plan is read.
     // A line the claim tops up shows 0 today, and "Exchange 0.0000000 EURC for XLM" describes
     // neither what the user chose nor what will happen.
-    const arriving = claimableNonXlmByAsset.get(tl.asset) ?? 0;
+    const arriving = arrivingAt(tl.asset);
     const effective =
       arriving > 0 ? { ...tl, balance: (parseFloat(tl.balance) + arriving).toFixed(7) } : tl;
     const { title, description } = assetStepLabels(

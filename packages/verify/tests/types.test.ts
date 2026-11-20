@@ -5,7 +5,10 @@
  * fails the type-check until both agree.
  */
 import { expect, test } from "bun:test";
-import type { verifyCloseTransaction as webVerifyCloseTransaction } from "../../../apps/web/lib/stellar/verify";
+import type {
+  poolWithdrawalExpectations as webPoolWithdrawalExpectations,
+  verifyCloseTransaction as webVerifyCloseTransaction,
+} from "../../../apps/web/lib/stellar/verify";
 import type {
   ExitExpectations as WebExitExpectations,
   exitExpectations as webExitExpectations,
@@ -20,6 +23,7 @@ import type {
   CloseExpectationInput,
   ExitExpectations,
   exitExpectations,
+  poolWithdrawalExpectations,
   requiresMediator,
   RevokeAllowanceExpectation,
   RevokeAllowanceVerificationError,
@@ -73,6 +77,18 @@ const pins = {
   verifyReturn: true satisfies Pinned<
     ReturnType<typeof verifyCloseTransaction>,
     ReturnType<typeof webVerifyCloseTransaction>
+  >,
+  poolWithdrawal: true satisfies Pinned<
+    Value<NonNullable<CloseExpectationInput["poolWithdrawals"]>>,
+    Value<NonNullable<WebExpected["poolWithdrawals"]>>
+  >,
+  poolParams: true satisfies Pinned<
+    Parameters<typeof poolWithdrawalExpectations>,
+    Parameters<typeof webPoolWithdrawalExpectations>
+  >,
+  poolReturn: true satisfies Pinned<
+    ReturnType<typeof poolWithdrawalExpectations>,
+    ReturnType<typeof webPoolWithdrawalExpectations>
   >,
   exit: true satisfies Pinned<ExitExpectations, WebExitExpectations>,
   exitParams: true satisfies Pinned<

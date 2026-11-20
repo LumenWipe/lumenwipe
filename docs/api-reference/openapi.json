@@ -10916,16 +10916,69 @@
           "price"
         ]
       },
+      "LiquidityPoolStateDto": {
+        "type": "object",
+        "properties": {
+          "assetA": {
+            "type": "string",
+            "description": "\"native\" or \"CODE:ISSUER\", in the pool's own order."
+          },
+          "assetB": {
+            "type": "string",
+            "description": "\"native\" or \"CODE:ISSUER\", in the pool's own order."
+          },
+          "fee": {
+            "type": "number",
+            "description": "Fee in basis points; 30 for every classic pool."
+          },
+          "reserveA": {
+            "type": "string",
+            "description": "Reserve of assetA, in stroops."
+          },
+          "reserveB": {
+            "type": "string",
+            "description": "Reserve of assetB, in stroops."
+          },
+          "totalShares": {
+            "type": "string",
+            "description": "Pool shares outstanding, in stroops."
+          }
+        },
+        "required": [
+          "assetA",
+          "assetB",
+          "fee",
+          "reserveA",
+          "reserveB",
+          "totalShares"
+        ]
+      },
       "PoolShareEntryDto": {
         "type": "object",
         "properties": {
           "poolId": {
             "type": "string",
             "description": "64-char hex, without the L prefix."
+          },
+          "balance": {
+            "type": "string",
+            "description": "Pool shares held, with 7 decimals."
+          },
+          "pool": {
+            "nullable": true,
+            "description": "The pool's ledger entry, or null when it could not be read.",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LiquidityPoolStateDto"
+              }
+            ]
           }
         },
         "required": [
-          "poolId"
+          "poolId",
+          "balance",
+          "pool"
         ]
       },
       "ClaimableBalanceDto": {

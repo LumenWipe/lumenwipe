@@ -84,16 +84,17 @@ LumenWipe builds a **deterministic, ordered execution plan** from the account's 
 | **1. Normalize signers first**  | `SetOptions`                            | Only when no single key can sign the close: removes the other signers in a transaction of its own, so the master key alone signs every later step |
 | **2. Exit DeFi positions**      | Soroban `InvokeHostFunction`            | Blend, Aquarius, Soroswap, Phoenix (unbond), FxDAO (testnet only): each exit is its own transaction                                               |
 | **3. Move Soroban tokens**      | Soroban `InvokeHostFunction`            | Each token is its own transaction: every transfer first, then every conversion to XLM                                                             |
-| **4. Claim claimable balances** | `ClaimClaimableBalance`                 | In a transaction before the close; adds a trustline first where a claim needs one                                                                 |
-| **5. Normalize signers**        | `SetOptions`                            | When extra signers exist and step 1 did not run: removes them and normalizes thresholds to 0/1/1                                                  |
-| **6. Revoke sponsorships**      | `RevokeSponsorship`                     | Revokes sponsorships this account provides when the owner can absorb the reserve; the rest surface as blockers                                    |
-| **7. Remove data entries**      | `ManageData`                            | Clears all `ManageData` entries in batches of 100                                                                                                 |
-| **8. Cancel DEX offers**        | `ManageSellOffer` / `ManageBuyOffer`    | Sets amount to 0 on all open order-book offers, freeing reserves                                                                                  |
-| **9. Handle each asset**        | `PathPaymentStrictSend` / Soroban swaps | Each non-XLM balance is converted to XLM, transferred, or returned to its issuer, as the user chose                                               |
-| **10. Remove trustlines**       | `ChangeTrust` (limit 0)                 | Removes all trustlines once their balances are zero, batched by 100                                                                               |
-| **11. Merge account**           | `AccountMerge`                          | Direct merge, or for an exchange destination the co-signed mediator transaction, last                                                             |
+| **4. Withdraw pool shares**     | `LiquidityPoolWithdraw` / `ChangeTrust` | In a transaction before the claims: withdraws every share of each classic pool, then removes its share trustline                                  |
+| **5. Claim claimable balances** | `ClaimClaimableBalance`                 | In a transaction before the close; adds a trustline first where a claim needs one                                                                 |
+| **6. Normalize signers**        | `SetOptions`                            | When extra signers exist and step 1 did not run: removes them and normalizes thresholds to 0/1/1                                                  |
+| **7. Revoke sponsorships**      | `RevokeSponsorship`                     | Revokes sponsorships this account provides when the owner can absorb the reserve; the rest surface as blockers                                    |
+| **8. Remove data entries**      | `ManageData`                            | Clears all `ManageData` entries in batches of 100                                                                                                 |
+| **9. Cancel DEX offers**        | `ManageSellOffer` / `ManageBuyOffer`    | Sets amount to 0 on all open order-book offers, freeing reserves                                                                                  |
+| **10. Handle each asset**       | `PathPaymentStrictSend` / Soroban swaps | Each non-XLM balance is converted to XLM, transferred, or returned to its issuer, as the user chose                                               |
+| **11. Remove trustlines**       | `ChangeTrust` (limit 0)                 | Removes all trustlines once their balances are zero, batched by 100                                                                               |
+| **12. Merge account**           | `AccountMerge`                          | Direct merge, or for an exchange destination the co-signed mediator transaction, last                                                             |
 
-Liquidity pool shares are not unwound by LumenWipe: an account that holds them is reported as a blocker, and the shares must be withdrawn elsewhere first.
+Classic liquidity pool shares (CAP-38) are withdrawn in full, at minimums 1% under what the pool's reserves give when the round is built, and what the pool pays in is then handled like any other balance. A pool is refused only when it cannot be read, or when an asset's trustline is not fully authorized or has no room for the withdrawal.
 
 ### Session state machine
 
@@ -128,7 +129,7 @@ LumenWipe detects and unwinds positions across the major Soroban DeFi protocols 
 | Protocol        | Position type                               | Exit mechanism                                                      |
 | --------------- | ------------------------------------------- | ------------------------------------------------------------------- |
 | **Classic DEX** | Order-book offers                           | `ManageSellOffer` / `ManageBuyOffer` (amount = 0)                   |
-| **Classic AMM** | Pool-share trustline (CAP-38)               | Not unwound: reported as a blocker, withdraw the shares elsewhere   |
+| **Classic AMM** | Pool-share trustline (CAP-38)               | `LiquidityPoolWithdraw` of every share, then `ChangeTrust` limit 0  |
 | **Blend**       | Supply (bToken), borrow (dToken), backstop  | `Pool.submit` - repay then withdraw, via `@blend-capital/blend-sdk` |
 | **Aquarius**    | AMM LP, AQUA rewards                        | `withdraw`, `claim` via Aquarius contracts                          |
 | **Soroswap**    | AMM LP                                      | `remove_liquidity` via Soroswap Router API                          |
@@ -253,11 +254,11 @@ Full technical documentation is at [**docs.lumenwipe.com**](https://docs.lumenwi
 
 The project is built in three cumulative phases, each independently verifiable:
 
-| Phase                              | Focus                                                                                                                                                                                                                             | Status          |
-| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
-| **Phase 1 - Classic wind-down**    | Signer normalization, sponsorship revocation, data entries, offer cancellation, claimable balances, per-asset conversion or return, trustline removal, merge, mediator flow, multisig, session recovery                           | **Complete**    |
-| **Phase 2 - Soroban & DeFi**       | DeFi position detection via OctoPos; Blend, Aquarius, Soroswap, Phoenix, and FxDAO (testnet only) exits; Soroban token conversion; allowance inspector; per-step simulation; sponsored fees for reserve-locked accounts (testnet) | **Complete**    |
-| **Phase 3 - Production hardening** | Public REST API and TypeScript SDK, standalone `verify()` package, monitoring, complete public documentation, testnet playground; security review and remediation, mainnet mediator and sponsor, final UX from user testing       | **In progress** |
+| Phase                              | Focus                                                                                                                                                                                                                                      | Status          |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------- |
+| **Phase 1 - Classic wind-down**    | Signer normalization, sponsorship revocation, data entries, offer cancellation, claimable balances, classic liquidity pool withdrawal, per-asset conversion or return, trustline removal, merge, mediator flow, multisig, session recovery | **Complete**    |
+| **Phase 2 - Soroban & DeFi**       | DeFi position detection via OctoPos; Blend, Aquarius, Soroswap, Phoenix, and FxDAO (testnet only) exits; Soroban token conversion; allowance inspector; per-step simulation; sponsored fees for reserve-locked accounts (testnet)          | **Complete**    |
+| **Phase 3 - Production hardening** | Public REST API and TypeScript SDK, standalone `verify()` package, monitoring, complete public documentation, testnet playground; security review and remediation, mainnet mediator and sponsor, final UX from user testing                | **In progress** |
 
 > Shipped in Phase 3 so far: the public REST API with self-serve API keys, `@lumenwipe/sdk` and `@lumenwipe/verify` on npm, on-ledger monitors, the documentation site with API and SDK guides, and the testnet playground. Still open: the security review and its remediation, the mainnet mediator and fee sponsor, a recorded mainnet close that includes a DeFi exit, and UX changes from moderated user testing. Live status is in the [Phase 3 milestone](https://github.com/LumenWipe/lumenwipe/milestone/3).
 

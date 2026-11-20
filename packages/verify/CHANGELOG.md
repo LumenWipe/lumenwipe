@@ -10,6 +10,17 @@ release is cut.
 ### Added
 
 - The `mediator_forward_balance_unknown` verification code.
+- Classic liquidity pool withdrawals. `verify()` accepts a `liquidityPoolWithdraw` only for a pool
+  in the new optional `poolWithdrawals` expectation, for exactly the shares held, with each
+  minimum at least 98% and at most 101% of what the expected reserves give (exactly 0 for a side
+  they give nothing of). A pool share trustline removal is accepted only for one of those pools,
+  with the pool id derived from the asset pair and fee the operation carries. Without
+  `poolWithdrawals` both are refused. Build it with the new `poolWithdrawalExpectations` from the
+  account read. New codes: `pool_not_held`, `pool_withdraw_duplicate`,
+  `pool_withdraw_amount_mismatch`, `pool_withdraw_min_missing`, `pool_withdraw_min_below_floor`,
+  `pool_withdraw_min_above_reserves` and `pool_line_mismatch`. A new accepted vector withdraws
+  from a pool, with rejected mutations for a swapped pool, a changed share amount, a zero, a low
+  and an inflated minimum, and the removal of another pool's share line.
 
 ### Changed
 

@@ -118,7 +118,7 @@ These come from `close/plan` and `close/transactions`. The `message` names the p
 | `trustline_deauthorized_with_balance`         | 422    | No        | A trustline holds a balance but was deauthorized by its issuer.                                                                |
 | `trustline_maintain_liabilities_with_balance` | 422    | No        | A trustline holds a balance but its issuer limited it to keeping existing offers only.                                         |
 | `account_auth_immutable`                      | 422    | No        | The account has the AUTH_IMMUTABLE flag set, so it can never be merged.                                                        |
-| `liquidity_pool_shares_held`                  | 422    | After fix | The account holds liquidity pool shares, which must be withdrawn before it can be merged.                                      |
+| `liquidity_pool_shares_held`                  | 422    | After fix | A pool the account holds shares in cannot be withdrawn: it was not read, or an asset trustline is not authorized or is full.   |
 | `subentries_unenumerated`                     | 422    | Yes       | The account has entries that could not be listed, so the close cannot remove them.                                             |
 | `sponsorship_claimable_balance_unrevocable`   | 422    | After fix | The account sponsors a claimable balance, which it cannot revoke until a claimant claims it.                                   |
 | `sponsorship_unaffordable`                    | 422    | After fix | Revoking a sponsorship would leave the sponsored account below its minimum balance.                                            |

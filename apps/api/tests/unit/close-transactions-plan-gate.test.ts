@@ -110,7 +110,11 @@ describe("close/transactions refuses a plan blocker the merge cannot get past", 
     ],
     [
       "liquidity_pool_shares_held",
-      () => state({ numSubEntries: 2, poolShares: [{ poolId: "a".repeat(64) }] }),
+      () =>
+        state({
+          numSubEntries: 2,
+          poolShares: [{ poolId: "a".repeat(64), balance: "1.0000000", pool: null }],
+        }),
     ],
     ["subentries_unenumerated", () => state({ numSubEntries: 3, subEntryMismatch: true })],
     // The claim round refuses both of these too; the gate refuses them before any round.

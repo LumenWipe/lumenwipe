@@ -84,7 +84,7 @@ export const ERROR_CODE_DESCRIPTIONS: Record<ErrorCode, string> = {
   key_limit_reached: "The wallet already has the maximum number of active keys.",
   key_network_not_allowed: "The API key is not scoped to this network or route.",
   liquidity_pool_shares_held:
-    "The account holds liquidity pool shares, which must be withdrawn before it can be merged.",
+    "A pool the account holds shares in cannot be withdrawn: it was not read, or an asset trustline is not authorized or is full.",
   mediator_key_misconfiguration: "The exchange flow is temporarily unavailable. Retry.",
   mediator_not_configured: "The exchange (mediator) flow is not configured on this server.",
   memo_required: "The destination requires a memo.",

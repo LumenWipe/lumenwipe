@@ -51,6 +51,7 @@ test("exports exactly the documented surface, in both formats", async () => {
     "RevokeAllowanceVerificationError",
     "VerificationError",
     "exitExpectations",
+    "poolWithdrawalExpectations",
     "requiresMediator",
     "verifyCloseTransaction",
     "verifyRevokeAllowanceTransaction",

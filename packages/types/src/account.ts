@@ -68,6 +68,26 @@ export interface OpenOffer {
 
 export interface PoolShareEntry {
   poolId: string; // 64-char hex (without the L prefix)
+  /** Pool shares held, in the 7-decimal units Horizon reports. */
+  balance: string;
+  /** The pool's ledger entry, read over RPC; null when it could not be read. */
+  pool: LiquidityPoolState | null;
+}
+
+/** A classic constant-product pool as the ledger holds it. Amounts in stroops, as integers. */
+export interface LiquidityPoolState {
+  /** "native" or "CODE:ISSUER", in the pool's own (lexicographic) order. */
+  assetA: string;
+  /** The pool's second asset, in the same form. */
+  assetB: string;
+  /** In basis points; 30 for every classic pool. */
+  fee: number;
+  /** The pool's reserve of `assetA`. */
+  reserveA: string;
+  /** The pool's reserve of `assetB`. */
+  reserveB: string;
+  /** Pool shares outstanding. */
+  totalShares: string;
 }
 
 /**

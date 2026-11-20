@@ -27,6 +27,7 @@ import type { IssuanceSummary } from "@/lib/close-api/issuance-preflight";
 import type { Network } from "@/config/networks";
 import { lookupExchange } from "@/lib/exchange-registry";
 import { assetsArrivingFromExits } from "@/lib/close-api/exit-payouts";
+import { addAmounts, poolProceedsPerAsset } from "@/lib/stellar/tx-builder/pool-withdrawal";
 import {
   describeLeavableTarget,
   describeUsdValue,
@@ -721,7 +722,11 @@ export function deriveDecisionPoints(
   // chose to remediate. Keyed by asset so several balances of one asset decide it once, with
   // the total - two decision points sharing an id rendered doubled cards and let one answer
   // satisfy both.
-  const claimedPerAsset = claimedAmountsPerAsset(account, claimableBalanceSelections);
+  // And what the pool withdrawals pay in: an empty line a pool fills needs a decision too.
+  const claimedPerAsset = addAmounts(
+    claimedAmountsPerAsset(account, claimableBalanceSelections),
+    poolProceedsPerAsset(account)
+  );
 
   // One entry per asset that will hold a positive balance once the claims run. A trustline
   // with a balance today is decided regardless; a zero-balance line filled by a claim, and a

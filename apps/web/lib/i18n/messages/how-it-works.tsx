@@ -56,7 +56,7 @@ const en = {
       },
       defi: {
         title: "Exit DeFi positions",
-        body: "Exit every supported Soroban protocol position, repaying loans and unstaking first where needed, via each protocol's own adapter. Classic AMM pool shares are reported as a blocker to withdraw elsewhere first.",
+        body: "Exit every supported Soroban protocol position, repaying loans and unstaking first where needed, via each protocol's own adapter. Classic AMM pool shares are withdrawn in full.",
         op: (protocols: readonly string[]): string =>
           `InvokeHostFunction · ${protocols.join(" · ")}`,
       },
@@ -201,7 +201,7 @@ const es: HowItWorksCopy = {
       },
       defi: {
         title: "Salir de las posiciones de DeFi",
-        body: "Sale de cada posición en un protocolo de Soroban compatible, pagando préstamos y retirando lo que está en staking primero cuando hace falta, con el adaptador propio de cada protocolo. Las pool shares (participaciones en un pool de liquidez AMM) clásicas se reportan como un bloqueo: primero debes retirarlas en otro lugar.",
+        body: "Sale de cada posición en un protocolo de Soroban compatible, pagando préstamos y retirando lo que está en staking primero cuando hace falta, con el adaptador propio de cada protocolo. Las pool shares (participaciones en un pool de liquidez AMM) clásicas se retiran por completo.",
         op: en.plan.steps.defi.op,
       },
       convert: {
