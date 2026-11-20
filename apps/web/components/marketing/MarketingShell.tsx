@@ -4,6 +4,7 @@ import MarketingFooter from "@/components/marketing/MarketingFooter";
 import { marketingFontVars } from "@/app/(marketing)/fonts";
 import type { Locale } from "@/lib/i18n/locale";
 import { NAV } from "@/lib/i18n/messages/nav";
+import { spanishPages } from "@/lib/site/spanish-pages";
 
 export const MAIN_ID = "main";
 
@@ -14,6 +15,7 @@ export default function MarketingShell({
   locale: Locale;
   children: ReactNode;
 }) {
+  const pages = spanishPages();
   return (
     <div className={`${marketingFontVars} mkt relative min-h-screen overflow-x-clip bg-canvas`}>
       <a
@@ -32,11 +34,11 @@ export default function MarketingShell({
       </div>
 
       <div className="relative z-10 flex min-h-screen flex-col">
-        <MarketingNav locale={locale} />
+        <MarketingNav locale={locale} pages={pages} />
         <main id={MAIN_ID} tabIndex={-1} className="flex-1 outline-none">
           {children}
         </main>
-        <MarketingFooter locale={locale} />
+        <MarketingFooter locale={locale} pages={pages} />
       </div>
     </div>
   );

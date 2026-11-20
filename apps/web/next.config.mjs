@@ -1,7 +1,8 @@
 import { PHASE_PRODUCTION_BUILD } from "next/constants.js";
 import { APEX_REDIRECT } from "./config/apex-redirect.mjs";
-import { SECURITY_HEADERS } from "./config/security-headers.mjs";
+import { SECURITY_HEADERS, SIGNING_HEADER_RULES } from "./config/security-headers.mjs";
 import { HOMEPAGE_LINK } from "./config/discovery-links.mjs";
+import { UNKNOWN_SEGMENT_REWRITE } from "./config/network-ids.mjs";
 import { appUrlBuildError } from "./config/app-url-build.mjs";
 import { walletConnectBuildError } from "./config/wallet-connect-build.mjs";
 
@@ -22,8 +23,12 @@ const nextConfig = {
   async headers() {
     return [
       { source: "/:path*", headers: [...SECURITY_HEADERS] },
+      ...SIGNING_HEADER_RULES,
       { source: "/", headers: [{ key: "Link", value: HOMEPAGE_LINK }] },
     ];
+  },
+  async rewrites() {
+    return { afterFiles: [UNKNOWN_SEGMENT_REWRITE] };
   },
   async redirects() {
     return [

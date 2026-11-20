@@ -7,6 +7,8 @@ import * as albedo from "@creit-tech/stellar-wallets-kit/modules/albedo";
 import * as rabet from "@creit-tech/stellar-wallets-kit/modules/rabet";
 import * as hana from "@creit-tech/stellar-wallets-kit/modules/hana";
 import * as walletConnect from "@creit-tech/stellar-wallets-kit/modules/wallet-connect";
+import * as ledger from "@creit-tech/stellar-wallets-kit/modules/ledger";
+import { TREZOR_ID } from "@creit-tech/stellar-wallets-kit/modules/trezor";
 import { WALLET_CONNECT_WALLET_ID } from "@/lib/stellar/signer";
 import {
   ALLOWED_DEFAULT_MODULE_IDS,
@@ -29,6 +31,16 @@ test("vettedDefaultModules › includes exactly the vetted whitelist, nothing el
     .map((m) => m.productId)
     .sort();
   expect(ids).toEqual([...ALLOWED_DEFAULT_MODULE_IDS].sort());
+});
+
+test("vettedDefaultModules › includes Ledger, built without touching the device", () => {
+  const ledgerModule = vettedDefaultModules().find((m) => m.productId === ledger.LEDGER_ID);
+  expect(ledgerModule).toBeInstanceOf(ledger.LedgerModule);
+});
+
+test("vettedDefaultModules › never includes Trezor, whose constructor loads Trezor Connect", () => {
+  expect(vettedDefaultModules().map((m) => m.productId)).not.toContain(TREZOR_ID);
+  expect(ALLOWED_DEFAULT_MODULE_IDS).not.toContain(TREZOR_ID);
 });
 
 test("vettedDefaultModules › includes Freighter", () => {
@@ -100,6 +112,7 @@ test("wallet ids › each kit-free id is the kit's own", () => {
     RABET_ID: rabet.RABET_ID,
     HANA_ID: hana.HANA_ID,
     WALLET_CONNECT_ID: walletConnect.WALLET_CONNECT_ID,
+    LEDGER_ID: ledger.LEDGER_ID,
   });
   expect(WALLET_CONNECT_WALLET_ID).toBe(walletConnect.WALLET_CONNECT_ID);
 });

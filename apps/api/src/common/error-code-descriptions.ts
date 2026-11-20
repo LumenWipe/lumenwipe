@@ -32,6 +32,7 @@ export const ERROR_CODE_DESCRIPTIONS: Record<ErrorCode, string> = {
     "The account lacks the XLM above its reserve to pay the fees of the steps no sponsor can cover.",
   confirmation_timeout:
     "The transaction was submitted and is not confirmed yet. Look it up by hash before retrying.",
+  contract_sign_in_unavailable: "Contract-account sign-in is not available on this network.",
   conversion_floor_missing: "A conversion carries no destination minimum.",
   conversion_impact_not_acknowledged:
     "A token conversion with a high or unmeasured price impact, or with disagreeing quotes, was chosen without its confirmation.",

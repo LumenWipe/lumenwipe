@@ -603,7 +603,7 @@ test("RevokeAllowanceModal › an owner wallet that signs with another account i
   stubWalletKit(OWNER);
   spyOn(recovery, "findUnresolved").mockResolvedValue(undefined as never);
   const other = Keypair.random();
-  spyOn(walletKitClient, "walletKitSigner").mockImplementation(
+  const signerFor = spyOn(walletKitClient, "walletKitSigner").mockImplementation(
     () =>
       new WalletKitSigner(OWNER, async (unsigned, opts) => {
         const tx = TransactionBuilder.fromXdr(unsigned, opts.networkPassphrase);
@@ -637,6 +637,8 @@ test("RevokeAllowanceModal › an owner wallet that signs with another account i
   );
   expect(submitCalled).toBe(false);
   expect(onRevoked).not.toHaveBeenCalled();
+  // No hash is shown here, so a Ledger is never allowed to sign by hash.
+  expect(signerFor.mock.calls.map((call) => call[2])).toEqual([{ fingerprintShown: false }]);
 });
 
 /** The owner wallet, signing with the owner's key whatever `respond` hands back, and every envelope

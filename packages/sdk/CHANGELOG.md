@@ -13,6 +13,11 @@ version number before 0.4.0. Neither has a git tag.
 
 ### Added
 
+- `LumenWipeIntegratorClient.contractChallenge(network, address)` and
+  `contractSession(network, { address, authorizationEntries })`: a contract account (`C...`)
+  signs in for key management by signing SEP-45 style authorization entries with its own signer.
+  The new `ErrorCode` `contract_sign_in_unavailable` means the server has not set this up for
+  that network.
 - `AllowanceSource` gains `"indexer"`: an approval the API found through StellarIndex, in the
   account's operations or a token's transfer feed. Its amount is read from the ledger like every
   other source's.
@@ -21,6 +26,9 @@ version number before 0.4.0. Neither has a git tag.
 
 ### Changed
 
+- `LumenWipeIntegratorClient.session(...)` accepts each signed challenge once: a second exchange
+  of the same challenge, including a retry after a lost response, answers 401
+  `invalid_challenge`. Request and sign a new challenge to sign in again.
 - `SorobanTokensResult.coverage` no longer has an `explorer` entry, and no `SorobanTokenBalance`
   lists `explorer` in `sources`: the API stopped reading the stellar.expert explorer. The value
   stays in `SorobanTokenSource`, deprecated, so code that matches on it keeps compiling.

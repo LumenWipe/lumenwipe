@@ -191,7 +191,7 @@ export async function assertTestnet(deps: Pick<PhoenixTestnetDeps, "rpc">): Prom
   if (passphrase !== Networks.TESTNET) throw new PhoenixTestnetError("not_testnet");
 }
 
-const instanceKey = (contract: string): xdr.LedgerKey =>
+export const instanceKey = (contract: string): xdr.LedgerKey =>
   xdr.LedgerKey.contractData(
     new xdr.LedgerKeyContractData({
       contract: new Address(contract).toScAddress(),
@@ -209,7 +209,7 @@ const persistentKey = (contract: string, key: xdr.ScVal): xdr.LedgerKey =>
     })
   );
 
-const codeKey = (wasmHash: string): xdr.LedgerKey =>
+export const codeKey = (wasmHash: string): xdr.LedgerKey =>
   xdr.LedgerKey.contractCode(new xdr.LedgerKeyContractCode({ hash: Buffer.from(wasmHash, "hex") }));
 
 const configKey = (contract: string): xdr.LedgerKey =>
@@ -228,13 +228,16 @@ const archivalKey = (): xdr.LedgerKey =>
     })
   );
 
-const b64 = (key: xdr.LedgerKey): string => key.toXDR("base64");
+export const b64 = (key: xdr.LedgerKey): string => key.toXDR("base64");
 
 /** What a contract address holds: nothing, the expected code as a Wasm executable, or anything
  *  else (another hash, a CAP-85 external reference, a Stellar asset). */
 export type InstanceState = "missing" | "expected" | "other";
 
-function instanceState(data: xdr.LedgerEntryData | undefined, wasmHash: string): InstanceState {
+export function instanceState(
+  data: xdr.LedgerEntryData | undefined,
+  wasmHash: string
+): InstanceState {
   if (data === undefined) return "missing";
   const val = data.type === "contractData" ? data.contractData.val : null;
   const executable = val?.type === "scvContractInstance" ? val.instance.executable : null;
@@ -267,7 +270,7 @@ function poolConfigOf(data: xdr.LedgerEntryData | undefined): PoolConfig | null 
   };
 }
 
-async function entries(
+export async function entries(
   reader: Pick<rpc.Server, "getLedgerEntries">,
   keys: xdr.LedgerKey[]
 ): Promise<Map<string, xdr.LedgerEntryData>> {
@@ -509,6 +512,18 @@ export async function extendTtl(
     balanceKey(set.tokenA, set.pool),
     balanceKey(set.tokenB, set.pool),
   ];
+  await extendFootprint(deps, candidates);
+  return set;
+}
+
+/**
+ * Extends every one of `candidates` that exists to `TTL_LEDGERS` (or the network's maximum) in one
+ * transaction, which a funded Friendbot throwaway pays. Returns the keys it extended.
+ */
+export async function extendFootprint(
+  deps: PhoenixTestnetDeps,
+  candidates: xdr.LedgerKey[]
+): Promise<xdr.LedgerKey[]> {
   const live = await entries(deps.rpc, [...candidates, archivalKey()]);
   const archival = live.get(b64(archivalKey()));
   if (
@@ -531,7 +546,7 @@ export async function extendTtl(
     Operation.extendFootprintTtl({ extendTo }),
     new SorobanDataBuilder().setReadOnly(present).build()
   );
-  return set;
+  return present;
 }
 
 /**

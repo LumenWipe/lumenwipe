@@ -18,17 +18,23 @@ export interface ShareImage {
   alt: string;
 }
 
-/** The branded share image every page uses unless it has its own. */
-export const SHARE_IMAGE: ShareImage = {
-  url: "/opengraph-image",
-  width: 1200,
-  height: 630,
-  alt: COPY.shareImageAlt,
-};
+/** The branded share image every page in `locale` uses unless it has its own. */
+export function shareImageFor(locale: Locale): ShareImage {
+  return {
+    url: localePath(locale, "/opengraph-image"),
+    width: 1200,
+    height: 630,
+    alt: SITE[locale].metadata.shareImageAlt,
+  };
+}
 
-/** A blog post's own share image, generated from its title. */
-export function postShareImage(slug: string, title: string): ShareImage {
-  return { ...SHARE_IMAGE, url: `/blog/${slug}/share.png`, alt: title };
+/** A blog post's own share image in `locale`, generated from its title. */
+export function postShareImage(slug: string, title: string, locale: Locale): ShareImage {
+  return {
+    ...shareImageFor(locale),
+    url: localePath(locale, `/blog/${slug}/share.png`),
+    alt: title,
+  };
 }
 
 type ChangeFrequency = NonNullable<MetadataRoute.Sitemap[number]["changeFrequency"]>;
@@ -83,8 +89,16 @@ export interface SpanishPage {
   translated: boolean;
 }
 
-/** The English pages that have a Spanish version under `/es` (docs/contributing/localization.mdx). */
-export const SPANISH_PAGES: readonly SpanishPage[] = [{ path: "/", translated: true }];
+/** The English pages that have a Spanish version under `/es` (docs/contributing/localization.mdx).
+ *  A translated post is not listed here: `spanishPages()` adds one for each post under
+ *  `content/blog/es`. */
+export const SPANISH_PAGES: readonly SpanishPage[] = [
+  { path: "/", translated: true },
+  { path: "/faq", translated: true },
+  { path: "/security", translated: true },
+  { path: "/how-it-works", translated: true },
+  { path: "/blog", translated: true },
+];
 
 /** Whether the page at English `path` reads in `locale`: always in English, and in Spanish once
  *  its entry is translated. */
@@ -196,7 +210,7 @@ export function pageMetadata(
     locale = SITE_LOCALE,
     title,
     description,
-    shareImage = SHARE_IMAGE,
+    shareImage = shareImageFor(locale),
     blogFeed = false,
     openGraph = { type: "website" },
   }: PageInput,

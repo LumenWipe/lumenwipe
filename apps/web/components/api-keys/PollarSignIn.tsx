@@ -4,15 +4,20 @@ import { useCallback, useEffect, useRef, type ReactElement } from "react";
 import { PollarProvider, usePollar } from "@pollar/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody } from "@/components/ui/card";
+import type { ContractChallenge } from "@/lib/integrator/client";
+import { accountEntryXdr, withSignedEntry } from "@/lib/integrator/contract-sign-in";
 import EmailSignIn from "./EmailSignIn";
 
 /** An account Pollar signed in, with a way to sign the API's challenge as it. */
 export interface PollarAccount {
   address: string;
-  /** A Pollar smart account: a contract account that cannot sign the challenge. */
+  /** A Pollar smart account: a contract account, which signs the contract challenge instead. */
   smart: boolean;
   /** The challenge's SEP-53 signature, or null when Pollar did not sign. */
   sign: (message: string) => Promise<string | null>;
+  /** The contract challenge's entries with the account's signed by Pollar; rejects when Pollar
+   *  does not sign it. */
+  signContractChallenge: (challenge: ContractChallenge) => Promise<string>;
 }
 
 export interface PollarSignInProps {
@@ -58,6 +63,18 @@ function PollarSignInCard({
     [getClient]
   );
 
+  const signContractChallenge = useCallback(
+    async (challenge: ContractChallenge): Promise<string> => {
+      if (!address) throw new Error("No Pollar account is signed in.");
+      const outcome = await getClient().signAuthEntry(accountEntryXdr(challenge, address), {
+        validUntilLedger: challenge.validUntilLedger,
+      });
+      if (outcome.status !== "signed") throw new Error("Pollar did not sign the entry.");
+      return withSignedEntry(challenge, address, outcome.signedAuthEntry);
+    },
+    [getClient, address]
+  );
+
   useEffect(() => {
     onLogoutChange(isAuthenticated ? logout : null);
   }, [isAuthenticated, logout, onLogoutChange]);
@@ -69,8 +86,8 @@ function PollarSignInCard({
     if (signedIn && isAuthenticated && address) handled.current = address;
     if (!isAuthenticated || !address || signedIn || handled.current === address) return;
     handled.current = address;
-    onAccount({ address, smart, sign });
-  }, [isAuthenticated, address, signedIn, smart, sign, onAccount]);
+    onAccount({ address, smart, sign, signContractChallenge });
+  }, [isAuthenticated, address, signedIn, smart, sign, signContractChallenge, onAccount]);
 
   useEffect(() => {
     if (focusHeading) heading.current?.focus();
@@ -91,7 +108,7 @@ function PollarSignInCard({
               disabled={disabled}
               onClick={() => {
                 handled.current = address;
-                onAccount({ address, smart, sign });
+                onAccount({ address, smart, sign, signContractChallenge });
               }}
             >
               Verify the account I signed in with

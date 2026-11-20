@@ -1,6 +1,7 @@
 import type { Locale } from "@/lib/i18n/locale";
 import { NAV } from "@/lib/i18n/messages/nav";
 import { DOCS_URL } from "@/config/discovery-links.mjs";
+import { localeHref } from "@/lib/site/pages";
 
 export interface SiteLink {
   href: string;
@@ -24,8 +25,8 @@ export function siteLinks(locale: Locale): SiteLinks {
   const label = NAV[locale].links;
   return {
     primary: [
-      { href: "/how-it-works", label: label.howItWorks },
-      { href: "/security", label: label.security },
+      { href: localeHref(locale, "/how-it-works"), label: label.howItWorks },
+      { href: localeHref(locale, "/security"), label: label.security },
       { href: "/content", label: label.guides },
       { href: PLAYGROUND_URL, label: label.playground, external: true },
     ],
@@ -37,11 +38,12 @@ export function siteLinks(locale: Locale): SiteLinks {
   };
 }
 
-/** Whether `pathname` is the page `link` leads to. Guides covers the blog it lists. */
+/** Whether `pathname` is the page `link` leads to. Guides covers the blog it lists, in
+ *  either language. */
 export function isCurrent(link: SiteLink, pathname: string): boolean {
   if (link.external) return false;
   if (link.href === "/content") {
-    return pathname === "/content" || pathname === "/blog" || pathname.startsWith("/blog/");
+    return pathname === "/content" || /^(?:\/es)?\/blog(?:\/|$)/.test(pathname);
   }
   return pathname === link.href;
 }

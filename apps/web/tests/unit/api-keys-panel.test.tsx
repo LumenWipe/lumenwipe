@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { Keypair } from "@stellar/stellar-sdk";
+import { Address, Keypair, Networks, StrKey, authorizeEntry, xdr } from "@stellar/stellar-sdk";
 import { ALBEDO_ID } from "@creit-tech/stellar-wallets-kit/modules/albedo";
 import { VARIAL_ID } from "@creit-tech/stellar-wallets-kit/modules/varial";
 import * as walletKitClient from "@/lib/wallet-kit/client";
@@ -38,12 +39,93 @@ let bodies: Record<string, unknown[]>;
 
 const inMinutes = (minutes: number) => new Date(Date.now() + minutes * 60_000).toISOString();
 
+const WEB_AUTH = StrKey.encodeContract(Buffer.alloc(32, 9));
+const SERVER = Keypair.random();
+const VALID_UNTIL = 1_070;
+
+function webAuthInvocation(): xdr.SorobanAuthorizedInvocation {
+  return new xdr.SorobanAuthorizedInvocation({
+    function: xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeContractFn(
+      new xdr.InvokeContractArgs({
+        contractAddress: new Address(WEB_AUTH).toScAddress(),
+        functionName: "web_auth_verify",
+        args: [xdr.ScVal.scvString("nonce")],
+      })
+    ),
+    subInvocations: [],
+  });
+}
+
+function unsigned(address: string): xdr.SorobanAuthorizationEntry {
+  return new xdr.SorobanAuthorizationEntry({
+    credentials: xdr.SorobanCredentials.sorobanCredentialsAddress(
+      new xdr.SorobanAddressCredentials({
+        address: new Address(address).toScAddress(),
+        nonce: BigInt(7),
+        signatureExpirationLedger: 0,
+        signature: xdr.ScVal.scvVoid(),
+      })
+    ),
+    rootInvocation: webAuthInvocation(),
+  });
+}
+
+const clientEntryXdr = () => unsigned(CONTRACT).toXdr("base64");
+const serverEntry = () => unsigned(SERVER.publicKey());
+
+function challengeBody(network: "mainnet" | "testnet") {
+  return {
+    authorizationEntries: xdr.encodeArray(
+      xdr.SorobanAuthorizationEntry,
+      [unsigned(CONTRACT), serverEntry()],
+      "base64"
+    ),
+    networkPassphrase: network === "mainnet" ? Networks.PUBLIC : Networks.TESTNET,
+    validUntilLedger: VALID_UNTIL,
+    expiresAt: inMinutes(5),
+  };
+}
+
+async function signedClientEntry(passphrase: string): Promise<string> {
+  return (await authorizeEntry(unsigned(CONTRACT), owner, VALID_UNTIL, passphrase)).toXdr("base64");
+}
+
+function hashOf(preimageXdr: string): Uint8Array {
+  return new Uint8Array(createHash("sha256").update(Buffer.from(preimageXdr, "base64")).digest());
+}
+
+function signatureOf(entries: string, address: string): string | undefined {
+  const entry = xdr
+    .decodeArray(xdr.SorobanAuthorizationEntry, entries, "base64")
+    .find(
+      (e) =>
+        e.credentials.type === "sorobanCredentialsAddress" &&
+        Address.fromScAddress(e.credentials.address.address).toString() === address
+    );
+  return entry?.credentials.type === "sorobanCredentialsAddress"
+    ? entry.credentials.address.signature.type
+    : undefined;
+}
+
 function signedIn(expiresAt = inMinutes(30)): Record<string, Reply> {
   return {
     "GET auth/session": { status: 200, body: { address: owner.publicKey(), expiresAt } },
     "GET keys": { status: 200, body: { keys: [RECORD], usage: { today: 1, last30Days: 2 } } },
     "POST keys": { status: 200, body: { key: NEW_KEY, record: RECORD } },
     "DELETE auth/session": { status: 204 },
+  };
+}
+
+function contractRoutes(network: "mainnet" | "testnet" = "mainnet"): Record<string, Reply> {
+  const session = signedIn();
+  return {
+    "GET auth/session": unauthorized,
+    [`POST auth/contract/${network}/challenge`]: { status: 200, body: challengeBody(network) },
+    [`POST auth/contract/${network}/session`]: {
+      status: 200,
+      body: { address: CONTRACT, expiresAt: inMinutes(30) },
+    },
+    "GET keys": session["GET keys"],
   };
 }
 
@@ -58,6 +140,7 @@ let kit: {
   address: string;
   walletId: string;
   signMessage: ReturnType<typeof mock>;
+  signAuthEntry: ReturnType<typeof mock>;
   disconnect: ReturnType<typeof mock>;
 };
 
@@ -82,12 +165,16 @@ beforeEach(() => {
       signedMessage: Buffer.from(owner.signMessage(message)).toString("base64"),
       signerAddress: owner.publicKey(),
     })),
+    signAuthEntry: mock(async () => {
+      throw new Error("This wallet cannot sign an authorization entry.");
+    }),
     disconnect: mock(async () => {}),
   };
   const fake = {
     authModal: async () => ({ address: kit.address }),
     getNetwork: async () => ({ networkPassphrase: "Test SDF Network ; September 2015" }),
     signMessage: (...args: unknown[]) => kit.signMessage(...args),
+    signAuthEntry: (...args: unknown[]) => kit.signAuthEntry(...args),
     disconnect: () => kit.disconnect(),
   };
   spyOn(walletKitClient, "ensureWalletKitInitialized").mockImplementation(
@@ -210,14 +297,111 @@ describe("the API keys panel", () => {
     expect(status().textContent).toBe("Signed in.");
   });
 
-  test("explains a contract account in plain language", async () => {
-    routes = { "GET auth/session": unauthorized };
+  test("a contract account the wallet signs for signs in through the contract challenge", async () => {
+    routes = contractRoutes();
+    kit.address = CONTRACT;
+    kit.signAuthEntry = mock(async (preimage: string) => ({
+      signedAuthEntry: Buffer.from(owner.sign(Buffer.from(hashOf(preimage)))).toString("base64"),
+      signerAddress: owner.publicKey(),
+    }));
+    render(<ApiKeysPanel />);
+    fireEvent.click(await signInButton());
+    expect(await screen.findByText(`Signed in as ${CONTRACT}`)).toBeTruthy();
+    expect(requests).not.toContain("POST auth/challenge");
+    expect(bodies["POST auth/contract/mainnet/challenge"]).toEqual([{ address: CONTRACT }]);
+    const [sent] = bodies["POST auth/contract/mainnet/session"] as {
+      address: string;
+      authorizationEntries: string;
+    }[];
+    expect(sent.address).toBe(CONTRACT);
+    expect(signatureOf(sent.authorizationEntries, CONTRACT)).not.toBe("scvVoid");
+  });
+
+  test("a wallet that cannot sign for a contract account leads to the steps by hand", async () => {
+    routes = contractRoutes();
     kit.address = CONTRACT;
     render(<ApiKeysPanel />);
     fireEvent.click(await signInButton());
     const callout = await screen.findByRole("alert");
-    expect(callout.textContent).toContain("Contract accounts cannot own keys yet");
-    expect(requests).not.toContain("POST auth/challenge");
+    expect(callout.textContent).toContain("Sign the contract account's challenge by hand");
+    const input = screen.getByRole("textbox", { name: "Contract account" }) as HTMLInputElement;
+    expect(input.value).toBe(CONTRACT);
+    expect(requests).not.toContain("POST auth/contract/mainnet/session");
+  });
+
+  test("signs in a contract account by hand with a pasted signed entry", async () => {
+    routes = contractRoutes("testnet");
+    render(<ApiKeysPanel />);
+    await signInButton();
+    fireEvent.click(screen.getByText("Sign in with a contract account (C...)"));
+    fireEvent.change(screen.getByRole("textbox", { name: "Contract account" }), {
+      target: { value: CONTRACT },
+    });
+    fireEvent.click(screen.getByRole("radio", { name: "Testnet" }));
+    fireEvent.click(screen.getByRole("button", { name: "Get the sign-in challenge" }));
+    const entry = await screen.findByText(clientEntryXdr());
+    expect(entry).toBeTruthy();
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Signed entry" }), {
+      target: { value: await signedClientEntry(Networks.TESTNET) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(await screen.findByText(`Signed in as ${CONTRACT}`)).toBeTruthy();
+    const [sent] = bodies["POST auth/contract/testnet/session"] as {
+      authorizationEntries: string;
+    }[];
+    expect(signatureOf(sent.authorizationEntries, CONTRACT)).toBe("scvVec");
+  });
+
+  test("refuses a pasted entry for another account before any session is asked for", async () => {
+    routes = contractRoutes();
+    render(<ApiKeysPanel />);
+    await signInButton();
+    fireEvent.click(screen.getByText("Sign in with a contract account (C...)"));
+    fireEvent.change(screen.getByRole("textbox", { name: "Contract account" }), {
+      target: { value: CONTRACT },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Get the sign-in challenge" }));
+    await screen.findByText(clientEntryXdr());
+    fireEvent.change(screen.getByRole("textbox", { name: "Signed entry" }), {
+      target: { value: serverEntry().toXdr("base64") },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(
+      await screen.findByText(/not this challenge's entry signed for this account/)
+    ).toBeTruthy();
+    expect(requests).not.toContain("POST auth/contract/mainnet/session");
+  });
+
+  test("explains a network where contract-account sign-in is not set up", async () => {
+    routes = {
+      ...contractRoutes(),
+      "POST auth/contract/mainnet/challenge": {
+        status: 503,
+        body: { error: { code: "contract_sign_in_unavailable", message: "Off." } },
+      },
+    };
+    render(<ApiKeysPanel />);
+    await signInButton();
+    fireEvent.click(screen.getByText("Sign in with a contract account (C...)"));
+    fireEvent.change(screen.getByRole("textbox", { name: "Contract account" }), {
+      target: { value: CONTRACT },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Get the sign-in challenge" }));
+    expect(await screen.findByText(/not available on this network yet/)).toBeTruthy();
+  });
+
+  test("checks the address before asking for a challenge", async () => {
+    routes = contractRoutes();
+    render(<ApiKeysPanel />);
+    await signInButton();
+    fireEvent.click(screen.getByText("Sign in with a contract account (C...)"));
+    fireEvent.change(screen.getByRole("textbox", { name: "Contract account" }), {
+      target: { value: owner.publicKey() },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Get the sign-in challenge" }));
+    expect(await screen.findByText(/It starts with C/)).toBeTruthy();
+    expect(requests).not.toContain("POST auth/contract/mainnet/challenge");
   });
 
   test("explains a wallet that cannot sign a message, after it is picked", async () => {
@@ -267,6 +451,50 @@ describe("the API keys panel", () => {
 
     const finish = async () =>
       fireEvent.click(await screen.findByRole("button", { name: "Finish email sign-in" }));
+    const notContract = async (): Promise<string> => {
+      throw new Error("not a contract account");
+    };
+
+    test("a smart account signs the contract challenge through Pollar", async () => {
+      routes = contractRoutes();
+      const sign = mock(async () => null);
+      const signContractChallenge = mock(async (challenge: { authorizationEntries: string }) => {
+        const [, server] = xdr.decodeArray(
+          xdr.SorobanAuthorizationEntry,
+          challenge.authorizationEntries,
+          "base64"
+        );
+        const signed = await authorizeEntry(
+          unsigned(CONTRACT),
+          owner,
+          VALID_UNTIL,
+          Networks.PUBLIC
+        );
+        return xdr.encodeArray(xdr.SorobanAuthorizationEntry, [signed, server!], "base64");
+      });
+      const Slot = emailSlot({ address: CONTRACT, smart: true, sign, signContractChallenge });
+      render(<ApiKeysPanel pollar={Slot} />);
+      await finish();
+      expect(await screen.findByText(`Signed in as ${CONTRACT}`)).toBeTruthy();
+      expect(sign).not.toHaveBeenCalled();
+      expect(signContractChallenge).toHaveBeenCalledTimes(1);
+      expect(requests).not.toContain("POST auth/challenge");
+    });
+
+    test("a smart account Pollar cannot sign for is shown the steps by hand", async () => {
+      routes = contractRoutes();
+      const Slot = emailSlot({
+        address: CONTRACT,
+        smart: true,
+        sign: async () => null,
+        signContractChallenge: notContract,
+      });
+      render(<ApiKeysPanel pollar={Slot} />);
+      await finish();
+      const callout = await screen.findByRole("alert");
+      expect(callout.textContent).toContain("Sign the contract account's challenge by hand");
+      expect(requests).not.toContain("POST auth/contract/mainnet/session");
+    });
 
     test("goes through the same challenge and cookie session, and sends no email", async () => {
       const session = signedIn();
@@ -279,7 +507,12 @@ describe("the API keys panel", () => {
       const sign = mock(async (message: string) =>
         Buffer.from(owner.signMessage(message)).toString("base64")
       );
-      const Slot = emailSlot({ address: owner.publicKey(), smart: false, sign });
+      const Slot = emailSlot({
+        address: owner.publicKey(),
+        smart: false,
+        sign,
+        signContractChallenge: notContract,
+      });
       render(<ApiKeysPanel pollar={Slot} />);
       await finish();
       expect(await screen.findByText(`Signed in as ${owner.publicKey()}`)).toBeTruthy();
@@ -304,6 +537,7 @@ describe("the API keys panel", () => {
         address: owner.publicKey(),
         smart: false,
         sign: async (message) => Buffer.from(other.signMessage(message)).toString("base64"),
+        signContractChallenge: notContract,
       });
       render(<ApiKeysPanel pollar={Slot} />);
       await finish();

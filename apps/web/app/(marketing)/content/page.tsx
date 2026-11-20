@@ -91,7 +91,7 @@ export default function ContentPage() {
         {posts.length > 0 ? (
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
             {posts.map((post) => (
-              <PostCard key={post.slug} post={post} />
+              <PostCard key={post.slug} post={post} locale={SITE_LOCALE} />
             ))}
           </div>
         ) : (

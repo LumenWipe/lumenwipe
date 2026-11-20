@@ -53,6 +53,29 @@ test("challenge and session post their bodies with no Authorization at all", asy
   }
 });
 
+test("the contract-account challenge and session post to the network's path with no Authorization", async () => {
+  const { calls, fetch } = fake(200, {});
+  const c = client(fetch);
+  await c.contractChallenge("testnet", "CABC");
+  await c.contractSession("mainnet", { address: "CABC", authorizationEntries: "AAAA" });
+
+  expect(calls.map((x) => [x.init.method, x.url, x.init.body])).toEqual([
+    [
+      "POST",
+      "https://api.test/v1/integrator/auth/contract/testnet/challenge",
+      '{"address":"CABC"}',
+    ],
+    [
+      "POST",
+      "https://api.test/v1/integrator/auth/contract/mainnet/session",
+      '{"address":"CABC","authorizationEntries":"AAAA"}',
+    ],
+  ]);
+  for (const call of calls) {
+    expect((call.init.headers as Record<string, string>).Authorization).toBeUndefined();
+  }
+});
+
 test("listKeys sends the session token as the only credential and returns keys with usage", async () => {
   const list: IntegratorKeyList = {
     keys: [

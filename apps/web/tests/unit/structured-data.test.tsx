@@ -5,16 +5,20 @@ import LandingPage from "@/app/(marketing)/page";
 import FaqPage from "@/app/(marketing)/faq/page";
 import BlogPage from "@/app/(marketing)/blog/page";
 import SpanishLandingPage from "@/app/(marketing-es)/es/page";
-import BlogPostPage, { generateMetadata } from "@/app/(marketing)/blog/[slug]/page";
+import SpanishFaqPage from "@/app/(marketing-es)/es/faq/page";
+import SpanishSecurityPage from "@/app/(marketing-es)/es/security/page";
+import SpanishHowItWorksPage from "@/app/(marketing-es)/es/how-it-works/page";
+import SpanishBlogPage from "@/app/(marketing-es)/es/blog/page";
+import PostPage, { postMetadata } from "@/components/blog/PostPage";
 import SecurityPage from "@/app/(marketing)/security/page";
 import HowItWorksPage from "@/app/(marketing)/how-it-works/page";
-import Faq, { ITEMS } from "@/components/marketing/Faq";
+import Faq, { faqItems } from "@/components/marketing/Faq";
 import JsonLd from "@/components/seo/JsonLd";
 import { getAllPostMetas, getPost } from "@/lib/blog";
 import { LANDING } from "@/lib/i18n/messages/landing";
 import { GITHUB_URL } from "@/lib/site/navigation";
 import { nodeText } from "@/lib/site/node-text";
-import { postShareImage } from "@/lib/site/pages";
+import { localePath, postShareImage } from "@/lib/site/pages";
 import { feature, FEATURES, LIVE_EXIT_PROTOCOLS, listNames } from "@/lib/site/status";
 import {
   blogJsonLd,
@@ -78,7 +82,7 @@ const PAGES = {
   home: blocksIn(renderMarketing(<LandingPage />)),
   faq: blocksIn(renderMarketing(<FaqPage />)),
   blog: blocksIn(renderMarketing(<BlogPage />)),
-  post: blocksInTree(await BlogPostPage({ params: Promise.resolve({ slug: POST.slug }) })),
+  post: blocksInTree(PostPage({ locale: "en", slug: POST.slug })),
 };
 
 describe("every block", () => {
@@ -94,7 +98,12 @@ describe("every block", () => {
   }
 
   test("only the home, FAQ, blog and post pages emit structured data", () => {
-    for (const page of [<SecurityPage key="s" />, <HowItWorksPage key="h" />]) {
+    for (const page of [
+      <SecurityPage key="s" />,
+      <SpanishSecurityPage key="es-s" />,
+      <HowItWorksPage key="h" />,
+      <SpanishHowItWorksPage key="es-h" />,
+    ]) {
       expect(blocksIn(renderMarketing(page))).toEqual([]);
     }
   });
@@ -138,27 +147,37 @@ describe("the home page", () => {
   });
 });
 
-describe("the FAQ page", () => {
-  const faq = one(PAGES.faq, "FAQPage");
-  const questions = faq.mainEntity as { name: string; acceptedAnswer: { text: string } }[];
+const FAQ_PAGES = [
+  { locale: "en", page: PAGES.faq, inLanguage: "en" },
+  { locale: "es", page: blocksIn(renderMarketing(<SpanishFaqPage />)), inLanguage: "es-419" },
+] as const;
 
-  test("is a FAQPage with one question per item", () => {
-    expect(faq.url).toBe(siteUrl("/faq"));
-    expect(questions.map((q) => q.name)).toEqual(ITEMS.map((i) => i.q));
-    for (const q of questions) expect(q.acceptedAnswer.text.length).toBeGreaterThan(20);
-  });
+for (const { locale, page, inLanguage } of FAQ_PAGES) {
+  describe(`the FAQ page in ${locale}`, () => {
+    const faq = one(page, "FAQPage");
+    const questions = faq.mainEntity as { name: string; acceptedAnswer: { text: string } }[];
 
-  test("answers each question with exactly the text the accordion renders", () => {
-    const panels = [...renderMarketing(<Faq />).querySelectorAll('[role="region"]')];
-    expect(panels).toHaveLength(questions.length);
-    panels.forEach((panel, i) => {
-      const copy = panel.cloneNode(true) as HTMLElement;
-      copy.querySelectorAll(".sr-only").forEach((el) => el.remove());
-      const shown = (copy.textContent ?? "").replace(/\s+/g, " ").trim();
-      expect(questions[i]!.acceptedAnswer.text).toBe(shown);
+    test("is a FAQPage in its language with one question per item", () => {
+      expect(faq.url).toBe(siteUrl(localePath(locale, "/faq")));
+      expect(faq.inLanguage).toBe(inLanguage);
+      expect(questions.map((q) => q.name)).toEqual(faqItems(locale).map((i) => i.q));
+      for (const q of questions) expect(q.acceptedAnswer.text.length).toBeGreaterThan(20);
+    });
+
+    test("answers each question with exactly the text the accordion renders", () => {
+      const panels = [
+        ...renderMarketing(<Faq locale={locale} />).querySelectorAll('[role="region"]'),
+      ];
+      expect(panels).toHaveLength(questions.length);
+      panels.forEach((panel, i) => {
+        const copy = panel.cloneNode(true) as HTMLElement;
+        copy.querySelectorAll(".sr-only").forEach((el) => el.remove());
+        const shown = (copy.textContent ?? "").replace(/\s+/g, " ").trim();
+        expect(questions[i]!.acceptedAnswer.text).toBe(shown);
+      });
     });
   });
-});
+}
 
 describe("the blog index", () => {
   test("is a Blog listing every post, with its breadcrumb", () => {
@@ -185,7 +204,7 @@ describe("a post", () => {
       description: post.description,
       datePublished: `${post.publishedAt}T00:00:00Z`,
       dateModified: `${post.updatedAt}T00:00:00Z`,
-      image: [siteUrl(postShareImage(post.slug, post.title).url)],
+      image: [siteUrl(postShareImage(post.slug, post.title, "en").url)],
       mainEntityOfPage: { "@type": "WebPage", "@id": canonical },
       author: { "@type": "Organization", name: "LumenWipe" },
     });
@@ -200,8 +219,7 @@ describe("a post", () => {
     const TIMESTAMP = /^\d{4}-\d{2}-\d{2}T00:00:00Z$/;
     const article = one(PAGES.post, "Article");
     const entries = one(PAGES.blog, "Blog").blogPost as Record<string, unknown>[];
-    const og = (await generateMetadata({ params: Promise.resolve({ slug: post.slug }) }))
-      .openGraph as Record<string, unknown>;
+    const og = postMetadata("en", post.slug).openGraph as Record<string, unknown>;
     for (const value of [
       article.datePublished,
       article.dateModified,
@@ -314,7 +332,7 @@ describe("the language of the structured data", () => {
     const post = getPost(POST.slug);
     const docs = {
       home: homeJsonLd("Descripción", "es"),
-      faq: faqJsonLd(ITEMS, "es"),
+      faq: faqJsonLd(faqItems("es"), "es"),
       blog: blogJsonLd(getAllPostMetas(), "es"),
       post: postJsonLd(post, "es"),
     };
@@ -323,6 +341,41 @@ describe("the language of the structured data", () => {
       for (const type of types) expect(one(nodes, type).inLanguage).toBe("es-419");
     }
     expect(one(docs.faq["@graph"] as Node[], "FAQPage").url).toBe(siteUrl("/es/faq"));
+    expect(one(docs.blog["@graph"] as Node[], "Blog").url).toBe(siteUrl("/es/blog"));
+    expect(one(docs.post["@graph"] as Node[], "Article").url).toBe(
+      siteUrl(`/es/blog/${post.slug}`)
+    );
+  });
+
+  test("the Spanish blog lists its own posts at their Spanish URLs, under a Spanish breadcrumb", () => {
+    const nodes = blocksIn(renderMarketing(<SpanishBlogPage />));
+    const blog = one(nodes, "Blog");
+    expect(blog).toMatchObject({ url: siteUrl("/es/blog"), inLanguage: "es-419" });
+    const posts = getAllPostMetas("es");
+    expect(posts.length).toBeGreaterThan(0);
+    expect((blog.blogPost as { url: string }[]).map((p) => p.url)).toEqual(
+      posts.map((p) => siteUrl(`/es/blog/${p.slug}`))
+    );
+    expect(one(nodes, "BreadcrumbList").itemListElement).toEqual([
+      { "@type": "ListItem", position: 1, name: "Inicio", item: siteUrl("/es") },
+      { "@type": "ListItem", position: 2, name: "Blog", item: siteUrl("/es/blog") },
+    ]);
+  });
+
+  test("a Spanish post is a Spanish Article at its own URL, with its own Spanish image", () => {
+    const { slug } = getAllPostMetas("es")[0]!;
+    const post = getPost(slug, "es");
+    const canonical = siteUrl(`/es/blog/${slug}`);
+    const nodes = blocksInTree(PostPage({ locale: "es", slug }));
+    expect(one(nodes, "Article")).toMatchObject({
+      headline: post.title,
+      inLanguage: "es-419",
+      url: canonical,
+      mainEntityOfPage: { "@type": "WebPage", "@id": canonical },
+      image: [siteUrl(`/es/blog/${slug}/share.png`)],
+    });
+    const crumbs = one(nodes, "BreadcrumbList").itemListElement as { item: string }[];
+    expect(crumbs.map((c) => c.item)).toEqual([siteUrl("/es"), siteUrl("/es/blog"), canonical]);
   });
 
   test("the Spanish landing declares es-419, its own URLs and the Spanish feature names", () => {

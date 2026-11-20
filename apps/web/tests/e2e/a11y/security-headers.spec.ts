@@ -2,11 +2,12 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type APIResponse, type Page } from "@playwright/test";
 import { HOMEPAGE_LINK } from "../../../config/discovery-links.mjs";
-import { SECURITY_HEADERS } from "../../../config/security-headers.mjs";
+import { SECURITY_HEADERS, SIGNING_PERMISSIONS_POLICY } from "../../../config/security-headers.mjs";
 import {
   pageScripts,
   prerenderedMarketingPages,
   scriptHash,
+  WEBUSB_PATHS,
 } from "../../../scripts/marketing-csp.mjs";
 
 // Headers do not depend on the viewport: one project is enough.
@@ -36,11 +37,13 @@ function csp(res: APIResponse): string {
   return values[0];
 }
 
-for (const path of [...MARKETING, ...NONCE_PATHS, "/api/health"]) {
+for (const path of [...new Set([...MARKETING, ...NONCE_PATHS, ...WEBUSB_PATHS]), "/api/health"]) {
   test(`${path} carries every security header exactly once`, async ({ request }) => {
     const res = await request.get(path, { maxRedirects: 0 });
     const raw = res.headersArray();
-    for (const { key, value } of SECURITY_HEADERS) {
+    const signing = WEBUSB_PATHS.includes(path);
+    for (const { key, value: base } of SECURITY_HEADERS) {
+      const value = signing && key === "Permissions-Policy" ? SIGNING_PERMISSIONS_POLICY : base;
       const values = raw.filter((h) => h.name.toLowerCase() === key.toLowerCase());
       expect(
         values.map((h) => h.value),
@@ -162,12 +165,26 @@ async function expectHydrated(page: Page, path: string, lang: keyof typeof NAV_N
   await expect(developers, `${path} hydrated`).toHaveAttribute("aria-expanded", "true");
 }
 
-for (const path of ["/", "/faq", "/registry", "/blog", "/blog/account-merge-on-stellar"]) {
+for (const [path, lang] of [
+  ["/", "en"],
+  ["/faq", "en"],
+  ["/es/faq", "es-419"],
+  ["/security", "en"],
+  ["/es/security", "es-419"],
+  ["/how-it-works", "en"],
+  ["/es/how-it-works", "es-419"],
+  ["/registry", "en"],
+  ["/blog", "en"],
+  ["/blog/account-merge-on-stellar", "en"],
+  ["/es/blog", "es-419"],
+  ["/es/blog/how-do-i-remove-a-trustline-on-stellar", "es-419"],
+] as const) {
   test(`${path} runs under its hash policy with no violation`, async ({ page }) => {
     const violations = await watchViolations(page);
     const res = await page.goto(path);
     expect(res?.status()).toBe(200);
-    await expectHydrated(page, path);
+    await expect(page.locator("html")).toHaveAttribute("lang", lang);
+    await expectHydrated(page, path, lang);
     expect(await violations()).toEqual([]);
   });
 }
@@ -178,8 +195,10 @@ for (const [path, lang, title] of [
   ["/foo", "en", /This page has\s*been closed/],
   ["/blog/nope", "en", /This page has\s*been closed/],
   ["/esx", "en", /This page has\s*been closed/],
+  ["/nope", "en", /This page has\s*been closed/],
   ["/es/nope", "es-419", /Esta página\s*ya se cerró/],
   ["/es/x/y", "es-419", /Esta página\s*ya se cerró/],
+  ["/es/blog/nope", "es-419", /Esta página\s*ya se cerró/],
 ] as const) {
   test(`${path} answers 404 under the nonce policy, noindex, and hydrates`, async ({ page }) => {
     const violations = await watchViolations(page);
@@ -195,6 +214,53 @@ for (const [path, lang, title] of [
     expect(await violations()).toEqual([]);
   });
 }
+
+// A single unknown segment would otherwise reach the [network] segment and fail there with the
+// bare error shell, which shows the 404 only after hydration: the server HTML alone carries it.
+// The rewrite sends it to a path no route serves (config/network-ids.mjs), the same miss as
+// /x/y/z, which is what keeps its status 404 on Vercel.
+for (const path of ["/nope", "/foo", "/esx"]) {
+  test(`${path} answers the full 404 in its server HTML, under its nonce`, async ({ request }) => {
+    const res = await request.get(path);
+    expect(res.status()).toBe(404);
+    const nonce = /'nonce-([A-Za-z0-9+/=]+)'/.exec(csp(res))?.[1];
+    expect(nonce).toBeTruthy();
+    const html = await res.text();
+    expect(html).toMatch(/<html lang="en"[ >]/);
+    expect(html).not.toContain('id="__next_error__"');
+    expect(html).toContain("<title>404 - Page Not Found</title>");
+    expect([...html.matchAll(/<meta name="robots"[^>]*>/g)].map((m) => m[0])).toEqual([
+      '<meta name="robots" content="noindex"/>',
+    ]);
+    expect(html).toMatch(/<h1\b[^>]*>This page has<br\/>been closed\.<\/h1>/);
+    const scripts = [...html.matchAll(/<script\b([^>]*)>/gi)].map((m) => m[1]);
+    expect(scripts.length).toBeGreaterThan(0);
+    for (const attrs of scripts.filter((a) => !a.includes('type="application/ld+json"'))) {
+      expect(attrs, "every script carries the response's nonce").toContain(`nonce="${nonce}"`);
+    }
+  });
+}
+
+// An unknown post is a routing miss too: each locale's post route lists its slugs and takes no
+// other (dynamicParams = false), so its server HTML is the full 404 in that locale.
+for (const [path, lang, title] of [
+  ["/blog/nope", "en", "404 - Page Not Found"],
+  ["/es/blog/nope", "es-419", "404 - Página no encontrada"],
+] as const) {
+  test(`${path} answers the full 404 in its server HTML`, async ({ request }) => {
+    const res = await request.get(path);
+    expect(res.status()).toBe(404);
+    const html = await res.text();
+    expect(html).toMatch(new RegExp(`<html lang="${lang}"[ >]`));
+    expect(html).not.toContain('id="__next_error__"');
+    expect(html).toContain(`<title>${title}</title>`);
+  });
+}
+
+test("a single unknown segment's RSC payload answers 404", async ({ request }) => {
+  const res = await request.get("/nope.rsc");
+  expect(res.status()).toBe(404);
+});
 
 test("the report receiver answers 204 and echoes nothing", async ({ request }) => {
   const res = await request.post("/api/csp-report", {

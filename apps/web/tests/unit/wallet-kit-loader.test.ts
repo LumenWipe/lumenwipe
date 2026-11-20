@@ -4,6 +4,7 @@ import type { ModuleInterface } from "@creit-tech/stellar-wallets-kit/types";
 import {
   forgetStoredWalletSession,
   hasStoredWalletSession,
+  provideBuffer,
   walletKitLoader,
   WALLET_KIT_LOAD_FAILED,
   WalletKitLoadError,
@@ -35,17 +36,61 @@ function standIn() {
       getNetwork: notStubbed,
     },
   ];
+  const bufferAtInit: unknown[] = [];
   const kit = {
-    init: mock((_params: { modules: ModuleInterface[]; network: Networks }) => {}),
+    init: mock((_params: { modules: ModuleInterface[]; network: Networks }) => {
+      bufferAtInit.push((globalThis as { Buffer?: unknown }).Buffer);
+    }),
     setNetwork: mock((_network: Networks) => {}),
   };
+  const polyfill = { name: "the buffer package's Buffer" };
   const bundle: WalletKitBundle = {
     kit: kit as unknown as WalletKit,
     modules: mock(() => modules),
+    Buffer: polyfill,
   };
   const importKit = mock(async () => bundle);
-  return { kit, bundle, modules, importKit };
+  return { kit, bundle, modules, importKit, polyfill, bufferAtInit };
 }
+
+/** Runs `fn` with no global `Buffer`, as in a browser, and puts the runtime's own back after. */
+async function withoutGlobalBuffer(fn: () => Promise<void>): Promise<void> {
+  const global = globalThis as { Buffer?: unknown };
+  const own = global.Buffer;
+  delete global.Buffer;
+  try {
+    await fn();
+  } finally {
+    global.Buffer = own;
+  }
+}
+
+test("wallet kit loader › a browser with no Buffer gets the buffer package's, before the kit starts", async () => {
+  await withoutGlobalBuffer(async () => {
+    const { importKit, polyfill, bufferAtInit } = standIn();
+    await walletKitLoader(importKit).ensure("testnet");
+    expect(bufferAtInit).toEqual([polyfill]);
+    expect((globalThis as { Buffer?: unknown }).Buffer).toBe(polyfill);
+  });
+});
+
+test("wallet kit loader › a Buffer already there is never replaced", async () => {
+  const own = (globalThis as { Buffer?: unknown }).Buffer;
+  expect(own).toBeDefined();
+  const { importKit, bufferAtInit } = standIn();
+  await walletKitLoader(importKit).ensure("testnet");
+  expect(bufferAtInit).toEqual([own]);
+  expect((globalThis as { Buffer?: unknown }).Buffer).toBe(own);
+});
+
+test("provideBuffer › sets the polyfill only where there is no Buffer", () => {
+  const empty: { Buffer?: unknown } = {};
+  provideBuffer(empty, "polyfill");
+  expect(empty.Buffer).toBe("polyfill");
+  const taken: { Buffer?: unknown } = { Buffer: "own" };
+  provideBuffer(taken, "polyfill");
+  expect(taken.Buffer).toBe("own");
+});
 
 test("wallet kit loader › nothing is imported until the kit is first asked for", () => {
   const { importKit } = standIn();

@@ -142,7 +142,9 @@ describe("English copy of the stats, registry, playground and content pages and 
 
   test("each category badge and a post's dates once it was updated", () => {
     expect(
-      blog.CATEGORIES.map((category) => renderToString(<CategoryBadge category={category} />))
+      blog.CATEGORIES.map((category) =>
+        renderToString(<CategoryBadge category={category} locale="en" />)
+      )
     ).toMatchSnapshot();
     expect(
       renderToString(
@@ -152,6 +154,7 @@ describe("English copy of the stats, registry, playground and content pages and 
             publishedAt: "2026-11-01",
             updatedAt: "2026-11-15",
           }}
+          locale="en"
         />
       )
     ).toMatchSnapshot();

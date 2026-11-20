@@ -36,6 +36,7 @@ import {
   withCloseExpiry,
   buildTokenConversionRound,
   defaultTokenConversionRoundDeps,
+  MAX_XBULL_PATH_HOPS,
   type ExpectedConversion,
 } from "@/lib/close-api/token-conversion-round";
 import { XBULL_SWAP_FUNCTION } from "@/lib/close-api/xbull-conversion-round";
@@ -988,5 +989,21 @@ describe("resolveXBullPath (via defaultTokenConversionRoundDeps)", () => {
         ])
       )
     ).rejects.toThrow(/disconnected/);
+  });
+
+  test("a path longer than MAX_XBULL_PATH_HOPS is refused before any ledger read", async () => {
+    let reads = 0;
+    const storage = xbullStorageRpc(assetMap);
+    const counting = {
+      ...storage,
+      getLedgerEntries: (...keys: xdr.LedgerKey[]) => {
+        reads++;
+        return storage.getLedgerEntries(...keys);
+      },
+    };
+    const hops = Array.from({ length: MAX_XBULL_PATH_HOPS + 1 }, () => [4, 25, 1112, 25]);
+    const deps = defaultTokenConversionRoundDeps(counting);
+    await expect(deps.xbull.resolvePath(withPath(hops))).rejects.toThrow(/more than the 8/);
+    expect(reads).toBe(0);
   });
 });

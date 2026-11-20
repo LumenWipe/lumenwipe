@@ -16,11 +16,12 @@ import {
   localePath,
   NOINDEX_PAGES,
   postShareImage,
-  SHARE_IMAGE,
+  shareImageFor,
   SITE_NAME,
   SPANISH_PAGES,
   spanishIndexedPages,
 } from "@/lib/site/pages";
+import { spanishPages } from "@/lib/site/spanish-pages";
 import { siteOrigin, siteUrl } from "@/lib/site/url";
 
 const APP = join(import.meta.dir, "..", "..", "app");
@@ -57,12 +58,14 @@ async function resolvePages(): Promise<Page[]> {
     { route: "/api-keys", dir: API_KEYS },
   ]) {
     const mod = await import(join(dir, "page.tsx"));
-    if (route === "/blog/[slug]") {
-      for (const post of getAllPostMetas()) {
+    if (route.endsWith("/blog/[slug]")) {
+      const locale = routeLocale(route);
+      for (const post of getAllPostMetas(locale)) {
         const metadata: Metadata = await mod.generateMetadata({
           params: Promise.resolve({ slug: post.slug }),
         });
-        pages.push({ route: `/blog/${post.slug}`, dir, metadata, expectedTitle: post.title });
+        const path = localePath(locale, `/blog/${post.slug}`);
+        pages.push({ route: path, dir, metadata, expectedTitle: post.title });
       }
     } else {
       pages.push({ route, dir, metadata: mod.metadata, expectedTitle: undefined });
@@ -71,9 +74,12 @@ async function resolvePages(): Promise<Page[]> {
   return pages;
 }
 
-const PAGES = await resolvePages();
-
 const routeLocale = (route: string) => (route === "/es" || route.startsWith("/es/") ? "es" : "en");
+/** The route of a post page, `/blog/<slug>` or `/es/blog/<slug>`, as its slug. */
+const postSlug = (route: string) => /^(?:\/es)?\/blog\/([^/]+)$/.exec(route)?.[1] ?? null;
+
+const PAGES = await resolvePages();
+const PAIRS = spanishPages();
 const SITEMAP = sitemap();
 const SITEMAP_URLS = SITEMAP.map((entry) => entry.url);
 
@@ -84,6 +90,10 @@ const PAGE_TITLES: Record<string, Metadata["title"]> = {
   "/blog": "Blog",
   "/content": "Content",
   "/es": { absolute: SITE.es.metadata.homeTitle },
+  "/es/faq": "Preguntas frecuentes",
+  "/es/blog": "Blog",
+  "/es/how-it-works": "Cómo funciona",
+  "/es/security": "Seguridad",
   "/faq": "FAQ",
   "/how-it-works": "How it works",
   "/playground": "Playground",
@@ -95,7 +105,11 @@ const PAGE_TITLES: Record<string, Metadata["title"]> = {
 describe("every public page under app/(marketing) and app/(marketing-es), and /api-keys", () => {
   test("is found, including every published post", () => {
     expect(PAGES.map((p) => p.route).sort()).toEqual(
-      [...Object.keys(PAGE_TITLES), ...getAllPostMetas().map((p) => `/blog/${p.slug}`)].sort()
+      [
+        ...Object.keys(PAGE_TITLES),
+        ...getAllPostMetas().map((p) => `/blog/${p.slug}`),
+        ...getAllPostMetas("es").map((p) => `/es/blog/${p.slug}`),
+      ].sort()
     );
   });
 
@@ -111,19 +125,25 @@ describe("every public page under app/(marketing) and app/(marketing-es), and /a
         expect(page.metadata.openGraph?.url).toBe(siteUrl(page.route));
       });
 
-      test("has a share image for Open Graph and X", () => {
-        const post = page.route.startsWith("/blog/") ? getPost(page.route.slice(6)) : null;
-        const image = post ? postShareImage(post.slug, post.title) : SHARE_IMAGE;
+      test("has a share image in its own locale for Open Graph and X", () => {
+        const locale = routeLocale(page.route);
+        const slug = postSlug(page.route);
+        const post = slug ? getPost(slug, locale) : null;
+        const image = post ? postShareImage(post.slug, post.title, locale) : shareImageFor(locale);
+        expect(image.url.startsWith(localePath(locale, "/"))).toBe(true);
         expect(page.metadata.openGraph?.images).toEqual([image]);
         expect(page.metadata.twitter?.images).toEqual([image]);
         expect(page.metadata.twitter).toMatchObject({ card: "summary_large_image" });
-        if (post) expect(existsSync(join(page.dir, "share.png", "route.tsx"))).toBe(true);
+        if (post) {
+          const group = locale === "en" ? MARKETING : join(MARKETING_ES, "es");
+          expect(existsSync(join(group, "blog", "[slug]", "share.png", "route.tsx"))).toBe(true);
+        }
       });
 
       test("is titled by the page name only, the brand added once by the root template", () => {
         const expected = page.expectedTitle ?? PAGE_TITLES[page.route];
         expect(page.metadata.title).toEqual(expected);
-        if (typeof expected === "string" && !page.route.startsWith("/blog/")) {
+        if (typeof expected === "string" && !postSlug(page.route)) {
           expect(expected).not.toContain(SITE_NAME);
         }
         const shared =
@@ -142,9 +162,9 @@ describe("every public page under app/(marketing) and app/(marketing-es), and /a
 
       test("names its other language only as a translated pair", () => {
         const locale = routeLocale(page.route);
-        const other = languageAlternate(locale, page.route);
+        const other = languageAlternate(locale, page.route, PAIRS);
         expect(page.metadata.alternates?.languages).toEqual(
-          languageAlternates(locale, page.route) ?? undefined
+          languageAlternates(locale, page.route, PAIRS) ?? undefined
         );
         expect(page.metadata.openGraph?.alternateLocale).toEqual(
           other ? [LOCALE_TAGS[other.locale].openGraph] : undefined
@@ -161,6 +181,21 @@ describe("every public page under app/(marketing) and app/(marketing-es), and /a
     });
   }
 
+  test("a translated post and its English post name each other, from either side", () => {
+    const slug = "how-do-i-remove-a-trustline-on-stellar";
+    const pair = {
+      en: siteUrl(`/blog/${slug}`),
+      es: siteUrl(`/es/blog/${slug}`),
+      "x-default": siteUrl(`/blog/${slug}`),
+    };
+    for (const route of [`/blog/${slug}`, `/es/blog/${slug}`]) {
+      const page = PAGES.find((p) => p.route === route)!;
+      expect(page.metadata.alternates?.languages).toEqual(pair);
+    }
+    const english = PAGES.find((p) => p.route === "/blog/account-merge-on-stellar")!;
+    expect(english.metadata.alternates?.languages).toBeUndefined();
+  });
+
   test("/api-keys is the only page marked noindex", () => {
     expect(NOINDEX_PAGES).toEqual(["/api-keys"]);
     expect(
@@ -176,14 +211,25 @@ describe("every public page under app/(marketing) and app/(marketing-es), and /a
       expect(rootMetadata.openGraph).not.toHaveProperty("url");
       expect(rootMetadata.openGraph).toMatchObject({ locale: LOCALE_TAGS[locale].openGraph });
       expect(rootMetadata.robots).toBeUndefined();
-      expect(rootMetadata.openGraph?.images).toEqual([SHARE_IMAGE]);
-      expect(rootMetadata.twitter?.images).toEqual([SHARE_IMAGE]);
+      expect(rootMetadata.openGraph?.images).toEqual([shareImageFor(locale)]);
+      expect(rootMetadata.twitter?.images).toEqual([shareImageFor(locale)]);
       expect(String(rootMetadata.metadataBase)).toBe(siteUrl("/"));
     }
   });
 
-  test("the share image is generated from the root segment", () => {
-    expect(existsSync(join(MARKETING, "..", "opengraph-image.tsx"))).toBe(true);
+  test("each locale's share image is generated at its root, with its own alt text", () => {
+    expect(existsSync(join(APP, "opengraph-image.tsx"))).toBe(true);
+    // Outside the route group: a metadata image inside one is served under a hashed path.
+    expect(existsSync(join(APP, "es", "opengraph-image.tsx"))).toBe(true);
+    expect(shareImageFor("en")).toMatchObject({
+      url: "/opengraph-image",
+      alt: SITE.en.metadata.shareImageAlt,
+    });
+    expect(shareImageFor("es")).toMatchObject({
+      url: "/es/opengraph-image",
+      alt: SITE.es.metadata.shareImageAlt,
+    });
+    expect(SITE.es.metadata.shareImageAlt).not.toBe(SITE.en.metadata.shareImageAlt);
   });
 });
 
@@ -191,7 +237,9 @@ describe("the Spanish pages", () => {
   const TRANSLATED = [{ path: "/", translated: true }];
 
   test("each one is a page under app/(marketing-es) with an English page in the sitemap", () => {
-    const spanishRoutes = marketingRoutes(MARKETING_ES).map((p) => p.route);
+    const spanishRoutes = marketingRoutes(MARKETING_ES)
+      .map((p) => p.route)
+      .filter((route) => !route.includes("["));
     expect(SPANISH_PAGES.map((p) => localePath("es", p.path)).sort()).toEqual(spanishRoutes.sort());
     for (const page of SPANISH_PAGES) {
       expect(INDEXED_PAGES.map((p) => p.path)).toContain(page.path);
@@ -245,6 +293,47 @@ describe("the sitemap", () => {
     expect(entry(siteUrl("/"))).toMatchObject({ alternates: { languages: pair } });
   });
 
+  test("lists the Spanish FAQ with the FAQ's rank and both languages", () => {
+    const pair = { en: siteUrl("/faq"), es: siteUrl("/es/faq"), "x-default": siteUrl("/faq") };
+    const entry = (url: string) => SITEMAP.find((e) => e.url === url);
+    expect(entry(siteUrl("/es/faq"))).toMatchObject({
+      priority: 0.8,
+      changeFrequency: "monthly",
+      alternates: { languages: pair },
+    });
+    expect(entry(siteUrl("/faq"))).toMatchObject({ alternates: { languages: pair } });
+  });
+
+  test("lists the Spanish security page with its rank and both languages", () => {
+    const pair = {
+      en: siteUrl("/security"),
+      es: siteUrl("/es/security"),
+      "x-default": siteUrl("/security"),
+    };
+    const entry = (url: string) => SITEMAP.find((e) => e.url === url);
+    expect(entry(siteUrl("/es/security"))).toMatchObject({
+      priority: 0.9,
+      changeFrequency: "monthly",
+      alternates: { languages: pair },
+    });
+    expect(entry(siteUrl("/security"))).toMatchObject({ alternates: { languages: pair } });
+  });
+
+  test("lists the Spanish how it works page with its rank and both languages", () => {
+    const pair = {
+      en: siteUrl("/how-it-works"),
+      es: siteUrl("/es/how-it-works"),
+      "x-default": siteUrl("/how-it-works"),
+    };
+    const entry = (url: string) => SITEMAP.find((e) => e.url === url);
+    expect(entry(siteUrl("/es/how-it-works"))).toMatchObject({
+      priority: 0.9,
+      changeFrequency: "monthly",
+      alternates: { languages: pair },
+    });
+    expect(entry(siteUrl("/how-it-works"))).toMatchObject({ alternates: { languages: pair } });
+  });
+
   test("ranks the app entry below the pages that explain it and leaves testnet out", () => {
     const priority = (path: string) => SITEMAP.find((e) => e.url === siteUrl(path))?.priority;
     expect(priority("/mainnet")!).toBeLessThan(priority("/how-it-works")!);
@@ -278,8 +367,34 @@ describe("the sitemap", () => {
     for (const entry of SITEMAP) {
       const path = new URL(entry.url).pathname;
       expect(entry.alternates?.languages).toEqual(
-        languageAlternates(routeLocale(path), path) ?? undefined
+        languageAlternates(routeLocale(path), path, PAIRS) ?? undefined
       );
+    }
+  });
+
+  test("lists each translated post and its English post with both languages", () => {
+    const translated = getAllPostMetas("es");
+    expect(translated.length).toBeGreaterThan(0);
+    for (const { slug } of translated) {
+      const pair = {
+        en: siteUrl(`/blog/${slug}`),
+        es: siteUrl(`/es/blog/${slug}`),
+        "x-default": siteUrl(`/blog/${slug}`),
+      };
+      const entry = (url: string) => SITEMAP.find((e) => e.url === url);
+      expect(entry(siteUrl(`/es/blog/${slug}`))).toMatchObject({
+        priority: 0.7,
+        lastModified: new Date(getPost(slug, "es").updatedAt),
+        alternates: { languages: pair },
+      });
+      expect(entry(siteUrl(`/blog/${slug}`))).toMatchObject({ alternates: { languages: pair } });
+    }
+    const untranslated = getAllPostMetas().filter(
+      (p) => !translated.some((t) => t.slug === p.slug)
+    );
+    expect(untranslated.length).toBeGreaterThan(0);
+    for (const { slug } of untranslated) {
+      expect(SITEMAP.find((e) => e.url === siteUrl(`/blog/${slug}`))?.alternates).toBeUndefined();
     }
   });
 

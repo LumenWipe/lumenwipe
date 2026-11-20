@@ -9,10 +9,12 @@ import { UserFacingError } from "@/lib/utils/user-error";
 
 export type WalletKit = typeof StellarWalletsKit;
 
-/** What the lazily loaded kit code provides: the kit's singleton and the vetted module list. */
+/** What the lazily loaded kit code provides: the kit's singleton, the vetted module list, and the
+ *  `buffer` package's `Buffer` for the Ledger libraries. */
 export interface WalletKitBundle {
   kit: WalletKit;
   modules: () => ModuleInterface[];
+  Buffer: unknown;
 }
 
 const KIT_NETWORKS: Record<Network, Networks> = {
@@ -33,12 +35,24 @@ export class WalletKitLoadError extends UserFacingError {
 
 /** The one place the wallet kit's code is fetched: never at page load, only on first use. */
 export function importWalletKit(): Promise<WalletKitBundle> {
-  return Promise.all([import("@creit-tech/stellar-wallets-kit/sdk"), import("./modules")]).then(
-    ([sdk, modules]) => ({
-      kit: sdk.StellarWalletsKit,
-      modules: modules.walletKitModules,
-    })
-  );
+  return Promise.all([
+    import("@creit-tech/stellar-wallets-kit/sdk"),
+    import("./modules"),
+    import("buffer"),
+  ]).then(([sdk, modules, buffer]) => ({
+    kit: sdk.StellarWalletsKit,
+    modules: modules.walletKitModules,
+    Buffer: buffer.Buffer,
+  }));
+}
+
+/**
+ * The kit's Ledger libraries (`@ledgerhq/hw-app-str`, `hw-transport`) call a global `Buffer` they
+ * never import, and a browser has none. Sets `buffer` as it, only where there is no `Buffer`
+ * already, so a runtime's own (Node, Bun) is never replaced.
+ */
+export function provideBuffer(target: { Buffer?: unknown }, buffer: unknown): void {
+  if (target.Buffer === undefined) target.Buffer = buffer;
 }
 
 export interface WalletKitLoader {
@@ -56,7 +70,8 @@ export function walletKitLoader(importKit: () => Promise<WalletKitBundle>): Wall
     if (loading) return loading;
     const attempt = Promise.resolve()
       .then(importKit)
-      .then(({ kit, modules }) => {
+      .then(({ kit, modules, Buffer }) => {
+        provideBuffer(globalThis as { Buffer?: unknown }, Buffer);
         kit.init({ modules: modules(), network: KIT_NETWORKS[network] });
         loaded = kit;
         return kit;

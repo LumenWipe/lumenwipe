@@ -17,7 +17,15 @@ function isPhoneWidth(page: Page): boolean {
   return (page.viewportSize()?.width ?? 0) < DESKTOP;
 }
 
-for (const path of ["/", "/es"]) {
+for (const path of [
+  "/",
+  "/es",
+  "/es/faq",
+  "/es/security",
+  "/es/how-it-works",
+  "/es/blog",
+  "/es/blog/how-do-i-remove-a-trustline-on-stellar",
+]) {
   test(`${path} carries no noindex`, async ({ page }) => {
     await page.goto(path);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
@@ -28,11 +36,20 @@ for (const path of ["/", "/es"]) {
 for (const path of [
   "/es",
   "/faq",
+  "/es/faq",
+  "/es/security",
   "/security",
+  "/es/how-it-works",
   "/registry",
   "/content",
   "/blog/how-do-i-remove-a-trustline-on-stellar",
   "/blog/phase-1-launch",
+  "/es/blog",
+  "/es/blog/how-do-i-remove-a-trustline-on-stellar",
+  "/es/blog/cant-merge-a-stellar-account-because-of-extra-signers",
+  "/es/blog/how-do-i-cancel-open-offers-on-stellar",
+  "/es/blog/what-are-stellar-data-entries",
+  "/es/blog/why-cant-i-merge-my-stellar-account-claimable-balances",
   "/stats",
 ]) {
   test(`${path} has no serious accessibility violations`, async ({ page }) => {

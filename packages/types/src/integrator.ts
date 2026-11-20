@@ -17,6 +17,28 @@ export interface IntegratorSessionRequest {
   signature: string;
 }
 
+/** Response from `POST /v1/integrator/auth/contract/{network}/challenge`: SEP-45 style
+ *  authorization entries for a contract account (C...) to sign. */
+export interface IntegratorContractChallengeResponse {
+  /** Base64 XDR of the `SorobanAuthorizationEntry` list: the account's entry, unsigned, then the
+   *  server account's, signed. */
+  authorizationEntries: string;
+  /** The network passphrase the signature must use. */
+  networkPassphrase: string;
+  /** The last ledger the account's signature may be valid for. */
+  validUntilLedger: number;
+  /** ISO 8601 time after which the challenge is rejected. */
+  expiresAt: string;
+}
+
+/** Body for `POST /v1/integrator/auth/contract/{network}/session`. */
+export interface IntegratorContractSessionRequest {
+  /** The contract account (C...) that signed the challenge. */
+  address: string;
+  /** The challenge's entries with the account's entry signed. */
+  authorizationEntries: string;
+}
+
 /** Response from `POST /v1/integrator/auth/session`. */
 export interface IntegratorSessionResponse {
   /** Bearer token for the key-management endpoints. */

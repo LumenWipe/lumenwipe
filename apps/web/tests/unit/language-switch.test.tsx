@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { cleanup, render, screen } from "@testing-library/react";
 import * as navigation from "next/navigation";
 import LanguageSwitch from "@/components/marketing/LanguageSwitch";
@@ -11,6 +13,7 @@ import {
   SPANISH_PAGES,
   type SpanishPage,
 } from "@/lib/site/pages";
+import { spanishPages } from "@/lib/site/spanish-pages";
 
 const TRANSLATED: readonly SpanishPage[] = [
   { path: "/", translated: true },
@@ -58,16 +61,24 @@ describe("the language switch", () => {
   });
 
   test("renders nothing for a page with no Spanish version, or a path in the other locale", () => {
-    expect(languageAlternate("en", "/blog", TRANSLATED)).toBeNull();
+    expect(languageAlternate("en", "/stats", TRANSLATED)).toBeNull();
     expect(languageAlternate("es", "/faq", TRANSLATED)).toBeNull();
     expect(languageAlternate("en", "/es/faq", TRANSLATED)).toBeNull();
   });
 
   test("the header, mobile menu and footer each mount it, in both directions", () => {
-    expect(SPANISH_PAGES.find((page) => page.path === "/")?.translated).toBe(true);
+    for (const path of ["/", "/faq", "/security", "/how-it-works"]) {
+      expect(SPANISH_PAGES.find((page) => page.path === path)?.translated).toBe(true);
+    }
     for (const [locale, pathname, href, tag] of [
       ["en", "/", "/es", "es-419"],
       ["es", "/es", "/", "en"],
+      ["en", "/faq", "/es/faq", "es-419"],
+      ["es", "/es/faq", "/faq", "en"],
+      ["en", "/security", "/es/security", "es-419"],
+      ["es", "/es/security", "/security", "en"],
+      ["en", "/how-it-works", "/es/how-it-works", "es-419"],
+      ["es", "/es/how-it-works", "/how-it-works", "en"],
     ] as const) {
       at(pathname);
       const { container } = render(
@@ -95,10 +106,63 @@ describe("the language switch", () => {
     }
   });
 
+  test("the header, mobile menu and footer link a translated post to its other version, and an untranslated post to none", () => {
+    const slug = "how-do-i-remove-a-trustline-on-stellar";
+    expect(spanishPages()).toContainEqual({ path: `/blog/${slug}`, translated: true });
+    for (const [locale, pathname, href] of [
+      ["en", `/blog/${slug}`, `/es/blog/${slug}`],
+      ["es", `/es/blog/${slug}`, `/blog/${slug}`],
+      ["en", "/blog", "/es/blog"],
+      ["es", "/es/blog", "/blog"],
+      ["en", "/blog/account-merge-on-stellar", null],
+    ] as const) {
+      at(pathname);
+      const { container } = render(
+        <>
+          <MarketingNav locale={locale} pages={spanishPages()} />
+          <MarketingFooter locale={locale} pages={spanishPages()} />
+        </>
+      );
+      const links = [...container.querySelectorAll("a[hreflang]")].map((a) =>
+        a.getAttribute("href")
+      );
+      expect({ pathname, links }).toEqual({ pathname, links: href ? [href, href, href] : [] });
+      cleanup();
+      mock.restore();
+    }
+  });
+
+  test("the frame gives the header and footer the translated posts, read on the server", () => {
+    // The frame loads next/font, which runs only inside a Next build, so its source is read.
+    const source = readFileSync(
+      join(import.meta.dir, "..", "..", "components", "marketing", "MarketingShell.tsx"),
+      "utf8"
+    );
+    expect(source).toContain("const pages = spanishPages();");
+    expect(source).toContain("<MarketingNav locale={locale} pages={pages} />");
+    expect(source).toContain("<MarketingFooter locale={locale} pages={pages} />");
+  });
+
+  test("the footer leads to the blog in the reader's language", () => {
+    for (const [locale, href] of [
+      ["en", "/blog"],
+      ["es", "/es/blog"],
+    ] as const) {
+      at(locale === "en" ? "/" : "/es");
+      const { container } = render(<MarketingFooter locale={locale} />);
+      const blog = [...container.querySelectorAll("footer a")].filter((link) =>
+        /\/blog$/.test(link.getAttribute("href") ?? "")
+      );
+      expect(blog.map((link) => link.getAttribute("href"))).toEqual([href]);
+      cleanup();
+      mock.restore();
+    }
+  });
+
   test("links nothing from a page whose other version is not translated", () => {
     for (const [locale, pathname] of [
-      ["en", "/faq"],
-      ["en", "/security"],
+      ["en", "/registry"],
+      ["en", "/stats"],
     ] as const) {
       at(pathname);
       const { container } = render(
@@ -109,6 +173,44 @@ describe("the language switch", () => {
       );
       expect(container.querySelector("a[hreflang]")).toBeNull();
       expect(screen.queryByRole("link", { name: /^(English|Español)$/ })).toBeNull();
+      cleanup();
+      mock.restore();
+    }
+  });
+
+  test("the footer leads to the FAQ in the reader's language", () => {
+    for (const [locale, pathname, href] of [
+      ["en", "/", "/faq"],
+      ["es", "/es", "/es/faq"],
+    ] as const) {
+      at(pathname);
+      const { container } = render(<MarketingFooter locale={locale} />);
+      const faq = [...container.querySelectorAll("footer a")].filter((link) =>
+        link.getAttribute("href")?.endsWith("/faq")
+      );
+      expect(faq.map((link) => link.getAttribute("href"))).toEqual([href]);
+      cleanup();
+      mock.restore();
+    }
+  });
+
+  test("the header, mobile menu and footer lead to the security and how it works pages in the reader's language", () => {
+    for (const [locale, pathname, prefix] of [
+      ["en", "/", ""],
+      ["es", "/es", "/es"],
+    ] as const) {
+      at(pathname);
+      const { container } = render(
+        <>
+          <MarketingNav locale={locale} />
+          <MarketingFooter locale={locale} />
+        </>
+      );
+      const hrefs = [...container.querySelectorAll("a")].map((link) => link.getAttribute("href"));
+      for (const page of ["/security", "/how-it-works"]) {
+        const href = `${prefix}${page}`;
+        expect(hrefs.filter((link) => link?.endsWith(page))).toEqual([href, href, href]);
+      }
       cleanup();
       mock.restore();
     }

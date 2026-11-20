@@ -500,6 +500,75 @@
       }
     },
     {
+      "name": "exchange-round-before-merge-without-balance",
+      "verdict": "accept",
+      "description": "A round ahead of the merge to a listed exchange removes a data entry; it moves no balance, so it is verified with no balance read.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAAGQAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAEAAAAAAAAACgAAAARub3RlAAAAAAAAAAAAAAAA",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GB5CLRWUCBQ6DFK2LR5ZMWJ7QCVEB3XKMPTQUYCDIYB4DRZJBEW6M26D",
+          "nativeBalance": "0",
+          "memo": "deposit-1",
+          "memoType": "text",
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CA4V7YVUC3EE2EFVTEYJ47ZD34K4DCAKEYV6AHRR73KTKO5GDGNZLLMT",
+            "CBYFZPJ2DP5IK74JOXUPUM2RAM7N42OVOLK7K5UOIK7QQQKQTN2PZJWU"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": []
+        }
+      }
+    },
+    {
       "name": "testnet-stand-in-close-through-intermediary",
       "verdict": "accept",
       "description": "A testnet close to the bundled registry's testnet-only exchange stand-in: the merge pays an intermediary that forwards the whole balance to it, with the user's id memo.",
@@ -3341,6 +3410,81 @@
         "name": "VerificationError",
         "code": "mediator_forward_short",
         "message": "This transaction would hand your balance to an intermediary and pass on only part of it."
+      }
+    },
+    {
+      "name": "forward-balance-unread",
+      "verdict": "reject",
+      "base": "exchange-round-before-merge-without-balance",
+      "mutation": "Adds the intermediary hand-off to the round verified with no balance read, forwarding one stroop.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAAMgAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAQAAAAlkZXBvc2l0LTEAAAAAAAACAAAAAAAAAAgAAAAA3rHiv//lEtGqV1AcBCOq1tI1xY1Kye4rLiOHkHguhdEAAAABAAAAAN6x4r//5RLRqldQHAQjqtbSNcWNSsnuKy4jh5B4LoXRAAAAAQAAAAB6JcbUEGHhlVpce5ZZP4CqQO7qY+cKYENGA8HHKQkt5gAAAAAAAAAAAAAAAQAAAAAAAAAA",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GB5CLRWUCBQ6DFK2LR5ZMWJ7QCVEB3XKMPTQUYCDIYB4DRZJBEW6M26D",
+          "nativeBalance": "0",
+          "memo": "deposit-1",
+          "memoType": "text",
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CA4V7YVUC3EE2EFVTEYJ47ZD34K4DCAKEYV6AHRR73KTKO5GDGNZLLMT",
+            "CBYFZPJ2DP5IK74JOXUPUM2RAM7N42OVOLK7K5UOIK7QQQKQTN2PZJWU"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": []
+        }
+      },
+      "error": {
+        "name": "VerificationError",
+        "code": "mediator_forward_balance_unknown",
+        "message": "The balance this close would pass on is unknown or too small to check, so the hand-off is refused. Run the analysis again, or close to a wallet you control."
       }
     },
     {

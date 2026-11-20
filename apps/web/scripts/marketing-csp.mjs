@@ -21,6 +21,8 @@
  *    from a header route, and no other marketing or nonce path any Link header.
  * 5. In a Build Output config, the apex host must get the 308 to www (config/apex-redirect.mjs)
  *    from one route before the first `handle`, under a header route that sets the app's HSTS.
+ * 6. In a Build Output config, the signing routes must end with the Permissions-Policy that opens
+ *    WebUSB to self, and every other page, nonce path and API path with the one that refuses it.
  */
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -28,13 +30,14 @@ import { basename, join } from "node:path";
 import { APEX_REDIRECT, CANONICAL_ORIGIN } from "../config/apex-redirect.mjs";
 import { HOMEPAGE_LINK } from "../config/discovery-links.mjs";
 import { marketingPolicy } from "../config/marketing-csp.mjs";
-import { SECURITY_HEADERS } from "../config/security-headers.mjs";
+import { SECURITY_HEADERS, SIGNING_PERMISSIONS_POLICY } from "../config/security-headers.mjs";
 
 // The English and Spanish marketing route groups (docs/contributing/localization.mdx).
 const GROUPS = ["/(marketing)/", "/(marketing-es)/"];
 const CSP = "Content-Security-Policy";
 const LINK = "Link";
 const HSTS = "Strict-Transport-Security";
+const PERMISSIONS = "Permissions-Policy";
 const SCRIPT_TYPES = new Set(["", "text/javascript", "application/javascript", "module"]);
 // Prerendered paths come from our own route names; anything else would be read as a pattern by
 // the manifest's `source` matcher.
@@ -300,6 +303,7 @@ export const NONCE_PATHS = [
   "/x/y/z",
   "/blog/nope",
   "/es/nope",
+  "/es/blog/nope",
 ];
 
 /**
@@ -332,6 +336,7 @@ export function verifyRoutes(config, htmlByPath) {
   );
   verifyHomepageLink(routes, headerRoutes, [...htmlByPath.keys(), ...NONCE_PATHS]);
   verifyApexRedirect(routes, firstHandle, [...htmlByPath.keys(), ...NONCE_PATHS, "/api/v1/x"]);
+  verifyWebUsb(headerRoutes, [...htmlByPath.keys(), ...NONCE_PATHS, ...WEBUSB_PATHS, "/api/v1/x"]);
   for (const path of NONCE_PATHS) {
     if (cspRoutes.some((route) => routeRegex(route.src, "the Build Output config", "i").test(path)))
       fail(`${path} is matched by a marketing CSP route`);
@@ -339,6 +344,36 @@ export function verifyRoutes(config, htmlByPath) {
       !proxyRoutes.some((route) => routeRegex(route.src, "the Build Output config", "i").test(path))
     )
       fail(`${path} is not matched by the proxy's route, so it would have no nonce policy`);
+  }
+}
+
+/** Paths of the routes that sign, which alone get WebUSB (config/security-headers.mjs). */
+export const WEBUSB_PATHS = [
+  "/mainnet",
+  "/testnet",
+  "/testnet/analyze",
+  "/mainnet/execute",
+  "/testnet/allowances",
+  "/mainnet/receipt/abc",
+  "/cosign",
+];
+
+/**
+ * Fails unless each path ends with exactly the Permissions-Policy of its class: the signing one on
+ * `WEBUSB_PATHS`, the app's own everywhere else. A later header route replaces an earlier one's
+ * value of the same header, so the last match before the first `handle` is what is served.
+ *
+ * @param {Array<Record<string, any>>} headerRoutes the header routes before the first `handle`
+ * @param {string[]} paths the paths to check
+ */
+function verifyWebUsb(headerRoutes, paths) {
+  const base = SECURITY_HEADERS.find((h) => h.key === PERMISSIONS)?.value;
+  for (const path of paths) {
+    const served = continueHeaderValues(headerRoutes, path, PERMISSIONS).slice(-1);
+    const expected = WEBUSB_PATHS.includes(path) ? SIGNING_PERMISSIONS_POLICY : base;
+    if (served.length !== 1 || served[0] !== expected) {
+      fail(`${path} is served Permissions-Policy ${JSON.stringify(served)}, expected ${expected}`);
+    }
   }
 }
 

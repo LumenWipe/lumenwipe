@@ -88,6 +88,7 @@ const WALLETS: Record<string, string> = {
   Albedo: "Albedo",
   Rabet: "Rabet",
   Hana: "Hana",
+  Ledger: "Ledger, over USB in a browser with WebUSB (Chrome, Edge)",
 };
 
 function read(path: string): string {
@@ -409,6 +410,15 @@ export const ENVIRONMENT: Record<EnvApp, Record<string, EnvironmentFacts>> = {
       "Signs the wallet sign-in challenge and session tokens, at least 32 characters",
       true
     ),
+    INTEGRATOR_WEB_AUTH_SIGNING_SEED: optional(
+      "Secret seed (S...) of the server account that signs contract-account sign-in challenges; the account must exist on each network. Without it, contract-account sign-in answers 503",
+      true
+    ),
+    INTEGRATOR_WEB_AUTH_CONTRACT_TESTNET: optional(
+      "Testnet instance (C...) of the SEP-45 web authentication contract, running the attested build; mainnet uses SDF's deployment. The repository variable of the same name holds the same value, and the nightly `web-auth-ttl` job extends that contract's TTL",
+      false,
+      "Contract-account sign-in is off on testnet"
+    ),
     PORT: optional("Port the API listens on", false, "`3001`"),
     STELLAR_RPC_TESTNET: optional(
       "Testnet Stellar RPC, one URL or a comma-separated failover list; secret because a provider URL can carry its key",
@@ -580,6 +590,9 @@ export const ENVIRONMENT: Record<EnvApp, Record<string, EnvironmentFacts>> = {
       purpose:
         "Key for the hash of the client IP in the proxy rate-limit counters, at least 32 characters; unset on a deployment makes the limiter unavailable",
     },
+    STATUS_SOURCE_URL: optional(
+      "https URL of the status summary the site banner reads through `/api/status`; unset, no page shows the banner. Prerendered pages read it at build time"
+    ),
     NEXT_PUBLIC_APP_URL: {
       required: "Production",
       secret: false,

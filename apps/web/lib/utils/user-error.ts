@@ -9,6 +9,8 @@ import { apiRequestId } from "@/lib/api/error-body";
 import { InvalidPreAuthTxError } from "@/lib/stellar/pre-auth-tx";
 import { InvalidPreimageError } from "@/lib/stellar/hash-x";
 import {
+  deviceCannotShow,
+  LEDGER_WALLET_ID,
   SignerReleasedError,
   WalletNotUsableError,
   WalletSignerMismatchError,
@@ -126,6 +128,80 @@ export const CLOCK_HINT =
   "If this keeps happening, check that your device's clock is set correctly.";
 const WALLET_UNSUPPORTED =
   "Your wallet can't sign this transaction. Change to another wallet or your secret key, then try again.";
+
+export const LEDGER_HASH_SIGNING_OFF =
+  "Turn on Blind signing in the Stellar app's settings on your Ledger, then try again. This transaction was not signed.";
+export const LEDGER_OPEN_APP = "Open the Stellar app on your Ledger, then try again.";
+export const LEDGER_LOCKED = "Unlock your Ledger and open the Stellar app, then try again.";
+export const LEDGER_NO_WEBUSB =
+  "This browser can't reach a Ledger over USB. Use Chrome or Edge on a computer, then try again.";
+export const LEDGER_BUSY =
+  "Your Ledger is still busy with an earlier request. Finish or reject it on the device, then try again.";
+export const LEDGER_IN_USE =
+  "Another app or tab is using your Ledger. Close Ledger Live or the other tab, then try again.";
+export const LEDGER_DISCONNECTED =
+  "Your Ledger was disconnected. Plug it in, open the Stellar app, then try again.";
+export const LEDGER_NOT_CHOSEN =
+  "No Ledger was chosen in the browser's device prompt. Plug in your Ledger, open the Stellar app, then try again.";
+export const LEDGER_ACCOUNT_NOT_LOADED =
+  "This account is not loaded from your Ledger in this browser. Disconnect, connect your Ledger again and choose the account, then try again.";
+export const LEDGER_WRONG_KEY =
+  "Your Ledger signed with a different key than this account's, so nothing was used. Check that this is the device, and the passphrase, that hold this account, then try again.";
+export const LEDGER_HASH_NEXT =
+  "Your Ledger could not show this whole transaction, so it was not signed. Try again to sign it by its hash: before you approve, check that the hash on the device starts and ends with the characters shown here. Blind signing must be on in the Stellar app's settings.";
+export const LEDGER_CANNOT_SHOW =
+  "Your Ledger could not show this transaction, so it was not signed. Update the Stellar app on the device with Ledger Live, or sign with another wallet or your secret key.";
+
+/** Status words a Ledger answers with, and what they mean for the user. 0x6e00 to 0x6511 come
+ *  from the dashboard or another app being open; 0x5515 and 0x6982 from a locked device. */
+const LEDGER_STATUS: ReadonlyMap<number, string> = new Map([
+  [0x6c66, LEDGER_HASH_SIGNING_OFF],
+  [0x6e00, LEDGER_OPEN_APP],
+  [0x6e01, LEDGER_OPEN_APP],
+  [0x6d00, LEDGER_OPEN_APP],
+  [0x6511, LEDGER_OPEN_APP],
+  [0x5515, LEDGER_LOCKED],
+  [0x6982, LEDGER_LOCKED],
+]);
+
+/** Ledger library error classes that carry no status word, by name. */
+const LEDGER_NAMES: ReadonlyMap<string, string> = new Map([
+  ["StellarHashSigningNotEnabledError", LEDGER_HASH_SIGNING_OFF],
+  ["LockedDeviceError", LEDGER_LOCKED],
+  ["TransportRaceCondition", LEDGER_BUSY],
+  ["TransportInterfaceNotAvailable", LEDGER_IN_USE],
+  ["DisconnectedDevice", LEDGER_DISCONNECTED],
+  ["DisconnectedDeviceDuringOperation", LEDGER_DISCONNECTED],
+  ["TransportOpenUserCancelled", LEDGER_NOT_CHOSEN],
+]);
+
+/** The kit's own Ledger module texts, matched whole: it throws them as plain errors. */
+const LEDGER_TEXTS: ReadonlyMap<string, string> = new Map([
+  ["Ledger wallets can not be used", LEDGER_NO_WEBUSB],
+  ["Ledger can not be used with this device.", LEDGER_NO_WEBUSB],
+  ["This address has not been loaded from this ledger", LEDGER_ACCOUNT_NOT_LOADED],
+  [
+    "There is no path available, please call the `getAddress` method first.",
+    LEDGER_ACCOUNT_NOT_LOADED,
+  ],
+  // stellar-sdk's addSignature, inside the kit: the device's signature does not verify for the
+  // account it was asked to sign for.
+  ["Invalid signature", LEDGER_WRONG_KEY],
+]);
+
+/** A Ledger failure in plain words, from its status word, class or the kit's own text; null for
+ *  any other wallet or a failure none of them names. */
+function ledgerMessage(err: WalletSigningError): string | null {
+  if (err.walletId !== LEDGER_WALLET_ID) return null;
+  if (deviceCannotShow(err.device))
+    return err.hashSigningNext ? LEDGER_HASH_NEXT : LEDGER_CANNOT_SHOW;
+  return (
+    (err.device.status !== null ? LEDGER_STATUS.get(err.device.status) : undefined) ??
+    (err.device.name !== null ? LEDGER_NAMES.get(err.device.name) : undefined) ??
+    LEDGER_TEXTS.get(err.message) ??
+    null
+  );
+}
 
 /** What each wallet kit error code means, when the wallet's own text says nothing more. */
 const WALLET_CODES: Record<number, string> = {
@@ -267,6 +343,8 @@ export function requestIdOf(err: unknown): string | undefined {
  */
 function walletSigningMessage(err: WalletSigningError): string {
   if (err.code === -4) return DECLINED_TRANSACTION;
+  const ledger = ledgerMessage(err);
+  if (ledger) return ledger;
   if (err.code === -3) return WALLET_UNSUPPORTED;
   // -1 is the kit's catch-all, which some wallets use for a decline; any other code says what it is.
   if (err.code === -1 && DECLINED.test(err.message)) return DECLINED_TRANSACTION;

@@ -1,5 +1,6 @@
 import type {
   CreateIntegratorKeyRequest,
+  IntegratorContractChallengeResponse,
   IntegratorKeyList,
   IntegratorKeyListEntry,
   IntegratorKeyRecord,
@@ -7,6 +8,7 @@ import type {
   IntegratorOwnerUsage,
   IssuedIntegratorKey,
 } from "@lumenwipe/types";
+import type { Network } from "@/config/networks";
 
 /** The API's own shapes, so the page and the SDK read the same fields. */
 export type KeyRecord = IntegratorKeyRecord;
@@ -16,6 +18,7 @@ export type Usage = IntegratorOwnerUsage;
 export type KeyList = IntegratorKeyList;
 export type CreatedKey = IssuedIntegratorKey;
 export type CreateKeyRequest = CreateIntegratorKeyRequest;
+export type ContractChallenge = IntegratorContractChallengeResponse;
 
 /** The signed-in wallet. The session token itself lives in an httpOnly cookie and never reaches
  *  this code. */
@@ -91,6 +94,27 @@ export function createSession(
   return request("auth/session", {
     method: "POST",
     body: JSON.stringify({ address, message, signature }),
+  });
+}
+
+export function requestContractChallenge(
+  network: Network,
+  address: string
+): Promise<ContractChallenge> {
+  return request(`auth/contract/${network}/challenge`, {
+    method: "POST",
+    body: JSON.stringify({ address }),
+  });
+}
+
+export function createContractSession(
+  network: Network,
+  address: string,
+  authorizationEntries: string
+): Promise<Session> {
+  return request(`auth/contract/${network}/session`, {
+    method: "POST",
+    body: JSON.stringify({ address, authorizationEntries }),
   });
 }
 

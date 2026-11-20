@@ -85,6 +85,13 @@ async function installIntegratorFixtures(
       session = { address, expiresAt: new Date(Date.now() + 30 * 60_000).toISOString() };
       return json(route, session);
     }
+    if (key === "POST auth/contract/mainnet/challenge") {
+      return json(
+        route,
+        { error: { code: "contract_sign_in_unavailable", message: "Not available." } },
+        503
+      );
+    }
     if (key === "GET keys") {
       return json(route, { keys: options.keys ?? [], usage: { today: 0, last30Days: 0 } });
     }
@@ -146,15 +153,18 @@ test("a plain wallet signs in, sees key management and the limits, and stays sig
   expect(integrator.signatures).toHaveLength(1);
 });
 
-test("a contract account sees why it cannot sign in and what to do instead", async ({ page }) => {
+test("a contract account the wallet cannot sign for is shown the steps by hand", async ({
+  page,
+}) => {
   await installWalletStub(page, { address: CONTRACT });
   const integrator = await installIntegratorFixtures(page);
 
   await page.goto("/api-keys");
   await signInWithStubWallet(page);
-  await expect(page.getByText("Contract accounts cannot own keys yet")).toBeVisible({
+  await expect(page.getByText("Sign the contract account's challenge by hand")).toBeVisible({
     timeout: 30_000,
   });
+  await expect(page.getByRole("textbox", { name: "Contract account" })).toHaveValue(CONTRACT);
   await expect(page.getByText(/from Varial \(formerly Freighter\), xBull or Hana/)).toBeVisible();
   expect(integrator.signatures).toHaveLength(0);
   await expectNoAxeViolations(page, "api keys, contract account");

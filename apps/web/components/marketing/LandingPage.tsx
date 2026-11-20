@@ -108,7 +108,7 @@ export default function LandingPage({ locale }: { locale: Locale }) {
       body: T.problem.truths.defi.body,
     },
   ];
-  // The questions show once the FAQ reads in this locale (#936).
+  // The questions show once the FAQ reads in this locale.
   const showFaq = isTranslated(locale, "/faq");
   const cards = CARD_IDS.map((id) => ({ ...feature(id, locale), icon: FEATURE_ICONS[id] }));
   return (
@@ -206,7 +206,12 @@ export default function LandingPage({ locale }: { locale: Locale }) {
           <h2 className="mkt-display mt-4 max-w-2xl text-3xl font-bold text-white sm:text-display sm:leading-[1.05]">
             {T.problem.heading}
           </h2>
-          <p className="mt-5 max-w-2xl text-body leading-relaxed text-white/70">{T.problem.body}</p>
+          <p className="mt-5 max-w-2xl text-body leading-relaxed text-white/70">
+            {T.problem.body(
+              formatNumber(locale, MINIMUM_BALANCE_RESERVES * BASE_RESERVE_XLM),
+              formatNumber(locale, BASE_RESERVE_XLM)
+            )}
+          </p>
         </Reveal>
 
         <div className="mt-11 grid gap-5 lg:grid-cols-[0.9fr_1.1fr]">
@@ -356,7 +361,7 @@ export default function LandingPage({ locale }: { locale: Locale }) {
         )}
         {showFaq && (
           <div className="mt-10">
-            <Faq />
+            <Faq locale={locale} />
           </div>
         )}
         <p className="mt-6 text-center text-sm text-fg-muted">

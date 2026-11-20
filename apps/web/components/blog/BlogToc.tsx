@@ -5,11 +5,11 @@ import { useEffect, useState } from "react";
 type TocEntry = { id: string; text: string; level: number };
 
 /**
- * "On this page" table of contents with a scroll-spy that highlights the
+ * The table of contents, under the heading `label`, with a scroll-spy that highlights the
  * section the reader is currently in. Progressive enhancement: the links
  * navigate fine without JS; the active highlight is a JS-only addition.
  */
-export default function BlogToc({ toc }: { toc: TocEntry[] }) {
+export default function BlogToc({ toc, label }: { toc: TocEntry[]; label: string }) {
   const [active, setActive] = useState<string | null>(toc[0]?.id ?? null);
 
   useEffect(() => {
@@ -49,7 +49,7 @@ export default function BlogToc({ toc }: { toc: TocEntry[] }) {
   return (
     <aside className="hidden lg:block w-52 shrink-0">
       <div className="sticky top-24">
-        <p className="mkt-eyebrow text-fg-subtle mb-3">On this page</p>
+        <p className="mkt-eyebrow text-fg-subtle mb-3">{label}</p>
         <nav>
           <ul className="border-l border-white/10">
             {toc.map((entry) => {

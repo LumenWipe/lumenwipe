@@ -3,7 +3,7 @@ import { createHash } from "crypto";
 import { HttpException } from "@nestjs/common";
 import { ExecutionContextHost } from "@nestjs/core/helpers/execution-context-host";
 import type { ConfigService } from "@nestjs/config";
-import { Keypair } from "@stellar/stellar-sdk";
+import { Keypair, Networks, StrKey, authorizeEntry, xdr } from "@stellar/stellar-sdk";
 import { ApiKeyDirectory } from "@/auth/api-key-directory";
 import { ApiKeyService } from "@/auth/api-key.service";
 import type { ApiKeyRecord, ApiKeyStore, NewApiKeyOptions } from "@/auth/api-key-store";
@@ -13,6 +13,13 @@ import { InMemoryUsageStore } from "@/metering/usage-store";
 import { IntegratorController } from "@/integrator/integrator.controller";
 import { IntegratorGuard, type IntegratorRequest } from "@/integrator/integrator.guard";
 import { issueSession } from "@/integrator/wallet-auth";
+import type { ContractAuthNetwork } from "@/integrator/contract-auth";
+import {
+  InMemoryUsedChallengeStore,
+  type UsedChallengeStore,
+} from "@/integrator/used-challenge-store";
+import { fail } from "@/common/fail";
+import { FakeWebAuthRpc, type FakeAccount } from "../support/fake-web-auth-rpc";
 import { requestPair } from "../support/request-context";
 
 const SECRET = "test-integrator-auth-secret-0123456789";
@@ -73,11 +80,25 @@ async function rejection(p: Promise<unknown>): Promise<unknown> {
   return null;
 }
 
-const saved = { secret: process.env.INTEGRATOR_AUTH_SECRET, fs: process.env.FIRESTORE_PROJECT_ID };
+const saved = {
+  secret: process.env.INTEGRATOR_AUTH_SECRET,
+  fs: process.env.FIRESTORE_PROJECT_ID,
+  seed: process.env.INTEGRATOR_WEB_AUTH_SIGNING_SEED,
+  testnet: process.env.INTEGRATOR_WEB_AUTH_CONTRACT_TESTNET,
+};
+const SERVER = Keypair.random();
+const WEB_AUTH_TESTNET = StrKey.encodeContract(Buffer.alloc(32, 9));
+
+function restore(name: string, value: string | undefined): void {
+  if (value === undefined) delete process.env[name];
+  else process.env[name] = value;
+}
 
 beforeEach(() => {
   process.env.INTEGRATOR_AUTH_SECRET = SECRET;
   process.env.FIRESTORE_PROJECT_ID = "test-project";
+  process.env.INTEGRATOR_WEB_AUTH_SIGNING_SEED = SERVER.secret();
+  process.env.INTEGRATOR_WEB_AUTH_CONTRACT_TESTNET = WEB_AUTH_TESTNET;
 });
 
 afterEach(() => {
@@ -85,9 +106,30 @@ afterEach(() => {
   else process.env.INTEGRATOR_AUTH_SECRET = saved.secret;
   if (saved.fs === undefined) delete process.env.FIRESTORE_PROJECT_ID;
   else process.env.FIRESTORE_PROJECT_ID = saved.fs;
+  restore("INTEGRATOR_WEB_AUTH_SIGNING_SEED", saved.seed);
+  restore("INTEGRATOR_WEB_AUTH_CONTRACT_TESTNET", saved.testnet);
 });
 
-function setup() {
+const LEDGER = 1_000;
+
+function fakeProvider(accounts: [string, FakeAccount][]): FakeWebAuthRpc {
+  return new FakeWebAuthRpc({
+    contractId: WEB_AUTH_TESTNET,
+    serverAccount: SERVER.publicKey(),
+    networkPassphrase: Networks.TESTNET,
+    accounts: new Map(accounts),
+    latestLedger: LEDGER + 5,
+  });
+}
+
+function setup(
+  providers: FakeWebAuthRpc[] = [fakeProvider([])],
+  usedChallenges: UsedChallengeStore = new InMemoryUsedChallengeStore()
+) {
+  const network: ContractAuthNetwork = {
+    latestLedger: async () => LEDGER,
+    providers: () => providers,
+  };
   const store = new MemoryStore();
   const directory = new ApiKeyDirectory(
     new ApiKeyService({ get: () => "" } as unknown as ConfigService),
@@ -97,7 +139,9 @@ function setup() {
     store,
     new MeteringService(new InMemoryUsageStore(), () => new Date()),
     directory,
-    new AuditLogger()
+    new AuditLogger(),
+    usedChallenges,
+    network
   );
   return { store, controller };
 }
@@ -259,24 +303,91 @@ describe("auth endpoints", () => {
     );
   });
 
-  test("session rejects a signature that does not match the challenge", () => {
+  test("session rejects a signature that does not match the challenge", async () => {
     const { controller } = setup();
     const address = Keypair.random().publicKey();
     const { message } = controller.challenge({ address });
     const bad = Buffer.alloc(64).toString("base64");
-    expect(codeOf(catchSync(() => controller.session({ address, message, signature: bad })))).toBe(
+    expect(codeOf(await rejection(controller.session({ address, message, signature: bad })))).toBe(
       "invalid_challenge"
     );
   });
 
-  test("session issues a token for a correctly signed challenge", () => {
+  test("session issues a token for a correctly signed challenge", async () => {
     const { controller } = setup();
     const kp = Keypair.random();
-    const { message } = controller.challenge({ address: kp.publicKey() });
-    const digest = createHash("sha256").update(`Stellar Signed Message:\n${message}`).digest();
-    const signature = Buffer.from(kp.sign(digest)).toString("base64");
-    const session = controller.session({ address: kp.publicKey(), message, signature });
+    const session = await controller.session(signedChallenge(controller, kp));
     expect(session.token.startsWith("lws.")).toBe(true);
+  });
+
+  test("a second exchange of the same signed challenge is refused", async () => {
+    const { controller } = setup();
+    const body = signedChallenge(controller, Keypair.random());
+    await controller.session(body);
+    const error = await rejection(controller.session(body));
+    expect(codeOf(error)).toBe("invalid_challenge");
+    expect((error as HttpException).getStatus()).toBe(401);
+  });
+
+  test("a concurrent double exchange yields one session", async () => {
+    const { controller } = setup();
+    const body = signedChallenge(controller, Keypair.random());
+    const results = await Promise.allSettled([controller.session(body), controller.session(body)]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const refused = results.find((r) => r.status === "rejected") as PromiseRejectedResult;
+    expect(codeOf(refused.reason)).toBe("invalid_challenge");
+  });
+
+  test("a failed signature does not consume the challenge", async () => {
+    const { controller } = setup();
+    const owner = Keypair.random();
+    const body = signedChallenge(controller, owner);
+    const forged = { ...body, signature: sep53(Keypair.random(), body.message) };
+    expect(codeOf(await rejection(controller.session(forged)))).toBe("invalid_challenge");
+    expect((await controller.session(body)).token.startsWith("lws.")).toBe(true);
+  });
+
+  test("the claim names the signed challenge and expires with it", async () => {
+    const claims: { challenge: string; expiresAt: Date }[] = [];
+    const recording: UsedChallengeStore = {
+      claim: async (challenge, expiresAt) => {
+        claims.push({ challenge, expiresAt });
+        return true;
+      },
+    };
+    const { controller } = setup(undefined, recording);
+    const kp = Keypair.random();
+    const challenge = controller.challenge({ address: kp.publicKey() });
+    await controller.session({
+      address: kp.publicKey(),
+      message: challenge.message,
+      signature: sep53(kp, challenge.message),
+    });
+    expect(claims).toEqual([
+      { challenge: challenge.message, expiresAt: new Date(challenge.expiresAt) },
+    ]);
+  });
+
+  test("a store that cannot answer gives a 503, never a session", async () => {
+    const unavailable: UsedChallengeStore = {
+      claim: async () => fail("service_unavailable", "Sign-in is busy.", 503),
+    };
+    const { controller } = setup(undefined, unavailable);
+    const error = await rejection(
+      controller.session(signedChallenge(controller, Keypair.random()))
+    );
+    expect(codeOf(error)).toBe("service_unavailable");
+    expect((error as HttpException).getStatus()).toBe(503);
+  });
+
+  test("signing in again within the same minute gets a new challenge and a new session", async () => {
+    const { controller } = setup();
+    const kp = Keypair.random();
+    const first = signedChallenge(controller, kp);
+    await controller.session(first);
+    const second = signedChallenge(controller, kp);
+    expect(second.message).not.toBe(first.message);
+    expect((await controller.session(second)).token.startsWith("lws.")).toBe(true);
   });
 
   test("endpoints refuse to run without configuration", () => {
@@ -287,6 +398,16 @@ describe("auth endpoints", () => {
     ).toBe("integrator_api_not_configured");
   });
 });
+
+function sep53(kp: Keypair, message: string): string {
+  const digest = createHash("sha256").update(`Stellar Signed Message:\n${message}`).digest();
+  return Buffer.from(kp.sign(digest)).toString("base64");
+}
+
+function signedChallenge(controller: IntegratorController, kp: Keypair) {
+  const { message } = controller.challenge({ address: kp.publicKey() });
+  return { address: kp.publicKey(), message, signature: sep53(kp, message) };
+}
 
 function catchSync(fn: () => unknown): unknown {
   try {
@@ -314,5 +435,200 @@ describe("IntegratorGuard", () => {
     expect(codeOf(catchSync(() => guard.canActivate(ctx("Bearer lw_apikey"))))).toBe(
       "unauthorized"
     );
+  });
+});
+
+const contractAddress = (seed: number): string => StrKey.encodeContract(Buffer.alloc(32, seed));
+
+async function signedEntries(
+  controller: IntegratorController,
+  account: string,
+  signer: Keypair
+): Promise<string> {
+  const challenge = await controller.contractChallenge("testnet", { address: account });
+  const [client, server] = xdr.decodeArray(
+    xdr.SorobanAuthorizationEntry,
+    challenge.authorizationEntries,
+    "base64"
+  );
+  const signed = await authorizeEntry(
+    client!,
+    signer,
+    challenge.validUntilLedger,
+    challenge.networkPassphrase
+  );
+  return xdr.encodeArray(xdr.SorobanAuthorizationEntry, [signed, server!], "base64");
+}
+
+describe("contract-account auth endpoints", () => {
+  const owner = Keypair.random();
+  const account = contractAddress(1);
+
+  test("a contract account signs in and its session manages its own keys on every route", async () => {
+    const { controller, store } = setup([fakeProvider([[account, { kind: "ed25519", owner }]])]);
+    const authorizationEntries = await signedEntries(controller, account, owner);
+    const { token } = await controller.contractSession("testnet", {
+      address: account,
+      authorizationEntries,
+    });
+
+    const guard = new IntegratorGuard();
+    const req: Record<string, unknown> = { headers: { authorization: `Bearer ${token}` } };
+    expect(guard.canActivate(new ExecutionContextHost([req]))).toBe(true);
+    expect(req.integratorAddress).toBe(account);
+    const user = asUser(account);
+
+    const created = await controller.create(user, { label: "passkey wallet" });
+    expect(store.records[0]!.owner).toBe(account);
+    expect((await controller.list(user)).keys.map((k) => k.id)).toEqual([created.record.id]);
+    const rotated = await controller.rotate(user, created.record.id);
+    expect(rotated.record.id).not.toBe(created.record.id);
+    expect(store.records[0]!.revokedAt).not.toBeNull();
+    expect(await controller.revoke(user, rotated.record.id)).toEqual({ status: "revoked" });
+
+    const other = await store.create(Keypair.random().publicKey());
+    expect(codeOf(await rejection(controller.revoke(user, other.record.hash)))).toBe(
+      "api_key_not_found"
+    );
+    expect(codeOf(await rejection(controller.rotate(user, other.record.hash)))).toBe(
+      "api_key_not_found"
+    );
+  });
+
+  test("a replayed authorization is refused", async () => {
+    const { controller } = setup([fakeProvider([[account, { kind: "ed25519", owner }]])]);
+    const body = {
+      address: account,
+      authorizationEntries: await signedEntries(controller, account, owner),
+    };
+    await controller.contractSession("testnet", body);
+    expect(codeOf(await rejection(controller.contractSession("testnet", body)))).toBe(
+      "invalid_challenge"
+    );
+  });
+
+  test("a forged authorization is refused, and the challenge still works for its owner", async () => {
+    const { controller } = setup([fakeProvider([[account, { kind: "ed25519", owner }]])]);
+    const challenge = await controller.contractChallenge("testnet", { address: account });
+    const signWith = async (signer: Keypair) => {
+      const [client, server] = xdr.decodeArray(
+        xdr.SorobanAuthorizationEntry,
+        challenge.authorizationEntries,
+        "base64"
+      );
+      const signed = await authorizeEntry(
+        client!,
+        signer,
+        challenge.validUntilLedger,
+        challenge.networkPassphrase
+      );
+      return xdr.encodeArray(xdr.SorobanAuthorizationEntry, [signed, server!], "base64");
+    };
+    const forged = await signWith(Keypair.random());
+    expect(
+      codeOf(
+        await rejection(
+          controller.contractSession("testnet", { address: account, authorizationEntries: forged })
+        )
+      )
+    ).toBe("invalid_challenge");
+    const session = await controller.contractSession("testnet", {
+      address: account,
+      authorizationEntries: await signWith(owner),
+    });
+    expect(session.token.startsWith(`lws.${account}.`)).toBe(true);
+  });
+
+  test("a challenge for the other network is refused", async () => {
+    process.env.INTEGRATOR_WEB_AUTH_CONTRACT_TESTNET = WEB_AUTH_TESTNET;
+    const { controller } = setup([fakeProvider([[account, { kind: "ed25519", owner }]])]);
+    const authorizationEntries = await signedEntries(controller, account, owner);
+    expect(
+      codeOf(
+        await rejection(
+          controller.contractSession("mainnet", { address: account, authorizationEntries })
+        )
+      )
+    ).toBe("invalid_challenge");
+  });
+
+  test("a provider that cannot answer gives a 503, never a session", async () => {
+    const down = new FakeWebAuthRpc({
+      contractId: WEB_AUTH_TESTNET,
+      serverAccount: SERVER.publicKey(),
+      networkPassphrase: Networks.TESTNET,
+      accounts: new Map(),
+      failure: "restore",
+    });
+    const { controller } = setup([fakeProvider([[account, { kind: "ed25519", owner }]]), down]);
+    const challenge = await controller.contractChallenge("testnet", { address: account });
+    const [client, server] = xdr.decodeArray(
+      xdr.SorobanAuthorizationEntry,
+      challenge.authorizationEntries,
+      "base64"
+    );
+    const signed = await authorizeEntry(
+      client!,
+      owner,
+      challenge.validUntilLedger,
+      Networks.TESTNET
+    );
+    const authorizationEntries = xdr.encodeArray(
+      xdr.SorobanAuthorizationEntry,
+      [signed, server!],
+      "base64"
+    );
+    expect(
+      codeOf(
+        await rejection(
+          controller.contractSession("testnet", { address: account, authorizationEntries })
+        )
+      )
+    ).toBe("service_unavailable");
+  });
+
+  test("validates the address and the entries", async () => {
+    const { controller } = setup();
+    expect(
+      codeOf(
+        await rejection(
+          controller.contractChallenge("testnet", { address: Keypair.random().publicKey() })
+        )
+      )
+    ).toBe("invalid_address");
+    expect(
+      codeOf(
+        await rejection(
+          controller.contractSession("testnet", { address: account, authorizationEntries: 1 })
+        )
+      )
+    ).toBe("invalid_request");
+  });
+
+  test("answers 503 contract_sign_in_unavailable without a seed, a testnet contract or a ready ledger", async () => {
+    delete process.env.INTEGRATOR_WEB_AUTH_CONTRACT_TESTNET;
+    expect(
+      codeOf(await rejection(setup().controller.contractChallenge("testnet", { address: account })))
+    ).toBe("contract_sign_in_unavailable");
+    process.env.INTEGRATOR_WEB_AUTH_CONTRACT_TESTNET = WEB_AUTH_TESTNET;
+    delete process.env.INTEGRATOR_WEB_AUTH_SIGNING_SEED;
+    expect(
+      codeOf(await rejection(setup().controller.contractChallenge("mainnet", { address: account })))
+    ).toBe("contract_sign_in_unavailable");
+    process.env.INTEGRATOR_WEB_AUTH_SIGNING_SEED = SERVER.secret();
+    const unfunded = new FakeWebAuthRpc({
+      contractId: WEB_AUTH_TESTNET,
+      serverAccount: SERVER.publicKey(),
+      networkPassphrase: Networks.TESTNET,
+      accounts: new Map(),
+      serverAccountExists: false,
+    });
+    expect(
+      codeOf(
+        await rejection(
+          setup([unfunded]).controller.contractChallenge("testnet", { address: account })
+        )
+      )
+    ).toBe("contract_sign_in_unavailable");
   });
 });

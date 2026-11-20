@@ -1,0 +1,61 @@
+---
+title: "¿Cómo elimino una trustline en Stellar?"
+description: "Por qué cada trustline tiene que desaparecer antes de hacer el merge de una cuenta de Stellar, por qué una trustline solo se elimina con saldo cero y qué hacer con el saldo que todavía tiene."
+publishedAt: "2026-11-19"
+category: "Guides"
+tags: ["bloqueos-de-cuenta", "trustlines", "account-merge", "reservas", "stellar"]
+cta: "Ingresa la cuenta para ver cada trustline, elegir qué pasa con su saldo y revisar el orden de las eliminaciones antes de firmar nada."
+---
+
+Una cuenta de Stellar no admite un merge (fusión que cierra la cuenta y envía su saldo) mientras todavía tenga una trustline (línea de confianza con un emisor de activos), y la mayoría de las cuentas acumulan varias con los años: una stablecoin que usaste una vez, un token que te llegó por airdrop, un activo que una app agregó por ti. Cada una tiene que eliminarse antes del merge, y una trustline solo se elimina cuando no tiene saldo.
+
+Esta guía es una de cinco sobre lo que mantiene abierta una cuenta de Stellar. Las otras tratan los [claimable balances](/es/blog/why-cant-i-merge-my-stellar-account-claimable-balances), los [signers adicionales](/es/blog/cant-merge-a-stellar-account-because-of-extra-signers), las [offers abiertas](/es/blog/how-do-i-cancel-open-offers-on-stellar) y las [data entries](/es/blog/what-are-stellar-data-entries).
+
+## Qué es una trustline
+
+En Stellar, una cuenta puede tener XLM desde el principio. Para tener cualquier otro activo, como una stablecoin o un token, primero tiene que agregar una trustline para ese activo. La trustline indica el activo y su emisor, la cuenta que lo creó, y registra cuánto de ese activo tiene la cuenta y el máximo que está dispuesta a tener.
+
+Una trustline es una de las subentries (elementos que bloquean reserva) de la cuenta, las entradas que pertenecen a la cuenta y viven con ella en el ledger. Cada subentry sube el saldo mínimo de la cuenta en una base reserve (unidad de reserva que fija la red). Hoy la base reserve es de <BaseReserve /> por entrada (verificada contra la red el <BaseReserveCheckedOn />). La base reserve es un parámetro de la red que los validadores pueden votar para cambiar, así que la cifra puede moverse.
+
+Ese XLM no se pierde. Queda bloqueado en tu cuenta mientras exista la trustline y vuelve como XLM disponible cuando la trustline se elimina.
+
+## Por qué una trustline impide el merge
+
+`AccountMerge` envía el XLM de la cuenta a otra cuenta y borra la cuenta del ledger. La red lo rechaza mientras la cuenta todavía tenga subentries. Cada trustline es una subentry, así que cada trustline tiene que eliminarse primero.
+
+Para eliminar una trustline, pones su límite en cero con una operación `ChangeTrust`. La red lo rechaza mientras la trustline todavía tenga saldo, así que primero hay que vaciarlo. Una offer (orden abierta en el libro de órdenes) que vende el activo también reserva parte de ese saldo, y la parte reservada no se puede enviar ni vender hasta que se cancele la offer. Por eso la eliminación es lo último que le pasa a una trustline.
+
+## Qué hacer con el saldo
+
+Antes de que una trustline pueda desaparecer, su saldo tiene que llegar a cero. Tienes tres formas de lograrlo, y la correcta depende de si quieres conservar el valor.
+
+1. Convertirlo a XLM. Si hay mercado para el activo en el DEX de Stellar, vendes todo el saldo por XLM. El XLM se queda en la cuenta y llega a tu destino con el merge.
+2. Devolverlo al emisor. Envías el saldo de vuelta a la cuenta que emitió el activo. No recibes nada a cambio. Es la salida habitual para un activo sin mercado, o para uno demasiado pequeño para venderlo.
+3. Transferirlo a otra cuenta. Envías el saldo, como el mismo activo, a una cuenta que tú indicas. Esa cuenta ya tiene que tener una trustline para el activo, o el pago falla.
+
+Algunos saldos no se pueden mover en absoluto. Si el emisor retiró la autorización de tu trustline, el saldo no se puede enviar ni vender, y la trustline no se puede eliminar. Solo el emisor puede restablecer la autorización.
+
+Las pool shares (participaciones en un pool de liquidez AMM) son un caso especial. Una trustline de pool shares solo se elimina después de que retiras tu parte del pool, algo que haces fuera del cierre.
+
+## Cómo lo resuelve LumenWipe
+
+LumenWipe cuenta las trustlines de la cuenta en la pantalla de análisis y te pregunta qué hacer con cada una que tenga saldo.
+
+- Cuando existe una ruta a XLM, la tarjeta recomienda un swap a XLM en el DEX y muestra la cotización: más o menos cuánto XLM recibes y lo mínimo que aceptarás. También ofrece devolver el saldo al emisor o enviarlo a otra cuenta. El swap se construye con un mínimo: se niega a entregar menos XLM que el mínimo que muestra el plan.
+- Cuando no hay ruta, o el saldo es demasiado pequeño para un swap, la tarjeta lo dice y ofrece devolver el saldo al emisor o enviarlo a otra cuenta.
+- Cuando eliges enviar un saldo a otra cuenta, LumenWipe lee esa cuenta en la red antes de construir el cierre. Rechaza la transferencia cuando la cuenta no tiene una trustline para el activo, cuando el emisor no autorizó su trustline o cuando el monto no cabe bajo el límite de su trustline, y te dice cuál de esos casos es.
+- Una trustline que el emisor desautorizó o limitó mientras todavía tiene saldo aparece como un bloqueo que nombra el activo. Las pool shares también aparecen como un bloqueo, que te pide retirar tu parte del pool primero.
+
+El orden es el mismo para todas las cuentas. Si ninguna clave de la cuenta puede firmar por sí sola todos los pasos, primero se eliminan los signers (firmantes adicionales de la cuenta), en una transacción aparte. Después vienen los claimable balances (saldos reclamables) que elegiste reclamar, en su propia transacción, con cualquier trustline que necesite un reclamo agregada justo antes. Una vez confirmados, LumenWipe construye el cierre en sí, que elimina los signers si eso no pasó antes, luego borra las data entries (datos guardados en la cuenta), cancela las offers abiertas, convierte, devuelve o envía cada saldo restante, elimina las trustlines y hace el merge de la cuenta al final. Un cierre con más de 100 operaciones se divide en varias transacciones, en ese mismo orden.
+
+Los reclamos van antes del cierre porque un reclamo suma al saldo que tiene una trustline. Dentro del cierre, las offers se cancelan antes de tocar cualquier saldo, para que ninguna offer siga reservando parte de un saldo cuando se mueve, y las trustlines se eliminan solo después de que sus saldos desaparecen. La pantalla de revisión muestra estos pasos antes de que firmes.
+
+Cuando una trustline no tiene nada, no necesita ninguna decisión: se elimina con las demás. Una trustline que el plan agrega para reclamar un saldo se elimina en el mismo cierre.
+
+## Hacerlo a mano
+
+Si prefieres eliminar una trustline tú mismo, los pasos son los mismos, en el mismo orden. Cancela cualquier offer abierta que compre o venda el activo. Vende, devuelve o envía el saldo hasta que quede en cero. Luego envía `ChangeTrust` con un límite de cero. Si la red lo rechaza, la trustline todavía tiene saldo o una offer abierta todavía compra el activo.
+
+## Empieza un cierre
+
+Abre [LumenWipe](/mainnet) e ingresa la cuenta. La [pantalla de análisis](/mainnet/analyze) muestra cada trustline y sus opciones, y la [pantalla de revisión](/mainnet/review) muestra los pasos que las vacían y las eliminan antes de que firmes nada. Para ver antes cómo funciona un cierre, lee [cómo funciona](/es/how-it-works) y las [preguntas frecuentes](/es/faq), o vuelve al [inicio](/es).

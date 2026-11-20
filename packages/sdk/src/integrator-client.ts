@@ -1,6 +1,9 @@
 import type {
   CreateIntegratorKeyRequest,
+  Network,
   IntegratorChallengeResponse,
+  IntegratorContractChallengeResponse,
+  IntegratorContractSessionRequest,
   IntegratorKeyList,
   IntegratorSessionRequest,
   IntegratorSessionResponse,
@@ -18,7 +21,9 @@ import type { LumenWipeIntegratorClientOptions, RequestOptions } from "./options
  * calls carry no `Authorization`, and the key calls carry only the session token passed to them.
  *
  * Sign in by signing the `challenge(address)` message with the wallet (SEP-53) and exchanging it
- * through `session(...)` for a token valid for 30 minutes. Every key belongs to that wallet.
+ * through `session(...)` for a token valid for 30 minutes. A contract account (C...) signs the
+ * entries of `contractChallenge(network, address)` instead, with its own signer, and exchanges them
+ * through `contractSession(...)`. Every key belongs to the account that signed in.
  */
 export class LumenWipeIntegratorClient {
   private readonly http: HttpTransport;
@@ -52,7 +57,8 @@ export class LumenWipeIntegratorClient {
     );
   }
 
-  /** Exchanges the signed challenge for a session token. */
+  /** Exchanges the signed challenge for a session token. A challenge is exchanged once only:
+   *  to sign in again, sign a new one. */
   session(
     request: IntegratorSessionRequest,
     options?: RequestOptions
@@ -61,6 +67,37 @@ export class LumenWipeIntegratorClient {
       "POST",
       "/v1/integrator/auth/session",
       { address: request.address, message: request.message, signature: request.signature },
+      { ...options, retry: "throttle" }
+    );
+  }
+
+  /** SEP-45 style authorization entries for the contract account `address` (C...) on `network`:
+   *  sign the account's entry, valid until at most `validUntilLedger`, and pass the list to
+   *  `contractSession`. */
+  contractChallenge(
+    network: Network,
+    address: string,
+    options?: RequestOptions
+  ): Promise<IntegratorContractChallengeResponse> {
+    return this.http.request<IntegratorContractChallengeResponse>(
+      "POST",
+      `/v1/integrator/auth/contract/${encodeURIComponent(network)}/challenge`,
+      { address },
+      { ...options, retry: "throttle" }
+    );
+  }
+
+  /** Exchanges a contract account's signed challenge for a session token. A challenge is
+   *  exchanged once only. */
+  contractSession(
+    network: Network,
+    request: IntegratorContractSessionRequest,
+    options?: RequestOptions
+  ): Promise<IntegratorSessionResponse> {
+    return this.http.request<IntegratorSessionResponse>(
+      "POST",
+      `/v1/integrator/auth/contract/${encodeURIComponent(network)}/session`,
+      { address: request.address, authorizationEntries: request.authorizationEntries },
       { ...options, retry: "throttle" }
     );
   }

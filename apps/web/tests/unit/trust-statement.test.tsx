@@ -6,9 +6,19 @@ import LandingPage, { metadata as landingMeta } from "@/app/(marketing)/page";
 import SecurityPage, { metadata as securityMeta } from "@/app/(marketing)/security/page";
 import HowItWorksPage, { metadata as howMeta } from "@/app/(marketing)/how-it-works/page";
 import FaqPage, { metadata as faqMeta } from "@/app/(marketing)/faq/page";
+import SpanishLandingPage, { metadata as esLandingMeta } from "@/app/(marketing-es)/es/page";
+import SpanishSecurityPage, {
+  metadata as esSecurityMeta,
+} from "@/app/(marketing-es)/es/security/page";
+import SpanishFaqPage, { metadata as esFaqMeta } from "@/app/(marketing-es)/es/faq/page";
+import SpanishHowItWorksPage, {
+  metadata as esHowMeta,
+} from "@/app/(marketing-es)/es/how-it-works/page";
+import SpanishBlogPage, { metadata as esBlogMeta } from "@/app/(marketing-es)/es/blog/page";
 import { GET } from "@/app/llms.txt/route";
 import HeroConsole from "@/components/marketing/HeroConsole";
 import MarketingFooter from "@/components/marketing/MarketingFooter";
+import { getAllPostMetas, getPost } from "@/lib/blog";
 import { renderLlmsTxt } from "@/lib/site/llms";
 import { FEATURES, PROTOCOLS, STATUS_LABEL } from "@/lib/site/status";
 import {
@@ -16,7 +26,9 @@ import {
   KEY_STATEMENT,
   SERVER_KEYS,
   SERVER_KEYS_INTRO,
+  serverKeys,
   serverKeyScope,
+  trustStatements,
   VERIFY_SOURCE_URL,
 } from "@/lib/site/trust";
 import { renderMarketing } from "./fixtures/marketing";
@@ -24,7 +36,9 @@ import { renderMarketing } from "./fixtures/marketing";
 const WEB = join(import.meta.dir, "..", "..");
 const ROOT = join(WEB, "..", "..");
 
-// Absolutes the architecture contradicts: the API builds every transaction and two server keys sign.
+// Absolutes the architecture contradicts: the API builds every transaction, two server keys sign,
+// the relay account is one shared account whose key the API holds, and the pages run inline scripts
+// the policy names by hash or nonce.
 const OVERCLAIMS = [
   /\b0 servers\b/i,
   /read-only backend/i,
@@ -35,10 +49,29 @@ const OVERCLAIMS = [
   /can never move your funds/i,
   /signed entirely in your browser/i,
   /its (one|only) (signing )?key/i,
+  /single-use/i,
+  /generated in (your )?browser/i,
+  /no inline scripts?/i,
 ];
 
-function overclaims(text: string): string[] {
-  return OVERCLAIMS.filter((re) => re.test(text)).map(String);
+// The same absolutes as a Spanish page would put them.
+const SPANISH_OVERCLAIMS = [
+  /\b0 servidores\b/i,
+  /backend de solo lectura/i,
+  /nunca (está )?en (la ruta|el camino) de (la )?firma/i,
+  /ningún backend (tiene|guarda)/i,
+  /(armad|construid)[ao]s? y firmad[ao]s? en tu navegador/i,
+  /se (arma|construye)n? y (se )?firman? en tu navegador/i,
+  /nunca puede mover tus fondos/i,
+  /firmad[ao]s? (por completo|enteramente|completamente) en tu navegador/i,
+  /su (única|sola) clave/i,
+  /de un solo uso/i,
+  /generad[ao] en (tu )?navegador/i,
+  /sin scripts? inline/i,
+];
+
+function overclaims(text: string, patterns: readonly RegExp[] = OVERCLAIMS): string[] {
+  return patterns.filter((re) => re.test(text)).map(String);
 }
 
 function squash(text: string): string {
@@ -81,6 +114,65 @@ describe("no surface overstates the trust model", () => {
   });
 });
 
+describe("no Spanish surface overstates the trust model", () => {
+  const pages = {
+    landing: <SpanishLandingPage />,
+    security: <SpanishSecurityPage />,
+    howItWorks: <SpanishHowItWorksPage />,
+    faq: <SpanishFaqPage />,
+    footer: <MarketingFooter locale="es" />,
+    blog: <SpanishBlogPage />,
+  };
+  for (const [name, page] of Object.entries(pages)) {
+    test(`${name} renders no absolute custody claim`, () => {
+      expect(overclaims(renderMarketing(page).textContent ?? "", SPANISH_OVERCLAIMS)).toEqual([]);
+    });
+  }
+
+  test("page metadata and the dictionaries make none", () => {
+    for (const meta of [esLandingMeta, esSecurityMeta, esHowMeta, esFaqMeta, esBlogMeta]) {
+      expect(overclaims(String(meta.description), SPANISH_OVERCLAIMS)).toEqual([]);
+    }
+    for (const file of [
+      "site.ts",
+      "security.tsx",
+      "how-it-works.tsx",
+      "faq.tsx",
+      "landing.tsx",
+      "blog.ts",
+    ]) {
+      const source = readFileSync(join(WEB, "lib", "i18n", "messages", file), "utf8");
+      expect(overclaims(source, SPANISH_OVERCLAIMS)).toEqual([]);
+    }
+  });
+});
+
+describe("no translated post overstates the trust model", () => {
+  const posts = getAllPostMetas("es").map((meta) => getPost(meta.slug, "es"));
+
+  test("there is a translated post to read", () => {
+    expect(posts.length).toBeGreaterThan(0);
+  });
+
+  for (const post of posts) {
+    test(`${post.slug} makes no absolute custody claim`, () => {
+      const text = [post.title, post.description, post.cta ?? "", post.content].join("\n");
+      expect(overclaims(squash(text), SPANISH_OVERCLAIMS)).toEqual([]);
+    });
+  }
+
+  test("the Spanish patterns catch a claim a post could make, in either verb form", () => {
+    for (const claim of [
+      "Cada transacción es armada y firmada en tu navegador.",
+      "Cada transacción se arma y firma en tu navegador.",
+      "Las transacciones se construyen y se firman en tu navegador.",
+    ]) {
+      expect(overclaims(claim, SPANISH_OVERCLAIMS)).toHaveLength(1);
+    }
+    expect(overclaims("La transacción se firma en tu navegador.", SPANISH_OVERCLAIMS)).toEqual([]);
+  });
+});
+
 describe("the security page states the trust model precisely", () => {
   test("it carries the key and check statements and names and scopes both server keys", () => {
     const root = renderMarketing(<SecurityPage />);
@@ -105,6 +197,26 @@ describe("the security page states the trust model precisely", () => {
       "https://github.com/LumenWipe/lumenwipe/blob/main/apps/web/lib/stellar/verify.ts"
     );
     expect(existsSync(join(WEB, "lib", "stellar", "verify.ts"))).toBe(true);
+  });
+
+  test("in Spanish, it carries the same statements and server keys, from the same data", () => {
+    const root = renderMarketing(<SpanishSecurityPage />);
+    const text = squash(root.textContent ?? "");
+    const trust = trustStatements("es");
+    expect(trust.key).not.toBe(KEY_STATEMENT);
+    expect(text).toContain(trust.key);
+    expect(text).toContain(trust.check);
+    expect(text).toContain(trust.serverKeysIntro);
+    const keys = serverKeys("es");
+    expect(keys.map((k) => k.feature)).toEqual(SERVER_KEYS.map((k) => k.feature));
+    for (const key of keys) {
+      const term = within(root).getByText(key.name);
+      const detail = squash(term.nextElementSibling?.textContent ?? "");
+      expect(detail).toContain(key.statement);
+      expect(detail).toContain(serverKeyScope(key, "es"));
+    }
+    const link = within(root).getByRole("link", { name: /verify\.ts/ });
+    expect(link.getAttribute("href")).toBe(VERIFY_SOURCE_URL);
   });
 
   test("the FAQ answer carries the same statements and link", () => {

@@ -762,6 +762,28 @@ test("rejects a forward that is short by more than the fee tolerance", () => {
   );
 });
 
+test("rejects a mediated close whose balance was never read, whatever it forwards", () => {
+  for (const amount of ["0.0000001", "100.0000000"]) {
+    const i = intent(mediated(Keypair.random().publicKey(), { amount }));
+    expectRefusal(
+      () => assertCloseIntent(i, expectation({ mediatorRequired: true, nativeBalance: "0" })),
+      "mediator_forward_balance_unknown",
+      /unknown or too small to check/
+    );
+  }
+});
+
+test("rejects a mediated close whose observed balance is not above the shortfall tolerance", () => {
+  for (const nativeBalance of ["0.0050000", "0.0100000"]) {
+    const i = intent(mediated(Keypair.random().publicKey(), { amount: "0.0000001" }));
+    expectRefusal(
+      () => assertCloseIntent(i, expectation({ mediatorRequired: true, nativeBalance })),
+      "mediator_forward_balance_unknown",
+      /unknown or too small to check/
+    );
+  }
+});
+
 test("accepts a forward short only by the network fee", () => {
   const i = intent(mediated(Keypair.random().publicKey(), { amount: "99.9999000" }));
   expect(() => assertCloseIntent(i, MEDIATED())).not.toThrow();

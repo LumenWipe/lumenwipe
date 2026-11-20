@@ -601,6 +601,20 @@ reject(
   "mediator_forward_short",
   "This transaction would hand your balance to an intermediary and pass on only part of it."
 );
+const exchangeRoundUnread = accept(
+  "exchange-round-before-merge-without-balance",
+  "A round ahead of the merge to a listed exchange removes a data entry; it moves no balance, so it is verified with no balance read.",
+  build([Operation.manageData({ name: "note", value: null })]),
+  expectation({ destination: COINBASE, memo: "deposit-1", memoType: "text", nativeBalance: "0" })
+);
+reject(
+  exchangeRoundUnread,
+  "forward-balance-unread",
+  "Adds the intermediary hand-off to the round verified with no balance read, forwarding one stroop.",
+  build([merge(INTERMEDIARY), forward({ amount: "0.0000001" })], { memo: deposit }),
+  "mediator_forward_balance_unknown",
+  "The balance this close would pass on is unknown or too small to check, so the hand-off is refused. Run the analysis again, or close to a wallet you control."
+);
 reject(
   exchange,
   "forward-elsewhere",

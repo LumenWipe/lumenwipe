@@ -6,6 +6,8 @@ import * as challengeRoute from "@/app/api/integrator/auth/challenge/route";
 import * as sessionRoute from "@/app/api/integrator/auth/session/route";
 import * as keysRoute from "@/app/api/integrator/keys/route";
 import * as rotateRoute from "@/app/api/integrator/keys/[id]/rotate/route";
+import * as testnetChallengeRoute from "@/app/api/integrator/auth/contract/testnet/challenge/route";
+import * as mainnetSessionRoute from "@/app/api/integrator/auth/contract/mainnet/session/route";
 import { SESSION_COOKIE } from "@/lib/integrator/session-cookie";
 import { fakeFetch } from "./fixtures/fetch";
 
@@ -184,6 +186,50 @@ describe("POST /api/integrator/auth/session", () => {
   });
 });
 
+describe("the contract-account sign-in routes", () => {
+  const CONTRACT = "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA";
+  const contractBody = (address = CONTRACT) =>
+    JSON.stringify({ address, authorizationEntries: "AAAA" });
+
+  test("forward the challenge to the network's path with no credential", async () => {
+    upstream = { status: 200, body: { authorizationEntries: "AAAA" } };
+    const res = await testnetChallengeRoute.POST(
+      request("auth/contract/testnet/challenge", {
+        method: "POST",
+        body: JSON.stringify({ address: CONTRACT }),
+        cookie: token(),
+      })
+    );
+    expect(res.status).toBe(200);
+    const [call] = upstreamCalls();
+    expect(call.url).toBe(`${UPSTREAM}/v1/integrator/auth/contract/testnet/challenge`);
+    expect((call.init.headers as Record<string, string>).Authorization).toBeUndefined();
+  });
+
+  test("the session sets the cookie for the contract account and returns no token", async () => {
+    const issued = token(CONTRACT);
+    upstream = { status: 200, body: { token: issued, expiresAt: "ignored" } };
+    const res = await mainnetSessionRoute.POST(
+      request("auth/contract/mainnet/session", { method: "POST", body: contractBody() })
+    );
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).not.toContain("lws.");
+    expect(JSON.parse(text)).toMatchObject({ address: CONTRACT });
+    expect(setCookie(res)).toContain(`${SESSION_COOKIE}=${issued}`);
+    expect(upstreamCalls()[0].url).toBe(`${UPSTREAM}/v1/integrator/auth/contract/mainnet/session`);
+  });
+
+  test("a session for another account than the one asked for sets no cookie", async () => {
+    upstream = { status: 200, body: { token: token(ADDRESS), expiresAt: "x" } };
+    const res = await mainnetSessionRoute.POST(
+      request("auth/contract/mainnet/session", { method: "POST", body: contractBody() })
+    );
+    await expectError(res, 502, "upstream_error");
+    expect(setCookie(res)).toBe("");
+  });
+});
+
 describe("GET and DELETE /api/integrator/auth/session", () => {
   test("GET restores the session from the cookie, with no upstream call", async () => {
     const res = await sessionRoute.GET(request("auth/session", { cookie: token() }));
@@ -282,6 +328,8 @@ describe("state-changing requests", () => {
   const posts: [string, (req: NextRequest) => Promise<NextResponse>][] = [
     ["challenge", (req) => challengeRoute.POST(req)],
     ["session", (req) => sessionRoute.POST(req)],
+    ["contract challenge", (req) => testnetChallengeRoute.POST(req)],
+    ["contract session", (req) => mainnetSessionRoute.POST(req)],
     ["create key", (req) => keysRoute.POST(req)],
   ];
 

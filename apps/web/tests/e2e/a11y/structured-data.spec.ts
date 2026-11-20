@@ -20,6 +20,8 @@ const PAGES: [string, string[]][] = [
   ["/", ["Organization", "WebSite", "WebApplication"]],
   ["/faq", ["FAQPage"]],
   [`/blog/${POST}`, ["Article", "BreadcrumbList"]],
+  ["/es/blog", ["Blog", "BreadcrumbList"]],
+  ["/es/blog/how-do-i-remove-a-trustline-on-stellar", ["Article", "BreadcrumbList"]],
 ];
 
 for (const [path, types] of PAGES) {

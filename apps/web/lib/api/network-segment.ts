@@ -5,6 +5,7 @@ import { errorEnvelope } from "@/lib/api/error-body";
 const API_ROOTS_WITHOUT_NETWORK = new Set([
   "health",
   "stats",
+  "status",
   "integrator",
   "config",
   "csp-report",

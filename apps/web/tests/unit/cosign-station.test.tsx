@@ -132,6 +132,12 @@ test("signs only after the typed fingerprint matches and the signer is asked by 
   });
   expect(sign).toHaveBeenCalledTimes(1);
   expect(await screen.findByRole("button", { name: "Save response file" })).toBeTruthy();
+  // The station shows the hash to compare, so a Ledger may sign it by hash.
+  expect(
+    (walletClient.walletKitSigner as unknown as { mock: { calls: unknown[][] } }).mock.calls.map(
+      (call) => call[2]
+    )
+  ).toContainEqual({ fingerprintShown: true });
 });
 
 test("sends the API only the network and the account, and stores nothing", async () => {

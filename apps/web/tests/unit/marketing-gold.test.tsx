@@ -34,9 +34,9 @@ const PAGES: Record<string, () => ReactElement> = {
   "not found": () => <NotFoundView />,
   "blog post template": () => (
     <>
-      <PostDates post={POST} />
-      <PostNextStep />
-      <RelatedPosts posts={[POST]} />
+      <PostDates post={POST} locale="en" />
+      <PostNextStep locale="en" />
+      <RelatedPosts posts={[POST]} locale="en" />
       <ContentStatusTable rows={contentStatusRows([POST])} />
     </>
   ),

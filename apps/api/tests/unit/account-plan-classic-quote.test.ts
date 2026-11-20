@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { Keypair } from "@stellar/stellar-sdk";
 import type { AccountState, DecisionPoint } from "@lumenwipe/types";
 import * as readAccount from "@/lib/close-api/read-account";
-import { buildAccountPlan } from "@/lib/close-api/account-plan";
+import { buildAccountPlan, PATH_FINDING_CONCURRENCY } from "@/lib/close-api/account-plan";
 import { ROUTE_LOOKUP_UNAVAILABLE_CODE } from "@/lib/close-api/decisions";
 import type { fetchConversionPath } from "@/lib/stellar/path-finding";
 import * as rpcModule from "@/lib/stellar/rpc";
@@ -118,4 +118,36 @@ test("a failed lookup carries no quote and no card, only the retryable blocker",
 
   expect(card).toBeUndefined();
   expect(blockerCodes).toContain(ROUTE_LOOKUP_UNAVAILABLE_CODE);
+});
+
+test("prices at most PATH_FINDING_CONCURRENCY assets at once and still prices every one", async () => {
+  const issuers = Array.from({ length: PATH_FINDING_CONCURRENCY * 3 }, () =>
+    Keypair.random().publicKey()
+  );
+  const base = state();
+  const trustlines = issuers.map((issuer) => ({
+    ...base.trustlines[0]!,
+    asset: `USDC:${issuer}`,
+    issuer,
+  }));
+  spyOn(readAccount, "readAccountState").mockResolvedValue({
+    ...base,
+    trustlines,
+    numSubEntries: trustlines.length,
+  });
+  let inFlight = 0;
+  let peak = 0;
+  const priced: string[] = [];
+  await buildAccountPlan(SOURCE, null, [], "testnet", ALL_ON, {
+    fetchConversionPath: async (fromAsset) => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      inFlight--;
+      priced.push(fromAsset);
+      return { kind: "none", reason: "no_market" };
+    },
+  });
+  expect(peak).toBe(PATH_FINDING_CONCURRENCY);
+  expect(priced.sort()).toEqual(trustlines.map((t) => t.asset).sort());
 });

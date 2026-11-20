@@ -28,6 +28,39 @@ export class SessionRequestDto {
   signature!: string;
 }
 
+export class ContractChallengeRequestDto {
+  @ApiProperty({ description: "The contract account (C...) that will sign the challenge." })
+  address!: string;
+}
+
+export class ContractChallengeResponseDto {
+  @ApiProperty({
+    description:
+      "Base64 XDR of the SorobanAuthorizationEntry list: the account's entry, unsigned, then the server account's, signed.",
+  })
+  authorizationEntries!: string;
+
+  @ApiProperty({ description: "The network passphrase the signature must use." })
+  networkPassphrase!: string;
+
+  @ApiProperty({ description: "The last ledger the account's signature may be valid for." })
+  validUntilLedger!: number;
+
+  @ApiProperty({ description: "ISO 8601 time after which the challenge is rejected." })
+  expiresAt!: string;
+}
+
+export class ContractSessionRequestDto {
+  @ApiProperty({ description: "The contract account (C...) that signed the challenge." })
+  address!: string;
+
+  @ApiProperty({
+    description:
+      "Base64 XDR of the SorobanAuthorizationEntry list with the account's entry signed. The server account's entry may be left in or dropped.",
+  })
+  authorizationEntries!: string;
+}
+
 export class SessionResponseDto {
   @ApiProperty({ description: "Bearer token for the key-management endpoints." })
   token!: string;
