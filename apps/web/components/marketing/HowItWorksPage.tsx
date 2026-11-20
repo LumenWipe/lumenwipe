@@ -11,7 +11,7 @@ import {
   ArrowLeftRight,
   Unlink,
   GitMerge,
-  Eye,
+  ShieldCheck,
   PenTool,
   Send,
   RefreshCw,
@@ -54,7 +54,7 @@ export default function HowItWorksPage({ locale }: { locale: Locale }) {
   const perItem = formatNumber(locale, BASE_RESERVE_XLM);
   const loop = [
     { icon: RefreshCw, ...T.loop.steps.reread },
-    { icon: Eye, ...T.loop.steps.simulate },
+    { icon: ShieldCheck, ...T.loop.steps.verify },
     { icon: CheckCircle2, ...T.loop.steps.confirm },
     { icon: PenTool, ...T.loop.steps.sign },
     { icon: Send, ...T.loop.steps.submit },

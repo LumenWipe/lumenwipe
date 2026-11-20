@@ -144,7 +144,7 @@ If the DeFi position provider is unavailable, the tool enters **degraded mode**:
 
 ![Asset conversion and routing](docs/diagrams/output/08-asset-conversion-routing.svg)
 
-All non-XLM balances are converted using the best available route: the Soroswap Aggregator API (which spans both Soroban AMMs and the classic SDEX), with SDEX path payments as the fallback. Every conversion is quoted, slippage-bounded, and simulated before the user is asked to sign.
+All non-XLM balances are converted using the best available route: the Soroswap Aggregator API (which spans both Soroban AMMs and the classic SDEX), with SDEX path payments as the fallback. Every conversion is quoted, slippage-bounded, and checked in the browser before the user is asked to sign; a Soroban swap is also simulated when it is built.
 
 ---
 
@@ -257,7 +257,7 @@ The project is built in three cumulative phases, each independently verifiable:
 | Phase                              | Focus                                                                                                                                                                                                                                      | Status          |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------- |
 | **Phase 1 - Classic wind-down**    | Signer normalization, sponsorship revocation, data entries, offer cancellation, claimable balances, classic liquidity pool withdrawal, per-asset conversion or return, trustline removal, merge, mediator flow, multisig, session recovery | **Complete**    |
-| **Phase 2 - Soroban & DeFi**       | DeFi position detection via OctoPos; Blend, Aquarius, Soroswap, Phoenix, and FxDAO (testnet only) exits; Soroban token conversion; allowance inspector; per-step simulation; sponsored fees for reserve-locked accounts (testnet)          | **Complete**    |
+| **Phase 2 - Soroban & DeFi**       | DeFi position detection via OctoPos; Blend, Aquarius, Soroswap, Phoenix, and FxDAO (testnet only) exits; Soroban token conversion; allowance inspector; Soroban step simulation; sponsored fees for reserve-locked accounts (testnet)      | **Complete**    |
 | **Phase 3 - Production hardening** | Public REST API and TypeScript SDK, standalone `verify()` package, monitoring, complete public documentation, testnet playground; security review and remediation, mainnet mediator and sponsor, final UX from user testing                | **In progress** |
 
 > Shipped in Phase 3 so far: the public REST API with self-serve API keys, `@lumenwipe/sdk` and `@lumenwipe/verify` on npm, on-ledger monitors, the documentation site with API and SDK guides, and the testnet playground. Still open: the security review and its remediation, the mainnet mediator and fee sponsor, a recorded mainnet close that includes a DeFi exit, and UX changes from moderated user testing. Live status is in the [Phase 3 milestone](https://github.com/LumenWipe/lumenwipe/milestone/3).

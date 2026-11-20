@@ -5,22 +5,22 @@ const en = {
   metadata: {
     title: "How it works",
     description:
-      "How LumenWipe closes a Stellar account: a deterministic ordered plan, per-step simulation and confirmation, the CEX relay flow, and resumable sessions reconciled against on-chain state.",
+      "How LumenWipe closes a Stellar account: a deterministic ordered plan, a check in your browser and your confirmation before every signature, the CEX relay flow, and resumable sessions reconciled against on-chain state.",
   },
   hero: {
     eyebrow: "How it works",
     heading: "A deterministic plan for an irreversible action.",
-    body: "Closing an account takes one or more transactions in the right order. LumenWipe shows the whole plan up front, then executes it one transaction at a time, each confirmed before the next, re-reading live state and simulating before every signature, so nothing is ever signed on stale data.",
+    body: "Closing an account takes one or more transactions in the right order. LumenWipe shows the whole plan up front, then executes it one transaction at a time, each confirmed before the next, re-reading live state and checking each transaction in your browser before you sign, so nothing is ever signed on stale data.",
     openApp: "Open the app",
     faq: "Jump to FAQ",
   },
   loop: {
     eyebrow: "The execution loop",
     heading: "Every step runs the same safe loop.",
-    body: "No step trusts a cached value. Each one reconciles against the live ledger, simulates, and waits for your explicit approval before a single byte is signed.",
+    body: "No step trusts a cached value. Each one reconciles against the live ledger (a Soroban step is also simulated when it is built), is checked by your browser, and waits for your explicit approval before a single byte is signed.",
     steps: {
       reread: { label: "Re-read live state", note: "getLedgerEntries" },
-      simulate: { label: "Simulate", note: "simulateTransaction" },
+      verify: { label: "Check in browser", note: "verify.ts" },
       confirm: { label: "Confirm", note: "you approve" },
       sign: { label: "Sign in browser", note: "your wallet" },
       submit: { label: "Submit XDR", note: "to Stellar RPC" },
@@ -150,22 +150,22 @@ const es: HowItWorksCopy = {
   metadata: {
     title: "Cómo funciona",
     description:
-      "Cómo LumenWipe cierra una cuenta de Stellar: un plan determinista y ordenado, simulación y confirmación en cada paso, el flujo de relay para exchanges centralizados y sesiones reanudables que se concilian con el estado on-chain.",
+      "Cómo LumenWipe cierra una cuenta de Stellar: un plan determinista y ordenado, una verificación en tu navegador y tu confirmación antes de cada firma, el flujo de relay para exchanges centralizados y sesiones reanudables que se concilian con el estado on-chain.",
   },
   hero: {
     eyebrow: "Cómo funciona",
     heading: "Un plan determinista para una acción irreversible.",
-    body: "Cerrar una cuenta toma una o más transacciones en el orden correcto. LumenWipe te muestra el plan completo desde el inicio y luego lo ejecuta una transacción a la vez, cada una confirmada antes de la siguiente, volviendo a leer el estado en vivo y simulando antes de cada firma, para que nunca se firme nada con datos desactualizados.",
+    body: "Cerrar una cuenta toma una o más transacciones en el orden correcto. LumenWipe te muestra el plan completo desde el inicio y luego lo ejecuta una transacción a la vez, cada una confirmada antes de la siguiente, volviendo a leer el estado en vivo y verificando cada transacción en tu navegador antes de que firmes, para que nunca se firme nada con datos desactualizados.",
     openApp: "Abrir la app",
     faq: "Ir a las preguntas frecuentes",
   },
   loop: {
     eyebrow: "El ciclo de ejecución",
     heading: "Cada paso sigue el mismo ciclo seguro.",
-    body: "Ningún paso confía en un valor guardado en caché. Cada uno se concilia con el ledger en vivo, se simula y espera tu aprobación explícita antes de firmar un solo byte.",
+    body: "Ningún paso confía en un valor guardado en caché. Cada uno se concilia con el ledger en vivo (un paso de Soroban además se simula cuando se arma), tu navegador lo verifica y espera tu aprobación explícita antes de firmar un solo byte.",
     steps: {
       reread: { label: "Volver a leer el estado en vivo", note: "getLedgerEntries" },
-      simulate: { label: "Simular", note: "simulateTransaction" },
+      verify: { label: "Verificar en el navegador", note: "verify.ts" },
       confirm: { label: "Confirmar", note: "tú lo apruebas" },
       sign: { label: "Firmar en el navegador", note: "tu billetera" },
       submit: { label: "Enviar el XDR", note: "a Stellar RPC" },

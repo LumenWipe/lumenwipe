@@ -76,7 +76,7 @@ const CODE = new Set([
   "security.layers.network.sub",
   "security.disclosure.policyLink",
   "how-it-works.loop.steps.reread.note",
-  "how-it-works.loop.steps.simulate.note",
+  "how-it-works.loop.steps.verify.note",
   "how-it-works.plan.opLabel",
   "how-it-works.plan.steps.analyze.op",
   "how-it-works.plan.steps.signers.op",
