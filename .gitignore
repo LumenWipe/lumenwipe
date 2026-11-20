@@ -12,7 +12,7 @@ coverage
 lighthouse-report/
 
 # Stryker mutation testing report
-reports/
+reports/mutation/
 
 # next.js
 .next/

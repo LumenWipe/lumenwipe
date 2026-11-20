@@ -12,7 +12,12 @@ import { REPO_URL } from "@/lib/site/trust";
 
 const ROOT = join(import.meta.dir, "..", "..", "..", "..");
 const SAFE_PATH = /^(?:[A-Za-z0-9_.()-]+\/)*[A-Za-z0-9_.-]+\.[a-z]+$/;
-const TEST_PATH = /(?:^|\/)tests?\/|\.test\.tsx?$/;
+const TEST_FILE = /\.test\.tsx?$/;
+
+/** Whether `path` is a test: under a tests directory, or a `.test.ts(x)` file. */
+function isTestPath(path: string): boolean {
+  return path.split("/").slice(0, -1).includes("tests") || TEST_FILE.test(path);
+}
 
 const ALL: [string, Evidence][] = [
   ...Object.entries(GUARANTEE_EVIDENCE).map(([id, e]): [string, Evidence] => [
@@ -47,8 +52,8 @@ describe("the security page's evidence links", () => {
       test("links at least one file that enforces it and one test", () => {
         expect(evidence.code.length).toBeGreaterThan(0);
         expect(evidence.tests.length).toBeGreaterThan(0);
-        for (const path of evidence.tests) expect(path).toMatch(TEST_PATH);
-        for (const path of evidence.code) expect(path).not.toMatch(TEST_PATH);
+        for (const path of evidence.tests) expect(isTestPath(path), path).toBe(true);
+        for (const path of evidence.code) expect(isTestPath(path), path).toBe(false);
       });
 
       test("names only plain repository paths that exist", () => {
