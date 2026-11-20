@@ -11,10 +11,12 @@ function walk(dir: string): string[] {
   });
 }
 
-test("the site publishes exactly one .well-known file: stellar.toml", () => {
-  expect(walk(join(ROOT, "public/.well-known")).map((f) => relative(ROOT, f))).toEqual([
-    "public/.well-known/stellar.toml",
-  ]);
+test("the site publishes exactly two .well-known files: security.txt and stellar.toml", () => {
+  expect(
+    walk(join(ROOT, "public/.well-known"))
+      .map((f) => relative(ROOT, f))
+      .sort()
+  ).toEqual(["public/.well-known/security.txt", "public/.well-known/stellar.toml"]);
 });
 
 test("no app route serves anything under .well-known", () => {

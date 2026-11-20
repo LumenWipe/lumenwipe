@@ -191,7 +191,7 @@ describe("the security page states the trust model precisely", () => {
 
   test("it links to the browser check in the repository", () => {
     const root = renderMarketing(<SecurityPage />);
-    const link = within(root).getByRole("link", { name: /verify\.ts/ });
+    const link = within(root).getByRole("link", { name: /verify\.ts (on|en) GitHub/ });
     expect(link.getAttribute("href")).toBe(VERIFY_SOURCE_URL);
     expect(VERIFY_SOURCE_URL).toBe(
       "https://github.com/LumenWipe/lumenwipe/blob/main/apps/web/lib/stellar/verify.ts"
@@ -215,7 +215,7 @@ describe("the security page states the trust model precisely", () => {
       expect(detail).toContain(key.statement);
       expect(detail).toContain(serverKeyScope(key, "es"));
     }
-    const link = within(root).getByRole("link", { name: /verify\.ts/ });
+    const link = within(root).getByRole("link", { name: /verify\.ts (on|en) GitHub/ });
     expect(link.getAttribute("href")).toBe(VERIFY_SOURCE_URL);
   });
 

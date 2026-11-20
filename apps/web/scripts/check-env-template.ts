@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 export const PLATFORM_VARIABLES: ReadonlyMap<string, string> = new Map([
   ["NODE_ENV", "set by Next.js for each command"],
   ["VERCEL_ENV", "set by Vercel on every deployment"],
+  ["VERCEL_GIT_COMMIT_SHA", "set by Vercel on every Git deployment"],
   ["CI", "set by the CI runner"],
 ]);
 

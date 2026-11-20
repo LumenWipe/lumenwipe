@@ -4,14 +4,20 @@ import { GithubIcon } from "@/components/icons/GithubIcon";
 import { APP_HREF, DOCS_URL, GITHUB_URL, siteLinks, type SiteLink } from "@/lib/site/navigation";
 import type { Locale } from "@/lib/i18n/locale";
 import { FOOTER } from "@/lib/i18n/messages/footer";
+import { commitUrl, deployedCommit, shortCommit } from "@/lib/site/build-info";
 import { localeHref, SPANISH_PAGES, type SpanishPage } from "@/lib/site/pages";
+import { statusPageUrl } from "@/lib/status/source";
 import LanguageSwitch from "./LanguageSwitch";
 import Logo from "./Logo";
 
-function columns(locale: Locale): { title: string; links: readonly SiteLink[] }[] {
+function columns(
+  locale: Locale,
+  pages: readonly SpanishPage[]
+): { title: string; links: readonly SiteLink[] }[] {
   const T = FOOTER[locale];
   const L = T.links;
   const links = siteLinks(locale);
+  const status = statusPageUrl();
   return [
     {
       title: T.columns.product,
@@ -42,6 +48,8 @@ function columns(locale: Locale): { title: string; links: readonly SiteLink[] }[
       title: T.columns.openSource,
       links: [
         { label: L.securityPolicy, href: `${GITHUB_URL}/blob/main/SECURITY.md`, external: true },
+        { label: L.securityReports, href: localeHref(locale, "/security/reports", pages) },
+        ...(status ? [{ label: L.statusPage, href: status, external: true }] : []),
         { label: L.contributing, href: `${GITHUB_URL}/blob/main/CONTRIBUTING.md`, external: true },
         { label: L.license, href: `${GITHUB_URL}/blob/main/LICENSE`, external: true },
       ],
@@ -57,6 +65,7 @@ export default function MarketingFooter({
   pages?: readonly SpanishPage[];
 }) {
   const T = FOOTER[locale];
+  const commit = deployedCommit();
   return (
     <footer className="relative border-t border-white/10 bg-canvas">
       <div className="mx-auto max-w-6xl px-5 py-14 lg:px-8">
@@ -78,7 +87,7 @@ export default function MarketingFooter({
             </div>
           </div>
 
-          {columns(locale).map((col) => (
+          {columns(locale, pages).map((col) => (
             <div key={col.title}>
               <p className="mkt-eyebrow text-fg-muted">{col.title}</p>
               <ul className="mt-4 space-y-2.5">
@@ -104,7 +113,23 @@ export default function MarketingFooter({
 
         <div className="mt-12 flex flex-col items-start justify-between gap-3 border-t border-white/8 pt-6 text-xs text-fg-muted sm:flex-row sm:items-center">
           <p>{T.copyright(new Date().getUTCFullYear())}</p>
-          <p className="mkt-mono">{T.promise}</p>
+          <p className="mkt-mono">
+            {T.promise}
+            {commit && (
+              <>
+                {" · "}
+                {T.buildLabel}{" "}
+                <a
+                  href={commitUrl(commit)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline underline-offset-2 transition-colors hover:text-white"
+                >
+                  {shortCommit(commit)}
+                </a>
+              </>
+            )}
+          </p>
         </div>
       </div>
     </footer>

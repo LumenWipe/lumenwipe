@@ -9,3 +9,9 @@ export function statusSource(): URL | null {
     return null;
   }
 }
+
+/** The status page readers are sent to: the status host's origin, as the banner links it. Null
+ *  when no status source is configured. */
+export function statusPageUrl(): string | null {
+  return statusSource()?.origin ?? null;
+}

@@ -36,6 +36,15 @@ this way still counts as a deployment, which is why branch filtering lives in `d
 **Rollback**: promote a previous deployment from the Vercel dashboard. No git revert or redeploy
 needed for an emergency rollback - it's already built.
 
+### `security.txt` expiry
+
+`apps/web/public/.well-known/security.txt` carries a committed `Expires` date (RFC 9116 asks for one
+less than a year ahead). Renew it in any release-time change once it is within 90 days, and keep its
+fields in step with `SECURITY.md`: set `Expires` to about eleven months out, never more than 366 days.
+Keep a calendar reminder for 90 days before the date in the file. The backstop is
+`apps/web/tests/unit/security-txt.test.ts`, which fails every web test run from 30 days before the
+date, so the file cannot lapse unnoticed.
+
 ## `apps/api`
 
 `.github/workflows/deploy-api.yml` deploys a new Cloud Run revision on every push to `main` that

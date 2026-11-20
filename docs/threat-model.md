@@ -16,6 +16,9 @@ icon: "shield-halved"
 > describes the controls present in the code at that commit and the residual risk accepted at that date.
 > **Next refresh:** in the pull request that adds the next surface, adapter or signing key (Section 13), or
 > by 2027-01-08, when the contract registry's `validUntil` falls due, whichever comes first.
+>
+> **Self-assessed.** Written by the LumenWipe maintainers, not by an outside reviewer. Published security reports
+> are listed at [lumenwipe.com/security/reports](https://www.lumenwipe.com/security/reports).
 
 ## 1. Scope and method
 

@@ -36,6 +36,8 @@ We recommend always using the latest version.
 
 > **security@lumenwipe.com**
 
+The same contact is published in [`/.well-known/security.txt`](https://www.lumenwipe.com/.well-known/security.txt) ([RFC 9116](https://www.rfc-editor.org/rfc/rfc9116)). Reports are welcome in English or Spanish.
+
 Include in your report:
 
 - A clear description of the vulnerability
@@ -122,6 +124,8 @@ We do not pursue legal action against researchers who report vulnerabilities in 
 ## 7. Security reviews
 
 The codebase undergoes internal security reviews as part of our development process. External security audits will be conducted when possible.
+
+Published security reports are listed at [lumenwipe.com/security/reports](https://www.lumenwipe.com/security/reports), each with its scope, date, who performed it, the code it reviewed and the fix status of its findings. Until one is published, that page links the self-assessed [threat model](docs/threat-model.md) and [remediation plan](docs/security-remediation-plan.md).
 
 ---
 

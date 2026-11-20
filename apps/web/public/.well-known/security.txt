@@ -1,0 +1,6 @@
+# LumenWipe security contact (RFC 9116). Kept in step with SECURITY.md; renew Expires as RELEASING.md describes.
+Contact: mailto:security@lumenwipe.com
+Expires: 2027-11-01T00:00:00.000Z
+Preferred-Languages: en, es
+Policy: https://github.com/LumenWipe/lumenwipe/blob/main/SECURITY.md
+Canonical: https://www.lumenwipe.com/.well-known/security.txt
