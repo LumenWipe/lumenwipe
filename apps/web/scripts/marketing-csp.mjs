@@ -17,7 +17,7 @@
  *    scripts or that allows framing or an unsafe source, a script loaded from an origin the
  *    policy does not allow, an Umami tag that does not redact, a build adapter with no output
  *    config, a nonce path the proxy does not cover, or a file not shaped as expected exits 1 and
- *    names the page. Only a page that loads Umami's script gets its script and collector.
+ *    names the page. Only a page that loads the pinned Umami tracker may reach Umami's collector.
  * 4. In a Build Output config, `/` must carry the discovery Link header (config/discovery-links.mjs)
  *    from a header route, and no other marketing or nonce path any Link header.
  * 5. In a Build Output config, the apex host must get the 308 to www (config/apex-redirect.mjs)
@@ -74,18 +74,9 @@ export function scriptHash(body) {
   return createHash("sha256").update(body, "utf8").digest("base64");
 }
 
-/** @param {string} src @returns {boolean} whether src is exactly Umami's script. */
-function isUmamiScript(src) {
-  try {
-    return new URL(src).href === UMAMI_SCRIPT;
-  } catch {
-    return false;
-  }
-}
-
-/** @param {string} src @returns {boolean} whether src is a same-origin path or Umami's script. */
+/** @param {string} src @returns {boolean} whether src is a same-origin path. */
 function allowedScriptSource(src) {
-  return (src.startsWith("/") && !src.startsWith("//")) || isUmamiScript(src);
+  return src.startsWith("/") && !src.startsWith("//");
 }
 
 /**
@@ -100,7 +91,7 @@ function allowedScriptSource(src) {
 function checkUmamiTags(html, inline, path) {
   const tags = [...html.matchAll(/<script\b([^>]*)>/gi)]
     .map(([, attrs]) => attrs)
-    .filter((attrs) => isUmamiScript(/\ssrc\s*=\s*"([^"]*)"/i.exec(attrs)?.[1] ?? ""));
+    .filter((attrs) => /\ssrc\s*=\s*"([^"]*)"/i.exec(attrs)?.[1] === UMAMI_SCRIPT);
   for (const attrs of tags) {
     const hook = /\sdata-before-send\s*=\s*"([A-Za-z_$][\w$]*)"/.exec(attrs)?.[1];
     if (

@@ -644,7 +644,7 @@ const ANALYTICS_TOOLS = [
   {
     name: "Umami Cloud",
     named: /\bUmami\b/,
-    loaded: /["'`]https:\/\/cloud\.umami\.is\/script\.js["'`]/,
+    loaded: /\sdata-website-id=/,
   },
   { name: "Plausible", named: /\bPlausible\b/, loaded: /plausible/i },
   {

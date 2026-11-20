@@ -118,15 +118,13 @@ describe("marketingPolicy", () => {
     expect(policy).toContain("connect-src 'self'; ");
   });
 
-  test("a page with Umami allows exactly its script and its collector, nothing else", () => {
+  test("a page with Umami reaches its collector and runs no third-party script", () => {
     const policy = marketingPolicy({ hashes: ["a"], umami: true });
-    expect(policy).toContain("script-src 'self' 'sha256-a' https://cloud.umami.is/script.js; ");
+    expect(policy).toContain("script-src 'self' 'sha256-a'; ");
     expect(policy).toContain("connect-src 'self' https://gateway.umami.is; ");
-    expect(
-      policy
-        .replace(" https://cloud.umami.is/script.js", "")
-        .replace(" https://gateway.umami.is", "")
-    ).toBe(marketingPolicy({ hashes: ["a"], umami: false }));
+    expect(policy.replace(" https://gateway.umami.is", "")).toBe(
+      marketingPolicy({ hashes: ["a"], umami: false })
+    );
   });
 });
 
@@ -243,15 +241,13 @@ describe("run", () => {
     expect(() => run(dir, true)).toThrow(MarketingCspError);
   });
 
-  test("a page that loads Umami with its redaction gets Umami's script and collector alone", () => {
+  test("a page that loads the pinned tracker with its redaction alone reaches Umami's collector", () => {
     write("server/app/faq.html", page("faq", UMAMI_TAGS));
     run(dir, true);
     const policyOf = (path: string) =>
       cspEntries().find((e: { source: string }) => e.source === path).headers[0].value as string;
     expect(policyOf("/faq")).toContain(`'sha256-${scriptHash(UMAMI_HOOK)}'`);
-    expect(policyOf("/faq")).toMatch(
-      /script-src 'self'( 'sha256-[^']+')+ https:\/\/cloud\.umami\.is\/script\.js;/
-    );
+    expect(policyOf("/faq")).toMatch(/script-src 'self'( 'sha256-[^']+')+;/);
     expect(policyOf("/faq")).toContain("connect-src 'self' https://gateway.umami.is;");
     for (const path of ["/", "/es", "/blog/a-post"]) expect(policyOf(path)).not.toMatch(/umami/);
   });
@@ -273,14 +269,14 @@ describe("run", () => {
     expect(() => run(dir, true)).toThrow("/faq loads Umami without");
   });
 
-  test("only Umami's exact script URL is allowed, not its origin or a lookalike", () => {
+  test("Umami's own script, or any lookalike of it, fails the build: only the pinned copy runs", () => {
     for (const src of [
+      "https://cloud.umami.is/script.js",
       "https://cloud.umami.is/other.js",
-      "https://cloud.umami.is/script.js?v=2",
       "http://cloud.umami.is/script.js",
       "//cloud.umami.is/script.js",
-      "https://cloud.umami.is.evil.example/script.js",
-      "https://evil.example/https://cloud.umami.is/script.js",
+      `//evil.example${UMAMI_SCRIPT}`,
+      `https://evil.example${UMAMI_SCRIPT}`,
     ]) {
       write(
         "server/app/faq.html",
@@ -290,6 +286,16 @@ describe("run", () => {
         `/faq loads a script the policy cannot allow: ${src}`
       );
     }
+  });
+
+  test("a same-origin script other than the pinned tracker gets no Umami collector", () => {
+    write(
+      "server/app/faq.html",
+      page("faq", `<script>${UMAMI_HOOK}</script>${UMAMI_TAG.replace(UMAMI_SCRIPT, "/a/u-0.js")}`)
+    );
+    run(dir, true);
+    const faq = cspEntries().find((e: { source: string }) => e.source === "/faq");
+    expect(faq.headers[0].value).toContain("connect-src 'self'; ");
   });
 
   test("a prerendered page with no HTML fails", () => {

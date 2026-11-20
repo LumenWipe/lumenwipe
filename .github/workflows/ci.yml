@@ -330,12 +330,12 @@ jobs:
         working-directory: apps/web
 
       # The specs run against a production build made with the Google Fonts hosts unresolvable, and
-      # with a placeholder Umami id whose hosts are unresolvable too, so the marketing pages carry
+      # with a placeholder Umami id whose collector is unresolvable too, so the marketing pages carry
       # the Umami tag and its policy and nothing reaches Umami. The container runs as root, so
       # /etc/hosts is written directly.
-      - name: Block the Google Fonts and Umami hosts
+      - name: Block the Google Fonts hosts and Umami's collector
         run: |
-          printf "%s fonts.googleapis.com fonts.gstatic.com cloud.umami.is gateway.umami.is\n" 0.0.0.0 :: >> /etc/hosts
+          printf "%s fonts.googleapis.com fonts.gstatic.com gateway.umami.is\n" 0.0.0.0 :: >> /etc/hosts
 
       - name: Run the accessibility specs
         env:

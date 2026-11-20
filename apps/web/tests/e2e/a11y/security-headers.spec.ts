@@ -113,15 +113,17 @@ test("every prerendered marketing page is cacheable and hashes exactly the scrip
 // The CI a11y job builds with a placeholder Umami id; a build without one must load Umami nowhere.
 const UMAMI_ID = process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID;
 
-test("every marketing page loads Umami with its redaction, under a policy allowing it alone", async ({
+test("every marketing page loads the pinned Umami tracker with its redaction, reaching only its collector", async ({
   request,
 }) => {
   for (const path of MARKETING) {
     const res = await request.get(path);
     const html = await res.text();
     const policy = csp(res);
+    expect(`${policy}\n${html}`, path).not.toContain("cloud.umami.is");
     if (!UMAMI_ID) {
       expect(`${policy}\n${html}`, path).not.toMatch(/umami/i);
+      expect(html, path).not.toContain(UMAMI_SCRIPT);
       continue;
     }
     const tags = [...html.matchAll(/<script\b([^>]*)>/gi)]
@@ -141,7 +143,7 @@ test("every marketing page loads Umami with its redaction, under a policy allowi
     expect(
       directives.find((d) => d.startsWith("script-src ")),
       path
-    ).toMatch(/ https:\/\/cloud\.umami\.is\/script\.js$/);
+    ).toMatch(/^script-src 'self'( 'sha256-[A-Za-z0-9+/=]+')+$/);
     expect(directives, path).toContain("connect-src 'self' https://gateway.umami.is");
   }
 });
@@ -151,8 +153,17 @@ test("no app, sign-in, signing or 404 route loads Umami or allows it in its poli
 }) => {
   for (const path of new Set([...NONCE_PATHS, ...WEBUSB_PATHS])) {
     const res = await request.get(path);
-    expect(`${csp(res)}\n${await res.text()}`, path).not.toMatch(/umami/i);
+    const served = `${csp(res)}\n${await res.text()}`;
+    expect(served, path).not.toMatch(/umami/i);
+    expect(served, path).not.toContain(UMAMI_SCRIPT);
   }
+});
+
+test("the pinned Umami tracker is served from this origin as JavaScript", async ({ request }) => {
+  const res = await request.get(UMAMI_SCRIPT);
+  expect(res.status()).toBe(200);
+  expect(res.headers()["content-type"]).toMatch(/^(application|text)\/javascript\b/);
+  expect(await res.text()).toMatch(/^\/\*! Umami tracker/);
 });
 
 test("the homepage alone carries the discovery Link header", async ({ request }) => {

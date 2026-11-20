@@ -1,10 +1,12 @@
+import { UMAMI_SCRIPT } from "@/config/marketing-csp.mjs";
 import { UMAMI_BEFORE_SEND, UMAMI_BEFORE_SEND_SCRIPT } from "@/lib/analytics/redact";
 
 /**
  * Umami Cloud page analytics, mounted only by the marketing root layouts, never on an app route.
- * Prerendered with no nonce: the build hashes the inline hook and allows Umami's script and
- * collector on these pages alone (config/marketing-csp.mjs). The hook runs first, so no payload
- * leaves unredacted.
+ * The tracker is a pinned copy served from this origin, so no third-party code runs here.
+ * Prerendered with no nonce: the build hashes the inline hook and allows Umami's collector on
+ * these pages alone (config/marketing-csp.mjs). The hook runs first, so no payload leaves
+ * unredacted.
  */
 export default function UmamiAnalytics() {
   const websiteId = process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID;
@@ -18,7 +20,7 @@ export default function UmamiAnalytics() {
       <script
         defer
         suppressHydrationWarning
-        src="https://cloud.umami.is/script.js"
+        src={UMAMI_SCRIPT}
         data-website-id={websiteId}
         data-exclude-search="true"
         data-exclude-hash="true"

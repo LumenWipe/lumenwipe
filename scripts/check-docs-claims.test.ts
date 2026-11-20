@@ -70,7 +70,7 @@ const MARKETING_LAYOUT =
   'import UmamiAnalytics from "@/components/analytics/UmamiAnalytics";\n' +
   "export default function MarketingLayout() {\n  return <UmamiAnalytics />;\n}\n";
 const UMAMI_COMPONENT =
-  'export default function UmamiAnalytics() {\n  return <script src="https://cloud.umami.is/script.js" />;\n}\n';
+  'export default function UmamiAnalytics() {\n  return <script src="/a/u-0.js" data-website-id="x" />;\n}\n';
 const ANALYTICS_COMPONENT =
   'import { Analytics } from "@vercel/analytics/next";\n' +
   "export default function RedactedAnalytics() {\n  return <Analytics />;\n}\n";
@@ -263,8 +263,8 @@ describe("the command", () => {
       { "docs/architecture.md": ARCHITECTURE.replace("Umami Cloud", "Plausible") },
       {
         "apps/web/components/analytics/UmamiAnalytics.tsx": UMAMI_COMPONENT.replace(
-          "cloud.umami.is",
-          "example.com"
+          "data-website-id",
+          "data-id"
         ),
       },
     ];
@@ -727,7 +727,7 @@ describe("the analytics tools", () => {
     const root = fixture({
       "apps/web/components/analytics/UmamiAnalytics.tsx": "export default function U() {}\n",
       "apps/web/app/(marketing-es)/layout.tsx":
-        'export default function L() {\n  return <script src="https://cloud.umami.is/script.js" />;\n}\n',
+        'export default function L() {\n  return <script src="/a/u-0.js" data-website-id="x" />;\n}\n',
     });
     expect(checkAnalyticsTools(root)).toEqual([]);
     const unnamed = fixture({

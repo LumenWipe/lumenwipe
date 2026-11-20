@@ -5,8 +5,11 @@
 // 'strict-dynamic': Next loads its chunks with plain <script src> tags, which 'self' covers. The
 // wallet and Pollar hosts of the nonce policy (proxy.ts) are left out: no marketing page uses them.
 
-/** Umami Cloud's script (components/analytics/UmamiAnalytics.tsx). Its beacons go to the gateway. */
-export const UMAMI_SCRIPT = "https://cloud.umami.is/script.js";
+/**
+ * The pinned, self-hosted copy of Umami Cloud's tracker (public/a), which 'self' covers. Its
+ * beacons go to Umami's collector, the one Umami origin a page may reach.
+ */
+export const UMAMI_SCRIPT = "/a/u-768ab7ae5fda.js";
 const UMAMI_GATEWAY = "https://gateway.umami.is";
 const YOUTUBE_EMBED = "https://www.youtube-nocookie.com";
 
@@ -14,14 +17,13 @@ const YOUTUBE_EMBED = "https://www.youtube-nocookie.com";
  * The Content-Security-Policy of one marketing page.
  *
  * @param {{ hashes: ReadonlyArray<string>, umami: boolean }} sources the base64 SHA-256 of every
- *   inline script the page runs, and whether it loads Umami's script.
+ *   inline script the page runs, and whether it loads Umami's tracker.
  * @returns {string}
  */
 export function marketingPolicy({ hashes, umami }) {
   const scriptSrc = [
     "'self'",
     ...[...new Set(hashes)].sort().map((hash) => `'sha256-${hash}'`),
-    ...(umami ? [UMAMI_SCRIPT] : []),
   ].join(" ");
   return [
     `default-src 'self'`,
