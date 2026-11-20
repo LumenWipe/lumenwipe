@@ -58,7 +58,6 @@ export interface AccountState {
     // Warning: (ae-forgotten-export) The symbol "SorobanTokensResult" needs to be exported by the entry point index.d.ts
     sorobanTokens?: SorobanTokensResult;
     sponsoredBy: string | null;
-    // Warning: (ae-forgotten-export) The symbol "SponsoredEntry" needs to be exported by the entry point index.d.ts
     sponsoredEntries: SponsoredEntry[];
     sponsorshipEnumerationIncomplete: boolean;
     // (undocumented)
@@ -98,7 +97,7 @@ export interface CloseExpectationInput extends ExitExpectations {
     nativeBalance: string;
     poolWithdrawals?: Record<string, PoolWithdrawalExpectation>;
     source: string;
-    sponsoredPoolShareLines?: Record<string, string[]>;
+    sponsoredEntries?: SponsoredEntry[];
     tokenConversions: Record<string, TokenConversionChoice>;
     tokenTransfers: Record<string, TransferChoice>;
     transfers: Record<string, TransferChoice>;
@@ -183,7 +182,35 @@ export interface ServedRegistry {
 }
 
 // @public
-export function sponsoredPoolShareLineExpectations(accountState: AccountState | null | undefined): Record<string, string[]>;
+export type SponsoredEntry = {
+    kind: "account";
+    owner: string;
+} | {
+    kind: "trustline";
+    owner: string;
+    asset: string;
+}
+/** A liquidity pool share trustline, named by its 64-character hex pool id. */
+| {
+    kind: "pool_share_trustline";
+    owner: string;
+    poolId: string;
+} | {
+    kind: "offer";
+    owner: string;
+    offerId: string;
+} | {
+    kind: "data_entry";
+    owner: string;
+    name: string;
+} | {
+    kind: "signer";
+    owner: string;
+    signerKey: string;
+} | {
+    kind: "claimable_balance";
+    balanceId: string;
+};
 
 // @public
 export interface TokenConversionChoice {

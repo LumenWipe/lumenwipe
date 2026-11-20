@@ -101,7 +101,13 @@ test("intentFromXdr names the pool of a pool share trustline's sponsorship revok
   );
   expect(intent.operations).toEqual([
     { source: SRC, type: "revoke_sponsorship", entryKind: "trustline", owner: account, poolId },
-    { source: SRC, type: "revoke_sponsorship", entryKind: "trustline", owner: account },
+    {
+      source: SRC,
+      type: "revoke_sponsorship",
+      entryKind: "trustline",
+      owner: account,
+      asset: `USDC:${ISSUER}`,
+    },
   ]);
 });
 

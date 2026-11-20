@@ -544,6 +544,7 @@ function closeBody(close: SnippetClose, envPrefix = ""): string[] {
     ...recordLines("        ", "tokenTransfers", tokenTransfers),
     ...recordLines("        ", "classicConversions", conversions),
     "        tokenConversions: {},",
+    "        sponsoredEntries: account.sponsoredEntries,",
     "      },",
     "    }),",
     ...signLines,

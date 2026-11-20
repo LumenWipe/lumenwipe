@@ -124,6 +124,14 @@ export type IntentOperationBody =
       owner: string;
       /** The 64-character hex pool id of a pool share trustline. Absent for every other entry. */
       poolId?: string;
+      /** A trustline's asset, as `CODE:ISSUER`. Absent for every other entry. */
+      asset?: string;
+      /** An offer's id, in decimal. Absent for every other entry. */
+      offerId?: string;
+      /** A data entry's name. Absent for every other entry, or when the name is not valid UTF-8. */
+      name?: string;
+      /** A signer's key, as a strkey (G, T, X or P). Absent for every other entry. */
+      signerKey?: string;
     }
   // A Soroban contract invocation - a DeFi exit. `accountsReferenced` lists every Stellar
   // account address anywhere in the arguments, so verification can insist an exit only ever acts

@@ -44,6 +44,7 @@ export function verifyCloseTransaction(tx: CloseTransaction, expected: CloseExpe
       tokenTransfers: {},
       classicConversions: {},
       tokenConversions: {},
+      sponsoredEntries: account.sponsoredEntries,
       ...exitExpectations(account, network),
     },
   });

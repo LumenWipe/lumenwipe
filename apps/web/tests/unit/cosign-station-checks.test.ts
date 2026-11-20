@@ -158,6 +158,10 @@ describe("checkRequest", () => {
     ],
     ["a merge", [...NORMALIZATION, Operation.accountMerge({ destination })]],
     [
+      "a sponsorship revoke",
+      [...NORMALIZATION, Operation.revokeAccountSponsorship({ account: destination })],
+    ],
+    [
       "a trustline change",
       [
         ...NORMALIZATION,

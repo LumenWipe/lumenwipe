@@ -125,24 +125,28 @@ test("intentFromXdr normalizes all revoke-sponsorship operation types", () => {
     type: "revoke_sponsorship",
     entryKind: "trustline",
     owner: account,
+    asset: `USDC:${ISSUER}`,
   });
   expect(intent.operations).toContainEqual({
     source: SRC,
     type: "revoke_sponsorship",
     entryKind: "offer",
     owner: seller,
+    offerId: "12345",
   });
   expect(intent.operations).toContainEqual({
     source: SRC,
     type: "revoke_sponsorship",
     entryKind: "data_entry",
     owner: account,
+    name: "test",
   });
   expect(intent.operations).toContainEqual({
     source: SRC,
     type: "revoke_sponsorship",
     entryKind: "signer",
     owner: account,
+    signerKey: signer,
   });
 });
 
@@ -158,7 +162,13 @@ test("intentFromXdr names the pool of a pool share trustline's sponsorship revok
   );
   expect(intent.operations).toEqual([
     { source: SRC, type: "revoke_sponsorship", entryKind: "trustline", owner: account, poolId },
-    { source: SRC, type: "revoke_sponsorship", entryKind: "trustline", owner: account },
+    {
+      source: SRC,
+      type: "revoke_sponsorship",
+      entryKind: "trustline",
+      owner: account,
+      asset: `USDC:${ISSUER}`,
+    },
   ]);
 });
 
@@ -479,5 +489,27 @@ test("intentFromXdr counts a muxed account, a claimable balance, or a pool addre
   expect(intent.operations[0]).toMatchObject({
     accountsReferenced: [SRC],
     unsupportedAddressCount: 1,
+  });
+});
+
+test("intentFromXdr names no data entry for a revoke whose name is not valid UTF-8", () => {
+  const account = Keypair.random().publicKey();
+  const key = xdr.LedgerKey.data(
+    new xdr.LedgerKeyData({
+      accountId: Keypair.fromPublicKey(account).xdrAccountId(),
+      dataName: Buffer.from([0x61, 0xff, 0x62]) as unknown as string,
+    })
+  );
+  const op = new xdr.Operation({
+    sourceAccount: null,
+    body: xdr.OperationBody.revokeSponsorship(
+      xdr.RevokeSponsorshipOp.revokeSponsorshipLedgerEntry(key)
+    ),
+  });
+  expect(intentFromXdr(txWith(op), Networks.TESTNET).operations[0]).toEqual({
+    source: SRC,
+    type: "revoke_sponsorship",
+    entryKind: "data_entry",
+    owner: account,
   });
 });

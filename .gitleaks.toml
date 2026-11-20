@@ -19,5 +19,7 @@ regexes = [
   # not a real key.
   '''polar=key_xyz''',
   # Public Stellar account/contract addresses. Anchored so it never covers a secret seed (S...).
-  '''^[GC][A-Z2-7]{55}$''',
+  # Widened 2026-11-20: pre-auth transaction (T...) and sha256 hash (X...) signer keys are public
+  # ledger identifiers, the hash of a transaction or preimage, never a credential.
+  '''^[GCTX][A-Z2-7]{55}$''',
 ]

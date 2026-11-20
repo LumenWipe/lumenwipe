@@ -14,7 +14,12 @@ import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import { toHex } from "@/lib/stellar/hex";
 import { VerificationError } from "@/lib/stellar/verification-error";
 import { xlmToStroops } from "@/lib/utils/amounts";
-import type { AccountSigner, AccountState, AccountThresholds } from "@/types/account";
+import type {
+  AccountSigner,
+  AccountState,
+  AccountThresholds,
+  SponsoredEntry,
+} from "@/types/account";
 import type { IntentOperation, TxIntent } from "@/types/close-api";
 
 /** A DeFi exit's fee comes from the API's simulation, not from a fixed per-operation rate, so it
@@ -134,13 +139,14 @@ export interface CloseExpectation {
    */
   poolWithdrawals?: Record<string, PoolWithdrawalExpectation>;
   /**
-   * Per account the closing account sponsors a pool share trustline on, the hex ids of those
-   * pools. The only pool share lines whose sponsorship a revoke may name, each at most once.
+   * The entries the closing account sponsors, as the account read lists them in its
+   * `sponsoredEntries`. The only entries whose sponsorship a revoke may name, matched by kind,
+   * owner and key, each at most once per transaction.
    *
    * Taken from the same analysis-time account read as `poolWithdrawals`, never from the plan or the
-   * transactions. Absent, every revoke of a pool share line's sponsorship is refused.
+   * transactions. Absent, every sponsorship revoke is refused.
    */
-  sponsoredPoolShareLines?: Record<string, string[]>;
+  sponsoredEntries?: SponsoredEntry[];
   /** Every contract the bundled registry names on this network. */
   registryContracts: string[];
   /** XLM's contract and the contract of every classic asset the account holds. A DeFi exit
@@ -219,19 +225,6 @@ export function poolWithdrawalExpectations(
   return pools;
 }
 
-/** The pool share trustlines the account read shows the account sponsoring on other accounts, by
- *  sponsored account. */
-export function sponsoredPoolShareLineExpectations(
-  accountState: AccountState | null | undefined
-): Record<string, string[]> {
-  const lines: Record<string, string[]> = {};
-  for (const entry of accountState?.sponsoredEntries ?? []) {
-    if (entry.kind !== "pool_share_trustline") continue;
-    (lines[entry.owner] ??= []).push(entry.poolId);
-  }
-  return lines;
-}
-
 /** A minimum may sit at most 2% under what the read's reserves give: the bound that protects the
  *  user. The API builds at 1% under the reserves at build time, which leaves room for the pool to
  *  move between the read and the build. */
@@ -302,28 +295,71 @@ function sdkAsset(asset: string): Asset {
   return new Asset(code ?? "", issuer);
 }
 
-/** A revoke of a pool share line's sponsorship names a line the account read shows the account
- *  sponsoring, once. */
-function assertSponsoredPoolLine(
-  owner: string,
-  poolId: string,
+type RevokeSponsorship = Extract<IntentOperation, { type: "revoke_sponsorship" }>;
+
+const entryKey = (kind: string, owner: string, key: string): string =>
+  JSON.stringify([kind, owner, key]);
+
+/** An account read entry as a comparable key. A claimable balance has no revoke the close may
+ *  build, so it has none. */
+function sponsoredEntryKey(entry: SponsoredEntry): string | null {
+  switch (entry.kind) {
+    case "account":
+      return entryKey(entry.kind, entry.owner, "");
+    case "trustline":
+      return entryKey(entry.kind, entry.owner, entry.asset);
+    case "pool_share_trustline":
+      return entryKey(entry.kind, entry.owner, entry.poolId);
+    case "offer":
+      return entryKey(entry.kind, entry.owner, entry.offerId);
+    case "data_entry":
+      return entryKey(entry.kind, entry.owner, entry.name);
+    case "signer":
+      return entryKey(entry.kind, entry.owner, entry.signerKey);
+    case "claimable_balance":
+      return null;
+  }
+}
+
+/** The entry a revoke names, keyed like `sponsoredEntryKey`, or null when the operation does not
+ *  say which (a data name that is not valid UTF-8). */
+function revokedEntryKey(op: RevokeSponsorship): string | null {
+  switch (op.entryKind) {
+    case "account":
+      return entryKey("account", op.owner, "");
+    case "trustline":
+      if (op.poolId !== undefined) return entryKey("pool_share_trustline", op.owner, op.poolId);
+      return op.asset === undefined ? null : entryKey("trustline", op.owner, op.asset);
+    case "offer":
+      return op.offerId === undefined ? null : entryKey("offer", op.owner, op.offerId);
+    case "data_entry":
+      return op.name === undefined ? null : entryKey("data_entry", op.owner, op.name);
+    case "signer":
+      return op.signerKey === undefined ? null : entryKey("signer", op.owner, op.signerKey);
+  }
+}
+
+/** A sponsorship revoke names an entry the account read shows the account sponsoring, once. */
+function assertSponsoredEntryRevoke(
+  op: RevokeSponsorship,
   expected: CloseExpectation,
   seen: Set<string>
 ): void {
-  if (!expected.sponsoredPoolShareLines?.[owner]?.includes(poolId)) {
+  const key = revokedEntryKey(op);
+  const listed = new Set((expected.sponsoredEntries ?? []).map(sponsoredEntryKey));
+  if (key === null || !listed.has(key)) {
     throw new VerificationError(
-      "pool_line_sponsorship_unknown",
-      "A sponsorship revoke names a pool share trustline your account is not known to sponsor."
+      "sponsorship_revoke_unknown",
+      "A sponsorship revoke names an entry your account is not known to sponsor."
     );
   }
-  const line = `${owner}:${poolId}`;
-  if (seen.has(line)) {
+  if (seen.has(key)) {
     throw new VerificationError(
-      "pool_line_sponsorship_duplicate",
-      "The transaction would revoke the sponsorship of the same pool share trustline more than once."
+      "sponsorship_revoke_duplicate",
+      "The transaction would revoke the sponsorship of the same entry more than once."
     );
   }
-  seen.add(line);
+  seen.add(key);
 }
 
 /**
@@ -967,7 +1003,7 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
   const seenTransfers = new Set<string>();
   const seenConversions = new Set<string>();
   const seenWithdrawals = new Set<string>();
-  const seenSponsoredPoolLines = new Set<string>();
+  const seenSponsoredEntries = new Set<string>();
 
   for (const op of intent.operations) {
     switch (op.type) {
@@ -1623,11 +1659,9 @@ export function assertCloseIntent(intent: TxIntent, expected: CloseExpectation):
         // here, wherever in the operation list it sits. That is the entire safety guarantee
         // for this op family: it structurally cannot redirect reserve to a third party once
         // sponsorship-transfer brackets are unreachable. The op itself carries no field that
-        // could name a beneficiary. A pool share line is further held to the lines the account
-        // read shows this account sponsoring.
-        if (op.poolId !== undefined) {
-          assertSponsoredPoolLine(op.owner, op.poolId, expected, seenSponsoredPoolLines);
-        }
+        // could name a beneficiary. Each revoke is further held to the entries the account read
+        // shows this account sponsoring.
+        assertSponsoredEntryRevoke(op, expected, seenSponsoredEntries);
         break;
       case "account_merge":
       case "claim_claimable_balance":
@@ -1881,7 +1915,7 @@ export function verifyCloseTransaction(opts: {
     shareTokenContracts: string[];
     debtTokenContracts: string[];
     poolWithdrawals?: Record<string, PoolWithdrawalExpectation>;
-    sponsoredPoolShareLines?: Record<string, string[]>;
+    sponsoredEntries?: SponsoredEntry[];
   };
 }): void {
   const intent = intentFromXdr(opts.unsignedXdr, NETWORK_PASSPHRASES[opts.network]);
