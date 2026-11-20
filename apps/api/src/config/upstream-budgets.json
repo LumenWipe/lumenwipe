@@ -1,0 +1,56 @@
+[
+  {
+    "provider": "Stellar RPC (mainnet list)",
+    "networks": ["mainnet"],
+    "upstreams": ["rpc"],
+    "monthlyRequests": 100000
+  },
+  {
+    "provider": "Stellar RPC (testnet list)",
+    "networks": ["testnet"],
+    "upstreams": ["rpc"],
+    "monthlyRequests": 850000
+  },
+  {
+    "provider": "Horizon (mainnet)",
+    "networks": ["mainnet"],
+    "upstreams": ["horizon", "paths"],
+    "monthlyRequests": 648000
+  },
+  {
+    "provider": "Horizon (testnet)",
+    "networks": ["testnet"],
+    "upstreams": ["horizon", "paths"],
+    "monthlyRequests": 648000
+  },
+  {
+    "provider": "OctoPos",
+    "networks": ["mainnet"],
+    "upstreams": ["defi"],
+    "monthlyRequests": 4000
+  },
+  {
+    "provider": "StellarIndex",
+    "networks": ["mainnet", "testnet"],
+    "upstreams": ["indexer"],
+    "monthlyRequests": 6000
+  },
+  {
+    "provider": "Soroswap API",
+    "networks": ["mainnet", "testnet"],
+    "upstreams": ["soroswap"],
+    "monthlyRequests": 648000
+  },
+  {
+    "provider": "xBull swap API",
+    "networks": ["mainnet"],
+    "upstreams": ["xbull"],
+    "monthlyRequests": 1000
+  },
+  {
+    "provider": "not called on testnet",
+    "networks": ["testnet"],
+    "upstreams": ["defi", "xbull"],
+    "monthlyRequests": 0
+  }
+]

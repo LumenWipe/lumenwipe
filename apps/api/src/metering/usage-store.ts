@@ -1,6 +1,7 @@
 import { FieldValue, Firestore, Timestamp } from "@google-cloud/firestore";
 import { FIRESTORE_BATCH_LIMIT, isKeyId } from "@/auth/api-key-store";
 import { createFirestore } from "@/config/firestore";
+import type { UsageDay } from "@/lib/monitors/upstream-budget";
 import type { UpstreamDelta } from "@/lib/stellar/upstream-metrics";
 
 export interface DayUsage {
@@ -30,8 +31,10 @@ export interface UsageStore {
   addRateLimited(counts: readonly RateLimitedCount[]): Promise<void>;
   /** Only days with at least one request, from `fromDate` (inclusive) onward. */
   daily(owner: string, fromDate: string): Promise<DayUsage[]>;
-  /** Adds to the UTC day's per-upstream counters; never read back by the API. */
+  /** Adds to the UTC day's per-upstream counters. */
   addUpstreamCounts(date: string, deltas: readonly UpstreamDelta[]): Promise<void>;
+  /** The per-upstream counters of `dates`, for the budget check; days with none are left out. */
+  upstreamDays(dates: readonly string[]): Promise<UsageDay[]>;
 }
 
 export const USAGE_STORE = Symbol("USAGE_STORE");
@@ -93,6 +96,12 @@ export class FirestoreUsageStore implements UsageStore {
     await this.upstreamRoot
       .doc(date)
       .set({ date, counts, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  }
+
+  async upstreamDays(dates: readonly string[]): Promise<UsageDay[]> {
+    if (dates.length === 0) return [];
+    const snaps = await this.firestore.getAll(...dates.map((d) => this.upstreamRoot.doc(d)));
+    return snaps.filter((s) => s.exists).map((s) => s.data() as UsageDay);
   }
 
   async increment(
@@ -170,6 +179,18 @@ export class InMemoryUsageStore implements UsageStore {
       const key = `${date}/${network}/${upstream}/${metric}`;
       this.upstream.set(key, (this.upstream.get(key) ?? 0) + count);
     }
+  }
+
+  async upstreamDays(dates: readonly string[]): Promise<UsageDay[]> {
+    const days = new Map<string, UsageDay>();
+    for (const [key, count] of this.upstream) {
+      const [date, network, upstream, metric] = key.split("/");
+      if (!dates.includes(date)) continue;
+      const day = days.get(date) ?? { date, counts: {} };
+      ((day.counts![network] ??= {})[upstream] ??= {})[metric] = count;
+      days.set(date, day);
+    }
+    return [...days.values()];
   }
 
   private day(owner: string, date: string): MemoryDay {

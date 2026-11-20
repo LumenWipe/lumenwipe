@@ -249,17 +249,19 @@ async function run(command: string, env: Record<string, string> = {}) {
     stderr: "pipe",
   });
   const [code, stdout] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
-  const calls = readFileSync(log, "utf8")
+  const raw = readFileSync(log, "utf8")
     .trim()
     .split("\n")
     .filter(Boolean)
-    .map((l) => describeCall(JSON.parse(l) as string[]));
+    .map((l) => JSON.parse(l) as string[]);
+  const calls = raw.map(describeCall);
   // Every revision that held traffic at any point of the run.
   const everServed = new Set(readFileSync(served, "utf8").split("\n").filter(Boolean));
   return {
     code,
     stdout,
     calls,
+    deploys: raw.filter((args) => args[1] === "deploy"),
     everServed,
     summary: readFileSync(summary, "utf8"),
     sim: readSim(),
@@ -613,6 +615,25 @@ describe("deploy", () => {
     expect(r.code).toBe(1);
     expect(r.summary).toMatch(/\| analyze \| \*\*fail\*\* \(\d+\.\d s\) \|/);
     expect(r.everServed.has(CAND)).toBe(false);
+  });
+
+  test("the candidate and the restore both set the scaling and CPU flags, so the service never drifts", async () => {
+    behaviours[IMAGE] = { gitSha: SHA, deep: 503 };
+    const r = await run("deploy");
+    expect(r.deploys.map((args) => args[args.indexOf("--tag") + 1])).toEqual([
+      "candidate",
+      "restore",
+    ]);
+    for (const args of r.deploys) {
+      expect(args).toEqual(
+        expect.arrayContaining([
+          "--min-instances=0",
+          "--max-instances=1",
+          "--concurrency=8",
+          "--cpu-throttling",
+        ])
+      );
+    }
   });
 
   test("the analyze timeout outlasts the API's own request deadline", () => {

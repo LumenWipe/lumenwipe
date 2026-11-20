@@ -73,6 +73,7 @@ describe("MeteringService", () => {
       increment: () => Promise.reject(new Error("firestore down")),
       daily: async () => [],
       addUpstreamCounts: async () => {},
+      upstreamDays: async () => [],
       addRateLimited: async () => {},
     };
     await expect(service(store).metering.record(OWNER, "r")).resolves.toBeUndefined();
@@ -83,6 +84,7 @@ describe("MeteringService", () => {
       increment: () => new Promise(() => {}),
       daily: async () => [],
       addUpstreamCounts: async () => {},
+      upstreamDays: async () => [],
       addRateLimited: async () => {},
     };
     const started = Date.now();
@@ -95,6 +97,7 @@ describe("MeteringService", () => {
       increment: async () => {},
       daily: () => Promise.reject(new Error("firestore down")),
       addUpstreamCounts: async () => {},
+      upstreamDays: async () => [],
       addRateLimited: async () => {},
     };
     expect(await service(store).metering.usage(OWNER)).toBeNull();
@@ -266,6 +269,7 @@ describe("MeteringInterceptor", () => {
       },
       daily: async () => [],
       addUpstreamCounts: async () => {},
+      upstreamDays: async () => [],
       addRateLimited: async () => {},
     };
     const body = await intercept(service(store).metering, request(), { ok: true });
@@ -279,6 +283,7 @@ describe("MeteringInterceptor", () => {
       increment: () => Promise.reject(new Error("firestore down")),
       daily: async () => [],
       addUpstreamCounts: async () => {},
+      upstreamDays: async () => [],
       addRateLimited: async () => {},
     };
     expect(await intercept(service(store).metering, request(), { ok: true })).toEqual({
