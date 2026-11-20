@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type APIResponse, type Page } from "@playwright/test";
 import { HOMEPAGE_LINK } from "../../../config/discovery-links.mjs";
+import { UMAMI_SCRIPT } from "../../../config/marketing-csp.mjs";
 import { SECURITY_HEADERS, SIGNING_PERMISSIONS_POLICY } from "../../../config/security-headers.mjs";
 import {
   pageScripts,
@@ -106,6 +107,51 @@ test("every prerendered marketing page is cacheable and hashes exactly the scrip
     ].sort();
     expect(served.length, path).toBeGreaterThan(0);
     expect(hashes, path).toEqual(served);
+  }
+});
+
+// The CI a11y job builds with a placeholder Umami id; a build without one must load Umami nowhere.
+const UMAMI_ID = process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID;
+
+test("every marketing page loads Umami with its redaction, under a policy allowing it alone", async ({
+  request,
+}) => {
+  for (const path of MARKETING) {
+    const res = await request.get(path);
+    const html = await res.text();
+    const policy = csp(res);
+    if (!UMAMI_ID) {
+      expect(`${policy}\n${html}`, path).not.toMatch(/umami/i);
+      continue;
+    }
+    const tags = [...html.matchAll(/<script\b([^>]*)>/gi)]
+      .map((m) => m[1]!)
+      .filter((attrs) => attrs.includes(`src="${UMAMI_SCRIPT}"`));
+    expect(tags, path).toHaveLength(1);
+    for (const attr of [
+      `data-website-id="${UMAMI_ID}"`,
+      'data-exclude-search="true"',
+      'data-exclude-hash="true"',
+      'data-before-send="lumenwipeRedactAnalytics"',
+    ]) {
+      expect(tags[0], path).toContain(` ${attr}`);
+    }
+    expect(html, path).toContain("<script>window.lumenwipeRedactAnalytics=function(");
+    const directives = policy.split("; ");
+    expect(
+      directives.find((d) => d.startsWith("script-src ")),
+      path
+    ).toMatch(/ https:\/\/cloud\.umami\.is\/script\.js$/);
+    expect(directives, path).toContain("connect-src 'self' https://gateway.umami.is");
+  }
+});
+
+test("no app, sign-in, signing or 404 route loads Umami or allows it in its policy", async ({
+  request,
+}) => {
+  for (const path of new Set([...NONCE_PATHS, ...WEBUSB_PATHS])) {
+    const res = await request.get(path);
+    expect(`${csp(res)}\n${await res.text()}`, path).not.toMatch(/umami/i);
   }
 });
 

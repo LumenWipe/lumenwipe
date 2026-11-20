@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import RootDocument from "@/app/root-document";
+import UmamiAnalytics from "@/components/analytics/UmamiAnalytics";
 import MarketingShell from "@/components/marketing/MarketingShell";
 import { rootMetadata, ROOT_VIEWPORT } from "@/lib/site/root-metadata";
 
@@ -13,6 +14,7 @@ export const metadata: Metadata = rootMetadata("es");
 export default function SpanishMarketingLayout({ children }: { children: ReactNode }) {
   return (
     <RootDocument locale="es">
+      <UmamiAnalytics />
       <MarketingShell locale="es">{children}</MarketingShell>
     </RootDocument>
   );

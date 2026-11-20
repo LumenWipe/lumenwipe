@@ -329,13 +329,17 @@ jobs:
         run: bunx playwright install chromium
         working-directory: apps/web
 
-      # The specs run against a production build made with the Google Fonts hosts unresolvable.
-      # The container runs as root, so /etc/hosts is written directly.
-      - name: Block the Google Fonts hosts
+      # The specs run against a production build made with the Google Fonts hosts unresolvable, and
+      # with a placeholder Umami id whose hosts are unresolvable too, so the marketing pages carry
+      # the Umami tag and its policy and nothing reaches Umami. The container runs as root, so
+      # /etc/hosts is written directly.
+      - name: Block the Google Fonts and Umami hosts
         run: |
-          printf "%s fonts.googleapis.com fonts.gstatic.com\n" 0.0.0.0 :: >> /etc/hosts
+          printf "%s fonts.googleapis.com fonts.gstatic.com cloud.umami.is gateway.umami.is\n" 0.0.0.0 :: >> /etc/hosts
 
       - name: Run the accessibility specs
+        env:
+          NEXT_PUBLIC_UMAMI_WEBSITE_ID: 00000000-0000-4000-8000-000000000001
         run: bun run --filter '@lumenwipe/web' test:a11y
 
       - name: Upload the report
@@ -456,6 +460,7 @@ jobs:
           VERCEL_TELEMETRY_DISABLED: "1"
           NEXT_PUBLIC_APP_URL: https://www.lumenwipe.com
           NEXT_PUBLIC_STELLAR_WALLET_CONNECT_PROJECT_ID: 0123456789abcdef0123456789abcdef
+          NEXT_PUBLIC_UMAMI_WEBSITE_ID: 00000000-0000-4000-8000-000000000001
         run: |
           mkdir -p .vercel
           echo '{"orgId":"team_ci","projectId":"prj_ci","settings":{"framework":"nextjs","rootDirectory":"apps/web","buildCommand":null,"installCommand":null,"outputDirectory":null,"devCommand":null,"nodeVersion":"24.x"}}' > .vercel/project.json

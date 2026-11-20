@@ -75,15 +75,18 @@ Logs go to standard output, Cloud Run forwards them to Cloud Logging, and retent
 
 ## Page analytics
 
-The logs above are the API's. The web app separately reports page views to one analytics tool, loaded from the document every root layout renders (`apps/web/app/root-document.tsx`):
+The logs above are the API's. The web app separately reports page views to two analytics tools. Vercel Web Analytics is loaded from the document every root layout renders (`apps/web/app/root-document.tsx`). Umami Cloud is loaded only from the marketing root layouts (`apps/web/app/(marketing)/layout.tsx` and `apps/web/app/(marketing-es)/layout.tsx`, through `apps/web/components/analytics/UmamiAnalytics.tsx`):
 
-| Tool                 | When it loads | What it receives                |
-| -------------------- | ------------- | ------------------------------- |
-| Vercel Web Analytics | On every page | The address of each page viewed |
+| Tool                 | When it loads                                                                                                                                                                                                                                       | What it receives                                                                                                                            |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Vercel Web Analytics | On every page                                                                                                                                                                                                                                       | The address of each page viewed                                                                                                             |
+| Umami Cloud          | Only on the marketing pages (the landing page, how it works, the FAQ, the security pages, the blog, the registry, stats, content and playground pages, in English and in Spanish), and only when the deployment sets `NEXT_PUBLIC_UMAMI_WEBSITE_ID` | The address and title of each page viewed, the page the visitor came from, the site's host name, and the browser's screen size and language |
+
+Umami never loads on the app (`/mainnet`, `/testnet` and every step under them: analyze, review, execute, allowances, complete and receipts), the API keys page, the cosign station or a 404, which are the pages where a wallet connects, a secret key can be entered or a transaction is signed. Those pages keep a Content Security Policy that allows no Umami host, and only the marketing pages that carry the Umami tag allow its script and its collector.
 
 Every address is redacted in the browser before an event is sent (`apps/web/lib/analytics/redact.ts`):
 
-- The query string and the fragment are dropped, so a parameter such as `?source=` or `?address=` never reaches it.
+- The query string and the fragment are dropped, so a parameter such as `?source=` or `?address=` never reaches either tool.
 - A saved receipt's id is replaced with `[id]`: `/mainnet/receipt/<id>` is reported as `/mainnet/receipt/[id]`.
 
-The web app sends no custom events, so no account address, transaction data, memo or key reaches it.
+For Umami, the page the visitor came from is redacted the same way, and its script is also configured to leave out the query and the fragment itself (`data-exclude-search`, `data-exclude-hash`). The build refuses a marketing page that loads Umami without those settings and the redaction hook. Page titles are fixed text and never contain an address. The web app sends no custom events, so no account address, transaction data, memo or key reaches either tool.
