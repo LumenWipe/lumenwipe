@@ -643,7 +643,7 @@ export const ENVIRONMENT: Record<EnvApp, Record<string, EnvironmentFacts>> = {
       required: "Production",
       secret: false,
       default: NONE,
-      purpose: "The playground's own Upstash Redis, never the web's",
+      purpose: "The playground's Upstash Redis REST URL",
     },
     UPSTASH_REDIS_REST_TOKEN: {
       required: "Production",
