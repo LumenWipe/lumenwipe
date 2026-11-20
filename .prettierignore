@@ -27,3 +27,7 @@ docs/api-reference/openapi.json
 # Written by packages/verify/scripts/generate-vectors.ts, and its --check test compares it byte
 # for byte, so Prettier reformatting it would fail that test.
 packages/verify/vectors/close-v1.json
+
+# A pinned copy of Umami's tracker, kept byte for byte as fetched
+# (apps/web/tests/unit/umami-tracker-pin.test.ts).
+apps/web/public/a

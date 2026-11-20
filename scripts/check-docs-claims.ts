@@ -622,7 +622,11 @@ export function checkDesignTokens(root: string): Problem[] {
   return problems;
 }
 
-const WEB_LAYOUT = "apps/web/app/root-document.tsx";
+const WEB_LAYOUTS = [
+  "apps/web/app/root-document.tsx",
+  "apps/web/app/(marketing)/layout.tsx",
+  "apps/web/app/(marketing-es)/layout.tsx",
+];
 const PRIVACY_SECTIONS = [
   { source: "docs/architecture.md", heading: /^## \d+\. User protection and privacy\s*$/ },
   { source: "docs/reference/logging-and-privacy.mdx", heading: /^## Page analytics\s*$/ },
@@ -640,7 +644,7 @@ const ANALYTICS_TOOLS = [
   {
     name: "Umami Cloud",
     named: /\bUmami\b/,
-    loaded: /["'`]https:\/\/cloud\.umami\.is\/script\.js["'`]/,
+    loaded: /\sdata-website-id=/,
   },
   { name: "Plausible", named: /\bPlausible\b/, loaded: /plausible/i },
   {
@@ -662,29 +666,37 @@ function resolveLocal(root: string, from: string, spec: string): string | null {
 }
 
 /**
- * The document every web root layout renders and the local files it imports directly, comments
- * removed: the analytics a page loads are either in it or one component away from it.
+ * The document every web root layout renders, the marketing root layouts, and the local files
+ * each imports directly, comments removed: the analytics a page loads are either in one of them
+ * or one component away from it.
  */
-function layoutCode(root: string): string | null {
-  const layout = read(root, WEB_LAYOUT);
-  if (layout === null) return null;
-  const code = stripComments(layout);
-  const parts = [code];
-  for (const match of code.matchAll(IMPORT_SPECIFIER)) {
-    const file = resolveLocal(root, WEB_LAYOUT, match[1]!);
-    const source = file === null ? null : read(root, file);
-    if (source !== null) parts.push(stripComments(source));
+function layoutCode(root: string): { code: string; missing: string[] } {
+  const parts: string[] = [];
+  const missing: string[] = [];
+  for (const layout of WEB_LAYOUTS) {
+    const text = read(root, layout);
+    if (text === null) {
+      missing.push(layout);
+      continue;
+    }
+    const code = stripComments(text);
+    parts.push(code);
+    for (const match of code.matchAll(IMPORT_SPECIFIER)) {
+      const file = resolveLocal(root, layout, match[1]!);
+      const source = file === null ? null : read(root, file);
+      if (source !== null) parts.push(stripComments(source));
+    }
   }
-  return parts.join("\n");
+  return { code: parts.join("\n"), missing };
 }
 
 /**
  * Every page that states the privacy position names exactly the analytics tools the web's root
- * layout loads, so a tool cannot be added, swapped or removed without the docs following.
+ * layouts load, so a tool cannot be added, swapped or removed without the docs following.
  */
 export function checkAnalyticsTools(root: string): Problem[] {
-  const code = layoutCode(root);
-  if (code === null) return [{ source: WEB_LAYOUT, message: "is missing" }];
+  const { code, missing } = layoutCode(root);
+  if (missing.length > 0) return missing.map((source) => ({ source, message: "is missing" }));
   const loaded = ANALYTICS_TOOLS.filter((tool) => tool.loaded.test(code));
   const problems: Problem[] = [];
   for (const { source, heading } of PRIVACY_SECTIONS) {
@@ -698,9 +710,12 @@ export function checkAnalyticsTools(root: string): Problem[] {
       const named = tool.named.test(body);
       const isLoaded = loaded.includes(tool);
       if (named && !isLoaded) {
-        problems.push({ source, message: `names ${tool.name}, which ${WEB_LAYOUT} does not load` });
+        problems.push({ source, message: `names ${tool.name}, which no web root layout loads` });
       } else if (!named && isLoaded) {
-        problems.push({ source, message: `does not name ${tool.name}, which ${WEB_LAYOUT} loads` });
+        problems.push({
+          source,
+          message: `does not name ${tool.name}, which a web root layout loads`,
+        });
       }
     }
   }

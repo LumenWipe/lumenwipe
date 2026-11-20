@@ -15,8 +15,9 @@
  *    for `next start` it is an entry in .next/routes-manifest.json.
  * 3. It fails closed: a page with no policy, a policy whose hashes miss one of the page's inline
  *    scripts or that allows framing or an unsafe source, a script loaded from an origin the
- *    policy does not allow, a build adapter with no output config, a nonce path the proxy does
- *    not cover, or a file not shaped as expected exits 1 and names the page.
+ *    policy does not allow, an Umami tag that does not redact, a build adapter with no output
+ *    config, a nonce path the proxy does not cover, or a file not shaped as expected exits 1 and
+ *    names the page. Only a page that loads the pinned Umami tracker may reach Umami's collector.
  * 4. In a Build Output config, `/` must carry the discovery Link header (config/discovery-links.mjs)
  *    from a header route, and no other marketing or nonce path any Link header.
  * 5. In a Build Output config, the apex host must get the 308 to www (config/apex-redirect.mjs)
@@ -29,7 +30,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { APEX_REDIRECT, CANONICAL_ORIGIN } from "../config/apex-redirect.mjs";
 import { HOMEPAGE_LINK } from "../config/discovery-links.mjs";
-import { marketingPolicy } from "../config/marketing-csp.mjs";
+import { marketingPolicy, UMAMI_SCRIPT } from "../config/marketing-csp.mjs";
 import { SECURITY_HEADERS, SIGNING_PERMISSIONS_POLICY } from "../config/security-headers.mjs";
 
 // The English and Spanish marketing route groups (docs/contributing/localization.mdx).
@@ -76,6 +77,33 @@ export function scriptHash(body) {
 /** @param {string} src @returns {boolean} whether src is a same-origin path. */
 function allowedScriptSource(src) {
   return src.startsWith("/") && !src.startsWith("//");
+}
+
+/**
+ * Fails unless every Umami tag on the page leaves out the query and the fragment and names a
+ * redaction hook an inline script of the page defines, so no address reaches Umami unredacted.
+ *
+ * @param {string} html
+ * @param {string[]} inline the page's inline script bodies
+ * @param {string} path
+ * @returns {boolean} whether the page loads Umami.
+ */
+function checkUmamiTags(html, inline, path) {
+  const tags = [...html.matchAll(/<script\b([^>]*)>/gi)]
+    .map(([, attrs]) => attrs)
+    .filter((attrs) => /\ssrc\s*=\s*"([^"]*)"/i.exec(attrs)?.[1] === UMAMI_SCRIPT);
+  for (const attrs of tags) {
+    const hook = /\sdata-before-send\s*=\s*"([A-Za-z_$][\w$]*)"/.exec(attrs)?.[1];
+    if (
+      !/\sdata-exclude-search\s*=\s*"true"/.test(attrs) ||
+      !/\sdata-exclude-hash\s*=\s*"true"/.test(attrs) ||
+      hook === undefined ||
+      !inline.some((body) => body.startsWith(`window.${hook}=function(`))
+    ) {
+      fail(`${path} loads Umami without dropping the query and fragment and its redaction hook`);
+    }
+  }
+  return tags.length > 0;
 }
 
 /** @param {string} path @returns {string} the exact-path regex Vercel's router matches. */
@@ -156,7 +184,8 @@ export function policyForPage(html, path) {
   const refused = external.filter((src) => !allowedScriptSource(src));
   if (refused.length > 0)
     fail(`${path} loads a script the policy cannot allow: ${refused.join(", ")}`);
-  return marketingPolicy({ hashes: inline.map(scriptHash) });
+  const umami = checkUmamiTags(html, inline, path);
+  return marketingPolicy({ hashes: inline.map(scriptHash), umami });
 }
 
 /**

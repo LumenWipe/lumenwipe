@@ -65,8 +65,12 @@ const CONTRIBUTING =
 const LAYOUT =
   'import RedactedAnalytics from "@/components/analytics/RedactedAnalytics";\n' +
   "export default function RootLayout() {\n" +
-  '  return <html><head><script src="https://cloud.umami.is/script.js" /></head>' +
-  "<body><RedactedAnalytics /></body></html>;\n}\n";
+  "  return <html><body><RedactedAnalytics /></body></html>;\n}\n";
+const MARKETING_LAYOUT =
+  'import UmamiAnalytics from "@/components/analytics/UmamiAnalytics";\n' +
+  "export default function MarketingLayout() {\n  return <UmamiAnalytics />;\n}\n";
+const UMAMI_COMPONENT =
+  'export default function UmamiAnalytics() {\n  return <script src="/a/u-0.js" data-website-id="x" />;\n}\n';
 const ANALYTICS_COMPONENT =
   'import { Analytics } from "@vercel/analytics/next";\n' +
   "export default function RedactedAnalytics() {\n  return <Analytics />;\n}\n";
@@ -207,6 +211,9 @@ function fixture(files: Record<string, string | null>): string {
       "## 12. Coverage cross-reference\n\n| x | `apps/web/tests/unit/{verify}.test.ts` |\n\n## 13. Maintenance\n\n`apps/missing/elsewhere.ts`\n",
     "apps/web/app/root-document.tsx": LAYOUT,
     "apps/web/components/analytics/RedactedAnalytics.tsx": ANALYTICS_COMPONENT,
+    "apps/web/app/(marketing)/layout.tsx": MARKETING_LAYOUT,
+    "apps/web/app/(marketing-es)/layout.tsx": "export default function SpanishLayout() {}\n",
+    "apps/web/components/analytics/UmamiAnalytics.tsx": UMAMI_COMPONENT,
     "docs/architecture.md": ARCHITECTURE,
     "apps/web/app/fonts/display.woff2": FONT,
     "apps/playground/app/fonts/display.woff2": FONT,
@@ -255,7 +262,10 @@ describe("the command", () => {
       { "apps/web/app/(marketing)/page.tsx": null },
       { "docs/architecture.md": ARCHITECTURE.replace("Umami Cloud", "Plausible") },
       {
-        "apps/web/app/root-document.tsx": LAYOUT.replace("cloud.umami.is", "example.com"),
+        "apps/web/components/analytics/UmamiAnalytics.tsx": UMAMI_COMPONENT.replace(
+          "data-website-id",
+          "data-id"
+        ),
       },
     ];
     for (const files of stale) {
@@ -713,6 +723,24 @@ describe("the analytics tools", () => {
     expect(checkAnalyticsTools(fixture({}))).toEqual([]);
   });
 
+  test("a tool a marketing layout loads counts as loaded, and must be named", () => {
+    const root = fixture({
+      "apps/web/components/analytics/UmamiAnalytics.tsx": "export default function U() {}\n",
+      "apps/web/app/(marketing-es)/layout.tsx":
+        'export default function L() {\n  return <script src="/a/u-0.js" data-website-id="x" />;\n}\n',
+    });
+    expect(checkAnalyticsTools(root)).toEqual([]);
+    const unnamed = fixture({
+      "docs/security/data-handling.mdx": DATA_HANDLING.replace("| Umami Cloud | when set |\n", ""),
+    });
+    expect(checkAnalyticsTools(unnamed)).toEqual([
+      {
+        source: "docs/security/data-handling.mdx",
+        message: "does not name Umami Cloud, which a web root layout loads",
+      },
+    ]);
+  });
+
   test("a tool the layout loads that a privacy page does not name is reported", () => {
     const root = fixture({
       "docs/reference/logging-and-privacy.mdx": PRIVACY_PAGE.replace(
@@ -723,7 +751,7 @@ describe("the analytics tools", () => {
     expect(checkAnalyticsTools(root)).toEqual([
       {
         source: "docs/reference/logging-and-privacy.mdx",
-        message: "does not name Umami Cloud, which apps/web/app/root-document.tsx loads",
+        message: "does not name Umami Cloud, which a web root layout loads",
       },
     ]);
   });
@@ -731,16 +759,16 @@ describe("the analytics tools", () => {
   test("a privacy page naming a tool the layout does not load is reported", () => {
     const root = fixture({
       "docs/architecture.md": ARCHITECTURE.replace("when set.", "when set, not Plausible."),
-      "apps/web/app/root-document.tsx": LAYOUT.replace(
-        '<script src="https://cloud.umami.is/script.js" />',
-        ""
-      ),
+      "apps/web/app/(marketing)/layout.tsx": MARKETING_LAYOUT.replace(
+        "<UmamiAnalytics />",
+        "null"
+      ).replace('import UmamiAnalytics from "@/components/analytics/UmamiAnalytics";\n', ""),
     });
     expect(checkAnalyticsTools(root).map((p) => `${p.source}: ${p.message}`)).toEqual([
-      "docs/architecture.md: names Umami Cloud, which apps/web/app/root-document.tsx does not load",
-      "docs/architecture.md: names Plausible, which apps/web/app/root-document.tsx does not load",
-      "docs/reference/logging-and-privacy.mdx: names Umami Cloud, which apps/web/app/root-document.tsx does not load",
-      "docs/security/data-handling.mdx: names Umami Cloud, which apps/web/app/root-document.tsx does not load",
+      "docs/architecture.md: names Umami Cloud, which no web root layout loads",
+      "docs/architecture.md: names Plausible, which no web root layout loads",
+      "docs/reference/logging-and-privacy.mdx: names Umami Cloud, which no web root layout loads",
+      "docs/security/data-handling.mdx: names Umami Cloud, which no web root layout loads",
     ]);
   });
 
@@ -750,9 +778,9 @@ describe("the analytics tools", () => {
         '// import { Analytics } from "@vercel/analytics/next";\nexport default function RedactedAnalytics() {}\n',
     });
     expect(checkAnalyticsTools(root).map((p) => p.message)).toEqual([
-      "names Vercel Web Analytics, which apps/web/app/root-document.tsx does not load",
-      "names Vercel Web Analytics, which apps/web/app/root-document.tsx does not load",
-      "names Vercel Web Analytics, which apps/web/app/root-document.tsx does not load",
+      "names Vercel Web Analytics, which no web root layout loads",
+      "names Vercel Web Analytics, which no web root layout loads",
+      "names Vercel Web Analytics, which no web root layout loads",
     ]);
   });
 
@@ -777,6 +805,10 @@ describe("the analytics tools", () => {
     const noLayout = fixture({ "apps/web/app/root-document.tsx": null });
     expect(checkAnalyticsTools(noLayout)).toEqual([
       { source: "apps/web/app/root-document.tsx", message: "is missing" },
+    ]);
+    const noMarketingLayout = fixture({ "apps/web/app/(marketing-es)/layout.tsx": null });
+    expect(checkAnalyticsTools(noMarketingLayout)).toEqual([
+      { source: "apps/web/app/(marketing-es)/layout.tsx", message: "is missing" },
     ]);
   });
 });

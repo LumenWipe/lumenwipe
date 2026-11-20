@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type APIResponse, type Page } from "@playwright/test";
 import { HOMEPAGE_LINK } from "../../../config/discovery-links.mjs";
+import { UMAMI_SCRIPT } from "../../../config/marketing-csp.mjs";
 import { SECURITY_HEADERS, SIGNING_PERMISSIONS_POLICY } from "../../../config/security-headers.mjs";
 import {
   pageScripts,
@@ -9,9 +10,13 @@ import {
   scriptHash,
   WEBUSB_PATHS,
 } from "../../../scripts/marketing-csp.mjs";
+import { routeUmamiCollector } from "./fixtures";
 
 // Headers do not depend on the viewport: one project is enough.
-test.beforeEach(() => test.skip(test.info().project.name !== "desktop", "viewport-independent"));
+test.beforeEach(async ({ page }) => {
+  test.skip(test.info().project.name !== "desktop", "viewport-independent");
+  await routeUmamiCollector(page);
+});
 
 const readJson = (file: string) => JSON.parse(readFileSync(file, "utf8"));
 const NEXT_DIR = join(process.cwd(), ".next");
@@ -107,6 +112,89 @@ test("every prerendered marketing page is cacheable and hashes exactly the scrip
     expect(served.length, path).toBeGreaterThan(0);
     expect(hashes, path).toEqual(served);
   }
+});
+
+// The CI a11y job builds with a placeholder Umami id; a build without one must load Umami nowhere.
+const UMAMI_ID = process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID;
+
+test("every marketing page loads the pinned Umami tracker with its redaction, reaching only its collector", async ({
+  request,
+}) => {
+  for (const path of MARKETING) {
+    const res = await request.get(path);
+    const html = await res.text();
+    const policy = csp(res);
+    expect(`${policy}\n${html}`, path).not.toContain("cloud.umami.is");
+    if (!UMAMI_ID) {
+      expect(`${policy}\n${html}`, path).not.toMatch(/umami/i);
+      expect(html, path).not.toContain(UMAMI_SCRIPT);
+      continue;
+    }
+    const tags = [...html.matchAll(/<script\b([^>]*)>/gi)]
+      .map((m) => m[1]!)
+      .filter((attrs) => attrs.includes(`src="${UMAMI_SCRIPT}"`));
+    expect(tags, path).toHaveLength(1);
+    for (const attr of [
+      `data-website-id="${UMAMI_ID}"`,
+      'data-exclude-search="true"',
+      'data-exclude-hash="true"',
+      'data-before-send="lumenwipeRedactAnalytics"',
+    ]) {
+      expect(tags[0], path).toContain(` ${attr}`);
+    }
+    expect(html, path).toContain("<script>window.lumenwipeRedactAnalytics=function(");
+    const directives = policy.split("; ");
+    expect(
+      directives.find((d) => d.startsWith("script-src ")),
+      path
+    ).toMatch(/^script-src 'self'( 'sha256-[A-Za-z0-9+/=]+')+$/);
+    expect(directives, path).toContain("connect-src 'self' https://gateway.umami.is");
+  }
+});
+
+test("a marketing page reports its view to Umami with no query, fragment or account", async ({
+  page,
+}) => {
+  const beacons = await routeUmamiCollector(page);
+  const account = "GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRSTUVW";
+  await page.goto(`/faq?source=${account}#${account}`);
+  if (!UMAMI_ID) {
+    await page.waitForLoadState("networkidle");
+    expect(beacons).toEqual([]);
+    return;
+  }
+  await expect.poll(() => beacons.length).toBeGreaterThan(0);
+  for (const beacon of beacons) {
+    expect(beacon.method()).toBe("POST");
+    expect(new URL(beacon.url()).pathname).toBe("/api/send");
+    const { payload } = beacon.postDataJSON() as {
+      payload: { website: string; url: string; referrer?: string };
+    };
+    expect(payload.website).toBe(UMAMI_ID);
+    const url = new URL(payload.url, page.url());
+    expect(url.pathname).toBe("/faq");
+    expect(url.search).toBe("");
+    expect(url.hash).toBe("");
+    expect(JSON.stringify(payload)).not.toContain(account);
+  }
+});
+
+test("no app, sign-in, signing or 404 route loads Umami or allows it in its policy", async ({
+  request,
+}) => {
+  for (const path of new Set([...NONCE_PATHS, ...WEBUSB_PATHS])) {
+    const res = await request.get(path);
+    const served = `${csp(res)}\n${await res.text()}`;
+    expect(served, path).not.toMatch(/umami/i);
+    expect(served, path).not.toContain(UMAMI_SCRIPT);
+  }
+});
+
+test("the pinned Umami tracker is served from this origin as JavaScript", async ({ request }) => {
+  const res = await request.get(UMAMI_SCRIPT);
+  expect(res.status()).toBe(200);
+  expect(res.headers()["content-type"]).toMatch(/^(application|text)\/javascript\b/);
+  expect(await res.text()).toMatch(/^\/\*! Umami tracker/);
 });
 
 test("the homepage alone carries the discovery Link header", async ({ request }) => {

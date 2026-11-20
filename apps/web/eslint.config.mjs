@@ -283,7 +283,7 @@ const appZones = {
 const NOT_SHIPPED = ["tests/**", "scripts/**"];
 
 const config = [
-  { ignores: [".next/**", "node_modules/**", "next-env.d.ts"] },
+  { ignores: [".next/**", "node_modules/**", "next-env.d.ts", "public/a/**"] },
   ...coreWebVitals,
   prettier,
   { files: ["**/*.{ts,tsx}"], rules: { "@typescript-eslint/no-explicit-any": "error" } },

@@ -1,4 +1,4 @@
-import { expect, type Page, type Route } from "@playwright/test";
+import { expect, test, type Page, type Request, type Route } from "@playwright/test";
 import { Account, Keypair, Networks, Operation, TransactionBuilder } from "@stellar/stellar-sdk";
 import type {
   AccountState,
@@ -543,16 +543,37 @@ export const ESTIMATE: RecoveryEstimate = {
   },
 };
 
+/** Umami's collector. The a11y build carries a placeholder website id, so its beacons are
+ *  answered here and never leave the test. */
+export const UMAMI_COLLECTOR = "https://gateway.umami.is";
+
+/** Answers every request to Umami's collector with an empty 204 and returns them as they arrive. */
+export async function routeUmamiCollector(page: Page): Promise<Request[]> {
+  const beacons: Request[] = [];
+  await page.route(
+    (url) => url.origin === UMAMI_COLLECTOR,
+    (route) => {
+      beacons.push(route.request());
+      return route.fulfill({ status: 204, headers: { "access-control-allow-origin": "*" } });
+    }
+  );
+  return beacons;
+}
+
 export async function installApiFixtures(page: Page): Promise<{ expectAllAnswered(): void }> {
   const unanswered: string[] = [];
   let busyOnceReads = 0;
+  const appOrigin = new URL(test.info().project.use.baseURL!).origin;
+
+  await routeUmamiCollector(page);
 
   await page.route(WALLET_CONNECT_HOSTS, (route) => route.abort());
   await page.routeWebSocket(WALLET_CONNECT_HOSTS, (socket) => socket.close());
   await page.route(isPollarHost, (route) => route.abort());
   await page.routeWebSocket(isPollarHost, (socket) => socket.close());
 
-  await page.route("**/api/**", async (route) => {
+  const isAppApi = (url: URL) => url.origin === appOrigin && url.pathname.startsWith("/api/");
+  await page.route(isAppApi, async (route) => {
     const request = route.request();
     const { pathname } = new URL(request.url());
     const method = request.method();

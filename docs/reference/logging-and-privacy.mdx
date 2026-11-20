@@ -75,15 +75,22 @@ Logs go to standard output, Cloud Run forwards them to Cloud Logging, and retent
 
 ## Page analytics
 
-The logs above are the API's. The web app separately reports page views to one analytics tool, loaded from the document every root layout renders (`apps/web/app/root-document.tsx`):
+The logs above are the API's. The web app separately reports page views to two analytics tools. Vercel Web Analytics is loaded from the document every root layout renders (`apps/web/app/root-document.tsx`). Umami Cloud is loaded only from the marketing root layouts (`apps/web/app/(marketing)/layout.tsx` and `apps/web/app/(marketing-es)/layout.tsx`, through `apps/web/components/analytics/UmamiAnalytics.tsx`). Its tracker is a pinned copy of Umami's script served from this site (`apps/web/public/a/`), so no third-party code runs on the site; only the page-view beacons leave it, to Umami's collector:
 
-| Tool                 | When it loads | What it receives                |
-| -------------------- | ------------- | ------------------------------- |
-| Vercel Web Analytics | On every page | The address of each page viewed |
+| Tool                 | When it loads                                                                                                                                                                                                                                       | What it receives                                                                                                                            |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Vercel Web Analytics | On every page                                                                                                                                                                                                                                       | The address of each page viewed                                                                                                             |
+| Umami Cloud          | Only on the marketing pages (the landing page, how it works, the FAQ, the security pages, the blog, the registry, stats, content and playground pages, in English and in Spanish), and only when the deployment sets `NEXT_PUBLIC_UMAMI_WEBSITE_ID` | The address and title of each page viewed, the page the visitor came from, the site's host name, and the browser's screen size and language |
+
+Umami never loads on the app (`/mainnet`, `/testnet` and every step under them: analyze, review, execute, allowances, complete and receipts), the API keys page, the cosign station or a 404, which are the pages where a wallet connects, a secret key can be entered or a transaction is signed. Those pages keep a Content Security Policy that allows no Umami host. On the marketing pages that carry the Umami tag, the only Umami origin the policy allows is its collector (`https://gateway.umami.is`, in `connect-src`); the tracker itself runs as a same-origin script.
 
 Every address is redacted in the browser before an event is sent (`apps/web/lib/analytics/redact.ts`):
 
-- The query string and the fragment are dropped, so a parameter such as `?source=` or `?address=` never reaches it.
+- The query string and the fragment are dropped, so a parameter such as `?source=` or `?address=` never reaches either tool.
 - A saved receipt's id is replaced with `[id]`: `/mainnet/receipt/<id>` is reported as `/mainnet/receipt/[id]`.
 
-The web app sends no custom events, so no account address, transaction data, memo or key reaches it.
+For Umami, the page the visitor came from is redacted the same way, and its script is also configured to leave out the query and the fragment itself (`data-exclude-search`, `data-exclude-hash`). The build refuses a marketing page that loads Umami without those settings and the redaction hook. Page titles are fixed text and never contain an address. The web app sends no custom events, so no account address, transaction data, memo or key reaches either tool.
+
+### Updating the pinned Umami tracker
+
+Fetch `https://cloud.umami.is/script.js`, put the license comment of the current copy on its first line with the new fetch date and SHA-256, and save it as `apps/web/public/a/u-<first 12 hex characters of the new file's SHA-256>.js` in place of the old file. Then point `UMAMI_SCRIPT` in `apps/web/config/marketing-csp.mjs` and the license file at the new name, and update both pins in `apps/web/tests/unit/umami-tracker-pin.test.ts`. Read the diff of the script itself before committing: the pin exists so that a change in it is reviewed.
