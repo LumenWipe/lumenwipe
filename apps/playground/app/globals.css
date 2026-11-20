@@ -129,6 +129,16 @@
   backdrop-filter: blur(8px);
 }
 
+/* The scene beside the controls: pinned below the header while the controls scroll, only where
+   the whole panel fits under it, so no part of the scene is ever cut off. */
+@media (min-width: 1024px) and (min-height: 760px) {
+  .scene-sticky {
+    position: sticky;
+    top: 5rem;
+    align-self: start;
+  }
+}
+
 /* Animated corner ticks for the instrument panel */
 .mkt-ticks::before,
 .mkt-ticks::after {

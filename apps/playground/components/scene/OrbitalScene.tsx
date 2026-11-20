@@ -14,6 +14,7 @@ import OrbitalNode from "./OrbitalNode";
 import CoreAccount from "./CoreAccount";
 import SceneLegend from "./SceneLegend";
 import SceneList from "./SceneList";
+import ScenePreview, { ScenePreviewCaption } from "./ScenePreview";
 
 type SceneView = "orbit" | "list";
 
@@ -120,6 +121,7 @@ export default function OrbitalScene() {
             />
           ))}
 
+          <ScenePreview />
           <CoreAccount still={still} />
 
           {nodes.length > 0 && (
@@ -155,6 +157,7 @@ export default function OrbitalScene() {
           )}
         </div>
       )}
+      <ScenePreviewCaption />
     </MotionConfig>
   );
 }
