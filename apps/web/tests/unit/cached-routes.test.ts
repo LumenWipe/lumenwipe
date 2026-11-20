@@ -10,8 +10,9 @@ import * as serverClient from "@/lib/api/server-client";
 const WEB_ROOT = join(import.meta.dir, "..", "..");
 const API_DIR = join(WEB_ROOT, "app", "api");
 const DOCS = join(WEB_ROOT, "..", "..", "docs", "architecture.md");
-/** Both networks' figures in one body, so no network can be served the other's. */
-const NETWORK_FREE = ["/api/stats", "/api/stats/feed"];
+/** Both networks' figures in one body, so no network can be served the other's, or a body that
+ *  names no network: the web's own health and the status summary. */
+const NETWORK_FREE = ["/api/health", "/api/stats", "/api/stats/feed", "/api/status"];
 
 function routeFiles(dir = API_DIR): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {

@@ -31,7 +31,12 @@ const RETRY_AFTER = "31";
 
 /** The routes that never ask the per-IP limiter: they attach no key and read nothing per caller
  *  that the API does not already cache. A new route outside this list must answer 429 here. */
-const UNLIMITED = ["/health/route.ts", "/stats/route.ts", "/stats/feed/route.ts"];
+const UNLIMITED = [
+  "/health/route.ts",
+  "/stats/route.ts",
+  "/stats/feed/route.ts",
+  "/status/route.ts",
+];
 
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
 

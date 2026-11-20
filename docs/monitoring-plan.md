@@ -310,6 +310,31 @@ request waited on each of `horizon`, `paths`, `defi`, `indexer`, `soroswap`, `xb
 other as `rpc.other`). Each value is the summed wall-clock time of that key's calls, so concurrent calls can add up
 to more than the request's `latencyMs`.
 
+### Status page probes (planned)
+
+A hosted status page, on a provider other than the ones that run the API and the web app, will probe from
+outside our network once a minute. It is not live yet; until it is, nothing below runs. Each component has
+three states: operational, degraded and outage.
+
+| Group        | Component                     | What the probe checks                                                                                                    |
+| ------------ | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| LumenWipe    | API                           | `GET /health` answers `200`. It is dependency-free, so it proves the process is up, not that a close works               |
+| LumenWipe    | Web app                       | `GET /api/health` on the web answers `200`; it asks the API's `/health` with a 2.5 s budget and is cached for 10 seconds |
+| LumenWipe    | Docs and playground           | Each site's home page answers `200`                                                                                      |
+| LumenWipe    | Account analysis and planning | A read-only analyze and plan of a public fixture account: no signing and no submit                                       |
+| Dependencies | Stellar RPC, per network      | `GET /health/deep` answers `200`, shown as one row per network                                                           |
+| Dependencies | Horizon-compatible provider   | The provider the API reads account state from, per network                                                               |
+| Dependencies | Indexer                       | Only when one is configured                                                                                              |
+
+A dependency outage shows on its own row and does not mark the API as down. No startup or liveness probe points
+at `/health/deep`. The page shows no uptime figure until 30 days of measurement exist, as
+[service levels](/service-levels#status) requires.
+
+The site banner reads the page's summary through the web's `/api/status` route, server-side, cached for 60
+seconds, with a 3 second budget and no redirects followed. It names the close-flow components that are degraded or
+down and links to the page. It shows nothing when everything is operational, when `STATUS_SOURCE_URL` is unset
+(the default) or not `https`, and when the status host cannot be read, so it never reads as an all-clear.
+
 ## 5. What happens when an alert fires?
 
 | Monitor ID              | Severity | Response                                                                                                                                                                                                                                           | Owner       | Status                                | Last reviewed |
