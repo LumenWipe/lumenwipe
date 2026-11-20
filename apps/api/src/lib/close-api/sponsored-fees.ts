@@ -8,6 +8,13 @@ import {
   signerNormalizationOpCount,
 } from "@/lib/stellar/tx-builder/signers";
 import { xlmToStroops } from "@/lib/utils/amounts";
+import {
+  POOL_ROUND_BATCH_SIZE,
+  plannedPoolWithdrawals,
+  poolProceedsPerAsset,
+  poolWithdrawalOpCount,
+} from "@/lib/stellar/tx-builder/pool-withdrawal";
+import { batchItems } from "@/lib/stellar/tx-builder/batching";
 
 /** A transaction's fee, and whether the fee sponsor's rule accepts every operation in it. */
 export interface FeeChunk {
@@ -107,13 +114,14 @@ export interface ClassicFeeProjection {
   shortStroops: bigint;
   /** Whether the round that closes the account carries a transaction the sponsor would refuse. */
   closeRoundRefused: boolean;
-  /** What a normalization round, or a claim round, must leave the account for the rounds after it. */
-  laterOwnStroops: { afterNormalization: bigint; afterClaims: bigint };
+  /** What a normalization round, a pool round or a claim round must leave the account for the
+   *  rounds after it. */
+  laterOwnStroops: { afterNormalization: bigint; afterPools: bigint; afterClaims: bigint };
 }
 
 /**
  * The classic rounds still ahead of this state, as the build will pack them: signer normalization
- * when it comes first, the claims (one round's batch, as the plan's reserve check counts them),
+ * when it comes first, the pool withdrawals (which the sponsor never pays), the claims (one round's batch, as the plan's reserve check counts them),
  * then the close. Each claim round's new trustlines raise the
  * floor by a base reserve and are disposed of and removed in the close. XLM a claim brings in is
  * not counted, since another claimant can take the balance first, so the projection can only ask
@@ -148,9 +156,16 @@ export function projectClassicFees(
     sponsorConfigured
   );
 
+  const pools = batchItems(plannedPoolWithdrawals(state), POOL_ROUND_BATCH_SIZE).flatMap((round) =>
+    chunksOf(repeat(poolWithdrawalOpCount(round), false), sponsorConfigured)
+  );
+
   const held = new Set(state.trustlines.map((t) => t.asset));
   const opened = [...toAdd].filter((asset) => !held.has(asset));
-  const claimed = new Set(due.filter((b) => b.asset !== "native").map((b) => b.asset));
+  const claimed = new Set([
+    ...due.filter((b) => b.asset !== "native").map((b) => b.asset),
+    ...poolProceedsPerAsset(state).keys(),
+  ]);
   const close = chunksOf(
     closeRoundSponsorable(
       state,
@@ -165,12 +180,13 @@ export function projectClassicFees(
 
   const reserves = BigInt(xlmToStroops(BASE_RESERVE_XLM.toFixed(7))) * BigInt(opened.length);
   const afterClaims = reserves + ownFees(close);
-  const afterNormalization = ownFees(claims) + afterClaims;
+  const afterPools = ownFees(claims) + afterClaims;
+  const afterNormalization = ownFees(pools) + afterPools;
   const spare = BigInt(xlmToStroops(state.nativeBalanceLumens)) - feeFloorStroops(state);
   const owed = ownFees(normalization) + afterNormalization;
   return {
     shortStroops: owed > 0n && owed > spare ? owed - spare : 0n,
     closeRoundRefused: close.some((c) => !c.sponsorable),
-    laterOwnStroops: { afterNormalization, afterClaims },
+    laterOwnStroops: { afterNormalization, afterPools, afterClaims },
   };
 }

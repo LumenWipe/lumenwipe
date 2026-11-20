@@ -21,7 +21,10 @@ function stepsOf(op: IntentOperation, account: string): CoveredStep[] {
     case "manage_sell_offer":
       return [{ type: "CANCEL_OFFERS" }];
     case "change_trust":
+      if (op.pool) return [{ type: "WITHDRAW_POOL_SHARES" }];
       return [{ type: Number(op.limit) === 0 ? "REMOVE_TRUSTLINES" : "ADD_TRUSTLINE_FOR_CLAIM" }];
+    case "liquidity_pool_withdraw":
+      return [{ type: "WITHDRAW_POOL_SHARES" }];
     case "claim_claimable_balance":
       return [{ type: "CLAIM_BALANCES" }];
     case "payment":

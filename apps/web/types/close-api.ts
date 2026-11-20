@@ -80,7 +80,22 @@ export type IntentOperationBody =
       path: string[];
     }
   | { type: "payment"; destination: string; asset: string; amount: string }
-  | { type: "change_trust"; asset: string; limit: string }
+  | {
+      type: "change_trust";
+      asset: string;
+      limit: string;
+      /** The pool parameters a pool share line carries, which its pool id is the hash of. Absent
+       *  for an asset trustline. */
+      pool?: { assetA: string; assetB: string; fee: number };
+    }
+  | {
+      type: "liquidity_pool_withdraw";
+      /** 64-character hex pool id. */
+      poolId: string;
+      amount: string;
+      minAmountA: string;
+      minAmountB: string;
+    }
   | { type: "account_merge"; destination: string }
   | { type: "manage_sell_offer"; offerId: string; amount: string }
   | { type: "manage_data"; name: string; value: string | null }

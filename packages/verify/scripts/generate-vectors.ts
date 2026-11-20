@@ -16,8 +16,11 @@ import { fileURLToPath } from "node:url";
 import {
   Account,
   Asset,
+  getLiquidityPoolId,
   hash,
   Keypair,
+  LiquidityPoolAsset,
+  LiquidityPoolFeeV18,
   Memo,
   nativeToScVal,
   Networks,
@@ -434,6 +437,90 @@ reject(
   ]),
   "trustline_not_removal",
   "A trustline would be created or raised, not removed."
+);
+
+// --- A classic liquidity pool withdrawn ahead of the close -----------------------------------
+
+const XLM_USDC_POOL = new LiquidityPoolAsset(Asset.native(), USDC, LiquidityPoolFeeV18);
+const EURT_USDC_POOL = new LiquidityPoolAsset(EURT, USDC, LiquidityPoolFeeV18);
+const poolIdOf = (line: LiquidityPoolAsset): string =>
+  Buffer.from(getLiquidityPoolId("constant_product", line.getLiquidityPoolParameters())).toString(
+    "hex"
+  );
+const POOL_ID = poolIdOf(XLM_USDC_POOL);
+const poolWithdraw = (over: Partial<Parameters<typeof Operation.liquidityPoolWithdraw>[0]> = {}) =>
+  Operation.liquidityPoolWithdraw({
+    liquidityPoolId: POOL_ID,
+    amount: "70",
+    minAmountA: "99",
+    minAmountB: "49.5",
+    ...over,
+  });
+const poolLineRemoval = (line = XLM_USDC_POOL) =>
+  Operation.changeTrust({ asset: line, limit: "0" });
+
+const poolRound = accept(
+  "liquidity-pool-withdrawal",
+  "Withdraws all 70 shares the account holds in an XLM/USDC pool of 1000 XLM and 500 USDC against 700 shares, at minimums 1% under the 100 XLM and 50 USDC those reserves give, then removes the pool share trustline.",
+  build([poolWithdraw(), poolLineRemoval()]),
+  expectation({
+    poolWithdrawals: {
+      [POOL_ID]: {
+        shares: "700000000",
+        reserveA: "10000000000",
+        reserveB: "5000000000",
+        totalShares: "7000000000",
+      },
+    },
+  })
+);
+reject(
+  poolRound,
+  "pool-withdrawal-swapped-pool",
+  "Withdraws from the EURT/USDC pool, which the account holds no shares in.",
+  build([poolWithdraw({ liquidityPoolId: poolIdOf(EURT_USDC_POOL) }), poolLineRemoval()]),
+  "pool_not_held",
+  "A withdrawal names a liquidity pool your account holds no shares in."
+);
+reject(
+  poolRound,
+  "pool-withdrawal-changed-amount",
+  "Withdraws 69 shares instead of the 70 the account holds.",
+  build([poolWithdraw({ amount: "69" }), poolLineRemoval()]),
+  "pool_withdraw_amount_mismatch",
+  "A pool withdrawal does not withdraw exactly the shares your account holds."
+);
+reject(
+  poolRound,
+  "pool-withdrawal-zero-minimum",
+  "Sets the XLM minimum to zero.",
+  build([poolWithdraw({ minAmountA: "0" }), poolLineRemoval()]),
+  "pool_withdraw_min_missing",
+  "A pool withdrawal has no minimum for an asset the pool pays out."
+);
+reject(
+  poolRound,
+  "pool-withdrawal-minimum-below-floor",
+  "Sets the USDC minimum to 1 USDC, far under the 50 the reserves give.",
+  build([poolWithdraw({ minAmountB: "1" }), poolLineRemoval()]),
+  "pool_withdraw_min_below_floor",
+  "A pool withdrawal would accept less than the pool's reserves give. If the pool moved since the analysis, run it again."
+);
+reject(
+  poolRound,
+  "pool-withdrawal-inflated-minimum",
+  "Sets the XLM minimum to 150 XLM, more than the 100 the reserves give.",
+  build([poolWithdraw({ minAmountA: "150" }), poolLineRemoval()]),
+  "pool_withdraw_min_above_reserves",
+  "A pool withdrawal asks for more than the pool's reserves give. If the pool moved since the analysis, run it again."
+);
+reject(
+  poolRound,
+  "pool-line-of-another-pool",
+  "Removes the share trustline whose asset pair and fee hash to the EURT/USDC pool, not the pool withdrawn from.",
+  build([poolWithdraw(), poolLineRemoval(EURT_USDC_POOL)]),
+  "pool_not_held",
+  "A trustline change names a liquidity pool your account holds no shares in."
 );
 
 // --- A multisig close -----------------------------------------------------------------------

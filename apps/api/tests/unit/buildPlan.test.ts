@@ -404,8 +404,10 @@ test("buildPlan › numSponsoring = 0 → no sponsoring blocker", () => {
   expect(blockers.every((b) => !b.message.includes("sponsoring"))).toBe(true);
 });
 
-test("buildPlan › pool shares present → blocker emitted", () => {
-  const account = makeAccount({ poolShares: [{ poolId: "a".repeat(64) }] });
+test("buildPlan › a pool the read could not see into → blocker emitted", () => {
+  const account = makeAccount({
+    poolShares: [{ poolId: "a".repeat(64), balance: "1.0000000", pool: null }],
+  });
   const { blockers } = buildPlan(ALL_ON, account, false);
   expect(blockers.some((b) => b.message.includes("pool"))).toBe(true);
 });
@@ -435,7 +437,10 @@ test("buildPlan › each merge blocker carries its registered code", () => {
   const cases: Array<[Partial<AccountState>, string]> = [
     [{ authImmutable: true }, "account_auth_immutable"],
     [{ numSponsoring: 2 }, "sponsorship_unenumerated"],
-    [{ poolShares: [{ poolId: "a".repeat(64) }] }, "liquidity_pool_shares_held"],
+    [
+      { poolShares: [{ poolId: "a".repeat(64), balance: "1.0000000", pool: null }] },
+      "liquidity_pool_shares_held",
+    ],
     [{ subEntryMismatch: true }, "subentries_unenumerated"],
     [
       {
@@ -1579,12 +1584,14 @@ test("buildPlan › sponsored claimable-balance blocker message is exact", () =>
   );
 });
 
-test("buildPlan › pool-share blocker message is exact", () => {
-  const account = makeAccount({ poolShares: [{ poolId: "p1" }] });
+test("buildPlan › unread-pool blocker message is exact", () => {
+  const account = makeAccount({
+    poolShares: [{ poolId: "ab".repeat(32), balance: "1.0000000", pool: null }],
+  });
   const { blockers } = buildPlan(ALL_ON, account, false);
   expect(blockers[0]!.message).toBe(
-    "This account holds 1 liquidity pool share(s). Withdraw from the pool using a DEX interface " +
-      "(e.g. Stellar Expert) before continuing."
+    "The liquidity pool ababab…ababab this account holds shares in could not be read, so its " +
+      "withdrawal cannot be planned. Analyze the account again."
   );
 });
 

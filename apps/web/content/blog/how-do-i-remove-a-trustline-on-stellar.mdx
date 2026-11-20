@@ -35,7 +35,7 @@ Before a trustline can go, its balance has to reach zero. You have three ways to
 
 Some balances cannot be moved at all. If the issuer has withdrawn its authorization for your trustline, the balance can be neither sent nor sold, and the trustline cannot be removed. Only the issuer can restore the authorization.
 
-Liquidity pool shares are a special case. A pool share trustline is removed only after you withdraw from the pool, which you do outside the close.
+Liquidity pool shares are a special case. A pool share trustline is removed only after its shares are withdrawn from the pool, and the trustlines of the pool's two assets cannot be removed while it is still there.
 
 ## How LumenWipe handles it
 
@@ -44,7 +44,8 @@ LumenWipe counts the account's trustlines on the analyze screen and asks you wha
 - When a route to XLM exists, the card recommends a swap to XLM on the DEX and shows the quote: about how much XLM you get, and the least you will accept. It also offers to return the balance to the issuer or send it to another account. The swap is built with a minimum: it refuses to deliver less XLM than the minimum the plan shows.
 - When no route exists, or the balance is too small to swap, the card says so and offers to return the balance to the issuer or send it to another account.
 - When you choose to send a balance to another account, LumenWipe reads that account from the network before the close is built. It refuses the transfer when the account holds no trustline for the asset, when its trustline is not authorized by the issuer, or when the amount does not fit under its trustline limit, and tells you which.
-- A trustline the issuer has deauthorized or limited while it still holds a balance shows as a blocker that names the asset. Pool shares show as a blocker too, telling you to withdraw from the pool first.
+- A trustline the issuer has deauthorized or limited while it still holds a balance shows as a blocker that names the asset.
+- Liquidity pool shares are withdrawn as part of the close, in a transaction of their own before the rest of it, and the pool share trustline is removed with them. What the pool pays back is then converted, returned or sent like any other balance, as you chose.
 
 The order is the same for every account. If no single key of the account can sign every step, the extra signers are removed first, in a transaction of their own. Any claimable balances you chose to claim come next, in their own transaction, with any trustline a claim needs added just before it. Once those are confirmed, LumenWipe builds the close itself, which removes the extra signers if that did not happen first, then clears data entries, cancels open offers, converts, returns or sends each remaining balance, removes the trustlines and merges the account last. A close with more than 100 operations is split into several transactions in that same order.
 

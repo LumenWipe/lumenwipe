@@ -79,9 +79,29 @@ function normalizeOp(op: Transaction["operations"][number]): IntentOperationBody
       };
     case "changeTrust": {
       const line = op.line;
-      const asset = "getCode" in line ? assetToString(line) : `pool:${line.toString()}`;
-      return { type: "change_trust", asset, limit: op.limit };
+      if ("getCode" in line) {
+        return { type: "change_trust", asset: assetToString(line), limit: op.limit };
+      }
+      const params = line.getLiquidityPoolParameters();
+      return {
+        type: "change_trust",
+        asset: `pool:${line.toString()}`,
+        limit: op.limit,
+        pool: {
+          assetA: assetToString(params.assetA),
+          assetB: assetToString(params.assetB),
+          fee: params.fee,
+        },
+      };
     }
+    case "liquidityPoolWithdraw":
+      return {
+        type: "liquidity_pool_withdraw",
+        poolId: op.liquidityPoolId,
+        amount: op.amount,
+        minAmountA: op.minAmountA,
+        minAmountB: op.minAmountB,
+      };
     case "accountMerge":
       return { type: "account_merge", destination: op.destination };
     case "manageSellOffer":

@@ -70,7 +70,7 @@ test("detectSubEntryMismatch › pool shares weigh 2 sub-entries each", () => {
     trustlines: [],
     openOffers: [],
     dataEntries: [],
-    poolShares: [{ poolId: "a".repeat(64) }],
+    poolShares: [{ poolId: "a".repeat(64), balance: "1.0000000", pool: null }],
     numSubEntries: 2,
   };
   expect(detectSubEntryMismatch(scan)).toBe(false);

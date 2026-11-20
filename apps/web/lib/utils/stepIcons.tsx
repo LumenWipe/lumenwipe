@@ -9,6 +9,7 @@ import {
   GitMerge,
   ShieldOff,
   Layers,
+  Droplets,
 } from "lucide-react";
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -18,6 +19,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   CANCEL_OFFERS: BarChart2,
   ADD_TRUSTLINE_FOR_CLAIM: Link2,
   CLAIM_BALANCES: Target,
+  WITHDRAW_POOL_SHARES: Droplets,
   DEFI_POSITIONS: Layers,
   EXIT_POSITIONS: Layers,
   HANDLE_ASSETS: ArrowLeftRight,

@@ -68,6 +68,7 @@ import {
   tokenConversionProviders,
 } from "@/lib/close-api/decisions";
 import { ARRIVING_ASSET_PROBE_AMOUNT, assetsArrivingFromExits } from "@/lib/close-api/exit-payouts";
+import { addAmounts, poolProceedsPerAsset } from "@/lib/stellar/tx-builder/pool-withdrawal";
 import { DEFI_POSITIONS_UNAVAILABLE_CODE } from "@/lib/defi-positions/positions-gate";
 import { preflightExitTargets } from "@/lib/defi-exits/exit-round";
 import { planExitSteps, type ExitPreflight } from "@/lib/defi-exits/plan-exits";
@@ -221,7 +222,11 @@ export async function buildAccountPlan(
   // one asset raced their answers into convertibility[asset] - last write won, so the
   // offered options could flap between re-plans.
   const claimableBalanceSelections = resolveClaimSelections(decisions, accountState);
-  const claimedPerAsset = claimedAmountsPerAsset(accountState, claimableBalanceSelections);
+  // Priced with what the pool withdrawals pay in, at the reserves this read saw.
+  const claimedPerAsset = addAmounts(
+    claimedAmountsPerAsset(accountState, claimableBalanceSelections),
+    poolProceedsPerAsset(accountState)
+  );
   const pricedAssets = pricedAmountsPerAsset(accountState, claimedPerAsset);
   const priceSourceUnavailable = new Set<string>();
   const dustAssets = new Set<string>();

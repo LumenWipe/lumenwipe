@@ -79,6 +79,7 @@ function classicOpsBound(state: AccountState): number {
     state.openOffers.length +
     2 * state.trustlines.length +
     2 * state.claimableBalances.length +
+    2 * state.poolShares.length +
     state.sponsoredEntries.length +
     1
   );

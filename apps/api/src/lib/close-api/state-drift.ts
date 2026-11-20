@@ -66,8 +66,10 @@ function findEntryDrift(state: AccountState, live: LiveLedger): string | null {
     }
   }
   for (const share of state.poolShares) {
-    if (!live.trustlines.has(poolShareKey(share.poolId))) {
-      return `pool share ${share.poolId} no longer exists`;
+    const line = live.trustlines.get(poolShareKey(share.poolId));
+    if (!line) return `pool share ${share.poolId} no longer exists`;
+    if (line.balance !== BigInt(xlmToStroops(share.balance))) {
+      return `pool share ${share.poolId} balance changed`;
     }
   }
   for (const offer of state.openOffers) {

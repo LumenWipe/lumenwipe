@@ -77,6 +77,14 @@ const SAMPLES: { [T in IntentOperation["type"]]: Extract<IntentOperation, { type
     path: [],
   },
   claim_claimable_balance: { type: "claim_claimable_balance", source: SOURCE, balanceId: "abc" },
+  liquidity_pool_withdraw: {
+    type: "liquidity_pool_withdraw",
+    source: SOURCE,
+    poolId: "ab".repeat(32),
+    amount: "1",
+    minAmountA: "0.5",
+    minAmountB: "0.5",
+  },
   revoke_sponsorship: {
     type: "revoke_sponsorship",
     source: SOURCE,
@@ -113,6 +121,7 @@ describe("every close operation type has a decided scene action", () => {
     account_merge: { type: "merge" },
     path_payment_strict_send: { type: "pulse", nodeId: "tl:AIRDROP1" },
     claim_claimable_balance: null,
+    liquidity_pool_withdraw: null,
     revoke_sponsorship: null,
     invoke_host_function: null,
     unknown: null,

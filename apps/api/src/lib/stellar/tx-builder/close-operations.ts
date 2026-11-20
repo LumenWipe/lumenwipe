@@ -20,6 +20,7 @@ import { claimBalanceOps } from "./claimable-balances";
 import { trustlineAddForClaimOps, trustlineRemovalOps } from "./trustlines";
 import { mergeOp } from "./merge";
 import { revokeSponsorshipOps } from "./sponsorship";
+import { poolWithdrawalOps, type PoolWithdrawal } from "./pool-withdrawal";
 import { batchItems } from "./batching";
 
 /**
@@ -44,6 +45,8 @@ export interface CloseOperationsInput {
   revokeSponsorshipEntries: SponsoredEntry[];
   dataEntries: DataEntry[];
   openOffers: OpenOffer[];
+  /** Pools to withdraw every share from, each followed by the removal of its share line. */
+  poolWithdrawals?: PoolWithdrawal[];
   /** Balances the account can claim without further remediation. */
   claimableBalances: ClaimableBalance[];
   /** Balances that need a trustline added first (the claim-remediation path) - claimed in the
@@ -96,7 +99,7 @@ export interface TaggedCloseOp {
  * Assembles the ordered close operations, each tagged with its plan step. Pure:
  * account id and input in, tagged operations out, no network side effects. Order
  * is fixed: signer normalization, revoking sponsorship of this account's own
- * sponsored subentries, data removal, offer cancellation, trustlines added
+ * sponsored subentries, data removal, offer cancellation, pool share withdrawal, trustlines added
  * for claim remediation, claimable-balance claiming, per-asset disposition, trustline
  * removal, and (for direct destinations) the account merge - so by the time accountMerge
  * runs every subentry is already gone. Sponsorship revocation runs right after signer
@@ -120,6 +123,7 @@ export function assembleCloseOpsTagged(
   push("REVOKE_SPONSORSHIP", revokeSponsorshipOps(input.revokeSponsorshipEntries));
   push("REMOVE_DATA_ENTRIES", dataEntryRemovalOps(input.dataEntries));
   push("CANCEL_OFFERS", offerCancellationOps(input.openOffers));
+  push("WITHDRAW_POOL_SHARES", poolWithdrawalOps(input.poolWithdrawals ?? []));
   push("ADD_TRUSTLINE_FOR_CLAIM", trustlineAddForClaimOps(input.trustlinesToAddForClaim));
   push("CLAIM_BALANCES", claimBalanceOps(input.claimableBalances));
   // A switch rather than a ternary, so adding a fourth disposition is a compile error here

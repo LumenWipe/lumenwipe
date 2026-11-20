@@ -30,7 +30,7 @@ import {
   chosenTransfers,
   closeDecisions,
 } from "@/lib/api/close-decisions";
-import { verifyCloseTransaction } from "@/lib/stellar/verify";
+import { poolWithdrawalExpectations, verifyCloseTransaction } from "@/lib/stellar/verify";
 import { confirmedMemo } from "@/lib/plan/memo-field";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import { requiredSignatureWeight } from "@/lib/stellar/thresholds";
@@ -577,6 +577,7 @@ export function useCloseExecution() {
                     accountState
                   ),
                   ...exitExpectations(accountState, network),
+                  poolWithdrawals: poolWithdrawalExpectations(accountState),
                 },
               });
             },
@@ -1179,6 +1180,7 @@ export function useCloseExecution() {
             accountState
           ),
           ...exitExpectations(accountState, network),
+          poolWithdrawals: poolWithdrawalExpectations(accountState),
         },
       });
 

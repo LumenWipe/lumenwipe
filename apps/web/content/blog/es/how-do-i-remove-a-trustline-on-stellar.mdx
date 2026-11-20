@@ -35,7 +35,7 @@ Antes de que una trustline pueda desaparecer, su saldo tiene que llegar a cero. 
 
 Algunos saldos no se pueden mover en absoluto. Si el emisor retiró la autorización de tu trustline, el saldo no se puede enviar ni vender, y la trustline no se puede eliminar. Solo el emisor puede restablecer la autorización.
 
-Las pool shares (participaciones en un pool de liquidez AMM) son un caso especial. Una trustline de pool shares solo se elimina después de que retiras tu parte del pool, algo que haces fuera del cierre.
+Las pool shares (participaciones en un pool de liquidez AMM) son un caso especial. Una trustline de pool shares solo se elimina después de retirar sus participaciones del pool, y las trustlines de los dos activos del pool no se pueden eliminar mientras siga ahí.
 
 ## Cómo lo resuelve LumenWipe
 
@@ -44,7 +44,8 @@ LumenWipe cuenta las trustlines de la cuenta en la pantalla de análisis y te pr
 - Cuando existe una ruta a XLM, la tarjeta recomienda un swap a XLM en el DEX y muestra la cotización: más o menos cuánto XLM recibes y lo mínimo que aceptarás. También ofrece devolver el saldo al emisor o enviarlo a otra cuenta. El swap se construye con un mínimo: se niega a entregar menos XLM que el mínimo que muestra el plan.
 - Cuando no hay ruta, o el saldo es demasiado pequeño para un swap, la tarjeta lo dice y ofrece devolver el saldo al emisor o enviarlo a otra cuenta.
 - Cuando eliges enviar un saldo a otra cuenta, LumenWipe lee esa cuenta en la red antes de construir el cierre. Rechaza la transferencia cuando la cuenta no tiene una trustline para el activo, cuando el emisor no autorizó su trustline o cuando el monto no cabe bajo el límite de su trustline, y te dice cuál de esos casos es.
-- Una trustline que el emisor desautorizó o limitó mientras todavía tiene saldo aparece como un bloqueo que nombra el activo. Las pool shares también aparecen como un bloqueo, que te pide retirar tu parte del pool primero.
+- Una trustline que el emisor desautorizó o limitó mientras todavía tiene saldo aparece como un bloqueo que nombra el activo.
+- Las pool shares se retiran como parte del cierre, en una transacción propia antes del resto, y la trustline de pool shares se elimina con ellas. Lo que devuelve el pool se convierte, se devuelve o se envía como cualquier otro saldo, según lo que elegiste.
 
 El orden es el mismo para todas las cuentas. Si ninguna clave de la cuenta puede firmar por sí sola todos los pasos, primero se eliminan los signers (firmantes adicionales de la cuenta), en una transacción aparte. Después vienen los claimable balances (saldos reclamables) que elegiste reclamar, en su propia transacción, con cualquier trustline que necesite un reclamo agregada justo antes. Una vez confirmados, LumenWipe construye el cierre en sí, que elimina los signers si eso no pasó antes, luego borra las data entries (datos guardados en la cuenta), cancela las offers abiertas, convierte, devuelve o envía cada saldo restante, elimina las trustlines y hace el merge de la cuenta al final. Un cierre con más de 100 operaciones se divide en varias transacciones, en ese mismo orden.
 

@@ -4,7 +4,7 @@ description: "One-page overview: problem, solution, technical pillars, and roadm
 icon: "file-lines"
 ---
 
-LumenWipe is an open-source, non-custodial tool that cleanly closes a Stellar account and returns its locked XLM to the user. It unwinds everything that holds an account open (trustlines, offers, data entries, extra signers, claimable balances, and DeFi positions; classic liquidity pool shares are reported as a blocker to withdraw elsewhere first), converts whatever is left to XLM, and merges the account into a destination wallet or exchange. Its differentiator is full Soroban and DeFi support: the piece existing tools lack.
+LumenWipe is an open-source, non-custodial tool that cleanly closes a Stellar account and returns its locked XLM to the user. It unwinds everything that holds an account open (trustlines, offers, data entries, extra signers, claimable balances, classic liquidity pool shares, and DeFi positions), converts whatever is left to XLM, and merges the account into a destination wallet or exchange. Its differentiator is full Soroban and DeFi support: the piece existing tools lack.
 
 ## The problem
 
@@ -16,7 +16,7 @@ A guided web app that runs the whole wind-down in one flow and signs every trans
 
 ## What runs today
 
-The full wind-down runs. The API reads account state from the sources described in [the architecture](/architecture#5-data-sources-and-why-we-run-no-indexer) and builds every unsigned transaction; the browser verifies and signs it. That covers the classic path (signer normalization, data entry removal, offer cancellation, claimable balances, asset conversion, trustline removal, and `AccountMerge`), exits from Blend, Aquarius, Soroswap, Phoenix, and FxDAO (testnet only), Soroban token conversion, and the allowance inspector. Each protocol exit is exercised against testnet by integration tests. The mediator flow for exchange destinations and sponsored fees are available on testnet; mainnet follows the [monitoring plan](/monitoring-plan). The public REST API, the `@lumenwipe/sdk` client, the standalone `@lumenwipe/verify` package and a testnet playground are live for integrators.
+The full wind-down runs. The API reads account state from the sources described in [the architecture](/architecture#5-data-sources-and-why-we-run-no-indexer) and builds every unsigned transaction; the browser verifies and signs it. That covers the classic path (signer normalization, data entry removal, offer cancellation, claimable balances, classic liquidity pool withdrawal, asset conversion, trustline removal, and `AccountMerge`), exits from Blend, Aquarius, Soroswap, Phoenix, and FxDAO (testnet only), Soroban token conversion, and the allowance inspector. Each protocol exit is exercised against testnet by integration tests. The mediator flow for exchange destinations and sponsored fees are available on testnet; mainnet follows the [monitoring plan](/monitoring-plan). The public REST API, the `@lumenwipe/sdk` client, the standalone `@lumenwipe/verify` package and a testnet playground are live for integrators.
 
 ## How it works
 
@@ -32,7 +32,7 @@ Analyze the account, generate a deterministic ordered plan, execute it step by s
 
 ## What it covers
 
-- The full account wind-down: sponsorship and multisig checks, signer and threshold normalization, trustline, data entry, offer, and DeFi position removal, claimable balances, asset conversion, and merge with the mediator flow.
+- The full account wind-down: sponsorship and multisig checks, signer and threshold normalization, trustline, data entry, offer, classic liquidity pool, and DeFi position removal, claimable balances, asset conversion, and merge with the mediator flow.
 - Consumes an existing DeFi Position API, OctoPos, behind a pluggable adapter with an explicit degraded mode.
 - Open source under Apache 2.0, with a REST API and TypeScript SDK so wallets and platforms can integrate the same wind-down.
 

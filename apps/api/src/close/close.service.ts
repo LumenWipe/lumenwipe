@@ -23,6 +23,7 @@ import {
   DESTINATION_ACK_CHOICE,
 } from "@/lib/close-api/decisions";
 import { assetsArrivingFromExits } from "@/lib/close-api/exit-payouts";
+import { poolProceedsPerAsset } from "@/lib/stellar/tx-builder/pool-withdrawal";
 import { preflightErrorCode } from "@/lib/close-api/merge-preflight";
 import type { AccountReader } from "@/lib/close-api/transfer-destinations";
 import { parseDecisions } from "@/lib/close-api/parse-decisions";
@@ -296,6 +297,8 @@ export class CloseService {
         // from the other side: the trustline is empty at round 1, the exit fills it, and round 2
         // refused to build for an answer this endpoint had never asked for.
         ...assetsArrivingFromExits(accountState),
+        // And the ones a pool withdrawal will pay in, for the same reason.
+        ...poolProceedsPerAsset(accountState).keys(),
       ]);
       // A Soroban token balance does not stop the merge, which is exactly why it must be
       // answered: without a decision it would be left behind in silence.

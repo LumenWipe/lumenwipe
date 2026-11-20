@@ -20,6 +20,7 @@ export type PlanGroupType =
   | "CANCEL_OFFERS"
   | "CLAIM_BALANCES"
   | "DEFI_POSITIONS"
+  | "WITHDRAW_POOL_SHARES"
   | "HANDLE_ASSETS"
   | "REMOVE_TRUSTLINES"
   | "MERGE";

@@ -796,6 +796,17 @@ export type IntentOperationBody = {
     type: "change_trust";
     asset: string;
     limit: string;
+    pool?: {
+        assetA: string;
+        assetB: string;
+        fee: number;
+    };
+} | {
+    type: "liquidity_pool_withdraw";
+    poolId: string;
+    amount: string;
+    minAmountA: string;
+    minAmountB: string;
 } | {
     type: "account_merge";
     destination: string;
@@ -854,6 +865,16 @@ export interface IssuedIntegratorKey {
     key: string;
     // (undocumented)
     record: IntegratorKeyRecord;
+}
+
+// @public
+export interface LiquidityPoolState {
+    assetA: string;
+    assetB: string;
+    fee: number;
+    reserveA: string;
+    reserveB: string;
+    totalShares: string;
 }
 
 // @public
@@ -1143,6 +1164,8 @@ export interface PlanResponse {
 
 // @public (undocumented)
 export interface PoolShareEntry {
+    balance: string;
+    pool: LiquidityPoolState | null;
     // (undocumented)
     poolId: string;
 }
@@ -1315,7 +1338,7 @@ export interface StatsTotals {
 export type StepStatus = "pending" | "signing" | "submitted" | "confirmed" | "failed" | "skipped";
 
 // @public (undocumented)
-export type StepType = "NORMALIZE_SIGNERS" | "REVOKE_SPONSORSHIP" | "REMOVE_DATA_ENTRIES" | "CANCEL_OFFERS" | "ADD_TRUSTLINE_FOR_CLAIM" | "CLAIM_BALANCES" | "EXIT_POSITIONS" | "HANDLE_ASSETS" | "REMOVE_TRUSTLINES" | "CLOSE_ACCOUNT" | "MERGE";
+export type StepType = "NORMALIZE_SIGNERS" | "REVOKE_SPONSORSHIP" | "REMOVE_DATA_ENTRIES" | "CANCEL_OFFERS" | "ADD_TRUSTLINE_FOR_CLAIM" | "CLAIM_BALANCES" | "WITHDRAW_POOL_SHARES" | "EXIT_POSITIONS" | "HANDLE_ASSETS" | "REMOVE_TRUSTLINES" | "CLOSE_ACCOUNT" | "MERGE";
 
 // @public
 export interface StructuredApiError {
@@ -1443,6 +1466,7 @@ export interface Trustline {
     authorized: boolean;
     // (undocumented)
     balance: string;
+    buyingLiabilities?: string;
     clawbackEnabled: boolean;
     // (undocumented)
     code: string;

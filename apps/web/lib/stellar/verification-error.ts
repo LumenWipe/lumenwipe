@@ -50,6 +50,14 @@ export const VERIFICATION_ERROR_CODES = [
   "swap_route_asset_unknown",
   "swap_auth_unexpected_call",
   "swap_auth_exceeds_amount",
+  // Classic liquidity pool withdrawals
+  "pool_not_held",
+  "pool_withdraw_duplicate",
+  "pool_withdraw_amount_mismatch",
+  "pool_withdraw_min_missing",
+  "pool_withdraw_min_below_floor",
+  "pool_withdraw_min_above_reserves",
+  "pool_line_mismatch",
   // Removals and SetOptions
   "trustline_not_removal",
   "data_entry_not_removal",

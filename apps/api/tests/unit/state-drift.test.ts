@@ -84,7 +84,7 @@ function fullState(): AccountState {
         code: "USDC",
       },
     ],
-    poolShares: [{ poolId: POOL_ID }],
+    poolShares: [{ poolId: POOL_ID, balance: "0.0000005", pool: null }],
     openOffers: [
       { id: "77", selling: `USDC:${ISSUER}`, buying: "native", amount: "2.0000000", price: "1" },
     ],
@@ -107,6 +107,7 @@ function fullLedger(
     offerAmount?: bigint | null;
     data?: string | null;
     pool?: boolean;
+    poolShares?: bigint;
   } = {}
 ): LedgerEntryFixture[] {
   return [
@@ -120,7 +121,7 @@ function fullLedger(
     ),
     ...(over.pool === false
       ? []
-      : [trustlineLedgerEntry(SOURCE, new LiquidityPoolId(POOL_ID), 5n)]),
+      : [trustlineLedgerEntry(SOURCE, new LiquidityPoolId(POOL_ID), over.poolShares ?? 5n)]),
     ...(over.offerAmount === null
       ? []
       : [offerLedgerEntry(SOURCE, 77n, USDC, Asset.native(), over.offerAmount ?? 20_000_000n)]),
@@ -211,6 +212,12 @@ describe("findStateDrift", () => {
   test("a removed pool share trustline is drift", async () => {
     expect(await driftAgainst(fullLedger({ pool: false }))).toBe(
       `pool share ${POOL_ID} no longer exists`
+    );
+  });
+
+  test("a pool share balance that changed is drift", async () => {
+    expect(await driftAgainst(fullLedger({ poolShares: 6n }))).toBe(
+      `pool share ${POOL_ID} balance changed`
     );
   });
 

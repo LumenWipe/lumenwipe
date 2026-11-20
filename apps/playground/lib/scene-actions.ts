@@ -125,6 +125,8 @@ export const SCENE_HANDLERS: { [T in OperationType]: Handler<T> } = {
   // A conversion empties the trustline into XLM, as a payment out of it does.
   path_payment_strict_send: (op, live) => pulseIfLive(live, trustlineNodeId(op.sendAsset)),
   // The close claims balances in an order of its own; any one of them stands for the claim.
+  // The playground's mess holds no classic pool shares, so a withdrawal has no node to draw.
+  liquidity_pool_withdraw: noVisual,
   claim_claimable_balance: (_op, live) => {
     const node = live.find((n) => CLAIMED_BY_CLOSE.some((prefix) => n.id.startsWith(prefix)));
     return node ? { type: "destroy", nodeIds: [node.id] } : null;
