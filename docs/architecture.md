@@ -428,7 +428,7 @@ The design cost of this is near zero, because the split makes the public surface
 
 From the analysis the tool generates a deterministic, ordered plan. Same account state, same plan. The order satisfies ledger constraints: you cannot withdraw collateral while a loan is open, you cannot remove a trustline while it holds a balance, and you cannot merge while any subentry remains.
 
-![Ordered close execution plan: normalize signers first when no single key can sign → exit DeFi → move Soroban tokens → claim balances → normalize signers → revoke sponsorships → remove data entries → cancel offers → handle assets → remove trustlines → merge account, through the mediator last for an exchange](./diagrams/output/06-execution-plan.svg)
+![Ordered close execution plan: normalize signers first when no single key can sign → exit DeFi → move Soroban tokens → withdraw pool shares → claim balances → normalize signers → revoke sponsorships → remove data entries → cancel offers → handle assets → remove trustlines → merge account, through the mediator last for an exchange](./diagrams/output/06-execution-plan.svg)
 
 A few details that matter for correctness:
 

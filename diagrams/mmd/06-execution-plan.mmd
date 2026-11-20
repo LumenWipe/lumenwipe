@@ -3,15 +3,16 @@ flowchart TD
         s1["1. Normalize signers first<br/>(only when no single key can sign the close; a transaction of its own)"]
         s2["2. Exit DeFi positions<br/>(one Soroban transaction per exit)"]
         s3["3. Move Soroban tokens<br/>(one transaction per token: transfers, then conversions)"]
-        s4["4. Claim claimable balances<br/>(trustline added first where needed, before the close)"]
+        s4["4. Withdraw classic pool shares<br/>(LiquidityPoolWithdraw, then the share line removed; up to 50 pools per transaction, before the claims)"]
+        s5["5. Claim claimable balances<br/>(trustline added first where needed, before the close)"]
     end
     subgraph close["The close"]
-        s5["5. Normalize signers<br/>(when extra signers exist and step 1 did not run)"]
-        s6["6. Revoke sponsorships<br/>(RevokeSponsorship, when the owner can absorb the reserve)"]
-        s7["7. Remove data entries<br/>(ManageData, batched by 100)"]
-        s8["8. Cancel DEX offers<br/>(ManageSellOffer / ManageBuyOffer, amount 0)"]
-        s9["9. Handle assets<br/>(convert to XLM · transfer intact · return to issuer)"]
-        s10["10. Remove trustlines<br/>(ChangeTrust limit 0, batched by 100)"]
-        s11["11. Merge account<br/>(AccountMerge, or the co-signed mediator transaction last)"]
+        s6["6. Normalize signers<br/>(when extra signers exist and step 1 did not run)"]
+        s7["7. Revoke sponsorships<br/>(RevokeSponsorship, when the owner can absorb the reserve)"]
+        s8["8. Remove data entries<br/>(ManageData, batched by 100)"]
+        s9["9. Cancel DEX offers<br/>(ManageSellOffer / ManageBuyOffer, amount 0)"]
+        s10["10. Handle assets<br/>(convert to XLM · transfer intact · return to issuer)"]
+        s11["11. Remove trustlines<br/>(ChangeTrust limit 0, batched by 100)"]
+        s12["12. Merge account<br/>(AccountMerge, or the co-signed mediator transaction last)"]
     end
-    s1 --> s2 --> s3 --> s4 --> s5 --> s6 --> s7 --> s8 --> s9 --> s10 --> s11
+    s1 --> s2 --> s3 --> s4 --> s5 --> s6 --> s7 --> s8 --> s9 --> s10 --> s11 --> s12
