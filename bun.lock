@@ -177,7 +177,7 @@
     },
     "packages/verify": {
       "name": "@lumenwipe/verify",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "devDependencies": {
         "@arethetypeswrong/cli": "0.18.5",
         "@eslint/js": "^10.0.1",
