@@ -56,6 +56,14 @@
     "expires": "2026-12-17"
   },
   {
+    "advisory": "CVE-2026-121482",
+    "package": "libssl3t64",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie and trixie-security openssl 3.5.7-1~deb13u3: vulnerable, no fixed version (upstream fix not yet in a release). Verifying a crafted CMS or PKCS#7 SignedData message with CRL checking enabled takes CPU time quadratic in the message size. From the distroless base image, which ships libssl3t64 3.5.7-1~deb13u3; nothing in the image loads the system libssl or libcrypto: a DT_NEEDED scan of every ELF in the pinned amd64 image (285 files, layers fetched by digest) finds libcrypto.so.3 only in libssl3t64's own libssl.so.3 and engines-3, node links neither (it bundles OpenSSL 3.5.9), and the API's production node_modules hold no ELF file. The API verifies no CMS or PKCS#7 message and checks no CRL.",
+    "added": "2026-11-23",
+    "expires": "2026-12-23"
+  },
+  {
     "advisory": "CVE-2026-124709",
     "package": "libssl3t64",
     "severity": "high",
