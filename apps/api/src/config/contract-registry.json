@@ -1,5 +1,5 @@
 {
-  "version": "2026-11-17",
+  "version": "2026-11-23",
   "lastVerified": "2026-11-17",
   "validUntil": "2027-02-15",
   "source": "manually verified per-entry against each protocol's official docs/GitHub (Blend: docs.blend.capital/mainnet-deployments + blend-capital/blend-utils mainnet.contracts.json; Soroswap: soroswap/core public/mainnet.contracts.json; Aquarius: docs.aqua.network addresses-and-networks + the router's own instance) and the live instance's executable hash over RPC on lastVerified; mainnet labels cross-checked against the stellar.expert directory where it names the contract",
@@ -485,13 +485,13 @@
       "protocol": "soroswap",
       "kind": "aggregator",
       "address": "CARVQXFP4JF5ELLXUMQ6DALR346YVGBMQOHB4ENA7SSVXAYABXLBDDC4",
-      "wasmHash": "437653282e9c93b0b4d736d8fde01bf002adefb61bfb75917e609f5336ee3190",
+      "wasmHash": "72138d720c2d89831906a5f6e88dcf832abda02125fa32e9f0ebf1714041901f",
       "version": "v2",
       "label": "Soroswap aggregator v2 (mainnet, deployed 2026-09-14) - the contract a multi-protocol token conversion invokes; swap_exact_in only, partner None",
       "verifiedLive": true,
-      "verifiedBy": "2026-09-29: readLiveWasmHash over RPC (mainnet.sorobanrpc.com); the Soroswap API's own swap builds call it; confirmed as the current aggregator by the Soroswap team; its config() names the registry's Soroswap and Aquarius routers. Not yet in soroswap/aggregator public/mainnet.contracts.json; 2026-10-10 (#581) and 2026-11-17 (#1008): live executable hash re-read over public RPC and matched wasmHash",
+      "verifiedBy": "2026-09-29: readLiveWasmHash over RPC; its config() names the registry's Soroswap and Aquarius routers; 2026-10-10 (#581) and 2026-11-17 (#1008): live hash re-read and matched; 2026-11-23 (#1112): re-pinned after the admin-signed upgrade tx a63e8e58a88623b4a22a0a4cab19c1514ebcc0d28702f04e384bc615e634ad33 (ledger 65628395), which the Soroswap SDK calls aggregator v3; no public source or SEP-55 metadata, so trusted by spec diff, on-chain swap_exact_in auth and a read-only simulation",
       "source": "the Soroswap API's own swap builds and the Soroswap team's confirmation; not yet in soroswap/aggregator public/mainnet.contracts.json",
-      "verifiedAt": "2026-11-17"
+      "verifiedAt": "2026-11-23"
     },
     {
       "network": "mainnet",
