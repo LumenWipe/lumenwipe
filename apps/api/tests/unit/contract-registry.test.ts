@@ -7,6 +7,7 @@ import {
   isExitCapable,
   resolveCode,
   servedContractRegistry,
+  soroswapConversionContracts,
   staleEntries,
   staleEntryWarnings,
   validateContractRegistry,
@@ -304,6 +305,33 @@ test("the shipped mainnet xBull router is pinned to its upgraded code alone, and
   expect(resolveCode("mainnet", wasm(XBULL_ROUTER_RETIRED_HASH))).toEqual({
     status: "unknown",
     wasmHash: XBULL_ROUTER_RETIRED_HASH,
+  });
+});
+
+const SOROSWAP_AGGREGATOR = "CARVQXFP4JF5ELLXUMQ6DALR346YVGBMQOHB4ENA7SSVXAYABXLBDDC4";
+// The aggregator's code since its 2026-11-23 upgrade (ledger 65628395), and the code it replaced.
+const SOROSWAP_AGGREGATOR_HASH = "72138d720c2d89831906a5f6e88dcf832abda02125fa32e9f0ebf1714041901f";
+const SOROSWAP_AGGREGATOR_RETIRED_HASH =
+  "437653282e9c93b0b4d736d8fde01bf002adefb61bfb75917e609f5336ee3190";
+
+test("the shipped mainnet Soroswap aggregator is pinned to its upgraded code alone, and the retired code is unknown", () => {
+  const [aggregator, ...others] = entriesForProtocol("mainnet", "soroswap").filter(
+    (e) => e.kind === "aggregator"
+  );
+  expect(others).toEqual([]);
+  expect(aggregator).toMatchObject({
+    address: SOROSWAP_AGGREGATOR,
+    wasmHash: SOROSWAP_AGGREGATOR_HASH,
+  });
+  expect(soroswapConversionContracts("mainnet").aggregator).toEqual([SOROSWAP_AGGREGATOR]);
+  expect(resolveCode("mainnet", wasm(SOROSWAP_AGGREGATOR_HASH))).toMatchObject({
+    status: "known",
+    protocol: "soroswap",
+    kind: "aggregator",
+  });
+  expect(resolveCode("mainnet", wasm(SOROSWAP_AGGREGATOR_RETIRED_HASH))).toEqual({
+    status: "unknown",
+    wasmHash: SOROSWAP_AGGREGATOR_RETIRED_HASH,
   });
 });
 

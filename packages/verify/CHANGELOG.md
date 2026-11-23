@@ -44,6 +44,11 @@ release is cut.
   mutation adds the hand-off to it.
 - The bundled list of networks now comes from one module that the web app's routing also reads.
   The networks themselves (`mainnet`, `testnet`) and what `verify()` accepts are unchanged.
+- The bundled contract registry (version `2026-11-23`) re-pins the mainnet Soroswap aggregator
+  (`CARVQXFP4JF5ELLXUMQ6DALR346YVGBMQOHB4ENA7SSVXAYABXLBDDC4`) to the code it runs since its
+  upstream upgrade on 2026-11-23. The previous code is no longer recognized. The aggregator's
+  address, its `swap_exact_in` interface and the contracts a close may call are unchanged, and so
+  is verification.
 
 ## [0.6.0] - 2026-11-19
 
