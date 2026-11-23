@@ -186,7 +186,7 @@ The codebase undergoes internal security reviews as part of the development proc
 
 ## Quick Start
 
-**Requirements:** [Bun](https://bun.sh) 1.4.4 and Node.js 26.13.1, the versions in `.tool-versions`
+**Requirements:** [Bun](https://bun.sh) 1.4.5 and Node.js 26.13.1, the versions in `.tool-versions`
 
 ```bash
 # Clone and install

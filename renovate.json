@@ -10,6 +10,24 @@
   "constraints": {
     "bun": "1.4.5"
   },
+  "customManagers": [
+    {
+      "description": "Jobs in a container without unzip install Bun with npm instead of setup-bun; the version moves with every other Bun pin (scripts/check-image-pins.ts fails when it does not).",
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
+      "matchStrings": ["npm install -g bun@(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
+      "depNameTemplate": "bun",
+      "datasourceTemplate": "npm"
+    },
+    {
+      "description": "The Requirements lines in README.md and CONTRIBUTING.md name the Bun in .tool-versions and packageManager.",
+      "customType": "regex",
+      "managerFilePatterns": ["/^README\\.md$/", "/^CONTRIBUTING\\.md$/"],
+      "matchStrings": ["\\[Bun\\]\\(https://bun\\.sh\\) (?<currentValue>\\d+\\.\\d+\\.\\d+)"],
+      "depNameTemplate": "bun",
+      "datasourceTemplate": "npm"
+    }
+  ],
   "schedule": ["before 7am on monday"],
   "labels": ["dependencies"],
   "prConcurrentLimit": 1,

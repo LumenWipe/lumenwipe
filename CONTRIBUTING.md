@@ -47,7 +47,7 @@ If you are planning a large change - a new protocol integration, a significant r
 
 ## 3. Development setup
 
-**Requirements:** [Bun](https://bun.sh) 1.4.4 (the version in `packageManager`) and Node.js 26.13.1, both pinned in `.tool-versions` (root `engines.node` is `>=26.13.1`). Three places run another Node on purpose, and nowhere else does:
+**Requirements:** [Bun](https://bun.sh) 1.4.5 (the version in `packageManager`) and Node.js 26.13.1, both pinned in `.tool-versions` (root `engines.node` is `>=26.13.1`). Three places run another Node on purpose, and nowhere else does:
 
 - CI's `sdk` row runs on Node 22, the oldest Node `@lumenwipe/sdk` supports (its own `engines.node`), because that is the floor its users get.
 - CI's `docs` job runs on Node 24, because the Mintlify CLI refuses Node 25 and later.

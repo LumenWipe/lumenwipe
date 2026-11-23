@@ -320,7 +320,7 @@ jobs:
 
       # setup-bun extracts a zip and the image has no unzip; its Node installs Bun instead.
       - name: Set up Bun
-        run: npm install -g bun@1.4.4
+        run: npm install -g bun@1.4.5
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -492,7 +492,7 @@ jobs:
 
       # setup-bun extracts a zip and the image has no unzip; its Node installs Bun instead.
       - name: Set up Bun
-        run: npm install -g bun@1.4.4
+        run: npm install -g bun@1.4.5
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
