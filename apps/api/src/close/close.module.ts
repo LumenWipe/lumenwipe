@@ -35,5 +35,6 @@ import {
       inject: [RPC_SERVER_FACTORY],
     },
   ],
+  exports: [CloseService],
 })
 export class CloseModule {}

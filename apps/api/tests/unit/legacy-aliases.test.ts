@@ -34,6 +34,7 @@ describe("legacyAliasTarget", () => {
     "/",
     "/health",
     "/health/deep",
+    "/health/user-path",
     "/docs",
     "/docs/account/x",
     "/docs-json",

@@ -166,15 +166,15 @@ test("the document names its contact and license", () => {
 });
 
 // The deep health check answers with Terminus' own body, which carries its indicator results
-// rather than the envelope.
-const TERMINUS_RESPONSES = new Set(["GET /health/deep 503"]);
+// rather than the envelope, and the user path check answers 503 with its verdict.
+const OWN_BODY_RESPONSES = new Set(["GET /health/deep 503", "GET /health/user-path 503"]);
 
 test("every documented 4xx and 5xx response is the error envelope with a closed set of codes", () => {
   const registered = new Set<string>(ERROR_CODES);
   const problems = operations().flatMap(({ id, operation }) => {
     const responses = (operation as { responses?: Record<string, unknown> }).responses ?? {};
     return Object.entries(responses).flatMap(([status, response]) => {
-      if (!/^[45]/.test(status) || TERMINUS_RESPONSES.has(`${id} ${status}`)) return [];
+      if (!/^[45]/.test(status) || OWN_BODY_RESPONSES.has(`${id} ${status}`)) return [];
       const schema = (
         response as {
           content?: Record<
@@ -212,7 +212,13 @@ test("the error code table in introduction.mdx is generated from the registry", 
 });
 
 test("every throttled response declares the RateLimit headers, and 429 and 503 declare Retry-After", () => {
-  const unthrottled = new Set(["/", "/.well-known/api-catalog", "/health", "/health/deep"]);
+  const unthrottled = new Set([
+    "/",
+    "/.well-known/api-catalog",
+    "/health",
+    "/health/deep",
+    "/health/user-path",
+  ]);
   const problems = operations().flatMap(({ id, operation }) => {
     if (unthrottled.has(id.split(" ")[1]!)) return [];
     const responses = (operation as { responses?: Record<string, { headers?: object }> }).responses;

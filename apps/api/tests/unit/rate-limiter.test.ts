@@ -200,6 +200,7 @@ describe("isUnthrottledPath", () => {
     "/.well-known/api-catalog",
     "/health",
     "/health/deep",
+    "/health/user-path",
     "/docs",
     "/docs/",
     "/docs-json",
@@ -210,6 +211,8 @@ describe("isUnthrottledPath", () => {
     "/v1/config/exchange-registry",
     "/nope",
     "/healthz",
+    "/health/dependencies",
+    "/health/user-path/",
     "/docsx",
     "/v1/integrator/keys",
   ])("%s is counted", (path) => expect(isUnthrottledPath(path)).toBe(false));

@@ -68,6 +68,7 @@ export function isUnthrottledPath(path: string): boolean {
     path === "/.well-known/api-catalog" ||
     path === "/health" ||
     path === "/health/deep" ||
+    path === "/health/user-path" ||
     path === "/docs-json" ||
     path === "/docs" ||
     path.startsWith("/docs/")

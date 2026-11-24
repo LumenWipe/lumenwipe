@@ -352,6 +352,24 @@
         ]
       }
     },
+    "/health/user-path": {
+      "get": {
+        "operationId": "UserPathController_userPath",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Both steps succeeded (`status` is `ok`), or the fixture account no longer exists (`fixture_missing`), which is not a failure of the service. `status`, `network`, `checkedAt` and one entry per step in `steps`: `step` (`analyze`, `plan`), `result` (`ok`, `failed`), `errorClass` (`upstream`, `timeout`, `internal`, `fixture_missing`, or null) and `latencyMs`. The body holds these fixed values only. The verdict is cached for 300 seconds, or 60 seconds after a failure, and callers that arrive during a run share it, so polling never starts more than one run per period. Nothing is signed or submitted, and the route takes no input."
+          },
+          "503": {
+            "description": "At least one step failed (`status` is `failed`). `errorClass` tells a provider fault (`upstream`, `timeout`) from one of the service itself (`internal`). `status`, `network`, `checkedAt` and one entry per step in `steps`: `step` (`analyze`, `plan`), `result` (`ok`, `failed`), `errorClass` (`upstream`, `timeout`, `internal`, `fixture_missing`, or null) and `latencyMs`. The body holds these fixed values only."
+          }
+        },
+        "summary": "User path check (public, no API key): a read-only analyze and plan of one fixed public mainnet account.",
+        "tags": [
+          "health"
+        ]
+      }
+    },
     "/v1/config/exchange-registry": {
       "get": {
         "operationId": "RegistryController_registry",

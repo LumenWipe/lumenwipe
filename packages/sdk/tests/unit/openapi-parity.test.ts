@@ -28,6 +28,8 @@ const EXCLUDED: Record<string, string> = {
     "The RFC 9727 discovery document for clients that have not found the API yet. An SDK user already holds the base URL, and the catalog only links the OpenAPI document, the docs and /health.",
   "GET /health/dependencies":
     "The operator's view of each upstream's last probe, for the status page. Its rows describe our providers, not the contract; integrators use health() or healthDeep().",
+  "GET /health/user-path":
+    "The status page's synthetic check of one fixed mainnet account, cached for minutes. It says nothing about an integrator's own account or key; integrators use health() or healthDeep().",
 };
 
 type Clients = { client: LumenWipeClient; integrator: LumenWipeIntegratorClient };

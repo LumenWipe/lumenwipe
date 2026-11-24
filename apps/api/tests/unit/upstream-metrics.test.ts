@@ -548,6 +548,21 @@ describe("durable flush", () => {
     expect(store.upstream.get(`${DAY}/mainnet/horizon/requests`)).toBe(2);
   });
 
+  test("flush writes what is pending before the interval has passed", async () => {
+    const store = new InMemoryUsageStore();
+    const service = flushService(store);
+    recordUpstream("mainnet", "rpc", "requests");
+    await service.flushIfDue();
+    expect(store.upstream.size).toBe(0);
+
+    await service.flush();
+    expect(store.upstream.get(`${DAY}/mainnet/rpc/requests`)).toBe(1);
+
+    recordUpstream("mainnet", "rpc", "requests");
+    await service.flush();
+    expect(store.upstream.get(`${DAY}/mainnet/rpc/requests`)).toBe(2);
+  });
+
   test("a rejected write gives its counts back, and only one is sent per interval", async () => {
     let calls = 0;
     const service = flushService(
@@ -813,7 +828,7 @@ describe("durable flush", () => {
     });
 
     test("never runs for the health routes", async () => {
-      for (const path of ["/health", "/health/deep", "/health/dependencies"]) {
+      for (const path of ["/health", "/health/deep", "/health/dependencies", "/health/user-path"]) {
         const { flushes, result } = run(path, () => of({ status: "ok" }));
         await result;
         expect(flushes.count).toBe(0);
