@@ -31,6 +31,10 @@
   "schedule": ["before 7am on monday"],
   "labels": ["dependencies"],
   "prConcurrentLimit": 1,
+  "vulnerabilityAlerts": {
+    "description": "Fixes for a Dependabot alert, on any datasource, open at once in PRs of their own: Renovate always ignores the schedule for them, and they get their own concurrency budget, unlimited here, outside the limit of 1 above.",
+    "prConcurrentLimit": 0
+  },
   "lockFileMaintenance": {
     "enabled": true,
     "schedule": ["before 7am on monday"]
@@ -62,14 +66,6 @@
       "description": "Automerge disabled everywhere - this project closes accounts irreversibly, and CONTRIBUTING.md already asks for closer review on anything security-sensitive. A dependency bump is reviewed like any other change, never merged unattended.",
       "matchPackageNames": ["*"],
       "automerge": false
-    },
-    {
-      "description": "Security fixes bypass the weekly schedule and PR concurrency limit - waiting until Monday for a vulnerable dependency defeats the point of scanning for one.",
-      "matchDatasources": ["npm"],
-      "vulnerabilityAlerts": {
-        "schedule": ["at any time"],
-        "prConcurrentLimit": 0
-      }
     }
   ]
 }

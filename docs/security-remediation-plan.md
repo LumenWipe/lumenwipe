@@ -87,9 +87,11 @@ not assumed safe by severity:
 | `@nestjs/core` (moderate)                                                                                      | Genuine runtime dependency. The fix is not available within the installed major version (10.x) - `10.4.22` is already the latest 10.x release, and the advisory covers `<=11.1.17`. Upgrading to Nest 11/12 is a deliberate framework migration, out of this PR's scope for the same reason `@stellar/stellar-sdk` major bumps are gated (CLAUDE.md, `renovate.json`) - not something to fold into a dependency-audit pass. **Tracked as a follow-up** (Section 6).                                                                                                                                                                                                                                                                                                                                                            |
 | `brace-expansion`, `browserslist`, `esbuild`, `glob`, `picomatch`, `postcss-selector-parser`, `tmp`, `webpack` | All trace to build/dev tooling only - `@nestjs/cli`, `@typescript-eslint/*`, `autoprefixer`/`tailwindcss`, `tsup`, Angular schematics (confirmed individually via `bun pm why` for each). None run against any input the tool serves to a user; none ship to a served runtime.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
-**Ongoing cadence.** `renovate.json` already runs a weekly dependency scan with an "at any time"
-bypass for vulnerability alerts (`vulnerabilityAlerts.schedule: ["at any time"]`), so this isn't a
-one-off - future advisories on these same packages get picked up automatically. This document
+**Ongoing cadence.** `renovate.json` runs a weekly dependency scan, and a fix for a Dependabot alert
+on any datasource skips that schedule: Renovate always opens vulnerability PRs at once, and the
+top-level `vulnerabilityAlerts` object gives them their own unlimited concurrency budget
+(`prConcurrentLimit: 0`), outside the limit of one regular PR. So this isn't a one-off - future
+advisories on these same packages get picked up automatically. This document
 records a point-in-time baseline the ongoing cadence builds on, not a substitute for it.
 
 ## 3. Static analysis
