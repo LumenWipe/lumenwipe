@@ -15,6 +15,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   Account,
+  Address,
   Asset,
   getLiquidityPoolId,
   hash,
@@ -1157,6 +1158,131 @@ reject(
   build(conversionOps(SOURCE, "9.4")),
   "conversion_min_out_below_floor",
   "A conversion of USDC would accept less XLM than the minimum you were shown."
+);
+
+// --- A Soroban token conversion through the Soroswap aggregator ----------------------------
+
+/** The bundled registry's mainnet Soroswap aggregator. */
+const AGGREGATOR = "CARVQXFP4JF5ELLXUMQ6DALR346YVGBMQOHB4ENA7SSVXAYABXLBDDC4";
+const SWAP_TOKEN = StrKey.encodeContract(hash(Buffer.from("lumenwipe close-v1 swap token")));
+const SWAP_PAIR = StrKey.encodeContract(hash(Buffer.from("lumenwipe close-v1 swap pair")));
+const SWAP_AMOUNT = BigInt(100_000_000);
+const SWAP_QUOTE = "760000000";
+const SWAP_FLOOR = "756200000";
+const swapExpected = expectation(
+  {
+    tokenConversions: {
+      [SWAP_TOKEN]: {
+        minAmountOut: SWAP_FLOOR,
+        amountOut: SWAP_QUOTE,
+        amountIn: String(SWAP_AMOUNT),
+      },
+    },
+  },
+  "mainnet"
+);
+if (!swapExpected.conversionContracts.includes(AGGREGATOR)) {
+  throw new Error("the bundled registry no longer lists the mainnet Soroswap aggregator");
+}
+
+const symbol = (value: string): xdr.ScVal => xdr.ScVal.scvSymbol(value);
+const struct = (fields: [string, xdr.ScVal][]): xdr.ScVal =>
+  xdr.ScVal.scvMap(fields.map(([key, val]) => new xdr.ScMapEntry({ key: symbol(key), val })));
+const address = (value: string): xdr.ScVal => nativeToScVal(value, { type: "address" });
+const i128 = (value: bigint): xdr.ScVal => nativeToScVal(value, { type: "i128" });
+const partnerOf = (bps: number, extra: [string, xdr.ScVal][] = []): xdr.ScVal =>
+  struct([["bps", xdr.ScVal.scvU32(bps)], ["id", symbol("c5f66d6cf")], ...extra]);
+
+/** `swap_exact_in` as the Soroswap API builds it for a keyed request: one route through a Soroswap
+ *  pair for the amount less the aggregator's 10 bps, the source account's own authorization, and
+ *  `partner` as given. */
+function aggregatorSwap(partner: xdr.ScVal): string {
+  const route = struct([
+    ["amount_in", i128(SWAP_AMOUNT - SWAP_AMOUNT / BigInt(1000))],
+    [
+      "hops",
+      xdr.ScVal.scvVec([
+        xdr.ScVal.scvVec([
+          symbol("Soroswap"),
+          struct([
+            ["pair", address(SWAP_PAIR)],
+            ["token_in", address(SWAP_TOKEN)],
+            ["token_out", address(swapExpected.xlmContract)],
+          ]),
+        ]),
+      ]),
+    ],
+  ]);
+  const args = [
+    address(SOURCE),
+    address(SWAP_TOKEN),
+    i128(SWAP_AMOUNT),
+    address(swapExpected.xlmContract),
+    i128(BigInt(SWAP_FLOOR)),
+    xdr.ScVal.scvVec([route]),
+    partner,
+  ];
+  const call = (contract: string, functionName: string, callArgs: xdr.ScVal[]) =>
+    xdr.SorobanAuthorizedFunction.sorobanAuthorizedFunctionTypeContractFn(
+      new xdr.InvokeContractArgs({
+        contractAddress: new Address(contract).toScAddress(),
+        functionName,
+        args: callArgs,
+      })
+    );
+  const auth = new xdr.SorobanAuthorizationEntry({
+    credentials: xdr.SorobanCredentials.sorobanCredentialsSourceAccount(),
+    rootInvocation: new xdr.SorobanAuthorizedInvocation({
+      function: call(AGGREGATOR, "swap_exact_in", args),
+      subInvocations: [
+        new xdr.SorobanAuthorizedInvocation({
+          function: call(SWAP_TOKEN, "transfer", [
+            address(SOURCE),
+            address(AGGREGATOR),
+            i128(SWAP_AMOUNT),
+          ]),
+          subInvocations: [],
+        }),
+      ],
+    }),
+  });
+  return build(
+    [
+      Operation.invokeContractFunction({
+        contract: AGGREGATOR,
+        function: "swap_exact_in",
+        args,
+        auth: [auth],
+      }),
+    ],
+    { network: "mainnet", feePerOperation: 500_000 }
+  );
+}
+
+const aggregatorConversion = accept(
+  "token-conversion-aggregator-zero-fee-partner",
+  "Swaps the token the user chose to convert into XLM for the account through the Soroswap aggregator, at no less than the minimum they were shown, with the 0-bps partner the Soroswap API names on every keyed build: it only labels the swap, which pays the aggregator's own 10 bps as with no partner.",
+  aggregatorSwap(partnerOf(0)),
+  swapExpected,
+  { network: "mainnet" }
+);
+for (const bps of [1, 25, 100]) {
+  reject(
+    aggregatorConversion,
+    `token-conversion-aggregator-partner-${bps}-bps`,
+    `Raises the partner's bps to ${bps}, a partner fee charged in place of the aggregator's own 10 bps.`,
+    aggregatorSwap(partnerOf(bps)),
+    "swap_args_unreadable",
+    "A swap's arguments could not be read."
+  );
+}
+reject(
+  aggregatorConversion,
+  "token-conversion-aggregator-partner-third-key",
+  "Keeps the partner at 0 bps but adds a third key to its map, which is not the aggregator's Partner struct.",
+  aggregatorSwap(partnerOf(0, [["to", address(ATTACKER)]])),
+  "swap_args_unreadable",
+  "A swap's arguments could not be read."
 );
 
 // --- Real DeFi exits, built by the API's adapters on testnet --------------------------------

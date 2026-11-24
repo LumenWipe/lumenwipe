@@ -660,8 +660,8 @@ interface SwapArgs {
  * `swap_exact_tokens_for_tokens(amount_in, amount_out_min, path, to, deadline)`, where the tokens
  * are the path's first and last hops, or the aggregator's
  * `swap_exact_in(user, token_in, amount_in, token_out, min_out, routes, partner)`. Null when the
- * arguments are not that shape, or when the aggregator call names a fee partner, which fails the
- * swap closed.
+ * arguments are not that shape, or when the aggregator call names a partner other than a 0-bps
+ * one, which fails the swap closed.
  *
  * The output token is read, not assumed. Without it the minimum below would be compared against a
  * figure denominated in whatever the transaction says it is buying - a swap into a worthless token
@@ -697,11 +697,29 @@ function readSwapArgs(fn: string, args: string[]): SwapArgs | null {
     const min = integer(args[4]);
     if (!CONTRACT_ID.test(token) || !CONTRACT_ID.test(assetOut)) return null;
     if (amountIn === null || min === null) return null;
-    // A partner replaces the aggregator's own 10 bps fee with its own, from 25 bps up to 10%.
-    if (args[6] !== "null") return null;
+    if (args[6] !== "null" && !isZeroFeePartner(args[6] ?? "")) return null;
     return { token, assetOut, amountIn, destination: args[0] ?? "", minAmountOut: min };
   }
   return null;
+}
+
+/**
+ * Whether the aggregator's rendered `partner` is `{"bps":0,"id":<string>}` exactly. A partner at 0
+ * bps only labels the swap, and the aggregator charges its own 10 bps as with none; any other bps
+ * replaces that fee with the partner's, from 25 bps up to 10%. Compared byte for byte against the
+ * one rendering of that struct, so a key out of order, an extra key, or a bps that is not the
+ * number 0 is refused; the id is trusted for nothing.
+ */
+function isZeroFeePartner(rendered: string): boolean {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rendered);
+  } catch {
+    return false;
+  }
+  if (typeof parsed !== "object" || parsed === null) return false;
+  const { id } = parsed as { id?: unknown };
+  return typeof id === "string" && rendered === JSON.stringify({ bps: 0, id });
 }
 
 /** The function xBull's PathPayment router calls; must match the API's `XBULL_SWAP_FUNCTION`. */

@@ -105,7 +105,12 @@ describe("close-v1.json", () => {
     const mainnet = vectors.filter((v) => v.input.network === "mainnet").map((v) => v.name);
     expect(mainnet).toEqual([
       "testnet-stand-in-is-a-wallet-on-mainnet",
+      "token-conversion-aggregator-zero-fee-partner",
       "testnet-stand-in-through-intermediary-on-mainnet",
+      "token-conversion-aggregator-partner-1-bps",
+      "token-conversion-aggregator-partner-25-bps",
+      "token-conversion-aggregator-partner-100-bps",
+      "token-conversion-aggregator-partner-third-key",
     ]);
     expect(accepts.length).toBeGreaterThanOrEqual(9);
   });

@@ -83,6 +83,13 @@ const addr = (a: string): xdr.ScVal => new Address(a).toScVal();
 const i128 = (v: bigint): xdr.ScVal => nativeToScVal(v, { type: "i128" });
 const u64 = (v: bigint): xdr.ScVal => nativeToScVal(v, { type: "u64" });
 const vec = (items: xdr.ScVal[]): xdr.ScVal => xdr.ScVal.scvVec(items);
+const sym = (v: string): xdr.ScVal => xdr.ScVal.scvSymbol(v);
+const u32 = (v: number): xdr.ScVal => xdr.ScVal.scvU32(v);
+/** The aggregator's `Partner { bps, id }`, with its map entries written exactly as given. */
+const partnerMap = (...entries: [string, xdr.ScVal][]): xdr.ScVal =>
+  xdr.ScVal.scvMap(entries.map(([key, val]) => new xdr.ScMapEntry({ key: sym(key), val })));
+const partner = (bps: number, id = "c5f66d6cf"): xdr.ScVal =>
+  partnerMap(["bps", u32(bps)], ["id", sym(id)]);
 
 function invocation(
   contract: string,
@@ -196,6 +203,12 @@ describe("assertConversionShape", () => {
   test("accepts the two shapes the API builds: a router call with a path, an aggregator call with routes", () => {
     expect(() => assertConversionShape(swapTx({ form: "router" }), expected())).not.toThrow();
     expect(() => assertConversionShape(swapTx({ form: "aggregator" }), expected())).not.toThrow();
+    // The Soroswap API's keyed builds name a 0-bps partner, which pays the same fee as none.
+    for (const id of ["c5f66d6cf", "5637e5344", ""]) {
+      expect(() =>
+        assertConversionShape(swapTx({ form: "aggregator", partner: partner(0, id) }), expected())
+      ).not.toThrow();
+    }
     // A minimum above the floor, and a route split into two transfers that add up, are fine.
     expect(() =>
       assertConversionShape(swapTx({ form: "router", minOut: FLOOR + 1n }), expected())
@@ -261,17 +274,29 @@ describe("assertConversionShape", () => {
       { form: "aggregator", amountIn: BALANCE - 1n },
       /amount_in/,
     ],
-    [
-      "a fee partner on the aggregator",
-      {
-        form: "aggregator",
-        partner: xdr.ScVal.scvMap([
-          new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("bps"), val: xdr.ScVal.scvU32(25) }),
-          new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol("id"), val: xdr.ScVal.scvSymbol("x") }),
-        ]),
-      },
+    ...([1, 25, 100] as const).map((bps): [string, SwapShape, RegExp] => [
+      `a ${bps}-bps fee partner on the aggregator`,
+      { form: "aggregator", partner: partner(bps) },
       /fee partner/,
-    ],
+    ]),
+    ...(
+      [
+        ["its keys out of order", partnerMap(["id", sym("x")], ["bps", u32(0)])],
+        ["bps twice", partnerMap(["bps", u32(0)], ["bps", u32(0)])],
+        ["a third key", partnerMap(["bps", u32(0)], ["id", sym("x")], ["to", addr(STRANGER)])],
+        ["no id", partnerMap(["bps", u32(0)])],
+        ["another key in place of bps", partnerMap(["fee", u32(0)], ["id", sym("x")])],
+        ["another key in place of id", partnerMap(["bps", u32(0)], ["to", sym("x")])],
+        ["bps as an i32", partnerMap(["bps", xdr.ScVal.scvI32(0)], ["id", sym("x")])],
+        ["bps as a u64", partnerMap(["bps", u64(0n)], ["id", sym("x")])],
+        ["the id as a string", partnerMap(["bps", u32(0)], ["id", xdr.ScVal.scvString("x")])],
+        ["a list, not a map", vec([u32(0), sym("x")])],
+      ] as const
+    ).map(([what, value]): [string, SwapShape, RegExp] => [
+      `a 0-bps partner with ${what}`,
+      { form: "aggregator", partner: value },
+      /fee partner/,
+    ]),
     ["less than the live balance", { form: "router", amountIn: BALANCE - 1n }, /amount_in/],
     ["a minimum under the floor", { form: "router", minOut: FLOOR - 1n }, /below your floor/],
     [
@@ -427,6 +452,25 @@ describe("assertConversionShape on a swap the Soroswap API really built", () => 
       return [inner.ext.toXDR("base64"), ...inner.operations.map((o) => o.toXDR("base64"))];
     };
     expect(body(tx)).toEqual(body(raw));
+  });
+
+  test("is accepted with a 0-bps partner written into it, and refused with a fee partner", () => {
+    const original = withCloseExpiry(
+      TransactionBuilder.fromXDR(realSwap.xdr, Networks.PUBLIC) as Transaction,
+      capturedAt
+    );
+    const withPartner = (value: xdr.ScVal): Transaction => {
+      const args = [...callOf(onlyOperation(original)).args];
+      args[6] = value;
+      const envelope = envelopeWithOperations(original, [
+        withCallArgs(onlyOperation(original), args),
+      ]);
+      return TransactionBuilder.fromXDR(envelope, Networks.PUBLIC) as Transaction;
+    };
+    expect(() => assertConversionShape(withPartner(partner(0)), real())).not.toThrow();
+    for (const bps of [1, 25, 100]) {
+      expect(() => assertConversionShape(withPartner(partner(bps)), real())).toThrow(/fee partner/);
+    }
   });
 
   test("is refused once a fee partner is written into it", () => {

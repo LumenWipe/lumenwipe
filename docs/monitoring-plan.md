@@ -262,7 +262,7 @@ sponsorship counts), offers, claimable balances by claimant and by sponsor, acco
 and asset statistics by issuer, that an unknown account answers 404, and `Latest-Ledger` on the three routes a
 snapshot is judged by. The account, offer and claimable-balance records come from what each network currently
 holds, not from pinned fixtures, so a testnet reset cannot break it. Mainnet is read as a read-only fixture. The
-check sends GET requests only: it never signs, submits or writes.
+Horizon check sends GET requests only: it never signs, submits or writes.
 
 A failure opens one issue, assigned to the maintainer, posts once to the private channel, and comments on later
 runs. The next clean run closes it and posts the recovery. A line saying `no answer` is an outage or a rate limit,
@@ -274,6 +274,17 @@ because these logs and issues are public and a hostname can name a vendor or car
 from the `PATH_ROUTING_API_*` repository secrets, which mirror the API's configuration, header variables included
 for up to three positions. Without them it checks the public endpoints and the run carries a warning, so a green
 run on that warning says nothing about the deployed list.
+
+The same workflow's `soroswap` job asks the Soroswap API for a real mainnet quote and swap (10 USDC to XLM for a
+large third-party holder, whose balance and sequence are only read), and holds those bytes to the API's own
+conversion guard and the contract registry: `apps/api/tests/integration/soroswap-conversion.integration.test.ts`
+and nothing else. It is here rather than on pull requests because the aggregator can be upgraded, and the Soroswap
+API can change what it builds, without any change to this repository: the 2026-11-23 aggregator upgrade refused
+every aggregator conversion until the guard learned the 0-bps partner the API now names. It only quotes and
+builds, and never signs or submits. Its key is `SOROSWAP_API_KEY` in the `soroswap-readonly` GitHub environment,
+whose deployment branches are limited to `main`, so neither a pull request nor a fork can reach it. Without the
+key the test skips itself and the run carries a warning, so a green run on that warning says nothing about
+Soroswap. A failure reaches the same issue and channel as the provider lines, as its own status line.
 
 ### Upstream metrics and dependency health
 
