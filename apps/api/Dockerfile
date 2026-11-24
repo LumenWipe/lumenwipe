@@ -11,7 +11,7 @@
 # scripts/check-image-pins.ts fails CI when a version drifts or a pin loses its digest.
 
 # ── Stage 1: builder - Bun on Debian 13/glibc (ABI-matches the distroless Debian 13 runtime) ──
-FROM oven/bun:1.4.4@sha256:1d22548f177f4ff38e0c15baa3c2c46c6c2060ba2d1bc573bb4720b407548f1d AS builder
+FROM oven/bun:1.4.5@sha256:3aa040e5445efa09d75bb428a64ba50db13e2b3ac9b6b0c7f145615f62b2ee18 AS builder
 WORKDIR /app
 # bun install --frozen-lockfile needs EVERY workspace manifest present, even when
 # building a single app. Copy the root lockfile + all workspace package.json first
@@ -37,7 +37,7 @@ COPY apps/api/ apps/api/
 RUN bun run --filter '@lumenwipe/api' build
 
 # ── Stage 2: prod-deps - production-only dependencies (no devDependencies) ──
-FROM oven/bun:1.4.4@sha256:1d22548f177f4ff38e0c15baa3c2c46c6c2060ba2d1bc573bb4720b407548f1d AS prod-deps
+FROM oven/bun:1.4.5@sha256:3aa040e5445efa09d75bb428a64ba50db13e2b3ac9b6b0c7f145615f62b2ee18 AS prod-deps
 WORKDIR /app
 COPY package.json bun.lock ./
 COPY apps/api/package.json apps/api/
@@ -54,7 +54,7 @@ RUN bun install --frozen-lockfile --production --filter '@lumenwipe/api'
 # ── Stage 3: runtime - distroless Node (matches start:prod), glibc, non-root ──
 # Node and the libraries it links (glibc, libstdc++, libgcc_s, libatomic), with no shell, package
 # manager, npm or other tool the API never runs.
-FROM gcr.io/distroless/nodejs26-debian13:nonroot@sha256:1d736cf8b5716c07a245301f92717143215d248fd55771ee1936ef4b3302e531 AS runtime
+FROM gcr.io/distroless/nodejs26-debian13:nonroot@sha256:ffa8a7545403036c94ec76674b5dbac2d425af2d679147cdf3e30180071487b7 AS runtime
 ENV NODE_ENV=production
 WORKDIR /app/apps/api
 # Hoisted deps live at /app/node_modules, so copy the whole prod-deps tree, then
