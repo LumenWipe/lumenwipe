@@ -7,6 +7,8 @@ release is cut.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-23
+
 ### Added
 
 - The `mediator_forward_balance_unknown` verification code.
@@ -44,6 +46,11 @@ release is cut.
   mutation adds the hand-off to it.
 - The bundled list of networks now comes from one module that the web app's routing also reads.
   The networks themselves (`mainnet`, `testnet`) and what `verify()` accepts are unchanged.
+- The bundled contract registry (version `2026-11-23`) re-pins the mainnet Soroswap aggregator
+  (`CARVQXFP4JF5ELLXUMQ6DALR346YVGBMQOHB4ENA7SSVXAYABXLBDDC4`) to the code it runs since its
+  upstream upgrade on 2026-11-23. The previous code is no longer recognized. The aggregator's
+  address, its `swap_exact_in` interface and the contracts a close may call are unchanged, and so
+  is verification.
 
 ## [0.6.0] - 2026-11-19
 
@@ -210,7 +217,8 @@ The bundled exchange and contract registries are unchanged.
   is optional, and a rejection may mutate the snapshot instead of, or with, the transaction.
 - The package ships its `LICENSE` and this `CHANGELOG.md`.
 
-[Unreleased]: https://github.com/LumenWipe/lumenwipe/compare/verify-v0.6.0...HEAD
+[Unreleased]: https://github.com/LumenWipe/lumenwipe/compare/verify-v0.7.0...HEAD
+[0.7.0]: https://github.com/LumenWipe/lumenwipe/compare/verify-v0.6.0...verify-v0.7.0
 [0.6.0]: https://github.com/LumenWipe/lumenwipe/compare/verify-v0.5.0...verify-v0.6.0
 [0.5.0]: https://github.com/LumenWipe/lumenwipe/compare/verify-v0.4.0...verify-v0.5.0
 [0.4.0]: https://github.com/LumenWipe/lumenwipe/compare/verify-v0.3.0...verify-v0.4.0
