@@ -591,7 +591,7 @@ export const ENVIRONMENT: Record<EnvApp, Record<string, EnvironmentFacts>> = {
         "Key for the hash of the client IP in the proxy rate-limit counters, at least 32 characters; unset on a deployment makes the limiter unavailable",
     },
     STATUS_SOURCE_URL: optional(
-      "https URL of the status summary the site banner reads through `/api/status`; unset, no page shows the banner. Prerendered pages read it at build time"
+      "https URL of the status page JSON, or of a summary in the route's own shape, that the site banner reads through `/api/status`; unset, no page shows the banner. Prerendered pages read it at build time"
     ),
     NEXT_PUBLIC_APP_URL: {
       required: "Production",
