@@ -7,6 +7,8 @@ release is cut.
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-24
+
 ### Changed
 
 - `verify()` accepts a Soroswap aggregator `swap_exact_in` whose `partner` is a 0-bps partner,
@@ -16,8 +18,7 @@ release is cut.
   a key out of order, a missing or extra key, or a bps that is not the number 0 is still refused
   with `swap_args_unreadable`, and the id is trusted for nothing. A new accepted mainnet vector
   converts a token through the aggregator with a 0-bps partner, with rejected mutations at 1, 25
-  and 100 bps and with a third key in the partner. The next release is a minor: it accepts a shape
-  the previous one refused, and RELEASING.md bumps the minor for a new capability before 1.0.
+  and 100 bps and with a third key in the partner.
 
 ## [0.7.0] - 2026-11-23
 
@@ -229,7 +230,8 @@ The bundled exchange and contract registries are unchanged.
   is optional, and a rejection may mutate the snapshot instead of, or with, the transaction.
 - The package ships its `LICENSE` and this `CHANGELOG.md`.
 
-[Unreleased]: https://github.com/LumenWipe/lumenwipe/compare/verify-v0.7.0...HEAD
+[Unreleased]: https://github.com/LumenWipe/lumenwipe/compare/verify-v0.8.0...HEAD
+[0.8.0]: https://github.com/LumenWipe/lumenwipe/compare/verify-v0.7.0...verify-v0.8.0
 [0.7.0]: https://github.com/LumenWipe/lumenwipe/compare/verify-v0.6.0...verify-v0.7.0
 [0.6.0]: https://github.com/LumenWipe/lumenwipe/compare/verify-v0.5.0...verify-v0.6.0
 [0.5.0]: https://github.com/LumenWipe/lumenwipe/compare/verify-v0.4.0...verify-v0.5.0
