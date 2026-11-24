@@ -72,22 +72,6 @@
     "expires": "2026-12-17"
   },
   {
-    "advisory": "CVE-2026-19499",
-    "package": "libc6",
-    "severity": "high",
-    "reason": "Debian security tracker, trixie glibc 2.41-12+deb13u4: vulnerable, no-dsa (Minor issue). Overflow in strfmon and strfmon_l with right-justified padding. From the base image; node links libc6 but formats numbers and currencies with its bundled ICU, not strfmon.",
-    "added": "2026-11-14",
-    "expires": "2027-02-14"
-  },
-  {
-    "advisory": "CVE-2026-5435",
-    "package": "libc6",
-    "severity": "high",
-    "reason": "Debian security tracker, trixie glibc 2.41-12+deb13u4: vulnerable, no-dsa (Minor issue). Out-of-bounds write in the deprecated debugging functions ns_printrrf, ns_printrr and fp_nquery. From the base image; node links libc6 but resolves DNS through its bundled c-ares and does not call these resolver debugging functions.",
-    "added": "2026-11-14",
-    "expires": "2027-02-14"
-  },
-  {
     "advisory": "CVE-2026-84243",
     "package": "libc6",
     "severity": "high",
