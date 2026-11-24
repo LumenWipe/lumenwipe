@@ -7,6 +7,18 @@ release is cut.
 
 ## [Unreleased]
 
+### Changed
+
+- `verify()` accepts a Soroswap aggregator `swap_exact_in` whose `partner` is a 0-bps partner,
+  `{ bps: 0, id }`, a shape 0.7.0 refused. Since the aggregator's 2026-11-23 upgrade the Soroswap
+  API names one on every swap it builds for an API key. At 0 bps the partner only labels the swap:
+  the aggregator charges its own 10 bps fee, as with no partner, and pays no partner. Any other bps,
+  a key out of order, a missing or extra key, or a bps that is not the number 0 is still refused
+  with `swap_args_unreadable`, and the id is trusted for nothing. A new accepted mainnet vector
+  converts a token through the aggregator with a 0-bps partner, with rejected mutations at 1, 25
+  and 100 bps and with a third key in the partner. The next release is a minor: it accepts a shape
+  the previous one refused, and RELEASING.md bumps the minor for a new capability before 1.0.
+
 ## [0.7.0] - 2026-11-23
 
 ### Added

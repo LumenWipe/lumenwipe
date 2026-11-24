@@ -2249,13 +2249,40 @@ test("rejects a swap that pays the proceeds anywhere but the account being close
   );
 });
 
+test("accepts an aggregator swap naming a 0-bps partner, whatever its id", () => {
+  for (const id of ["c5f66d6cf", "5637e5344", ""]) {
+    const labelled = aggregatorSwap({
+      args: aggregatorArgs({ partner: JSON.stringify({ bps: 0, id }) }),
+    });
+    expect(() => assertCloseIntent(exitOnly(labelled), chosenConversion())).not.toThrow();
+  }
+});
+
 test("rejects an aggregator swap that names a fee partner", () => {
-  const withPartner = aggregatorSwap({ args: aggregatorArgs({ partner: '{"bps":25,"id":"x"}' }) });
-  expectRefusal(
-    () => assertCloseIntent(exitOnly(withPartner), chosenConversion()),
-    "swap_args_unreadable",
-    /arguments could not be read/
-  );
+  const partners = [
+    '{"bps":1,"id":"x"}',
+    '{"bps":25,"id":"x"}',
+    '{"bps":100,"id":"x"}',
+    '{"bps":"0","id":"x"}',
+    '{"bps":-0,"id":"x"}',
+    '{"bps":0.0,"id":"x"}',
+    '{"id":"x","bps":0}',
+    '{"bps":0,"id":"x","to":"x"}',
+    '{"bps":0}',
+    '{"bps":0,"id":7}',
+    '{ "bps": 0, "id": "x" }',
+    '[0,"x"]',
+    "0",
+    "",
+  ];
+  for (const partner of partners) {
+    const withPartner = aggregatorSwap({ args: aggregatorArgs({ partner }) });
+    expectRefusal(
+      () => assertCloseIntent(exitOnly(withPartner), chosenConversion()),
+      "swap_args_unreadable",
+      /arguments could not be read/
+    );
+  }
 });
 
 test("rejects a swap of a token the user never chose to convert", () => {

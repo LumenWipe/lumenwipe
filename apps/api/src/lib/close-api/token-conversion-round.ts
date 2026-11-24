@@ -47,8 +47,8 @@ import { defaultXBullConversionDeps, quoteTokenToXlmViaXBull } from "@/lib/xbull
  * that operation is `swap_exact_in` on the registry's Soroswap aggregator or
  * `swap_exact_tokens_for_tokens` on its router, confirmed by the contract's live code hash and not
  * just its address; the arguments spend exactly the live balance of the chosen token, deliver XLM
- * to the account itself, set a minimum no lower than the floor the user was shown, and name no
- * fee partner; and the authorization tree the signature
+ * to the account itself, set a minimum no lower than the floor the user was shown, and charge no
+ * partner fee; and the authorization tree the signature
  * satisfies invokes nothing but the aggregator, its adapters, the router, and the token - every
  * `transfer` of the token from the account, none to a Stellar account. The browser re-checks the
  * same shape from the user's own inputs before signing (architecture.md §10.1).
@@ -229,8 +229,32 @@ function assertSwapArgs(
   const min = bigOf(minOut!);
   if (min === null || min < expected.minOut) throw new Error("min_out is below your floor");
   if (routes!.type !== "scvVec") throw new Error("routes is not a list");
-  // A partner replaces the aggregator's own 10 bps fee with its own, from 25 bps up to 10%.
-  if (partner!.type !== "scvVoid") throw new Error("the swap names a fee partner");
+  if (partner!.type !== "scvVoid" && !isZeroFeePartner(partner!)) {
+    throw new Error("the swap names a fee partner");
+  }
+}
+
+/**
+ * `Some(Partner { bps: 0, id })`, which the Soroswap API attaches to every keyed build: a partner
+ * at 0 bps only labels the swap, and the aggregator charges its own 10 bps as with `None`. Any
+ * other bps replaces that fee with the partner's, from 25 bps up to 10%. The entries are read in
+ * order because the host stores a map's keys sorted and unique, so `bps` then `id` is the only
+ * encoding of the struct; the id is trusted for nothing.
+ */
+function isZeroFeePartner(partner: xdr.ScVal): boolean {
+  if (partner.type !== "scvMap") return false;
+  const entries = partner.map ?? [];
+  if (entries.length !== 2) return false;
+  const [bps, id] = entries as [xdr.ScMapEntry, xdr.ScMapEntry];
+  return (
+    bps.key.type === "scvSymbol" &&
+    bps.key.sym.toString() === "bps" &&
+    bps.val.type === "scvU32" &&
+    bps.val.u32 === 0 &&
+    id.key.type === "scvSymbol" &&
+    id.key.sym.toString() === "id" &&
+    id.val.type === "scvSymbol"
+  );
 }
 
 /**
