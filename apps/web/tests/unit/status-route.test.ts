@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, mock, spyOn, test } from "bun:test";
 import { GET } from "@/app/api/status/route";
 import { fakeFetch } from "./fixtures/fetch";
+import { HOSTED_MALFORMED, HOSTED_MIXED } from "./fixtures/status/hosted-pages";
 import { MALFORMED, RPC_DEGRADED, WITH_EXTRAS } from "./fixtures/status/summaries";
 
 const SOURCE = "https://status.example.test/summary.json";
@@ -99,6 +100,36 @@ test("status route › a body that is not JSON shows nothing", async () => {
 
 test.each(MALFORMED.map((body) => [JSON.stringify(body), body]))(
   "status route › %s shows nothing",
+  async (_, body) => {
+    answer(() => Response.json(body));
+    await expectNothingToShow();
+  }
+);
+
+test("status route › a hosted status page served as text/html is mapped onto the summary", async () => {
+  answer(
+    () =>
+      new Response(JSON.stringify(HOSTED_MIXED), {
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      })
+  );
+  const res = await GET();
+  expect(res.status).toBe(200);
+  expect(res.headers.get("Cache-Control")).toBe(CACHE_CONTROL);
+  expect(await res.json()).toEqual({
+    components: [
+      { id: "api", state: "operational" },
+      { id: "web", state: "degraded" },
+      { id: "user-path", state: "outage" },
+      { id: "rpc-mainnet", state: "degraded" },
+      { id: "indexer", state: "operational" },
+    ],
+    page: "https://status.example.test",
+  });
+});
+
+test.each(HOSTED_MALFORMED)(
+  "status route › a hosted status page with %s shows nothing",
   async (_, body) => {
     answer(() => Response.json(body));
     await expectNothingToShow();

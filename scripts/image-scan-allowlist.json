@@ -48,6 +48,14 @@
     "expires": "2026-12-17"
   },
   {
+    "advisory": "CVE-2026-107494",
+    "package": "libssl3t64",
+    "severity": "high",
+    "reason": "Debian security tracker, trixie openssl 3.5.9-1~deb13u1 and trixie-security 3.5.7-1~deb13u3: vulnerable, no fixed version. The QUIC stack queues a RETIRE_CONNECTION_ID frame for every retransmitted NEW_CONNECTION_ID frame, so a remote QUIC peer can grow memory without bound (incomplete fix of CVE-2026-84784). From the distroless base image, which ships libssl3t64 3.5.9-1~deb13u1; nothing in the image loads the system libssl or libcrypto: a DT_NEEDED scan of every ELF in the pinned amd64 image (285 files, layers fetched by digest) finds libcrypto.so.3 only in libssl3t64's own libssl.so.3 and engines-3, node links neither (it bundles OpenSSL 3.5.9), and the API's production node_modules hold no ELF file. The API opens no QUIC connection and runs no QUIC server.",
+    "added": "2026-11-24",
+    "expires": "2026-12-24"
+  },
+  {
     "advisory": "CVE-2026-107496",
     "package": "libssl3t64",
     "severity": "high",

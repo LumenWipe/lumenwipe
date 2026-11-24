@@ -39,7 +39,7 @@ function isOneOf<T extends string>(values: readonly T[], value: unknown): value 
   return typeof value === "string" && (values as readonly string[]).includes(value);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 

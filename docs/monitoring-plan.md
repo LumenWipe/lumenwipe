@@ -346,6 +346,12 @@ seconds, with a 3 second budget and no redirects followed. It names the close-fl
 down and links to the page. It shows nothing when everything is operational, when `STATUS_SOURCE_URL` is unset
 (the default) or not `https`, and when the status host cannot be read, so it never reads as an all-clear.
 
+`STATUS_SOURCE_URL` points at the status page's own JSON, which the route maps onto its summary: a row is
+matched to a close-flow component by its name on the page, so the docs and playground rows are dropped. Downtime
+is shown as an outage and maintenance as degraded, and a row the page does not monitor is left out. A component
+listed twice, or with a status the route does not know, shows nothing at all. Only a component and its state
+leave the route: no name, explanation, uptime figure or history from the page does.
+
 ## 5. What happens when an alert fires?
 
 | Monitor ID              | Severity | Response                                                                                                                                                                                                                                           | Owner       | Status                                | Last reviewed |
