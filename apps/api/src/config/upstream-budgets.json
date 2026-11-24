@@ -3,7 +3,7 @@
     "provider": "Stellar RPC (mainnet list)",
     "networks": ["mainnet"],
     "upstreams": ["rpc"],
-    "monthlyRequests": 100000
+    "monthlyRequests": 333280
   },
   {
     "provider": "Stellar RPC (testnet list)",
@@ -27,13 +27,13 @@
     "provider": "OctoPos",
     "networks": ["mainnet"],
     "upstreams": ["defi"],
-    "monthlyRequests": 4000
+    "monthlyRequests": 21280
   },
   {
     "provider": "StellarIndex",
     "networks": ["mainnet", "testnet"],
     "upstreams": ["indexer"],
-    "monthlyRequests": 6000
+    "monthlyRequests": 40560
   },
   {
     "provider": "Soroswap API",
