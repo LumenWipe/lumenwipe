@@ -1,5 +1,5 @@
 {
-  "version": "2026-11-23",
+  "version": "2026-11-25",
   "lastVerified": "2026-11-17",
   "validUntil": "2027-02-15",
   "source": "manually verified per-entry against each protocol's official docs/GitHub (Blend: docs.blend.capital/mainnet-deployments + blend-capital/blend-utils mainnet.contracts.json; Soroswap: soroswap/core public/mainnet.contracts.json; Aquarius: docs.aqua.network addresses-and-networks + the router's own instance) and the live instance's executable hash over RPC on lastVerified; mainnet labels cross-checked against the stellar.expert directory where it names the contract",
@@ -394,13 +394,13 @@
       "protocol": "aquarius",
       "kind": "router",
       "address": "CBQDHNBFBZYE4MKPWBSJOPIYLW4SFSXAXUTSXJN76GNKYVYPCKWC6QUK",
-      "wasmHash": "c99539b023df4a28d7857d33ca4c915c2e20fec04f12b125132b84fbdf94dad3",
+      "wasmHash": "2f8e7d7f237eca17e188c4e5d08b73b0065584b3d39f9e1d801993a8510a3107",
       "version": "v1",
-      "label": "Aquarius AMM router (mainnet, docs.aqua.network; stellar.expert: 'Aquarius Router') - enumerates the pools; never a call target of an exit; hash re-verified 2026-10-02 after an upstream upgrade (interface unchanged)",
+      "label": "Aquarius AMM router (mainnet, docs.aqua.network; stellar.expert: 'Aquarius Router') - enumerates the pools; never a call target of an exit; re-pinned 2026-11-25 after an upstream upgrade (every earlier function unchanged; swap_split, get_reward_token and get_reward_token_count added)",
       "verifiedLive": true,
-      "verifiedBy": "2026-11-06: readLiveWasmHash over RPC (mainnet.sorobanrpc.com) returned this hash, unchanged (#713); 2026-10-10: address matched against docs.aqua.network addresses-and-networks and live hash compared in the full registry re-verification (#581); 2026-11-17: live executable hash re-read over public RPC and matched (#1008)",
+      "verifiedBy": "2026-10-10 (#581): address matched against docs.aqua.network; 2026-11-25 (#1121): re-pinned after commit_upgrade tx 060f587341861b30d3c434b62d49d36ed006fe987b535a5771a3165d162ef7ae (ledger 65560332) and apply_upgrade tx 0169293062a1177282f3ddd8ea3ad7f8418bb3404b54a5b1bbe870c7ffaef3ae (ledger 65663788), each signed 2 of 3 by the router's Admin account; plain Wasm, version() 222; no public source, so trusted by spec and host-import diff and a live read of all 392 pools",
       "source": "docs.aqua.network/developers/reference/addresses-and-networks; stellar.expert directory 'Aquarius Router'",
-      "verifiedAt": "2026-11-17"
+      "verifiedAt": "2026-11-25"
     },
     {
       "network": "mainnet",

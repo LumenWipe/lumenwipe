@@ -335,6 +335,33 @@ test("the shipped mainnet Soroswap aggregator is pinned to its upgraded code alo
   });
 });
 
+const AQUARIUS_ROUTER = "CBQDHNBFBZYE4MKPWBSJOPIYLW4SFSXAXUTSXJN76GNKYVYPCKWC6QUK";
+// The router's code since its 2026-11-25 upgrade (ledger 65663788), and the code it replaced.
+const AQUARIUS_ROUTER_HASH = "2f8e7d7f237eca17e188c4e5d08b73b0065584b3d39f9e1d801993a8510a3107";
+const AQUARIUS_ROUTER_RETIRED_HASH =
+  "c99539b023df4a28d7857d33ca4c915c2e20fec04f12b125132b84fbdf94dad3";
+
+test("the shipped mainnet Aquarius router is pinned to its upgraded code alone, and the retired code is unknown", () => {
+  const [router, ...others] = entriesForProtocol("mainnet", "aquarius").filter(
+    (e) => e.kind === "router"
+  );
+  expect(others).toEqual([]);
+  expect(router).toMatchObject({
+    address: AQUARIUS_ROUTER,
+    wasmHash: AQUARIUS_ROUTER_HASH,
+    version: "v1",
+  });
+  expect(resolveCode("mainnet", wasm(AQUARIUS_ROUTER_HASH))).toMatchObject({
+    status: "known",
+    protocol: "aquarius",
+    kind: "router",
+  });
+  expect(resolveCode("mainnet", wasm(AQUARIUS_ROUTER_RETIRED_HASH))).toEqual({
+    status: "unknown",
+    wasmHash: AQUARIUS_ROUTER_RETIRED_HASH,
+  });
+});
+
 test("today's date is within the registry's verification window", () => {
   expect(isRegistryFresh(new Date())).toBe(true);
 });

@@ -7,6 +7,14 @@ release is cut.
 
 ## [Unreleased]
 
+### Changed
+
+- The bundled contract registry (version `2026-11-25`) re-pins the mainnet Aquarius router
+  (`CBQDHNBFBZYE4MKPWBSJOPIYLW4SFSXAXUTSXJN76GNKYVYPCKWC6QUK`) to the code it runs since its
+  upstream upgrade on 2026-11-25. The previous code is no longer recognized. The router's address,
+  the Aquarius pool codes and the contracts a close may call are unchanged, and so is
+  verification.
+
 ## [0.8.0] - 2026-11-24
 
 ### Changed
