@@ -10,7 +10,7 @@ This page defines what "healthy" means for the LumenWipe API and the close flow.
 ## Status
 
 - **Every target on this page is a proposal.** A target is confirmed or changed only after 30 days of measurement exist for its indicator.
-- **No figure is published before then.** No attainment, uptime or latency number for these indicators appears in public until 30 days of measurement back it.
+- **No figure is published before then.** No attainment, uptime or latency number for these indicators appears in public until 30 days of measurement back it. The probe history on the status page is not one of these indicators: each row there reports how often one outside probe passed since it was created ([status page probes](/monitoring-plan#status-page-probes)).
 - **The burn-rate alerts are defined, not automated.** The API has no metrics pipeline yet (metrics and tracing are deferred). Until it does, the indicators are read from the sources named below, and none of them pages anyone. The monitors that do alert today are listed in the [monitoring plan](/monitoring-plan).
 
 Every objective is evaluated over a **28-day rolling window**.
