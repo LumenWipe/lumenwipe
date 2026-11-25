@@ -18,6 +18,7 @@ const NO_ERROR_CASE = new Set([
   "GET /health",
   "GET /health/deep",
   "GET /health/dependencies",
+  "GET /health/user-path",
   "GET /v1/config/exchange-registry",
 ]);
 

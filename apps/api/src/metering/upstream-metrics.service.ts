@@ -48,9 +48,14 @@ export class UpstreamMetricsService implements OnApplicationShutdown {
     await this.waitForWrite(this.write());
   }
 
-  async onApplicationShutdown(): Promise<void> {
+  /** Writes what is pending now, whatever the interval. Never throws. */
+  async flush(): Promise<void> {
     if (this.inFlight) await this.waitForWrite(this.inFlight);
     await this.waitForWrite(this.write());
+  }
+
+  async onApplicationShutdown(): Promise<void> {
+    await this.flush();
   }
 
   /**

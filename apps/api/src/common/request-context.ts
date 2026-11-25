@@ -56,6 +56,24 @@ export function markSensitive(value: unknown): void {
   if (typeof value === "string" && value.length > 0) storage.getStore()?.sensitive.add(value);
 }
 
+/**
+ * Runs `fn` the way a request of its own would run: a fresh deadline, provider pins and upstream
+ * counters, sharing none with the request that happens to be executing.
+ */
+export function runInOwnContext<T>(deadlineMs: number, fn: () => T): T {
+  return storage.run(
+    {
+      requestId: randomUUID(),
+      sensitive: new Set(),
+      deadline: createDeadline(deadlineMs),
+      providerPins: new Map(),
+      upstreamCalls: new Map(),
+      upstreamMs: new Map(),
+    },
+    fn
+  );
+}
+
 function withRequestId(body: unknown, requestId: string): unknown {
   if (typeof body !== "object" || body === null || !("error" in body)) return body;
   const { error } = body as { error: unknown };

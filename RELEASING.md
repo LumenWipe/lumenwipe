@@ -72,7 +72,7 @@ Two different "versions" exist for the API and they answer different questions:
 - **The `/v1` route prefix** - this is the real, external contract. Every integrator route lives
   under `/v1`, and a breaking change to a request or response shape gets a new prefix (`/v2`)
   rather than breaking `/v1` out from under existing integrators. `/v1` has not needed to move yet.
-  Only the operational routes (`/`, `/health`, `/health/deep`, `/health/dependencies`) and the
+  Only the operational routes (`/`, `/health`, `/health/deep`, `/health/dependencies`, `/health/user-path`) and the
   operator-only `/admin/api-keys` routes stay unversioned; the admin routes are excluded from the
   public spec and are not a contract with integrators. The pre-`/v1` paths (`/:network/account/...`,
   `/:network/mediator/...`, `/config/exchange-registry`, `/integrator/...`, and so on) are aliases

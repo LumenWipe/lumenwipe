@@ -548,6 +548,21 @@ describe("durable flush", () => {
     expect(store.upstream.get(`${DAY}/mainnet/horizon/requests`)).toBe(2);
   });
 
+  test("flush writes what is pending before the interval has passed", async () => {
+    const store = new InMemoryUsageStore();
+    const service = flushService(store);
+    recordUpstream("mainnet", "rpc", "requests");
+    await service.flushIfDue();
+    expect(store.upstream.size).toBe(0);
+
+    await service.flush();
+    expect(store.upstream.get(`${DAY}/mainnet/rpc/requests`)).toBe(1);
+
+    recordUpstream("mainnet", "rpc", "requests");
+    await service.flush();
+    expect(store.upstream.get(`${DAY}/mainnet/rpc/requests`)).toBe(2);
+  });
+
   test("a rejected write gives its counts back, and only one is sent per interval", async () => {
     let calls = 0;
     const service = flushService(
@@ -641,18 +656,18 @@ describe("durable flush", () => {
 
     test("nothing is logged below 70 percent of a budget", async () => {
       const store = new InMemoryUsageStore();
-      await seed(store, DAY, 69_998);
+      await seed(store, DAY, 233_294);
       const service = flushService(store);
       recordUpstream("mainnet", "rpc", "requests");
       tick();
       await service.flushIfDue();
-      expect(store.upstream.get(`${DAY}/mainnet/rpc/requests`)).toBe(69_999);
+      expect(store.upstream.get(`${DAY}/mainnet/rpc/requests`)).toBe(233_295);
       expect(budgetLines()).toEqual([]);
     });
 
     test("at 70 percent one line names the budget, with the figures as fields", async () => {
       const store = new InMemoryUsageStore();
-      await seed(store, DAY, 69_999);
+      await seed(store, DAY, 233_295);
       await seed(store, "2026-09-30", 50_000);
       const service = flushService(store);
       recordUpstream("mainnet", "rpc", "requests");
@@ -665,15 +680,15 @@ describe("durable flush", () => {
           networks: ["mainnet"],
           upstreams: ["rpc"],
           percent: 70,
-          used: 70_000,
-          budget: 100_000,
+          used: 233_296,
+          budget: 333_280,
         },
       ]);
     });
 
     test("one process checks at most once an hour, however often it writes", async () => {
       const store = new InMemoryUsageStore();
-      await seed(store, DAY, 80_000);
+      await seed(store, DAY, 300_000);
       let reads = 0;
       const read = store.upstreamDays.bind(store);
       store.upstreamDays = (dates) => {
@@ -813,7 +828,7 @@ describe("durable flush", () => {
     });
 
     test("never runs for the health routes", async () => {
-      for (const path of ["/health", "/health/deep", "/health/dependencies"]) {
+      for (const path of ["/health", "/health/deep", "/health/dependencies", "/health/user-path"]) {
         const { flushes, result } = run(path, () => of({ status: "ok" }));
         await result;
         expect(flushes.count).toBe(0);

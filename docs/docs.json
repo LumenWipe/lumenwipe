@@ -189,7 +189,12 @@
           {
             "group": "Health",
             "openapi": "api-reference/openapi.json",
-            "pages": ["GET /health", "GET /health/deep", "GET /health/dependencies"]
+            "pages": [
+              "GET /health",
+              "GET /health/deep",
+              "GET /health/dependencies",
+              "GET /health/user-path"
+            ]
           },
           {
             "group": "Service",

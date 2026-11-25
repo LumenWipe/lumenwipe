@@ -321,24 +321,41 @@ request waited on each of `horizon`, `paths`, `defi`, `indexer`, `soroswap`, `xb
 other as `rpc.other`). Each value is the summed wall-clock time of that key's calls, so concurrent calls can add up
 to more than the request's `latencyMs`.
 
-### Status page probes (planned)
+### Status page probes
 
-A hosted status page, on a provider other than the ones that run the API and the web app, will probe from
-outside our network once a minute. It is not live yet; until it is, nothing below runs. Each component has
-three states: operational, degraded and outage.
+A hosted status page, on a provider other than the ones that run the API and the web app, probes from outside
+our network once a minute. Each component has three states: operational, degraded and outage.
 
-| Group        | Component                     | What the probe checks                                                                                                    |
-| ------------ | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| LumenWipe    | API                           | `GET /health` answers `200`. It is dependency-free, so it proves the process is up, not that a close works               |
-| LumenWipe    | Web app                       | `GET /api/health` on the web answers `200`; it asks the API's `/health` with a 2.5 s budget and is cached for 10 seconds |
-| LumenWipe    | Docs and playground           | Each site's home page answers `200`                                                                                      |
-| LumenWipe    | Account analysis and planning | A read-only analyze and plan of a public fixture account: no signing and no submit                                       |
-| Dependencies | Stellar RPC, per network      | `GET /health/deep` answers `200`, shown as one row per network                                                           |
-| Dependencies | Horizon-compatible provider   | The provider the API reads account state from, per network                                                               |
-| Dependencies | Indexer                       | Only when one is configured                                                                                              |
+| Group        | Component                                | What the probe checks                                                                                                                  |
+| ------------ | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| LumenWipe    | API                                      | `GET /health` answers `200`. It is dependency-free, so it proves the process is up, not that a close works                             |
+| LumenWipe    | Web app                                  | `GET /api/health` on the web answers `200`; it asks the API's `/health` with a 2.5 s budget and is cached for 10 seconds               |
+| LumenWipe    | Docs and playground                      | Each site's home page answers `200`                                                                                                    |
+| LumenWipe    | Account analysis and planning            | `GET /health/user-path` answers `200`: a read-only analyze and plan of one fixed public mainnet account, with no signing and no submit |
+| Dependencies | Stellar RPC, per network                 | The `rpc` row of that network in `GET /health/dependencies`; the row is down when every provider of that network is down               |
+| Dependencies | Horizon-compatible provider, per network | The `horizon` row of that network in `GET /health/dependencies`; the row is down when every provider of that network is down           |
+
+There is no indexer row.
+
+`GET /health/user-path` runs the code the keyed analyze and plan routes run, in process, with no API key, for
+the latency lab's mainnet baseline account. Its body holds fixed values only: `status` (`ok`, `failed`,
+`fixture_missing`), `network`, `checkedAt`, and for each of `analyze` and `plan` a `result`, an `errorClass`
+and `latencyMs`. It answers `503` when a step failed. `errorClass` is `upstream` or `timeout` when a provider
+is at fault, which the rows of `/health/dependencies` then confirm, and `internal` when the API itself is. The
+two steps run at the same time, each as a request of its own with a 20 second budget, so the route answers
+within 24 seconds. A verdict is cached for 300 seconds, or 60 seconds after a failure, and callers that arrive
+during a run share it: polling starts at most one run per period, whoever polls. A run makes about 27 Stellar RPC,
+8 Horizon, 2 OctoPos and 4 StellarIndex requests, which the [provider budgets](/runbooks/provider-quotas) allow
+for, and writes its upstream counts to the store before it answers. The route is not rate limited, not metered
+and not part of the availability indicator.
+
+If the fixture account is ever merged, the route answers `200` with `status: "fixture_missing"`, because a
+missing account is not a failure of the service, and each run logs the fixed message
+`user-path probe fixture account not found` at `ERROR` severity. A log-based alert on that message is the
+signal to replace the fixture in `apps/api/src/health/user-path-probe.ts`.
 
 A dependency outage shows on its own row and does not mark the API as down. No startup or liveness probe points
-at `/health/deep`. The page shows no uptime figure until 30 days of measurement exist, as
+at `/health/deep`, `/health/dependencies` or `/health/user-path`. The page shows no uptime figure until 30 days of measurement exist, as
 [service levels](/service-levels#status) requires.
 
 The site banner reads the page's summary through the web's `/api/status` route, server-side, cached for 60

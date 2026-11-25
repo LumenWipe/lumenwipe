@@ -24,7 +24,7 @@ The table is generated from the code: each value is read from the constant named
 
 ## Request rate
 
-One budget per API key covers every endpoint on both networks, so a key used for mainnet and testnet spends the same budget. A request without a valid key is counted against its client IP. The service index, `/health` and `/health/deep` are not limited.
+One budget per API key covers every endpoint on both networks, so a key used for mainnet and testnet spends the same budget. A request without a valid key is counted against its client IP. The service index, `/health`, `/health/deep` and `/health/user-path` are not limited.
 
 Every limited response reports the budget in `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset`, and a rejected request is `429 rate_limited` with `Retry-After`. The older `X-RateLimit-*` names carry the same values and are deprecated; see [Compatibility and deprecation](/integrators/compatibility#deprecated-today). The [API reference](/api-reference/introduction#rate-limits) describes the full behavior, including what counts against the budget.
 

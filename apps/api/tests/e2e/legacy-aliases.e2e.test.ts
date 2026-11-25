@@ -198,7 +198,7 @@ test("operational and admin routes are not aliased", async () => {
 const UNVERSIONED = [
   /^\/$/,
   /^\/\.well-known\/api-catalog$/,
-  /^\/health(\/deep|\/dependencies)?$/,
+  /^\/health(\/deep|\/dependencies|\/user-path)?$/,
   /^\/admin\/api-keys(\/.*)?$/,
 ];
 
