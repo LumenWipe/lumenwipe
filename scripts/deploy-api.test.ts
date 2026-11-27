@@ -636,6 +636,32 @@ describe("deploy", () => {
     }
   });
 
+  test("the capacity flags, the workflow and the architecture doc agree", () => {
+    const root = join(import.meta.dir, "..");
+    const script = readFileSync(SCRIPT, "utf8");
+    const workflow = readFileSync(join(root, ".github/workflows/deploy-api.yml"), "utf8");
+    const arch = readFileSync(join(root, "docs/architecture.md"), "utf8");
+    const flags = /^RESOURCE_FLAGS=\(([^)]*)\)/m.exec(script)?.[1] ?? "";
+    expect(flags).toContain('--min-instances="$MIN_INSTANCES"');
+    const min = /^MIN_INSTANCES=(\d+)$/m.exec(script)?.[1];
+    expect(min).toBeDefined();
+    const max = /--max-instances=(\d+)/.exec(flags)?.[1];
+    const concurrency = /--concurrency=(\d+)/.exec(flags)?.[1];
+    expect(max).toBeDefined();
+    expect(concurrency).toBeDefined();
+    expect(flags).toContain("--cpu-throttling");
+    // The doc names each setting in backticks; only those tokens are compared.
+    expect(arch).toContain(`\`--max-instances=${max}\``);
+    expect(arch).toContain(`\`--concurrency=${concurrency}\``);
+    expect(arch).toContain("`--cpu-throttling`");
+    expect(arch).toContain("`MIN_INSTANCES`");
+    // The workflow runs the script and must not set a conflicting flag of its own.
+    expect(workflow).toContain("scripts/deploy-api.sh deploy");
+    expect(workflow).not.toMatch(
+      /--(min-instances|max-instances|concurrency|cpu-throttling|no-cpu-throttling)/
+    );
+  });
+
   test("the analyze timeout outlasts the API's own request deadline", () => {
     const read = (path: string, pattern: RegExp) => {
       const match = pattern.exec(readFileSync(join(import.meta.dir, "..", path), "utf8"));

@@ -117,6 +117,8 @@ jobs:
 
       # Deploys the image as a revision with no traffic, smoke tests it on its tagged URL and only
       # then promotes it; see RELEASING.md (apps/api) for each outcome and the manual rollback.
+      # The capacity flags (min and max instances, concurrency, CPU billing) are set explicitly by
+      # scripts/deploy-api.sh for the candidate and the restore; do not pass them here.
       # Env vars and Secret Manager bindings are set once on the service and inherited by each
       # new revision, so they are not repeated here.
       - name: Deploy to Cloud Run
