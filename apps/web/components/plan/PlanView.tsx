@@ -370,6 +370,7 @@ export default function PlanView({
   // above, so the list is empty exactly when they pass.
   const defiAckOpen = hardBlockers.some((b) => b.code === DEFI_POSITIONS_UNAVAILABLE_CODE);
   const issuerAckOpen = hardBlockers.some((b) => b.code === ISSUER_SUPPLY_BLOCKER_CODE);
+  const otherHardBlockers = hardBlockers.length - (defiAckOpen ? 1 : 0) - (issuerAckOpen ? 1 : 0);
   const openClaims = claimableBalanceDecisions.filter(
     (b) => !claimResolved(b, claimableBalanceSelections[b.balanceId])
   );
@@ -483,7 +484,7 @@ export default function PlanView({
   const reasons = proceedReasons({
     replanning: loading,
     planStale,
-    otherHardBlockers: hardBlockers.length - (defiAckOpen ? 1 : 0) - (issuerAckOpen ? 1 : 0),
+    otherHardBlockers,
     assetCardsWithheld,
     openItems,
     destination: destinationFact,
@@ -656,13 +657,14 @@ export default function PlanView({
           unresolved or forfeited balance shows its own up-to-date state there); a stale
           snapshot repeating the same thing here would only confuse once the user has acted. */}
       <div id={BLOCKERS_ID} tabIndex={-1} className="outline-none">
-        <BlockersPanel blockers={displayBlockers} blocking={hardBlockers.length > 0} />
+        <BlockersPanel blockers={displayBlockers} blocking={otherHardBlockers > 0} />
       </div>
 
       {defiPositionsBlocker && (
         <div data-open-item="confirm:defi">
           <DefiPositionsAcknowledgement
             sweepCompleted={isCompletedOnChainSweep(account.defiPositions.source)}
+            positionsFound={account.defiPositions.positions.length > 0}
             acknowledged={defiPositionsAcknowledgedFor === account.address}
             onAcknowledgedChange={(ack) => acknowledgeDefiPositions(ack ? account.address : null)}
           />

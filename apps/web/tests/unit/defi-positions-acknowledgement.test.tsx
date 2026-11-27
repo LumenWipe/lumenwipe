@@ -8,6 +8,7 @@ test("after a completed sweep it states what the sweep found and asks about the 
   render(
     <DefiPositionsAcknowledgement
       sweepCompleted={true}
+      positionsFound={false}
       acknowledged={false}
       onAcknowledgedChange={() => {}}
     />
@@ -21,6 +22,7 @@ test("when the sweep did not complete it never claims an on-chain check found no
   render(
     <DefiPositionsAcknowledgement
       sweepCompleted={false}
+      positionsFound={false}
       acknowledged={false}
       onAcknowledgedChange={() => {}}
     />
@@ -37,10 +39,26 @@ test("ticking the box reports the acknowledgement", () => {
   render(
     <DefiPositionsAcknowledgement
       sweepCompleted={true}
+      positionsFound={false}
       acknowledged={false}
       onAcknowledgedChange={onChange}
     />
   );
   fireEvent.click(screen.getByRole("checkbox"));
   expect(onChange).toHaveBeenCalledWith(true);
+});
+
+test("next to detected positions it asks only about the trustlines, never claiming nothing was found", () => {
+  render(
+    <DefiPositionsAcknowledgement
+      sweepCompleted={true}
+      positionsFound={true}
+      acknowledged={false}
+      onAcknowledgedChange={() => {}}
+    />
+  );
+  expect(screen.getByText("Confirm what this account's trustlines are for.")).toBeDefined();
+  expect(screen.getByText(/found the DeFi positions shown below/)).toBeDefined();
+  expect(screen.queryByText(/found no open DeFi positions/)).toBeNull();
+  expect(screen.queryByText(/could not be confirmed/)).toBeNull();
 });

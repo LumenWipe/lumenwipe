@@ -130,7 +130,7 @@ These come from `close/plan` and `close/transactions`. The `message` names the p
 
 ## DeFi position exits
 
-A position that cannot be closed safely is reported, never skipped. Show the `message`, which says what to do in the protocol itself (repay a loan, claim rewards, add a trustline, wait out a cooldown). After the user has done that, analyze the account again and plan again. `defi_positions_stale` means the detected positions are out of date, so plan again. `defi_positions_unavailable` appears as a plan blocker when detection could not confirm the account's positions: analyze again.
+A position that cannot be closed safely is reported, never skipped. Show the `message`, which says what to do in the protocol itself (repay a loan, claim rewards, add a trustline, wait out a cooldown). After the user has done that, analyze the account again and plan again. `defi_positions_stale` means the detected positions are out of date, so plan again. `defi_positions_unavailable` appears as a plan blocker when detection could not confirm the account's positions, or when the account holds trustlines that detection cannot rule out, including next to a detected position: answer the `defi_positions:<address>` decision the plan returns, or analyze again.
 
 | Code                                | Status | Retry     | Meaning                                                                     |
 | ----------------------------------- | ------ | --------- | --------------------------------------------------------------------------- |

@@ -498,6 +498,15 @@ export function isAccountGone(err: unknown): boolean {
   return err instanceof ApiRequestError && err.code === "account_not_found";
 }
 
+/** A retry sends the same answers and is refused the same way: the trustline confirmation is
+ *  only asked on the analysis page. */
+export const DEFI_CONFIRMATION_NEEDED =
+  "Retrying will not get past this. To continue, leave this page, analyze the account again and confirm what its trustlines are for.";
+
+function needsDefiConfirmation(err: unknown): boolean {
+  return err instanceof ApiRequestError && err.code === "defi_positions_unavailable";
+}
+
 const UNCONFIRMED = "The last transaction could not be confirmed, so check it on the explorer";
 const UNCONFIRMED_RETRY =
   "; retrying is also safe, because LumenWipe re-reads your account first and never sends a confirmed transaction twice.";
@@ -552,7 +561,11 @@ export function closeFailureMessage(
     base,
     scoped || !allows(journey, "no-new-sent") ? null : "No new transaction was sent.",
     progress,
-    retrySafe ? "It is safe to retry." : null,
+    needsDefiConfirmation(err)
+      ? DEFI_CONFIRMATION_NEEDED
+      : retrySafe
+        ? "It is safe to retry."
+        : null,
   ]
     .filter(Boolean)
     .join(" ");

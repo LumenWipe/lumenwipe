@@ -169,17 +169,53 @@ test("a confirmed sweep that found a real, fully-recognized position does not ha
   expect(blockers[0].code).toBe("defi_positions_unconfirmed_but_detected");
 });
 
-test("the detected-position code does not depend on trustline count, unlike the empty case", () => {
+// Regression: a mainnet account with a Phoenix position and a USDC trustline was never asked the
+// acknowledgement while the position existed, then every round after the exit was refused as a
+// confirmed-empty sweep with trustlines.
+test("a detected position next to trustlines asks the acknowledgement before the exit", () => {
   const result = makeResult({
     source: DEGRADED_SOURCE_CONFIRMED,
     timestamp: null,
     positions: [BLEND_POSITION],
   });
-  // 5 trustlines - the AMM-ruling-out heuristic for the empty case is irrelevant here, since
-  // the account already has a named, concrete position to act on regardless of trustline count.
-  const blockers = assessDefiPositionsGate(result, new Date(), 5);
+  const blockers = assessDefiPositionsGate(result, new Date(), 1);
+  expect(blockers).toHaveLength(1);
+  expect(blockers[0].code).toBe("defi_positions_unavailable");
+  expect(blockers[0].message).toBe(
+    "A direct on-chain check found 1 DeFi position (shown below), and this close includes its " +
+      "exit, but this account also holds trustlines that check cannot rule out. Confirm that " +
+      "they are for other assets, not open DeFi positions, before proceeding."
+  );
+});
+
+test("an unknown trustline count next to a detected position fails closed", () => {
+  const result = makeResult({
+    source: DEGRADED_SOURCE_CONFIRMED,
+    timestamp: null,
+    positions: [BLEND_POSITION],
+  });
+  expect(assessDefiPositionsGate(result)[0]!.code).toBe("defi_positions_unavailable");
+});
+
+test("the acknowledgement keeps a detected position's own code, never the user-verified one", () => {
+  const result = makeResult({
+    source: DEGRADED_SOURCE_CONFIRMED,
+    timestamp: null,
+    positions: [BLEND_POSITION],
+  });
+  const blockers = assessDefiPositionsGate(result, new Date(), 5, true);
   expect(blockers).toHaveLength(1);
   expect(blockers[0].code).toBe("defi_positions_unconfirmed_but_detected");
+});
+
+test("after the exit, the same account builds once the acknowledgement is carried", () => {
+  const afterExit = makeResult({ source: DEGRADED_SOURCE_CONFIRMED, timestamp: null });
+  expect(assessDefiPositionsGate(afterExit, new Date(), 1)[0]!.code).toBe(
+    "defi_positions_unavailable"
+  );
+  expect(assessDefiPositionsGate(afterExit, new Date(), 1, true)[0]!.code).toBe(
+    "defi_positions_unconfirmed_user_verified"
+  );
 });
 
 test("a genuinely unconfirmed result with positions (sweep itself never ran) still hard-blocks", () => {
@@ -266,7 +302,7 @@ test("a confirmed sweep that found positions says what it found, not that it cou
     timestamp: null,
     positions: [BLEND_POSITION, BLEND_POSITION],
   });
-  const [blocker] = assessDefiPositionsGate(result, new Date(), 2);
+  const [blocker] = assessDefiPositionsGate(result, new Date(), 0);
   expect(blocker!.message).toBe(
     "A direct on-chain check found 2 DeFi positions (shown below), and this close includes their exit."
   );
