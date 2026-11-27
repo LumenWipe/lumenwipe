@@ -7,6 +7,7 @@ import {
   changelogVerdict,
   checkAgreement,
   compareSemver,
+  docsPins,
   expectedLinks,
   isNpmNotFound,
   isPackageId,
@@ -486,7 +487,14 @@ const VERIFY_RELEASED = `# Changelog
 `;
 
 const VERIFY_DOCS = [
-  { path: "docs/integrators/quickstart.mdx", text: `{ "@lumenwipe/verify": "~0.1.0" }` },
+  {
+    path: "docs/integrators/quickstart.mdx",
+    text: `{ "@lumenwipe/verify": "~0.1.0", "@stellar/stellar-sdk": "17.4.0" }`,
+  },
+  {
+    path: "docs/sdk/verification.mdx",
+    text: "npm install @lumenwipe/verify @stellar/stellar-sdk@17.4.0",
+  },
 ];
 
 function verify(over: Partial<AgreementInput> = {}): AgreementInput {
@@ -496,6 +504,7 @@ function verify(over: Partial<AgreementInput> = {}): AgreementInput {
     packageVersion: "0.1.0",
     changelog: VERIFY_FIRST,
     docs: VERIFY_DOCS,
+    peerDependencies: { "@stellar/stellar-sdk": "17.4.0" },
     ...over,
   };
 }
@@ -645,7 +654,8 @@ describe("the verifier's docs pin", () => {
 
   test("each package reads only its own pin", () => {
     const both = docs(`"@lumenwipe/sdk": "~0.5.0"
-"@lumenwipe/verify": "~0.1.0"`);
+"@lumenwipe/verify": "~0.1.0"
+"@stellar/stellar-sdk": "17.4.0"`);
     expect(checkAgreement(verify({ docs: both })).errors).toEqual([]);
     expect(checkAgreement(input({ docs: both })).errors).toEqual([]);
     expectError(
@@ -880,10 +890,102 @@ describe("the verify bundle inputs", () => {
   });
 });
 
+describe("the verifier's stellar-sdk pin", () => {
+  const pin = `"@lumenwipe/verify": "~0.1.0"`;
+  const pages = (json: string, install: string) => [
+    { path: "docs/integrators/quickstart.mdx", text: `${pin}, "@stellar/stellar-sdk": "${json}"` },
+    {
+      path: "docs/sdk/verification.mdx",
+      text: `npm install @lumenwipe/verify @stellar/stellar-sdk@${install}`,
+    },
+  ];
+
+  test("the agreeing fixture passes", () => {
+    expect(checkAgreement(verify()).errors).toEqual([]);
+    expect(checkAgreement(verify({ docs: pages("17.4.0", "17.4.0") })).errors).toEqual([]);
+  });
+
+  test("a wrong JSON entry fails with the page and the expected version", () => {
+    expectError(
+      checkAgreement(verify({ docs: pages("17.4.1", "17.4.0") })),
+      'docs/integrators/quickstart.mdx pins "@stellar/stellar-sdk": "17.4.1", expected "17.4.0" (packages/verify/package.json peerDependencies)'
+    );
+  });
+
+  test("a wrong install line fails with the page and the expected version", () => {
+    expectError(
+      checkAgreement(verify({ docs: pages("17.4.0", "17.3.0") })),
+      'docs/sdk/verification.mdx pins "@stellar/stellar-sdk": "17.3.0", expected "17.4.0"'
+    );
+  });
+
+  test("only the exact version is accepted, not a range or a longer one", () => {
+    for (const wrong of ["^17.4.0", "17.4.0-rc.1", "17.4.00"]) {
+      expectError(
+        checkAgreement(verify({ docs: pages(wrong, "17.4.0") })),
+        `"${wrong}", expected "17.4.0"`
+      );
+    }
+  });
+
+  test("a docs tree with no pin fails", () => {
+    expectError(
+      checkAgreement(verify({ docs: [{ path: "README.md", text: pin }] })),
+      'no docs page pins "@stellar/stellar-sdk" for "@lumenwipe/verify"'
+    );
+  });
+
+  test("every wrong pin is reported, not only the first", () => {
+    const errors = checkAgreement(verify({ docs: pages("17.0.0", "17.1.0") })).errors;
+    expect(errors.filter((error) => error.includes('pins "@stellar/stellar-sdk"'))).toHaveLength(2);
+  });
+
+  test("prose naming another version outside an install line is not a pin", () => {
+    const prose = {
+      path: "docs/security-remediation-plan.md",
+      text: "Pinned exactly by `@stellar/stellar-sdk@17.2.1` and by @stellar/stellar-sdk@17.1.0.",
+    };
+    expect(checkAgreement(verify({ docs: [...VERIFY_DOCS, prose] })).errors).toEqual([]);
+  });
+
+  test("an install line for another package is not a pin", () => {
+    const other = { path: "README.md", text: "npm install other @stellar/stellar-sdk@1.0.0" };
+    expect(checkAgreement(verify({ docs: [...VERIFY_DOCS, other] })).errors).toEqual([]);
+  });
+
+  test("a manifest without the peer dependency fails", () => {
+    expectError(
+      checkAgreement(verify({ peerDependencies: {} })),
+      'packages/verify/package.json has no peerDependencies "@stellar/stellar-sdk"'
+    );
+  });
+
+  test("the SDK has no such pin", () => {
+    expect(PACKAGES.sdk.peerPin).toBeNull();
+    const verdict = checkAgreement(input({ docs: [...DOCS, ...pages("1.0.0", "1.0.0")] }));
+    expect(verdict.errors).toEqual([]);
+  });
+
+  test("it applies in the pr and publish modes too", () => {
+    const wrong = pages("17.4.1", "17.4.0");
+    for (const mode of ["pr", "publish"] as const) {
+      const verdict = checkAgreement(verify({ mode, docs: wrong, changelog: VERIFY_RELEASED }));
+      expectError(verdict, 'pins "@stellar/stellar-sdk": "17.4.1", expected "17.4.0"');
+    }
+  });
+});
+
 describe("the repository agrees with itself", () => {
   const read = (path: string): string => readFileSync(join(ROOT, path), "utf8");
   const version = (dir: string): string =>
     (JSON.parse(read(`${dir}/package.json`)) as { version: string }).version;
+
+  const peerDependencies = (): Record<string, string> =>
+    (
+      JSON.parse(read("packages/verify/package.json")) as {
+        peerDependencies: Record<string, string>;
+      }
+    ).peerDependencies;
 
   test("the SDK's package.json, SDK_VERSION, CHANGELOG.md and the docs pin agree", () => {
     const versionConstant = /SDK_VERSION = "([^"]+)"/.exec(
@@ -906,6 +1008,7 @@ describe("the repository agrees with itself", () => {
       mode: "offline",
       packageVersion: version("packages/verify"),
       changelog: read("packages/verify/CHANGELOG.md"),
+      peerDependencies: peerDependencies(),
       docs: [
         {
           path: "docs/integrators/quickstart.mdx",
@@ -914,6 +1017,24 @@ describe("the repository agrees with itself", () => {
       ],
     });
     expect(verdict.errors).toEqual([]);
+  });
+
+  test("the documented stellar-sdk pins agree with the verifier's peer dependency", () => {
+    const docs = [
+      "docs/integrators/quickstart.mdx",
+      "docs/sdk/verification.mdx",
+      "docs/security-remediation-plan.md",
+      "packages/verify/README.md",
+    ].map((path) => ({ path, text: read(path) }));
+    const pins = docsPins(PACKAGES.verify.peerPin!.pattern, docs);
+    expect(pins.map((pin) => pin.path).sort()).toEqual([
+      "docs/integrators/quickstart.mdx",
+      "docs/sdk/verification.mdx",
+      "packages/verify/README.md",
+    ]);
+    expect(new Set(pins.map((pin) => pin.range))).toEqual(
+      new Set([peerDependencies()["@stellar/stellar-sdk"]])
+    );
   });
 });
 

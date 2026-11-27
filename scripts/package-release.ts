@@ -37,6 +37,12 @@ export interface PackageConfig {
   versionConstant: { file: string; label: string; pattern: RegExp } | null;
   /** The `"<name>": "<range>"` pin the docs must carry, global. */
   docsPin: RegExp | null;
+  /**
+   * A peer dependency whose exact version the docs must repeat, global. The pattern has one
+   * capture group per form (a JSON entry, an `npm install` line); an install line counts only
+   * when it names this package, so prose that mentions another version is not a pin.
+   */
+  peerPin: { dependency: string; pattern: RegExp } | null;
 }
 
 export const PACKAGES: Record<PackageId, PackageConfig> = {
@@ -51,6 +57,7 @@ export const PACKAGES: Record<PackageId, PackageConfig> = {
       pattern: /export const SDK_VERSION = "([^"\n]*)";/,
     },
     docsPin: /"@lumenwipe\/sdk":\s*"([^"\n]*)"/g,
+    peerPin: null,
   },
   verify: {
     id: "verify",
@@ -59,6 +66,11 @@ export const PACKAGES: Record<PackageId, PackageConfig> = {
     tagPrefix: "verify-v",
     versionConstant: null,
     docsPin: /"@lumenwipe\/verify":\s*"([^"\n]*)"/g,
+    peerPin: {
+      dependency: "@stellar/stellar-sdk",
+      pattern:
+        /"@stellar\/stellar-sdk":\s*"([^"\n]*)"|npm install @lumenwipe\/verify @stellar\/stellar-sdk@([^\s`"]+)/g,
+    },
   },
 };
 
@@ -87,6 +99,8 @@ export interface AgreementInput {
   versionConstant?: string;
   changelog: string;
   docs: DocsFile[];
+  /** The manifest's peerDependencies, which a package's peer pin is checked against. */
+  peerDependencies?: Record<string, string>;
   /** pr and publish only. */
   npm?: RegistryState;
   /** pr and publish only: the package's tags on the remote. */
@@ -223,7 +237,7 @@ export function docsPins(pattern: RegExp, docs: DocsFile[]): { path: string; ran
   const pins: { path: string; range: string }[] = [];
   for (const file of docs) {
     for (const match of file.text.matchAll(pattern))
-      pins.push({ path: file.path, range: match[1] });
+      pins.push({ path: file.path, range: match.slice(1).find((group) => group !== undefined)! });
   }
   return pins;
 }
@@ -309,6 +323,25 @@ function checkFiles(input: AgreementInput, verdict: Verdict, parsed: ParsedChang
     for (const pin of pins) {
       if (pin.range !== wanted) {
         errors.push(`${pin.path} pins "${pkg.name}": "${pin.range}", expected "${wanted}"`);
+      }
+    }
+  }
+
+  if (pkg.peerPin) {
+    const { dependency, pattern } = pkg.peerPin;
+    const manifest = `${pkg.dir}/package.json`;
+    const peer = input.peerDependencies?.[dependency];
+    if (peer === undefined) {
+      errors.push(`${manifest} has no peerDependencies "${dependency}" to check the docs against`);
+    } else {
+      const pins = docsPins(pattern, input.docs);
+      if (pins.length === 0) errors.push(`no docs page pins "${dependency}" for "${pkg.name}"`);
+      for (const pin of pins) {
+        if (pin.range !== peer) {
+          errors.push(
+            `${pin.path} pins "${dependency}": "${pin.range}", expected "${peer}" (${manifest} peerDependencies)`
+          );
+        }
       }
     }
   }
@@ -621,10 +654,14 @@ function docsFiles(pkg: PackageConfig): DocsFile[] {
 
 function readFiles(
   pkg: PackageConfig
-): Pick<AgreementInput, "packageVersion" | "versionConstant" | "changelog" | "docs"> {
+): Pick<
+  AgreementInput,
+  "packageVersion" | "versionConstant" | "changelog" | "docs" | "peerDependencies"
+> {
   const dir = join(ROOT, pkg.dir);
   const manifest = JSON.parse(readFileSync(join(dir, "package.json"), "utf8")) as {
     version: string;
+    peerDependencies?: Record<string, string>;
   };
   const constant = pkg.versionConstant;
   return {
@@ -634,6 +671,7 @@ function readFiles(
       : undefined,
     changelog: readFileSync(join(dir, "CHANGELOG.md"), "utf8"),
     docs: docsFiles(pkg),
+    peerDependencies: manifest.peerDependencies,
   };
 }
 
@@ -789,6 +827,7 @@ async function main(argv: string[]): Promise<number> {
     pkg.versionConstant?.label,
     "changelog",
     pkg.docsPin ? "docs pin" : undefined,
+    pkg.peerPin ? "peer pin" : undefined,
     mode === "offline" ? undefined : "tags",
     mode === "offline" ? undefined : "npm",
   ].filter((part) => part !== undefined);
