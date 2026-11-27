@@ -840,7 +840,7 @@
       "verdict": "accept",
       "name": "production-signed-registry",
       "description": "The exchange registry committed in the repository with its committed signature, checked against the keys pinned in this package, at noon on the day it was issued. Regenerated after every signing.",
-      "nowSeconds": 1794916800,
+      "nowSeconds": 1795780800,
       "bundledSequence": 1,
       "publicKeys": [
         "GAKGKRCTIPJIFS4UAL6TZEXW3ZUUYBFBPBAVNG37NKILQQ5ZSW3VGDTK",
@@ -1026,8 +1026,8 @@
       "signature": {
         "format": 1,
         "sequence": 1,
-        "issuedAt": "2026-11-17",
-        "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+        "issuedAt": "2026-11-27",
+        "signature": "nQ6wwF1KWDUlrOXa9eagarWoRz4DfOj57njy0uBBQpnvGUv+CjlW+PgNGLf3ZwqxKKh90/U2Gbqa1KbNqMl8AQ=="
       },
       "sequence": 1
     }
