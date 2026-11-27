@@ -133,7 +133,8 @@ export function heldToStoredFloors(
       BigInt(expected.balanceStroops) -
       BigInt(expected.feeStroops) +
       floors +
-      BigInt(expected.claimStroops)
+      BigInt(expected.claimStroops) +
+      BigInt(expected.exitStroops)
     ).toString(),
   };
 }

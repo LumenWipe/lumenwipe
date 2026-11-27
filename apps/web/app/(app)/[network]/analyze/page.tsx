@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, AlertTriangle, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import type { PlanResponse } from "@lumenwipe/sdk";
+import type { ExitPayoutEstimate } from "@lumenwipe/types";
 import type { Network } from "@/config/networks";
 import type { AccountState } from "@/types/account";
 import type { PlanBlocker } from "@/types/plan";
@@ -27,6 +28,7 @@ import { loadServedRegistry } from "@/lib/exchange-registry";
 import {
   decisionPointsToClaimableBalances,
   decisionPointsToConversions,
+  exitPayoutsOf,
   planFeeStroopsOf,
   decisionPointsToLeavablePositions,
   type AssetConvertibility,
@@ -104,6 +106,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
   const [leavablePositions, setLeavablePositions] = useState<LeavablePosition[]>([]);
   const [blockers, setBlockers] = useState<PlanBlocker[]>([]);
   const [planFeeStroops, setPlanFeeStroops] = useState<string | null>(null);
+  const [exitPayouts, setExitPayouts] = useState<ExitPayoutEstimate | null>(null);
   const [loading, setLoading] = useState(true);
   // Kept apart from `loading`, which swaps the whole page for a spinner. Answering a claim
   // re-plans, and blanking the page under someone who just clicked a radio button loses their
@@ -217,6 +220,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
       );
     setConversions(conversions);
     setPlanFeeStroops(planFeeStroopsOf(plan));
+    setExitPayouts(exitPayoutsOf(plan));
     // Unlike other blockers, an unresolved claimable balance is resolvable right here - the
     // decision itself is what clears it - so it must render regardless of blocker state, or
     // the user could never reach the card that resolves it.
@@ -556,6 +560,7 @@ export default function AnalyzePage({ params }: { params: Promise<{ network: Net
         leavablePositions={leavablePositions}
         blockers={blockers}
         planFeeStroops={planFeeStroops}
+        exitPayouts={exitPayouts}
         network={routeNetwork}
         onRefresh={reload}
         loading={replanning}

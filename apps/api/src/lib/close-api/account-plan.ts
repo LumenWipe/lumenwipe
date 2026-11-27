@@ -67,11 +67,16 @@ import {
   TOKEN_DISCOVERED_CHOICE,
   tokenConversionProviders,
 } from "@/lib/close-api/decisions";
-import { ARRIVING_ASSET_PROBE_AMOUNT, assetsArrivingFromExits } from "@/lib/close-api/exit-payouts";
+import {
+  ARRIVING_ASSET_PROBE_AMOUNT,
+  assetsArrivingFromExits,
+  estimateExitPayouts,
+} from "@/lib/close-api/exit-payouts";
 import { addAmounts, poolProceedsPerAsset } from "@/lib/stellar/tx-builder/pool-withdrawal";
 import { DEFI_POSITIONS_UNAVAILABLE_CODE } from "@/lib/defi-positions/positions-gate";
 import { preflightExitTargets } from "@/lib/defi-exits/exit-round";
-import { planExitSteps, type ExitPreflight } from "@/lib/defi-exits/plan-exits";
+import { groupExitTargets, planExitSteps, type ExitPreflight } from "@/lib/defi-exits/plan-exits";
+import type { ExitStep } from "@/lib/defi-exits/adapter";
 import { assemblePlanResponse, computePlanHash } from "@/lib/close-api/plan-response";
 import { planFeeEstimate } from "@/lib/close-api/plan-fee";
 import type { KillSwitches } from "@/config/kill-switches";
@@ -107,15 +112,20 @@ export interface AccountPlanDeps {
  * a later repay needs), so any other blocker is left for the round to decide, as before. A
  * preflight that fails or runs long reports nothing, and every exit fee falls back to the bound;
  * the round re-runs every check itself and refuses to build what it cannot, so a missing preflight
- * never lets a merge pass a position.
+ * never lets a merge pass a position. The steps of every target it could plan come back too, for the
+ * estimate of what the exits pay in.
  */
 async function exitPreflightFor(
   accountState: AccountState,
   network: Network,
   preflight: typeof preflightExitTargets,
   pausedExits: KillSwitches["pausedExits"]
-): Promise<Pick<ExitPreflight, "blocked" | "simulatedFeeStroops">> {
-  const none = { blocked: new Map(), simulatedFeeStroops: new Map() };
+): Promise<
+  Pick<ExitPreflight, "blocked" | "simulatedFeeStroops"> & {
+    plannedSteps: ReadonlyMap<string, readonly ExitStep[]>;
+  }
+> {
+  const none = { blocked: new Map(), simulatedFeeStroops: new Map(), plannedSteps: new Map() };
   // A paused protocol is never simulated: its contracts may be the reason it is paused.
   const positions = accountState.defiPositions.positions.filter(
     (p) => !pausedExits.has(p.protocol)
@@ -131,6 +141,7 @@ async function exitPreflightFor(
     return {
       blocked: new Map([...report.blocked].filter(([, block]) => block.leaveEligible)),
       simulatedFeeStroops: report.simulatedFeeStroops,
+      plannedSteps: report.plannedSteps,
     };
   } catch {
     return none;
@@ -314,7 +325,32 @@ export async function buildAccountPlan(
     exitPreflightPromise,
   ]);
   const leftBehind = positionsLeftBehind(decisions, source);
-  const exitPreflight: ExitPreflight = { ...exitReport, leftBehind };
+  const { plannedSteps, ...exitBlocks } = exitReport;
+  const exitPreflight: ExitPreflight = { ...exitBlocks, leftBehind };
+  const exitPayoutsPromise = estimateExitPayouts({
+    account: accountState,
+    // A target left behind pays nothing in; one whose exit builds is exited whatever was chosen.
+    targets: groupExitTargets(accountState.defiPositions.positions).filter(
+      (t) => !(leftBehind.has(t.contract) && !plannedSteps.has(t.contract))
+    ),
+    plannedSteps,
+    heldStroops: new Map(
+      pricedAssets.map(({ asset, amount, probe }) => [
+        asset,
+        probe ? 0n : BigInt(xlmToStroops(amount)),
+      ])
+    ),
+    convertible: (asset) => convertibility[asset] === true,
+    quote: async (asset, amount) => {
+      const result = await findPath(asset, amount, network).catch(() => null);
+      return result?.kind === "route"
+        ? {
+            estimatedReceive: xlmToStroops(result.path.estimatedReceive),
+            minAmountOut: xlmToStroops(result.path.destMin),
+          }
+        : null;
+    },
+  });
 
   // Every asset the close will touch answers here - held or arriving. Without the arriving
   // ones their disposition never resolves, and the plan would label a balance the caller
@@ -462,7 +498,10 @@ export async function buildAccountPlan(
     ];
   }
 
-  const mergeProblems = await assessMergePreflight(accountState, destination, network);
+  const [mergeProblems, exitPayouts] = await Promise.all([
+    assessMergePreflight(accountState, destination, network),
+    exitPayoutsPromise,
+  ]);
   if (mergeProblems.length > 0) {
     buildResult.blockers = [
       ...buildResult.blockers,
@@ -480,6 +519,7 @@ export async function buildAccountPlan(
   const estimate = {
     ...planFeeEstimate(buildResult.steps, exitPreflight.simulatedFeeStroops ?? new Map()),
     freedReserveXlm: ((2 + accountState.numSubEntries) * 0.5).toFixed(7),
+    exitPayouts,
   };
 
   // Every decision point goes back, answered or not - the caller renders its cards from

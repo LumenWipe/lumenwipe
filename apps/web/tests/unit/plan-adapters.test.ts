@@ -133,6 +133,7 @@ test("decisionPointsToClaimableBalances › no decision points → empty list", 
 import {
   apiStepsToPlannedSteps,
   decisionPointsToConversions,
+  exitPayoutsOf,
   formatStroops,
   formatTokenBalance,
   planFeeStroopsOf,
@@ -504,4 +505,38 @@ test("planTransactionsOf › gives nothing for a breakdown it cannot trust whole
   expect(planTransactionsOf(withTransactions([{ order: -1, covers: ["MERGE"] }]))).toBeNull();
   expect(planTransactionsOf(withTransactions([{ order: 0, covers: "MERGE" }]))).toBeNull();
   expect(planTransactionsOf(withTransactions([null]))).toBeNull();
+});
+
+test("exitPayoutsOf › reads the exit payouts and drops what does not read", () => {
+  const withExits = (exitPayouts: unknown): PlanResponse =>
+    ({ ...plan([]), estimate: { ...plan([]).estimate, exitPayouts } }) as unknown as PlanResponse;
+  expect(exitPayoutsOf(plan([]))).toBeNull();
+  expect(exitPayoutsOf(withExits({ targets: "x", quotes: {} }))).toBeNull();
+  expect(
+    exitPayoutsOf(
+      withExits({ targets: [{ protocol: "xbull", contract: "C", parts: [] }], quotes: {} })
+    )
+  ).toBeNull();
+  expect(
+    exitPayoutsOf(
+      withExits({
+        targets: [
+          { protocol: "phoenix", contract: "CA", parts: [{ asset: "native", stroops: "-5" }] },
+          { protocol: "blend", contract: "CB", parts: [{ asset: "native", stroops: "1.5" }] },
+          { protocol: "blend", contract: "CC", parts: null },
+        ],
+        quotes: {
+          "USDC:G": { estimatedReceive: "10", minAmountOut: "9" },
+          "EURC:G": { estimatedReceive: "ten", minAmountOut: "9" },
+        },
+      })
+    )
+  ).toEqual({
+    targets: [
+      { protocol: "phoenix", contract: "CA", parts: [{ asset: "native", stroops: "-5" }] },
+      { protocol: "blend", contract: "CB", parts: null },
+      { protocol: "blend", contract: "CC", parts: null },
+    ],
+    quotes: { "USDC:G": { estimatedReceive: "10", minAmountOut: "9" } },
+  });
 });

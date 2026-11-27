@@ -204,10 +204,12 @@ test("the expected receive is held to the stored floors, not to a quote that ros
     feeStroops: "100",
     swapStroops: "75000100",
     claimStroops: "0",
+    exitStroops: "0",
     estimated: true,
     unquotedSwaps: 0,
     flaggedSwaps: 0,
     leavesOutDefiExits: false,
+    uncomputedExits: [],
   };
   const held = heldToStoredFloors(live, CONVERTING);
   expect(held.swapStroops).toBe("30000000");

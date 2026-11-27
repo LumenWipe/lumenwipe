@@ -5,6 +5,7 @@ import {
   type ExpectedReceiveInput,
 } from "@/lib/plan/expected-receive";
 import type { AssetConvertibility, ClaimableBalanceDecision } from "@/lib/api/plan-adapters";
+import type { ExitPayoutEstimate } from "@lumenwipe/types";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 
 const SOURCE = "GSOURCE0000000000000000000000000000000000000000000000000";
@@ -78,7 +79,8 @@ function expectLinesSum(result: ReturnType<typeof expectedReceive>): void {
     BigInt(result.balanceStroops) -
       BigInt(result.feeStroops) +
       BigInt(result.swapStroops) +
-      BigInt(result.claimStroops)
+      BigInt(result.claimStroops) +
+      BigInt(result.exitStroops)
   ).toBe(BigInt(result.totalStroops));
 }
 
@@ -205,5 +207,160 @@ test("a fee override replaces only the fee line and the total is the lines' sum 
   expect(result.balanceStroops).toBe(base.balanceStroops);
   expect(result.swapStroops).toBe(base.swapStroops);
   expect(BigInt(base.totalStroops) - BigInt(result.totalStroops)).toBe(BigInt(1234 - 500));
+  expectLinesSum(result);
+});
+
+const PHOENIX_POOL = "CPHOENIX000000000000000000000000000000000000000000000000";
+const BLEND_POOL = "CBLEND00000000000000000000000000000000000000000000000000";
+
+function exits(over: Partial<ExitPayoutEstimate> = {}): ExitPayoutEstimate {
+  return {
+    targets: [
+      {
+        protocol: "phoenix",
+        contract: PHOENIX_POOL,
+        parts: [
+          { asset: "native", stroops: "57213000" },
+          { asset: classicSwap.asset, stroops: "7303000" },
+        ],
+      },
+    ],
+    quotes: { [classicSwap.asset]: { estimatedReceive: "130000000", minAmountOut: "120000000" } },
+    ...over,
+  };
+}
+
+test("an LP exit adds its XLM, and its swapped asset at the quote for what it will hold", () => {
+  const result = expectedReceive(
+    input({
+      conversions: [classicSwap],
+      dispositions: { [classicSwap.asset]: "convert" },
+      exitPayouts: exits(),
+    })
+  );
+  expect(result.swapStroops).toBe("19800000");
+  expect(result.exitStroops).toBe(String(57_213_000 + 118_800_000 - 19_800_000));
+  expect(result.leavesOutDefiExits).toBe(false);
+  expect(result.uncomputedExits).toEqual([]);
+  expect(result.estimated).toBe(true);
+  expectLinesSum(result);
+});
+
+test("a lending exit adds what it withdraws less what it repays", () => {
+  const result = expectedReceive(
+    input({
+      exitPayouts: {
+        targets: [
+          {
+            protocol: "blend",
+            contract: BLEND_POOL,
+            parts: [{ asset: "native", stroops: "-20000000" }],
+          },
+          {
+            protocol: "blend",
+            contract: PHOENIX_POOL,
+            parts: [{ asset: "native", stroops: "50000000" }],
+          },
+        ],
+        quotes: {},
+      },
+    })
+  );
+  expect(result.exitStroops).toBe("30000000");
+  expectLinesSum(result);
+});
+
+test("an asset an exit pays in that is kept, not swapped, counts nothing", () => {
+  for (const disposition of ["issuer", "transfer"] as const) {
+    const result = expectedReceive(
+      input({
+        conversions: [classicSwap],
+        dispositions: { [classicSwap.asset]: disposition },
+        exitPayouts: exits(),
+      })
+    );
+    expect(result.exitStroops).toBe("57213000");
+    expect(result.uncomputedExits).toEqual([]);
+  }
+});
+
+test("a larger amount quoting lower than the balance alone counts its swap as nothing", () => {
+  const result = expectedReceive(
+    input({
+      conversions: [classicSwap],
+      dispositions: { [classicSwap.asset]: "convert" },
+      exitPayouts: exits({
+        quotes: { [classicSwap.asset]: { estimatedReceive: "19000000", minAmountOut: "18000000" } },
+      }),
+    })
+  );
+  expect(result.swapStroops).toBe("19800000");
+  expect(result.exitStroops).toBe("57213000");
+  expectLinesSum(result);
+});
+
+test("an exit that spends a swapped asset lowers the figure by what the swap loses", () => {
+  const result = expectedReceive(
+    input({
+      conversions: [classicSwap],
+      dispositions: { [classicSwap.asset]: "convert" },
+      exitPayouts: {
+        targets: [
+          {
+            protocol: "blend",
+            contract: BLEND_POOL,
+            parts: [{ asset: classicSwap.asset, stroops: "-50000000" }],
+          },
+        ],
+        quotes: { [classicSwap.asset]: { estimatedReceive: "0", minAmountOut: "0" } },
+      },
+    })
+  );
+  expect(result.exitStroops).toBe("-19800000");
+  expectLinesSum(result);
+});
+
+test("an exit the plan could not work out, or whose swap has no quote, is named and counts nothing", () => {
+  const result = expectedReceive(
+    input({
+      conversions: [classicSwap],
+      dispositions: { [classicSwap.asset]: "convert" },
+      exitPayouts: exits({
+        targets: [...exits().targets, { protocol: "blend", contract: BLEND_POOL, parts: null }],
+        quotes: {},
+      }),
+    })
+  );
+  expect(result.exitStroops).toBe("0");
+  expect(result.leavesOutDefiExits).toBe(true);
+  expect(result.uncomputedExits).toEqual([
+    { protocol: "phoenix", contract: PHOENIX_POOL },
+    { protocol: "blend", contract: BLEND_POOL },
+  ]);
+});
+
+test("an asset only an exit pays in is no unquoted swap once the exit values it", () => {
+  const arriving: AssetConvertibility = {
+    ...classicSwap,
+    balance: "0",
+    arrivesFromExit: true,
+    quote: undefined,
+  };
+  const result = expectedReceive(
+    input({
+      conversions: [arriving],
+      dispositions: { [arriving.asset]: "convert" },
+      exitPayouts: exits(),
+    })
+  );
+  expect(result.unquotedSwaps).toBe(0);
+  expect(result.swapStroops).toBe("0");
+  expect(result.exitStroops).toBe(String(57_213_000 + 118_800_000));
+});
+
+test("a fee override keeps the exit line in the total", () => {
+  const base = expectedReceive(input({ exitPayouts: exits() }));
+  const result = withFeeStroops(base, "1234");
+  expect(result.exitStroops).toBe("57213000");
   expectLinesSum(result);
 });

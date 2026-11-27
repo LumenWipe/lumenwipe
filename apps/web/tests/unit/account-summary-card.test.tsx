@@ -97,6 +97,38 @@ test("what the figure leaves out is said under it", () => {
   ).toBeTruthy();
 });
 
+test("the exits' payout is its own line, and an exit it cannot count is named", () => {
+  const account = baseAccount();
+  renderCard(
+    account,
+    expectedFor(account, {
+      exitStroops: "57213000",
+      leavesOutDefiExits: true,
+      uncomputedExits: [
+        {
+          protocol: "phoenix",
+          contract: "CPHOENIX000000000000000000000000000000000000000000000001",
+        },
+        { protocol: "blend", contract: "CBLEND00000000000000000000000000000000000000000000000002" },
+      ],
+    })
+  );
+  expect(screen.getByText("DeFi exits, at least")).toBeTruthy();
+  expect(screen.getByText("+ 5.7213 XLM")).toBeTruthy();
+  expect(
+    screen.getByText(
+      /leaves out what exiting the Phoenix position in CPHOENIX…00000001 and the Blend position in CBLEND00…00000002 pays out\./
+    )
+  ).toBeTruthy();
+  expect(screen.queryByText(/any XLM that exiting your DeFi positions/)).toBeNull();
+});
+
+test("an exit that spends more than it pays in shows as a subtraction", () => {
+  const account = baseAccount();
+  renderCard(account, expectedFor(account, { exitStroops: "-20000000" }));
+  expect(screen.getByText("- 2 XLM")).toBeTruthy();
+});
+
 test("without a plan estimate the counts still render and no figure is shown", () => {
   renderCard(baseAccount(), null);
   expect(screen.queryByTestId("expected-receive")).toBeNull();

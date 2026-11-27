@@ -635,6 +635,28 @@ export interface ExecutionTxBreakdown {
 }
 
 // @public
+export interface ExitPayoutEstimate {
+    quotes: Record<string, ClassicConversionQuote>;
+    targets: ExitTargetPayout[];
+}
+
+// @public
+export interface ExitPayoutPart {
+    asset: string;
+    // (undocumented)
+    stroops: string;
+}
+
+// @public
+export interface ExitTargetPayout {
+    // (undocumented)
+    contract: string;
+    parts: ExitPayoutPart[] | null;
+    // (undocumented)
+    protocol: DefiProtocol;
+}
+
+// @public
 export interface FeeBumpSponsorResponse {
     // (undocumented)
     transaction: string;
@@ -1102,6 +1124,7 @@ export interface PlanBlocker {
 
 // @public
 export interface PlanEstimate {
+    exitPayouts?: ExitPayoutEstimate;
     // (undocumented)
     feeParts: {
         classicStroops: string;
