@@ -109,6 +109,21 @@ test("RiskDisclaimerModal › the copy reads as written", () => {
   }
 });
 
+test("RiskDisclaimerModal › lists the Phoenix and FxDAO exits per network", () => {
+  gate();
+  const text = screen.getByRole("dialog").textContent;
+  for (const line of [
+    "Phoenix liquidity pools, with staked shares unbonded first.",
+    "FxDAO vaults close on testnet, with the debt repaid and the XLM collateral returned;",
+    "on mainnet FxDAO's vaults no longer take repayments, so a vault there blocks the close.",
+    "Aquarius concentrated-liquidity positions are detected but not exited.",
+  ]) {
+    expect(text).toContain(line);
+  }
+  expect(text).not.toContain("tested on testnet");
+  expect(text).not.toMatch(/Phoenix and FxDAO are detected/);
+});
+
 test("RiskDisclaimerModal › a throwing getItem fails closed", () => {
   const restore = replaceStorage({ value: { getItem: denied, setItem: () => {} } });
   try {
