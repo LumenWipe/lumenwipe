@@ -76,7 +76,11 @@ jobs:
           # machine (tools/lab/tests/no-workflow.test.ts fails a workflow that invokes it).
           - { name: "lab", pkg: "@lumenwipe/lab", checks: "type-check lint test" }
     steps:
+      # Depth 2 keeps the parent the registry signature check compares the registry with: the
+      # base branch tip for a pull request's merge commit, the previous commit on a push.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -108,6 +112,13 @@ jobs:
         shell: bash
         run: |
           printf "%s fonts.googleapis.com fonts.gstatic.com\n" 0.0.0.0 :: | sudo tee -a /etc/hosts
+
+      # Fails when the committed signature does not verify under the pinned keys for the committed
+      # exchange registry, or when the registry changed against the parent commit without a
+      # higher signature sequence. Needs no secret.
+      - name: Check the exchange registry signature
+        if: matrix.name == 'verify'
+        run: bun packages/verify/scripts/sign-registry.ts --check --base HEAD^1
 
       - name: Run checks
         run: |
