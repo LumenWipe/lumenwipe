@@ -19,13 +19,17 @@ Closing an account is irreversible: it merges every remaining lumen into one des
 npm install @lumenwipe/verify @stellar/stellar-sdk@17.4.0
 ```
 
-`@stellar/stellar-sdk` is a peer dependency, pinned to the version the web verifier is tested with, and is never bundled.
+`@stellar/stellar-sdk` is a peer dependency, pinned to the version the web verifier is tested with, and is never bundled. Upgrade `@lumenwipe/verify` together with `@lumenwipe/sdk`: the API can start building a close an older verifier refuses, such as a classic liquidity pool withdrawal.
 
 Pass it as `verify` to [`runClose`](/sdk/run-close):
 
 ```ts
 import { LumenWipeClient, runClose } from "@lumenwipe/sdk";
-import { exitExpectations, verifyCloseTransaction } from "@lumenwipe/verify";
+import {
+  exitExpectations,
+  poolWithdrawalExpectations,
+  verifyCloseTransaction,
+} from "@lumenwipe/verify";
 
 const account = await client.getAccount(source); // the read the user reviewed
 
@@ -50,6 +54,7 @@ await runClose({
         tokenConversions: {},
         sponsoredEntries: account.sponsoredEntries,
         ...exitExpectations(account, "testnet"),
+        poolWithdrawals: poolWithdrawalExpectations(account),
       },
     }),
 });
@@ -161,6 +166,7 @@ try {
 | `source`, `nativeBalance`, `accountSigners`, `accountThresholds`        | The account read the user reviewed (`client.getAccount`). Empty signers fail closed.                                                       |
 | The DeFi fields                                                         | `exitExpectations(account, network)`, from the same read and the contract registry bundled in the package. With no read, every exit fails. |
 | `sponsoredEntries`                                                      | The same read's `sponsoredEntries`, as is. Omitted, every sponsorship revoke is refused.                                                   |
+| `poolWithdrawals`                                                       | `poolWithdrawalExpectations(account)`, from the same read. Omitted, every liquidity pool withdrawal is refused.                            |
 
 Never take an input from the transaction under verification or from its `intent` summary. The values from the account read come from the same API that builds the transaction, so they catch a builder bug or a partial compromise, not an API that keeps both consistent.
 

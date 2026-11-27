@@ -409,23 +409,27 @@ vectors it generates.
 3. Rename `## [Unreleased]` to `## [X.Y.Z] - YYYY-MM-DD` and open a new, empty `## [Unreleased]`
    above it. At the bottom, point `[Unreleased]` at `compare/verify-vX.Y.Z...HEAD` and add
    `[X.Y.Z]: .../compare/verify-v<previous>...verify-vX.Y.Z`.
-4. Open a PR with just those changes (`chore(verify): release vX.Y.Z`) and merge it. The
+4. Set the `"@lumenwipe/verify"` pin in `docs/integrators/quickstart.mdx` to `~X.Y.0`.
+5. Open a PR with just those changes (`chore(verify): release vX.Y.Z`) and merge it. The
    `release agreement` job (`bun scripts/package-release.ts verify pr`) checks they agree with npm
-   and the `verify-v*` tags, as for the SDK.
-5. Tag the exact merged commit on `main` and push the tag:
+   and the `verify-v*` tags, as for the SDK, and `release:check` and the publish run fail when a
+   documented `"@lumenwipe/verify"` pin in the README files or under `docs/` is not `~X.Y.0` for
+   the current version. The pin follows `package.json`, never npm, so a merged release that npm
+   does not have yet is still only a warning.
+6. Tag the exact merged commit on `main` and push the tag:
    ```bash
    git checkout main && git pull
    git tag verify-vX.Y.Z
    git push origin verify-vX.Y.Z
    ```
-6. `publish-verify.yml` checks the tag is exactly `verify-vX.Y.Z`, on `main` and the checked-out
+7. `publish-verify.yml` checks the tag is exactly `verify-vX.Y.Z`, on `main` and the checked-out
    commit, and agrees with `package.json` and the changelog
    (`bun scripts/package-release.ts verify publish`); re-runs type-check, lint, the tests (the
    bundle in both module formats, the conformance vectors and `vectors --check`), `check-api` and
    the build; runs `pack:check` (the exact tarball file list, `publint` and
    `@arethetypeswrong/cli`); publishes the tarball it checked with provenance; and stays red until
    npm `latest` is the new version. It needs no write access to the repository.
-7. Optionally, publish a GitHub release with `bun scripts/package-release.ts verify notes X.Y.Z`
+8. Optionally, publish a GitHub release with `bun scripts/package-release.ts verify notes X.Y.Z`
    as its notes.
 
 Re-runs work as for the SDK: `workflow_dispatch` with the same tag before npm has the version,
@@ -438,7 +442,7 @@ and every entry sits under `## [Unreleased]`, with no version heading and no com
 release checks report that state as a warning ("the first release is still to be cut"), never a
 failure, and `npm view` answering "not found" counts as never published only while no
 `verify-v*` tag for another version exists. The first release PR keeps the version at `0.1.0`
-and does steps 3 to 7 with `[Unreleased]: .../compare/verify-v0.1.0...HEAD` and
+and does steps 3 to 8 with `[Unreleased]: .../compare/verify-v0.1.0...HEAD` and
 `[0.1.0]: .../tree/verify-v0.1.0`.
 
 The tarball ships `dist`, `vectors/close-v1.json`, `vectors/revoke-allowance-v1.json`, `README.md`, `CHANGELOG.md` and `LICENSE`, a

@@ -28,7 +28,11 @@ version the web verifier is tested with.
 
 ```ts
 import { LumenWipeClient, runClose } from "@lumenwipe/sdk";
-import { exitExpectations, verifyCloseTransaction } from "@lumenwipe/verify";
+import {
+  exitExpectations,
+  poolWithdrawalExpectations,
+  verifyCloseTransaction,
+} from "@lumenwipe/verify";
 
 const account = await client.getAccount(source); // the read the user reviewed
 const servedRegistry = await client.getExchangeRegistry(); // optional, see below
@@ -54,6 +58,7 @@ await runClose({
         tokenConversions: {},
         sponsoredEntries: account.sponsoredEntries,
         ...exitExpectations(account, "testnet"),
+        poolWithdrawals: poolWithdrawalExpectations(account),
       },
       servedRegistry,
     }),
@@ -72,6 +77,7 @@ Never from the transaction under verification, and never from the API's `intent`
 | `source`, `nativeBalance`, `accountSigners`, `accountThresholds`        | The account read the user reviewed (`client.getAccount`, or a round's `sourceAccount`). Empty signers fail closed. |
 | The DeFi fields (`exitContracts` and the rest)                          | `exitExpectations(account, network)`: the same read plus the contract registry bundled here.                       |
 | `sponsoredEntries`                                                      | The same read's `sponsoredEntries`, as is. Omitted, every sponsorship revoke is refused.                           |
+| `poolWithdrawals`                                                       | `poolWithdrawalExpectations(account)`, from the same read. Omitted, every liquidity pool withdrawal is refused.    |
 
 Whether a destination is a listed exchange, whether it needs a memo and of which type, and
 whether the merge must go through the shared intermediary are not inputs. The verifier derives

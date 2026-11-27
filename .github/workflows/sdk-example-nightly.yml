@@ -93,6 +93,17 @@ jobs:
           done
           SOURCE="$SOURCE" DESTINATION="$DESTINATION" bun run example:plan-only
 
+      # The quickstart page's own script, extracted from the page and run against the same API with
+      # two more throwaway Friendbot accounts, so the text integrators copy cannot rot. An empty
+      # extract fails the step.
+      - name: Close a throwaway account with the quickstart script
+        working-directory: packages/sdk
+        run: |
+          set -euo pipefail
+          awk '/^```js close.mjs$/{f=1;next} /^```$/{f=0} f' ../../docs/integrators/quickstart.mdx > examples/quickstart-close.mjs
+          test -s examples/quickstart-close.mjs
+          bun run examples/quickstart-close.mjs
+
       - name: Show the API log
         if: failure()
         run: tail -n 200 "$RUNNER_TEMP/api.log" || true
