@@ -99,7 +99,7 @@ with g.subgraph(name="cluster_network") as n:
            fillcolor=F_EXTERNAL, color=B_EXTERNAL)
     n.node("octopos", hl("OctoPos DeFi Position API", "Detects positions across all Soroban DeFi protocols", "Returns freshness metadata · mainnet only"),
            fillcolor=F_EXTERNAL, color=B_EXTERNAL)
-    n.node("ledger", hl("Stellar Ledger", "Classic + Soroban (Protocol 26 · Yardstick)", "Source of truth for all account state"),
+    n.node("ledger", hl("Stellar Ledger", "Classic + Soroban (Protocol 30 · Bell)", "Source of truth for all account state"),
            fillcolor=F_EXTERNAL, color=B_EXTERNAL,
            shape="cylinder", penwidth="2")
 

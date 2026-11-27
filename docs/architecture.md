@@ -684,7 +684,7 @@ The tool runs on light, replaceable infrastructure, which follows from the non-c
 - Stellar access: Stellar RPC through ecosystem providers, configurable per deployment.
 - Data services: see Section 5.
 
-The two services are kept deliberately platform-agnostic - the API is a plain container backed by external, portable data services - so the deployment target stays reversible. The project commits to using the current stable Stellar stack: the latest `@stellar/stellar-sdk`, Stellar RPC, stellar-wallets-kit, and the live network protocol (Protocol 26, Yardstick, on mainnet since May 2026). The contract registry and protocol adapters are versioned so the tool tracks protocol and DeFi upgrades without a rebuild of its core logic.
+The two services are kept deliberately platform-agnostic - the API is a plain container backed by external, portable data services - so the deployment target stays reversible. The project commits to using the current stable Stellar stack: the latest `@stellar/stellar-sdk`, Stellar RPC, stellar-wallets-kit, and the live network protocol (Protocol 30, Bell, on mainnet since November 2026). On Protocol 30 it depends on two things: the pinned `@stellar/stellar-sdk` decodes Protocol 30 ledger headers, including the millisecond close-time arm of CAP-88 (`stellarValueSignedMs`) in the `StellarValue` a header carries, and the API refuses contract (`C...`) and muxed contract (`W...`, CAP-84) addresses with `unsupported_address_type` instead of building anything for them. The contract registry and protocol adapters are versioned so the tool tracks protocol and DeFi upgrades without a rebuild of its core logic.
 
 ## 16. User protection and privacy
 
@@ -741,7 +741,7 @@ Plain-English summary of what the tool is built from and why.
 
 ### Standards we build on
 
-The tool tracks the current stable protocol (Protocol 26, Yardstick, on mainnet since May 2026) and the latest `@stellar/stellar-sdk`. It builds on these ecosystem standards:
+The tool tracks the current stable protocol (Protocol 30, Bell, on mainnet since November 2026) and the latest `@stellar/stellar-sdk`. It builds on these ecosystem standards:
 
 | Standard                          | What it is                                          | How the tool uses it                                                                                                                                                 |
 | --------------------------------- | --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
