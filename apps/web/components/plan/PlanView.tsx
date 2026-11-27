@@ -91,6 +91,7 @@ import {
 } from "@/lib/plan/open-items";
 import { expectedReceive, type ExpectedReceive } from "@/lib/plan/expected-receive";
 import { destinationRefusal } from "@/lib/plan/destination-check";
+import { isCompletedOnChainSweep } from "@/lib/plan/defi-verification-source";
 import { useBusyWait } from "@/hooks/useBusyWait";
 import BusyRetryNotice from "./BusyRetryNotice";
 import { keepDestinationDraft } from "@/lib/session/restore-decisions";
@@ -656,6 +657,7 @@ export default function PlanView({
       {defiPositionsBlocker && (
         <div data-open-item="confirm:defi">
           <DefiPositionsAcknowledgement
+            sweepCompleted={isCompletedOnChainSweep(account.defiPositions.source)}
             acknowledged={defiPositionsAcknowledgedFor === account.address}
             onAcknowledgedChange={(ack) => acknowledgeDefiPositions(ack ? account.address : null)}
           />
