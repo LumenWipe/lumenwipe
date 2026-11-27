@@ -7,6 +7,8 @@ release is cut.
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-27
+
 ### Added
 
 - A served exchange registry may carry a maintainer signature. `ServedRegistry` gains an optional
@@ -254,7 +256,8 @@ The bundled exchange and contract registries are unchanged.
   is optional, and a rejection may mutate the snapshot instead of, or with, the transaction.
 - The package ships its `LICENSE` and this `CHANGELOG.md`.
 
-[Unreleased]: https://github.com/LumenWipe/lumenwipe/compare/verify-v0.8.0...HEAD
+[Unreleased]: https://github.com/LumenWipe/lumenwipe/compare/verify-v0.9.0...HEAD
+[0.9.0]: https://github.com/LumenWipe/lumenwipe/compare/verify-v0.8.0...verify-v0.9.0
 [0.8.0]: https://github.com/LumenWipe/lumenwipe/compare/verify-v0.7.0...verify-v0.8.0
 [0.7.0]: https://github.com/LumenWipe/lumenwipe/compare/verify-v0.6.0...verify-v0.7.0
 [0.6.0]: https://github.com/LumenWipe/lumenwipe/compare/verify-v0.5.0...verify-v0.6.0
