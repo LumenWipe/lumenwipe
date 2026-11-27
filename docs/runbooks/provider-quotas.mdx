@@ -44,6 +44,8 @@ Provider terms were read on 2026-11-19.
 | xBull swap API            | `xbull` (mainnet)            | Nothing published. Off unless `XBULL_CONVERSION_ENABLED` is set                                                                                                                                                                                                                                                                                             | 1,000          | Unpublished, never counted: the floor                     |
 | None                      | `defi`, `xbull` (testnet)    | Never called on testnet                                                                                                                                                                                                                                                                                                                                     | 0              | Never called                                              |
 
+One instance takes at most 8 requests in flight (the `--concurrency` setting, see [Infrastructure and deployment](/architecture#15-infrastructure-and-deployment)), which bounds how many upstream calls it makes at once. The value was set at the last load stage the testnet providers sustained, so a change to the provider lists is a reason to re-run the ramp.
+
 A provider added to `STELLAR_RPC_<NET>` or `PATH_ROUTING_API_<NET>` brings its own quota. Before adding one, check that its published limit is at least the budget of the list it joins, and record it here.
 
 ## Alerts at 70 percent
