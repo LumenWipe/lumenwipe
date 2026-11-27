@@ -127,3 +127,14 @@ test("every expanding group shows a chevron that turns over, not a plus that bec
     cleanup();
   }
 });
+
+test("plan accordion › every panel clips its absolutely positioned screen-reader text when collapsed", () => {
+  const { container } = renderPlan();
+  const panels = Array.from(container.querySelectorAll('[role="region"]'));
+  expect(panels.some((p) => p.querySelector(".sr-only"))).toBe(true);
+  for (const panel of panels) {
+    const clip = panel.firstElementChild;
+    expect(clip?.classList.contains("overflow-hidden")).toBe(true);
+    expect(clip?.classList.contains("relative")).toBe(true);
+  }
+});

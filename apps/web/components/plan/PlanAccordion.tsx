@@ -419,7 +419,7 @@ export default function PlanAccordion({
                 isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
               }`}
             >
-              <div className="overflow-hidden">
+              <div className="relative overflow-hidden">
                 <div className="px-4 pb-4">{g.body}</div>
               </div>
             </div>
