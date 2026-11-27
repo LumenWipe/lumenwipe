@@ -228,11 +228,11 @@ export function registryDaysRemaining(now: Date = new Date()): number {
 
 export function registryExpiryWarning(now: Date = new Date()): string | null {
   if (!isRegistryFresh(now)) {
-    return `The exchange registry expired on ${registry.validUntil}: exchange closes are refused until it is re-verified and restamped (CONTRIBUTING section 9).`;
+    return `The exchange registry expired on ${registry.validUntil}: exchange closes are refused until it is re-verified, restamped and signed (CONTRIBUTING section 9).`;
   }
   const days = registryDaysRemaining(now);
   if (days >= REGISTRY_WARN_DAYS) return null;
-  return `The exchange registry expires on ${registry.validUntil} (${days} days left): re-verify every entry against the exchange's own deposit docs and restamp lastVerified/validUntil (CONTRIBUTING section 9).`;
+  return `The exchange registry expires on ${registry.validUntil} (${days} days left): re-verify every entry against the exchange's own deposit docs and restamp lastVerified/validUntil, then have the registry signed (CONTRIBUTING section 9).`;
 }
 
 export function lookupExchange(address: string, network: Network): RegistryEntry | null {

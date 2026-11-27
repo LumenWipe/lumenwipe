@@ -5,4 +5,4 @@ contact_links:
     about: Do not open a public issue for security vulnerabilities - follow SECURITY.md instead.
   - name: Registry update (exchange or contract)
     url: https://github.com/LumenWipe/lumenwipe/blob/main/CONTRIBUTING.md#9-contributing-to-registries
-    about: Adding an exchange deposit address or a contract wasmHash mapping - open a PR directly, per CONTRIBUTING.md §9.
+    about: Adding an exchange deposit address or a contract wasmHash mapping - open a PR directly, per CONTRIBUTING.md §9. A maintainer signs exchange registry changes before they merge.
