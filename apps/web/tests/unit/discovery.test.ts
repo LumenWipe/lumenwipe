@@ -277,7 +277,7 @@ describe("what the skills say is true of the API and the packages", () => {
       ],
     ];
     for (const [call, shape, props] of expectations) {
-      expect(text, call).toContain(call.replace("POST ", "`POST ").replace(/$/, "`").slice(0, -1));
+      expect(text, call).toContain(`\`${call}`);
       expect(text).toContain(shape);
       for (const name of shape
         .replace(/[{}]/g, "")
@@ -291,7 +291,8 @@ describe("what the skills say is true of the API and the packages", () => {
   test("every SDK method and verifier export a skill names exists", () => {
     const client = read("packages/sdk/src/client.ts");
     for (const method of text.matchAll(/client\.([A-Za-z]+)\(/g)) {
-      expect(client, method[1]).toMatch(new RegExp(`\\b(async )?${method[1]}\\(`));
+      const declared = [`async ${method[1]}(`, `  ${method[1]}(`].some((d) => client.includes(d));
+      expect(declared, method[1]).toBe(true);
     }
     const sdk = read("packages/sdk/src/index.ts");
     expect(sdk).toContain("runClose");
@@ -395,7 +396,7 @@ describe("every link resolves", () => {
     urls.push(
       ...ardEntries(ORIGIN)
         .map((e) => e.url)
-        .filter((u) => u.startsWith(DOCS))
+        .filter((u) => new URL(u).origin === DOCS)
     );
     expect(urls.length).toBeGreaterThan(10);
     const nav = read("docs/docs.json");
