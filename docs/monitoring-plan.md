@@ -94,7 +94,7 @@ The registry comparison behind `S7.Tampering.1.M.1` reads every mainnet entry wi
 (`mainnet-registry.integration.test.ts`). What each protocol's rows contribute today, from
 `contract-registry.json` (`lastVerified` 2026-11-17):
 
-| Protocol | Mainnet entries compared hourly                                | Status                                                                                                                                                               |
+| Protocol | Mainnet entries compared on the hourly schedule                | Status                                                                                                                                                               |
 | -------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Blend    | factory, backstop and pool, versions v1 and v2                 | Active. The same test also checks that the code the Blend factories deploy today matches the registry's representative pools.                                        |
 | Aquarius | router and the three pool types                                | Active. The same test also checks the router's current pool hashes against the registry.                                                                             |
@@ -103,14 +103,34 @@ The registry comparison behind `S7.Tampering.1.M.1` reads every mainnet entry wi
 | xBull    | the swap router (conversion quotes, not an exit)               | Active for the registry hash comparison. The router is the contract the browser's `verify()` allows a conversion through, so drift here is a conversion-path signal. |
 | FxDAO    | the mainnet vault (wind-down code, `evict` and `upgrade` only) | Active for the registry hash comparison. No exit is built against it.                                                                                                |
 
-Nothing in this table is a new monitor: it records what the existing hourly comparison covers, and where it
+Nothing in this table is a new monitor: it records what the existing scheduled comparison covers, and where it
 does not.
 
 ### How the live ones run
 
 `.github/workflows/onchain-monitors.yml` runs the service-account checks and the registry
-comparison every hour, and everything on demand from the Actions tab. All of them are read-only
-against public endpoints: no account, no transaction, no funds.
+comparison on an hourly schedule, and everything on demand from the Actions tab. All of them are
+read-only against public endpoints: no account, no transaction, no funds.
+
+**The hourly schedule is best effort, and in practice it is not kept.** GitHub documents scheduled
+workflows as delayed or dropped under load. Measured on 2026-11-27 over the 191 scheduled runs of this
+workflow between 2026-10-20 and 2026-11-27: 21 percent of the expected hourly runs happened (191 of about
+910), the median gap between two runs was 4.7 hours, the 90th percentile 7.8 hours and the longest gap 10.5
+hours. In the last 7 days there were 28 runs against about 168 expected, with 24 gaps above 2 hours and 13
+above 6 hours. The daily workflows of the repository ran on essentially every day of the same period, so
+the schedule is accepted and it is the high frequency that is dropped. Until that changes, a key that signs
+something unexpected or a balance that falls below its floor can go unreported for several hours.
+
+The two cron lines stay as the fallback. An external scheduler is planned, and does not exist yet: it will
+start this workflow every hour through `workflow_dispatch` with the input `cadence` set to `hourly`. The
+input has three values: `hourly` is the hourly run (no comment on an open issue), `daily` is the 06:00 run
+(one comment a day on an open issue), and `manual`, the default, is a person's run from the Actions tab
+(it comments on an open issue every time). A first job reads the event once, refuses a value it does not
+know before any check runs, and the report job reads that decision; a refused run is red and opens no
+issue. Two triggers close together run one after the other, never at the same time. If a third arrives
+while one is running and one is waiting, it replaces the waiting one, so a dispatch can be dropped; the
+checks are identical, so the only loss is that day's comment when the dropped run was the daily one. How
+often the monitors really run after the external trigger exists is not known until it is measured.
 
 The service accounts to watch come from repository variables, one per role and network and read nowhere else:
 `MEDIATOR_ADDRESS_TESTNET`, `FEE_ACCOUNT_ADDRESS_TESTNET`, `MEDIATOR_ADDRESS_MAINNET` and
@@ -225,7 +245,7 @@ effect, so any debit of it is a payout: the forward check reads its own effects 
 each operation with an `account_debited` on it, whatever the operation and whoever sourced it. That is one
 request per run while the sponsor has fewer than 200 effects in the window, up to the same 25-page cap; reading
 the effects of each fee bump it paid for instead would cost one request per sponsored close in the window on
-every hourly run. Measured on the testnet sponsor on 2026-11-18: 2 effects in its life (its creation), none of
+every scheduled run. Measured on the testnet sponsor on 2026-11-18: 2 effects in its life (its creation), none of
 them a debit, and the API never makes it the sponsor of a reserve.
 
 What these checks do not see, verified on testnet on 2026-11-18:
@@ -252,13 +272,13 @@ maintainers watch. A check that did not report success, whether it failed, was s
 step, was cancelled, or never ran, counts as a finding: a check that did not run never reads as clean. A
 suspected key compromise (a service-key or forward check whose status is `finding`) pings `@everyone`; a
 registry or balance finding, an incomplete read, and a recovery do not, so the ping keeps its meaning. The
-two service-key checks and the forward check post again on every hourly run they keep reporting a finding,
+two service-key checks and the forward check post again on every run they keep reporting a finding,
 because a suspected key compromise is worth repeating; a registry or balance finding, or an incomplete read,
-posts once, then gets one comment a day on the issue (from the 06:00 UTC run), so the channel
+posts once, then gets one comment a day on the issue (from the 06:00 UTC run or a `daily` dispatch), so the channel
 stays readable. A failing check also fails its own step and the service-account job, so the run shows which
 check found something without opening the issue; the remaining checks still run. The next run in which
 every check is clean, the registry comparison included, closes the issue and posts the recovery: the next
-hourly run, or a manual one. A finding the webhook cannot
+run, or a manual one. A finding the webhook cannot
 deliver fails the run itself, so a missing or revoked webhook shows up as red rather than as silence.
 
 ### Provider contract check
@@ -382,17 +402,17 @@ leave the route: no name, explanation, uptime figure or history from the page do
 
 ## 5. What happens when an alert fires?
 
-| Monitor ID              | Severity | Response                                                                                                                                                                                                                                           | Owner       | Status                                | Last reviewed |
-| ----------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | ------------------------------------- | ------------- |
-| `S4a.Elevation.1.M.1`   | High     | Notify the maintainers; verify the mediator's funding policy; investigate the forward that preceded the drop. [Incident response](/runbooks/incident-response); if the key is suspect, [rotate the relay account](/runbooks/rotate-relay-account). | Maintainers | Active (hourly)                       | 2026-10-07    |
-| `S4a.Spoofing.1.M.1`    | Critical | Notify the maintainers; [rotate the relay account](/runbooks/rotate-relay-account); the mediator rotates without a client change, by design.                                                                                                       | Maintainers | Planned                               | 2026-09-17    |
-| `S4a.Information.1.M.1` | Critical | [Rotate the relay account](/runbooks/rotate-relay-account) immediately; audit every transaction it signed.                                                                                                                                         | Maintainers | Active (hourly)                       | 2026-10-07    |
-| `S4b.Elevation.1.M.1`   | High     | Notify the maintainers; disable the sponsored-fee endpoint ([incident response](/runbooks/incident-response#first-fifteen-minutes)); audit the inner transactions sponsored.                                                                       | Maintainers | Planned                               | 2026-09-17    |
-| `S4b.Denial.1.M.1`      | Medium   | Top up the sponsor ([drained fee sponsor](/runbooks/drained-sponsor)); review the per-key rate limit against the observed rate.                                                                                                                    | Maintainers | Balance active (hourly); rate planned | 2026-10-07    |
-| `S4b.Information.1.M.1` | Critical | [Rotate the fee sponsor](/runbooks/rotate-fee-sponsor) immediately; audit every transaction it paid for.                                                                                                                                           | Maintainers | Active (hourly)                       | 2026-10-07    |
-| `S7.Tampering.1.M.1`    | High     | Re-verify the contract against the protocol's own release, update the registry entry ([registry expiry](/runbooks/registry-expiry), step 2), and re-run the integration suite before exits resume.                                                 | Maintainers | Active (hourly)                       | 2026-09-18    |
+| Monitor ID              | Severity | Response                                                                                                                                                                                                                                           | Owner       | Status                                          | Last reviewed |
+| ----------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | ----------------------------------------------- | ------------- |
+| `S4a.Elevation.1.M.1`   | High     | Notify the maintainers; verify the mediator's funding policy; investigate the forward that preceded the drop. [Incident response](/runbooks/incident-response); if the key is suspect, [rotate the relay account](/runbooks/rotate-relay-account). | Maintainers | Active (scheduled hourly)                       | 2026-10-07    |
+| `S4a.Spoofing.1.M.1`    | Critical | Notify the maintainers; [rotate the relay account](/runbooks/rotate-relay-account); the mediator rotates without a client change, by design.                                                                                                       | Maintainers | Planned                                         | 2026-09-17    |
+| `S4a.Information.1.M.1` | Critical | [Rotate the relay account](/runbooks/rotate-relay-account) immediately; audit every transaction it signed.                                                                                                                                         | Maintainers | Active (scheduled hourly)                       | 2026-10-07    |
+| `S4b.Elevation.1.M.1`   | High     | Notify the maintainers; disable the sponsored-fee endpoint ([incident response](/runbooks/incident-response#first-fifteen-minutes)); audit the inner transactions sponsored.                                                                       | Maintainers | Planned                                         | 2026-09-17    |
+| `S4b.Denial.1.M.1`      | Medium   | Top up the sponsor ([drained fee sponsor](/runbooks/drained-sponsor)); review the per-key rate limit against the observed rate.                                                                                                                    | Maintainers | Balance active (scheduled hourly); rate planned | 2026-10-07    |
+| `S4b.Information.1.M.1` | Critical | [Rotate the fee sponsor](/runbooks/rotate-fee-sponsor) immediately; audit every transaction it paid for.                                                                                                                                           | Maintainers | Active (scheduled hourly)                       | 2026-10-07    |
+| `S7.Tampering.1.M.1`    | High     | Re-verify the contract against the protocol's own release, update the registry entry ([registry expiry](/runbooks/registry-expiry), step 2), and re-run the integration suite before exits resume.                                                 | Maintainers | Active (scheduled hourly)                       | 2026-09-18    |
 
-**Status is honest, not aspirational.** Five monitors are Active, all hourly: the registry hash comparison,
+**Status is honest, not aspirational.** Five monitors are Active, all on the hourly schedule (best effort, see how the live ones run): the registry hash comparison,
 the two service-key checks, the mediator's balance-and-forward check and the sponsor's balance floor.
 Two are Planned, and each is waiting on something specific rather than on effort. `S4a.Spoofing.1.M.1` and
 `S4b.Elevation.1.M.1` have to decode a transaction's operations to judge its shape, which is more than a

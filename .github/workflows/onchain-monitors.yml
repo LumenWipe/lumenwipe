@@ -7,12 +7,30 @@ name: on-chain monitors
 on:
   schedule:
     # Every check every hour: a leaked key or an upgraded contract must not wait for tomorrow.
+    # GitHub runs scheduled workflows on a best-effort basis and drops many of the hourly ones
+    # (docs/monitoring-plan.md has the measurement), so these two lines are the fallback. An
+    # external scheduler is planned to start this workflow every hour with `cadence=hourly`.
     - cron: "0 0-5,7-23 * * *"
     # The same checks. Its own line so the report can tell the one run a day that comments on an
     # open issue from the event itself, which a delayed run still carries.
     - cron: "0 6 * * *"
   workflow_dispatch:
+    inputs:
+      cadence:
+        description: >-
+          What the run means. hourly: the hourly run (no comment on an open issue). daily: the
+          06:00 run (comments once on an open issue). manual: a person's run (comments).
+        type: choice
+        options:
+          - manual
+          - hourly
+          - daily
+        default: manual
+        required: false
 
+# Two triggers close together run one after the other. A third run that arrives while one is
+# running and one is waiting replaces the waiting one (GitHub cancels it), which is harmless for
+# identical checks; a replaced daily run only skips that day's comment.
 concurrency:
   group: onchain-monitors
   cancel-in-progress: false
@@ -44,8 +62,50 @@ env:
   MONITOR_HISTORY_HOURS: ${{ vars.MONITOR_HISTORY_HOURS }}
 
 jobs:
+  # The one place that decides whether a run is the hourly one. It reads the event only through
+  # env, refuses a value it does not know before any check runs (the API may not validate a
+  # `choice` input), and the report reads its output instead of the event.
+  cadence:
+    name: which run this is
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    outputs:
+      hourly: ${{ steps.decide.outputs.hourly }}
+    steps:
+      - name: Decide hourly or not
+        id: decide
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SCHEDULE: ${{ github.event.schedule }}
+          CADENCE: ${{ inputs.cadence }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "schedule" ]; then
+            case "$SCHEDULE" in
+              "0 0-5,7-23 * * *") hourly=true ;;
+              "0 6 * * *") hourly=false ;;
+              *)
+                echo "::error::Unknown schedule '$SCHEDULE'; add it to the cadence step."
+                exit 1
+                ;;
+            esac
+          else
+            # A manual run keeps its meaning: it comments on an open issue every time.
+            case "${CADENCE:-manual}" in
+              hourly) hourly=true ;;
+              daily | manual) hourly=false ;;
+              *)
+                echo "::error::Unknown cadence input; use manual, hourly or daily."
+                exit 1
+                ;;
+            esac
+          fi
+          echo "hourly=$hourly" >> "$GITHUB_OUTPUT"
+
   registry:
     name: registry hashes still match mainnet
+    needs: cadence
     runs-on: ubuntu-latest
     # About 2 minutes of setup, then at most 2 minutes of a first run that is retried, the
     # minute's pause and 4 minutes of second run. A first run that took longer is not retried.
@@ -96,6 +156,7 @@ jobs:
 
   service-accounts:
     name: service accounts
+    needs: cadence
     runs-on: ubuntu-latest
     # Each check ends on its own and reports what it could not read (scripts/monitors): keys reads
     # every account record at once (30 s at most) and then history within a 4-minute budget,
@@ -154,8 +215,9 @@ jobs:
 
   report:
     name: open an issue and alert on failure
-    needs: [registry, service-accounts]
-    if: always()
+    needs: [cadence, registry, service-accounts]
+    # Not when the cadence was refused: the checks never ran, and that must not read as a finding.
+    if: ${{ always() && needs.cadence.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -174,8 +236,9 @@ jobs:
           BALANCES: ${{ needs.service-accounts.outputs.balances }}
           FORWARD: ${{ needs.service-accounts.outputs.forward }}
           FORWARD_STATUS: ${{ needs.service-accounts.outputs.forward_status }}
-          # False on the 06:00 schedule and on a manual run, the ones that comment on an open issue.
-          HOURLY: ${{ github.event.schedule == '0 0-5,7-23 * * *' }}
+          # False on the 06:00 schedule, a daily or manual dispatch: the ones that comment on an
+          # open issue. Decided once, in the cadence job.
+          HOURLY: ${{ needs.cadence.outputs.hourly }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
@@ -243,7 +306,7 @@ jobs:
             "" \
             "A registry incomplete read means the RPC did not answer the comparison, twice a minute" \
             "apart: rate-limited, timed out or unreachable. It is not a redeploy and nothing was" \
-            "compared: re-run the workflow, or wait for the next hourly run." \
+            "compared: re-run the workflow, or wait for the next run." \
             "" \
             "A balance failure means a service account dropped below its floor: check what" \
             "drained it before topping it up, and compare with the mediator's own transactions." \
@@ -264,7 +327,7 @@ jobs:
             "re-run the workflow, and if the cap was hit, read the account's history by hand." \
             "" \
             "This issue closes itself on the next run in which every check, the registry comparison" \
-            "included, is clean: the next hourly run, or a manual one from the Actions tab.")
+            "included, is clean: the next run, or a manual one from the Actions tab.")
 
           # A key compromise is re-announced every hour it persists; a registry or balance
           # finding, or an incomplete read, gets one alert, then one daily comment, so the channel
