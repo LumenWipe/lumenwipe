@@ -13,9 +13,15 @@ interface Step {
   name?: string;
   run?: string;
 }
-const workflow = Bun.YAML.parse(readFileSync(WORKFLOW, "utf8")) as {
-  jobs: { report: { steps: Step[] } };
-};
+interface Job {
+  if?: string;
+  outputs?: Record<string, string>;
+  steps: Step[];
+}
+const source = readFileSync(WORKFLOW, "utf8");
+const workflow = Bun.YAML.parse(source) as { jobs: { registry: Job; report: Job } };
+const compareScript = workflow.jobs.registry.steps.find((s) => s.id === "compare")?.run;
+if (!compareScript) throw new Error("the registry job has no `compare` step");
 const script = workflow.jobs.report.steps.find((s) => s.id === "issue")?.run;
 if (!script) throw new Error("the report job has no `issue` step");
 const alertScript = workflow.jobs.report.steps.find(
@@ -207,9 +213,208 @@ describe("the on-chain monitors report", () => {
 
   test("a registry that skips or is cancelled is not a finding on its own", async () => {
     for (const registry of ["skipped", "cancelled"]) {
-      const { outputs } = await report({ ...CLEAN, REGISTRY: registry }, true);
+      const { outputs, calls } = await report({ ...CLEAN, REGISTRY: registry }, true);
       expect(outputs.alert).toBeUndefined();
+      expect(calls.some((c) => c.startsWith("issue close"))).toBe(false);
     }
+  });
+
+  test("a clean hourly run that compared the registry closes the open issue", async () => {
+    const { outputs, calls } = await report({ ...CLEAN, REGISTRY: "success" }, true);
+    expect(outputs.alert).toBe("recovered");
+    expect(calls).toContain("issue close 7 --repo o/r --reason completed");
+  });
+
+  test("a clean registry prints no status, even a stale one", async () => {
+    const { raw } = await report({
+      ...CLEAN,
+      REGISTRY: "success",
+      REGISTRY_STATUS: "incomplete",
+      BALANCES: "failure",
+    });
+    expect(raw).toContain("- registry hashes still match mainnet: success\n");
+  });
+
+  // One row per way a failed registry comparison can end: the status it wrote (none when it
+  // crashed or timed out) and the line the issue and the alert carry. None pages everyone.
+  test.each([
+    ["finding", "failure (finding)"],
+    ["incomplete", "failure (incomplete)"],
+    ["", "failure (incomplete)"],
+  ])("a failed registry with status %p opens the issue once as %p", async (status, line) => {
+    const env = {
+      ...CLEAN,
+      REGISTRY: "failure",
+      ...(status === "" ? {} : { REGISTRY_STATUS: status }),
+    };
+    const opened = await report(env);
+    expect(opened.outputs.alert).toBe("finding");
+    expect(opened.outputs.critical).toBe("no");
+    expect(opened.raw).toContain(`- registry hashes still match mainnet: ${line}\n`);
+    expect(opened.calls.some((c) => c.startsWith("issue create"))).toBe(true);
+
+    const hourly = await report(env, true);
+    expect(hourly.outputs.alert).toBeUndefined();
+    expect(hourly.outputs.issue).toBe("7");
+    expect(hourly.calls.some((c) => c.startsWith("issue comment"))).toBe(false);
+    expect(hourly.calls.some((c) => c.startsWith("issue close"))).toBe(false);
+
+    const daily = await report({ ...env, HOURLY: "false" }, true);
+    expect(daily.outputs.alert).toBeUndefined();
+    expect(daily.calls.some((c) => c.startsWith("issue comment 7"))).toBe(true);
+    expect(daily.calls.some((c) => c.startsWith("issue close"))).toBe(false);
+  });
+
+  test("a registry incomplete read does not mute a key finding in the same run", async () => {
+    const { outputs } = await report(
+      {
+        ...CLEAN,
+        REGISTRY: "failure",
+        REGISTRY_STATUS: "incomplete",
+        KEYS: "failure",
+        KEYS_STATUS: "finding",
+      },
+      true
+    );
+    expect(outputs.alert).toBe("finding");
+    expect(outputs.critical).toBe("yes");
+  });
+
+  test("the issue body says what a registry incomplete read is and when the issue closes", async () => {
+    const { calls } = await report({ ...CLEAN, REGISTRY: "failure" });
+    const create = calls.join("\n");
+    expect(create).toContain("A registry incomplete read means the RPC did not answer");
+    expect(create).toContain("closes itself on the next run in which every check");
+  });
+});
+
+describe("the on-chain monitors schedule", () => {
+  const crons = [...source.matchAll(/^\s*- cron: "([^"]+)"$/gm)].map((m) => m[1]);
+
+  test("the two schedules cover every hour between them", () => {
+    expect(crons).toEqual(["0 0-5,7-23 * * *", "0 6 * * *"]);
+  });
+
+  test("the registry comparison runs on every event", () => {
+    expect(workflow.jobs.registry.if).toBeUndefined();
+  });
+
+  test("the schedule the report compares against is one the workflow runs on", () => {
+    const compared = [...source.matchAll(/github\.event\.schedule == '([^']+)'/g)].map((m) => m[1]);
+    expect(compared).toEqual([crons[0]]);
+  });
+
+  test("the report reads the status the comparison step wrote", () => {
+    expect(workflow.jobs.registry.outputs?.status).toBe("${{ steps.compare.outputs.status }}");
+    expect(source).toContain("REGISTRY_STATUS: ${{ needs.registry.outputs.status }}");
+  });
+});
+
+describe("the registry comparison step", () => {
+  // Stubs for `bun`, `sleep` and `timeout`: each `bun` call takes the next scripted line, an exit
+  // code and the status that run's tests write, so the step's own retry rule is what is proven.
+  const binDir = mkdtempSync(join(tmpdir(), "monitors-compare-"));
+  afterAll(() => rmSync(binDir, { recursive: true, force: true }));
+  const stub = (name: string, lines: string[]): void => {
+    writeFileSync(join(binDir, name), ["#!/usr/bin/env bash", ...lines].join("\n"));
+    chmodSync(join(binDir, name), 0o755);
+  };
+  stub("bun", [
+    'echo "bun $*" >> "$CALLS"',
+    'line=$(head -n 1 "$RUNS")',
+    'tail -n +2 "$RUNS" > "$RUNS.rest" && mv "$RUNS.rest" "$RUNS"',
+    'if [ -n "${line#*:}" ]; then printf "%s" "${line#*:}" > "$REGISTRY_STATUS_FILE"; fi',
+    'exit "${line%%:*}"',
+  ]);
+  stub("sleep", ['echo "sleep $*" >> "$CALLS"']);
+  stub("timeout", ['echo "timeout $1" >> "$CALLS"', "shift", 'exec "$@"']);
+
+  let attempt = 0;
+  async function compare(
+    runs: string[],
+    prefix = ""
+  ): Promise<{ code: number; status: string | undefined; calls: string[] }> {
+    attempt++;
+    const output = join(binDir, `output-${attempt}`);
+    const calls = join(binDir, `calls-${attempt}`);
+    const scripted = join(binDir, `runs-${attempt}`);
+    writeFileSync(output, "");
+    writeFileSync(calls, "");
+    writeFileSync(scripted, runs.join("\n") + "\n");
+    const proc = Bun.spawn(["bash", "-e", "-c", prefix + (compareScript as string)], {
+      env: {
+        PATH: `${binDir}:${process.env.PATH}`,
+        GITHUB_OUTPUT: output,
+        REGISTRY_STATUS_FILE: join(binDir, `status-${attempt}`),
+        CALLS: calls,
+        RUNS: scripted,
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const code = await proc.exited;
+    const written = readFileSync(output, "utf8");
+    return {
+      code,
+      status: written === "" ? undefined : written.trim(),
+      calls: readFileSync(calls, "utf8")
+        .split("\n")
+        .filter(Boolean)
+        .map((c) => c.split(" ")[0] as string),
+    };
+  }
+
+  test("a clean comparison runs once and writes no status", async () => {
+    expect(await compare(["0:"])).toEqual({ code: 0, status: undefined, calls: ["bun"] });
+  });
+
+  test("an incomplete read then a clean run succeeds, with no stale status", async () => {
+    expect(await compare(["1:incomplete", "0:"])).toEqual({
+      code: 0,
+      status: undefined,
+      calls: ["bun", "sleep", "timeout", "bun"],
+    });
+  });
+
+  test("an incomplete read twice fails as incomplete", async () => {
+    expect(await compare(["1:incomplete", "1:incomplete"])).toEqual({
+      code: 1,
+      status: "status=incomplete",
+      calls: ["bun", "sleep", "timeout", "bun"],
+    });
+  });
+
+  test("a finding fails at once, with no second run", async () => {
+    expect(await compare(["1:finding", "0:"])).toEqual({
+      code: 1,
+      status: "status=finding",
+      calls: ["bun"],
+    });
+  });
+
+  test("an incomplete read then a finding fails as the finding", async () => {
+    const result = await compare(["1:incomplete", "1:finding"]);
+    expect(result.code).toBe(1);
+    expect(result.status).toBe("status=finding");
+  });
+
+  test("a second run that is killed leaves no status, not the first run's", async () => {
+    const result = await compare(["1:incomplete", "124:"]);
+    expect(result.code).toBe(124);
+    expect(result.status).toBe("status=");
+  });
+
+  test("a failure that wrote no status is not retried", async () => {
+    expect(await compare(["1:"])).toEqual({ code: 1, status: "status=", calls: ["bun"] });
+  });
+
+  test("an incomplete read after a slow first run is not retried", async () => {
+    // The shell's own clock, moved past the limit that keeps both runs inside the job timeout.
+    expect(await compare(["1:incomplete", "0:"], "SECONDS=120\n")).toEqual({
+      code: 1,
+      status: "status=incomplete",
+      calls: ["bun"],
+    });
   });
 });
 

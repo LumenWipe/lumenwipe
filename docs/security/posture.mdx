@@ -159,7 +159,7 @@ surface and the reasoning for accepting it. By category:
 - Dependencies: Renovate opens one pull request with every update each week, plus lockfile maintenance
   (`renovate.json`). A high or critical advisory fails CI unless it is allowlisted with a reason and an expiry
   (`scripts/audit-gate.ts`, `scripts/audit-allowlist.json`, INV-27).
-- On-chain monitors: the service-account checks run every hour and the registry comparison once a day
+- On-chain monitors: the service-account checks and the registry comparison run every hour
   (`.github/workflows/onchain-monitors.yml`). A finding opens an issue and alerts the maintainers, and a check that
   did not run counts as a finding ([monitoring plan](/monitoring-plan#how-the-live-ones-run)).
 - Data providers: each configured Horizon-compatible provider is checked daily for the routes and fields the API

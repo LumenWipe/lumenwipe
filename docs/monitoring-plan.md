@@ -94,7 +94,7 @@ The registry comparison behind `S7.Tampering.1.M.1` reads every mainnet entry wi
 (`mainnet-registry.integration.test.ts`). What each protocol's rows contribute today, from
 `contract-registry.json` (`lastVerified` 2026-11-17):
 
-| Protocol | Mainnet entries compared daily                                 | Status                                                                                                                                                               |
+| Protocol | Mainnet entries compared hourly                                | Status                                                                                                                                                               |
 | -------- | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Blend    | factory, backstop and pool, versions v1 and v2                 | Active. The same test also checks that the code the Blend factories deploy today matches the registry's representative pools.                                        |
 | Aquarius | router and the three pool types                                | Active. The same test also checks the router's current pool hashes against the registry.                                                                             |
@@ -103,13 +103,13 @@ The registry comparison behind `S7.Tampering.1.M.1` reads every mainnet entry wi
 | xBull    | the swap router (conversion quotes, not an exit)               | Active for the registry hash comparison. The router is the contract the browser's `verify()` allows a conversion through, so drift here is a conversion-path signal. |
 | FxDAO    | the mainnet vault (wind-down code, `evict` and `upgrade` only) | Active for the registry hash comparison. No exit is built against it.                                                                                                |
 
-Nothing in this table is a new monitor: it records what the existing daily comparison covers, and where it
+Nothing in this table is a new monitor: it records what the existing hourly comparison covers, and where it
 does not.
 
 ### How the live ones run
 
-`.github/workflows/onchain-monitors.yml` runs the service-account checks every hour and the registry
-comparison once a day at 06:00 UTC, and everything on demand from the Actions tab. All of them are read-only
+`.github/workflows/onchain-monitors.yml` runs the service-account checks and the registry
+comparison every hour, and everything on demand from the Actions tab. All of them are read-only
 against public endpoints: no account, no transaction, no funds.
 
 The service accounts to watch come from repository variables, one per role and network and read nowhere else:
@@ -149,7 +149,7 @@ The source-account and forward checks read the history of the last `MONITOR_HIST
 optional repository variable from 2 to 720; 168, one week, when unset), paging through Horizon 200 records at
 a time, newest first. A record older than the window is no longer read, so a finding stops being reported once
 the transaction behind it leaves the window, one week after it happened by default; the issue it opened stays
-open until a clean daily run closes it, as before.
+open until a clean run closes it, as before.
 
 Each of those checks ends in one of three statuses, which it writes as a step output for the report job:
 
@@ -175,6 +175,13 @@ the read because they still carry valid signatures.
 `S7.Tampering.1.M.1` reads each `verifiedLive` mainnet entry's executable hash over RPC and compares it to the
 registry. It also runs on every pull request as part of the integration suite, but the schedule is what makes
 it a monitor: a contract can be upgraded during a week when nobody opens a pull request.
+
+A failed comparison writes one of the same two statuses. A hash that differs, an entry the ledger no longer
+holds, or any other wrong answer is a **finding**. A read the RPC did not answer (rate-limited, timed out,
+unavailable or unreachable) with nothing else wrong is **incomplete**: the step waits a minute and compares once
+more, and the second run is the result, so one refused request does not open an issue. A mismatch is never
+retried. A comparison that is still incomplete, or that crashed or timed out, opens or updates the issue and
+alerts without the mention, labelled as an incomplete read rather than a mismatch; it is never clean.
 
 `S4a.Information.1.M.1` and `S4b.Information.1.M.1` read every transaction touching each service account
 inside the history window and report each one it sourced. They also read the account's operations, with each
@@ -247,10 +254,11 @@ suspected key compromise (a service-key or forward check whose status is `findin
 registry or balance finding, an incomplete read, and a recovery do not, so the ping keeps its meaning. The
 two service-key checks and the forward check post again on every hourly run they keep reporting a finding,
 because a suspected key compromise is worth repeating; a registry or balance finding, or an incomplete read,
-posts once, then gets a daily comment on the issue, so the channel
+posts once, then gets one comment a day on the issue (from the 06:00 UTC run), so the channel
 stays readable. A failing check also fails its own step and the service-account job, so the run shows which
-check found something without opening the issue; the remaining checks still run. The next clean daily run
-closes the issue and posts the recovery. A finding the webhook cannot
+check found something without opening the issue; the remaining checks still run. The next run in which
+every check is clean, the registry comparison included, closes the issue and posts the recovery: the next
+hourly run, or a manual one. A finding the webhook cannot
 deliver fails the run itself, so a missing or revoked webhook shows up as red rather than as silence.
 
 ### Provider contract check
@@ -379,10 +387,10 @@ leave the route: no name, explanation, uptime figure or history from the page do
 | `S4b.Elevation.1.M.1`   | High     | Notify the maintainers; disable the sponsored-fee endpoint ([incident response](/runbooks/incident-response#first-fifteen-minutes)); audit the inner transactions sponsored.                                                                       | Maintainers | Planned                               | 2026-09-17    |
 | `S4b.Denial.1.M.1`      | Medium   | Top up the sponsor ([drained fee sponsor](/runbooks/drained-sponsor)); review the per-key rate limit against the observed rate.                                                                                                                    | Maintainers | Balance active (hourly); rate planned | 2026-10-07    |
 | `S4b.Information.1.M.1` | Critical | [Rotate the fee sponsor](/runbooks/rotate-fee-sponsor) immediately; audit every transaction it paid for.                                                                                                                                           | Maintainers | Active (hourly)                       | 2026-10-07    |
-| `S7.Tampering.1.M.1`    | High     | Re-verify the contract against the protocol's own release, update the registry entry ([registry expiry](/runbooks/registry-expiry), step 2), and re-run the integration suite before exits resume.                                                 | Maintainers | Active (daily)                        | 2026-09-18    |
+| `S7.Tampering.1.M.1`    | High     | Re-verify the contract against the protocol's own release, update the registry entry ([registry expiry](/runbooks/registry-expiry), step 2), and re-run the integration suite before exits resume.                                                 | Maintainers | Active (hourly)                       | 2026-09-18    |
 
-**Status is honest, not aspirational.** Five monitors are Active: the registry hash comparison daily, and
-the two service-key checks, the mediator's balance-and-forward check and the sponsor's balance floor hourly.
+**Status is honest, not aspirational.** Five monitors are Active, all hourly: the registry hash comparison,
+the two service-key checks, the mediator's balance-and-forward check and the sponsor's balance floor.
 Two are Planned, and each is waiting on something specific rather than on effort. `S4a.Spoofing.1.M.1` and
 `S4b.Elevation.1.M.1` have to decode a transaction's operations to judge its shape, which is more than a
 scheduled query does. `S4b.Denial.1.M.1`'s rate half needs a baseline that does not exist until there is
