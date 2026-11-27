@@ -1,5 +1,8 @@
 import { test, expect } from "bun:test";
-import { defiVerificationLabel } from "@/lib/plan/defi-verification-source";
+import {
+  defiVerificationLabel,
+  isCompletedOnChainSweep,
+} from "@/lib/plan/defi-verification-source";
 
 // Mirrors resolve-defi-positions.ts's source vocabulary (apps/api) - kept as plain string
 // literals here rather than an import, same boundary resolvable-blockers.ts already crosses
@@ -35,4 +38,17 @@ test("a totally unconfirmed degraded result gets no label", () => {
 test("an unrecognized source gets no label", () => {
   expect(defiVerificationLabel("not-tracked")).toBeNull();
   expect(defiVerificationLabel("")).toBeNull();
+});
+
+test("only the completed mainnet sweep counts as a completed on-chain sweep", () => {
+  expect(isCompletedOnChainSweep("octopos-degraded-direct-read-confirmed")).toBe(true);
+  for (const source of [
+    "octopos-degraded-fallback",
+    "not-tracked",
+    "snapshot",
+    "testnet-direct-read",
+    "",
+  ]) {
+    expect(isCompletedOnChainSweep(source)).toBe(false);
+  }
 });

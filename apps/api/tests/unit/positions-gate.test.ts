@@ -255,3 +255,55 @@ test("userVerifiedNoPositions never fires ahead of the existing, stronger lenien
     "defi_positions_unconfirmed_but_detected"
   );
 });
+
+// ─── wording by source ───────────────────────────────────────────────────────
+
+const UNCONFIRMED_WORDING = /could not be confirmed|verify manually/i;
+
+test("a confirmed sweep that found positions says what it found, not that it could not confirm", () => {
+  const result = makeResult({
+    source: DEGRADED_SOURCE_CONFIRMED,
+    timestamp: null,
+    positions: [BLEND_POSITION, BLEND_POSITION],
+  });
+  const [blocker] = assessDefiPositionsGate(result, new Date(), 2);
+  expect(blocker!.message).toBe(
+    "A direct on-chain check found 2 DeFi positions (shown below), and this close includes their exit."
+  );
+});
+
+test("a confirmed empty sweep on a zero-trustline account is worded as a finding", () => {
+  const result = makeResult({ source: DEGRADED_SOURCE_CONFIRMED, timestamp: null });
+  const [blocker] = assessDefiPositionsGate(result, new Date(), 0);
+  expect(blocker!.message).not.toMatch(UNCONFIRMED_WORDING);
+  expect(blocker!.message).toMatch(/found no open DeFi positions in the protocols LumenWipe/);
+});
+
+test("a confirmed empty sweep with trustlines keeps the hard code but states what the sweep found", () => {
+  const result = makeResult({ source: DEGRADED_SOURCE_CONFIRMED, timestamp: null });
+  const [blocker] = assessDefiPositionsGate(result, new Date(), 3);
+  expect(blocker!.code).toBe("defi_positions_unavailable");
+  expect(blocker!.message).not.toMatch(UNCONFIRMED_WORDING);
+  expect(blocker!.message).toMatch(/found no open DeFi positions in the protocols LumenWipe/);
+  expect(blocker!.message).toMatch(/trustlines/);
+});
+
+test("the acknowledged confirmed empty sweep keeps the user-verified code without the unconfirmed wording", () => {
+  const result = makeResult({ source: DEGRADED_SOURCE_CONFIRMED, timestamp: null });
+  const [blocker] = assessDefiPositionsGate(result, new Date(), 3, true);
+  expect(blocker!.code).toBe("defi_positions_unconfirmed_user_verified");
+  expect(blocker!.message).not.toMatch(UNCONFIRMED_WORDING);
+});
+
+test("a failed or partial sweep keeps the unconfirmed warning", () => {
+  for (const source of [DEGRADED_SOURCE, "not-tracked"]) {
+    const result = makeResult({ source, timestamp: null });
+    const [blocker] = assessDefiPositionsGate(result, new Date(), 3);
+    expect(blocker!.code).toBe("defi_positions_unavailable");
+    expect(blocker!.message).toMatch(/could not be confirmed/);
+    expect(blocker!.message).toMatch(/verify manually/);
+    expect(assessDefiPositionsGate(result, new Date(), 3, true)[0]!.message).toMatch(
+      /could not be confirmed/
+    );
+  }
+});
