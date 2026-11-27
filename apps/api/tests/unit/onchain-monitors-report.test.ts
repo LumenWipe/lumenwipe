@@ -15,11 +15,17 @@ interface Step {
 }
 interface Job {
   if?: string;
+  needs?: string | string[];
   outputs?: Record<string, string>;
-  steps: Step[];
+  steps: (Step & { env?: Record<string, string> })[];
 }
 const source = readFileSync(WORKFLOW, "utf8");
-const workflow = Bun.YAML.parse(source) as { jobs: { registry: Job; report: Job } };
+const workflow = Bun.YAML.parse(source) as {
+  on: { workflow_dispatch: { inputs: Record<string, Record<string, unknown>> } };
+  jobs: { cadence: Job; registry: Job; "service-accounts": Job; report: Job };
+};
+const cadenceScript = workflow.jobs.cadence.steps.find((s) => s.id === "decide")?.run;
+if (!cadenceScript) throw new Error("the cadence job has no `decide` step");
 const compareScript = workflow.jobs.registry.steps.find((s) => s.id === "compare")?.run;
 if (!compareScript) throw new Error("the registry job has no `compare` step");
 const script = workflow.jobs.report.steps.find((s) => s.id === "issue")?.run;
@@ -299,14 +305,109 @@ describe("the on-chain monitors schedule", () => {
     expect(workflow.jobs.registry.if).toBeUndefined();
   });
 
-  test("the schedule the report compares against is one the workflow runs on", () => {
-    const compared = [...source.matchAll(/github\.event\.schedule == '([^']+)'/g)].map((m) => m[1]);
-    expect(compared).toEqual([crons[0]]);
-  });
-
   test("the report reads the status the comparison step wrote", () => {
     expect(workflow.jobs.registry.outputs?.status).toBe("${{ steps.compare.outputs.status }}");
     expect(source).toContain("REGISTRY_STATUS: ${{ needs.registry.outputs.status }}");
+  });
+});
+
+describe("the cadence job", () => {
+  async function decide(env: Record<string, string>) {
+    run++;
+    const output = join(dir, `output-${run}`);
+    writeFileSync(output, "");
+    const proc = Bun.spawn(["bash", "-c", cadenceScript as string], {
+      env: { PATH: process.env.PATH ?? "", GITHUB_OUTPUT: output, ...env },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const code = await proc.exited;
+    return {
+      code,
+      stdout: await new Response(proc.stdout).text(),
+      output: readFileSync(output, "utf8"),
+    };
+  }
+
+  test.each([
+    ["0 0-5,7-23 * * *", "true"],
+    ["0 6 * * *", "false"],
+  ])("the schedule %p means hourly=%s", async (SCHEDULE, hourly) => {
+    const r = await decide({ EVENT_NAME: "schedule", SCHEDULE, CADENCE: "" });
+    expect(r.code).toBe(0);
+    expect(r.output).toBe(`hourly=${hourly}\n`);
+  });
+
+  test("a schedule it does not know is refused and named", async () => {
+    const r = await decide({ EVENT_NAME: "schedule", SCHEDULE: "30 3 * * *", CADENCE: "" });
+    expect(r.code).toBe(1);
+    expect(r.stdout).toContain("::error::Unknown schedule '30 3 * * *'");
+    expect(r.output).toBe("");
+  });
+
+  test.each([
+    ["hourly", "true"],
+    ["daily", "false"],
+    ["manual", "false"],
+    ["", "false"],
+  ])("a dispatch with cadence %p means hourly=%s", async (CADENCE, hourly) => {
+    const r = await decide({ EVENT_NAME: "workflow_dispatch", SCHEDULE: "", CADENCE });
+    expect(r.code).toBe(0);
+    expect(r.output).toBe(`hourly=${hourly}\n`);
+  });
+
+  test.each(["HOURLY", "hourly ", "x", "true", "hourly\ndaily"])(
+    "a dispatch with the unknown value %p is refused before any check",
+    async (CADENCE) => {
+      const r = await decide({ EVENT_NAME: "workflow_dispatch", SCHEDULE: "", CADENCE });
+      expect(r.code).toBe(1);
+      expect(r.stdout).toContain("::error::Unknown cadence input");
+      expect(r.output).toBe("");
+    }
+  );
+
+  test("a manual or daily dispatch comments on an open issue", async () => {
+    const { calls } = await report({ ...CLEAN, KEYS: "failure", HOURLY: "false" }, true);
+    expect(calls.filter((c) => c.startsWith("issue comment"))).toHaveLength(1);
+  });
+
+  test("an hourly dispatch on an open issue neither comments nor opens a second issue", async () => {
+    const { calls } = await report({ ...CLEAN, KEYS: "failure", HOURLY: "true" }, true);
+    expect(calls.some((c) => c.startsWith("issue comment"))).toBe(false);
+    expect(calls.some((c) => c.startsWith("issue create"))).toBe(false);
+  });
+});
+
+describe("the on-chain monitors workflow shape", () => {
+  const input = workflow.on.workflow_dispatch.inputs.cadence;
+
+  test("the cadence input is a choice of manual, hourly and daily, defaulting to manual", () => {
+    expect(input?.type).toBe("choice");
+    expect(input?.options).toEqual(["manual", "hourly", "daily"]);
+    expect(input?.default).toBe("manual");
+  });
+
+  test("the event is read only through env, never inside a script", () => {
+    for (const job of Object.values(workflow.jobs)) {
+      for (const step of job.steps) expect(step.run ?? "").not.toContain("${{");
+    }
+    expect(workflow.jobs.cadence.steps[0]?.env).toEqual({
+      EVENT_NAME: "${{ github.event_name }}",
+      SCHEDULE: "${{ github.event.schedule }}",
+      CADENCE: "${{ inputs.cadence }}",
+    });
+  });
+
+  test("only the cadence job reads the event schedule", () => {
+    expect(source.match(/github\.event\.schedule/g)).toHaveLength(1);
+    expect(source).toContain("HOURLY: ${{ needs.cadence.outputs.hourly }}");
+  });
+
+  test("every check waits for the cadence, and a refused cadence reports nothing", () => {
+    expect(workflow.jobs.registry.needs).toBe("cadence");
+    expect(workflow.jobs["service-accounts"].needs).toBe("cadence");
+    expect(workflow.jobs.report.needs).toEqual(["cadence", "registry", "service-accounts"]);
+    expect(workflow.jobs.report.if).toBe("${{ always() && needs.cadence.result == 'success' }}");
   });
 });
 
