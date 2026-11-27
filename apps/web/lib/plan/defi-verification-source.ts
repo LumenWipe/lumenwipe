@@ -10,10 +10,8 @@ export type DefiVerificationLabel = "octopos" | "lumenwipe" | null;
  * since either way our own on-chain check is what confirmed it.
  */
 const OCTOPOS_SOURCES = new Set(["snapshot", "empty", "cache"]);
-const LUMENWIPE_SOURCES = new Set([
-  "octopos-degraded-direct-read-confirmed",
-  "testnet-direct-read",
-]);
+const COMPLETED_SWEEP_SOURCE = "octopos-degraded-direct-read-confirmed";
+const LUMENWIPE_SOURCES = new Set([COMPLETED_SWEEP_SOURCE, "testnet-direct-read"]);
 
 /**
  * Which party actually confirmed this account's DeFi position data, for display only - never
@@ -26,4 +24,10 @@ export function defiVerificationLabel(source: string): DefiVerificationLabel {
   if (OCTOPOS_SOURCES.has(source)) return "octopos";
   if (LUMENWIPE_SOURCES.has(source)) return "lumenwipe";
   return null;
+}
+
+/** Whether the direct on-chain sweep that stood in for OctoPos completed over every registered
+ *  protocol (positions-gate.ts treats only this source as confirmed). */
+export function isCompletedOnChainSweep(source: string): boolean {
+  return source === COMPLETED_SWEEP_SOURCE;
 }

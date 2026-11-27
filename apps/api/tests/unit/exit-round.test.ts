@@ -452,17 +452,17 @@ describe("preflightExitTargets", () => {
   });
 
   test("reports only the targets whose exit cannot be built, with whether each may be left", async () => {
-    const { blocked: blockedTargets, simulatedFeeStroops } = await preflightExitTargets(
-      account([supply(POOL), supply(POOL_2)]),
-      "testnet",
-      {
-        rpc,
-        runExitAdapter: async (_adapter, position) =>
-          position.contractAddress === POOL
-            ? built([step("withdraw", POOL)], POOL)
-            : blocked(POOL_2, "exit_simulation_failed", true),
-      }
-    );
+    const {
+      blocked: blockedTargets,
+      simulatedFeeStroops,
+      plannedSteps,
+    } = await preflightExitTargets(account([supply(POOL), supply(POOL_2)]), "testnet", {
+      rpc,
+      runExitAdapter: async (_adapter, position) =>
+        position.contractAddress === POOL
+          ? built([step("withdraw", POOL)], POOL)
+          : blocked(POOL_2, "exit_simulation_failed", true),
+    });
     expect([...blockedTargets.entries()]).toEqual([
       [
         POOL_2,
@@ -475,6 +475,7 @@ describe("preflightExitTargets", () => {
     ]);
     // The exitable target's fee is its assembled envelope's own, read from the simulated bytes.
     expect([...simulatedFeeStroops.entries()]).toEqual([[POOL, 100n]]);
+    expect([...plannedSteps.entries()]).toEqual([[POOL, [step("withdraw", POOL)]]]);
   });
 
   test("an exitable target whose envelope does not parse reports no simulated fee", async () => {

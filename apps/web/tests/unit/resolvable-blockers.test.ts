@@ -4,6 +4,7 @@ import {
   hasRouteLookupBlocker,
   ROUTE_LOOKUP_UNAVAILABLE_CODE,
   isResolvableHere,
+  isVerifiedOnChain,
   proceedError,
   displayBlockersOf,
 } from "@/lib/plan/resolvable-blockers";
@@ -162,4 +163,24 @@ test("hasRouteLookupBlocker recognises the retryable lookup blocker and is a har
   expect(hasRouteLookupBlocker([{ code: "plan_blocker" }, blocker])).toBe(true);
   expect(hasRouteLookupBlocker([{ code: "plan_blocker" }])).toBe(false);
   expect(hardBlockersOf([blocker])).toEqual([blocker]);
+});
+
+test("only the two completed-sweep codes read as verified on-chain, and they still never block", () => {
+  const verified = [
+    { code: "defi_positions_unconfirmed_no_trustlines", message: "…" },
+    { code: "defi_positions_unconfirmed_but_detected", message: "…" },
+  ];
+  for (const b of verified) expect(isVerifiedOnChain(b)).toBe(true);
+  expect(hardBlockersOf(verified)).toEqual([]);
+  expect(proceedError(verified)).toBeNull();
+  expect(displayBlockersOf(verified)).toEqual(verified);
+
+  for (const code of [
+    "defi_positions_unavailable",
+    "defi_positions_unconfirmed_user_verified",
+    "defi_position_unrecognized",
+    undefined,
+  ]) {
+    expect(isVerifiedOnChain({ code })).toBe(false);
+  }
 });

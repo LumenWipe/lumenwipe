@@ -6,9 +6,10 @@ name: on-chain monitors
 
 on:
   schedule:
-    # Service-account checks every hour; a leaked key must not wait for tomorrow.
+    # Every check every hour: a leaked key or an upgraded contract must not wait for tomorrow.
     - cron: "0 0-5,7-23 * * *"
-    # The daily run adds the registry comparison, an hour before the nightly e2e.
+    # The same checks. Its own line so the report can tell the one run a day that comments on an
+    # open issue from the event itself, which a delayed run still carries.
     - cron: "0 6 * * *"
   workflow_dispatch:
 
@@ -45,11 +46,16 @@ env:
 jobs:
   registry:
     name: registry hashes still match mainnet
-    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 6 * * *'
     runs-on: ubuntu-latest
+    # About 2 minutes of setup, then at most 2 minutes of a first run that is retried, the
+    # minute's pause and 4 minutes of second run. A first run that took longer is not retried.
     timeout-minutes: 10
     permissions:
       contents: read
+    # What a failed comparison reported: `finding` for a mismatch, `incomplete` for a read the
+    # RPC did not answer. Empty when it passed, crashed or timed out.
+    outputs:
+      status: ${{ steps.compare.outputs.status }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -62,10 +68,31 @@ jobs:
       - run: bun install --frozen-lockfile
 
       - name: Compare every verifiedLive mainnet entry against the ledger
+        id: compare
         working-directory: apps/api
         env:
           LUMENWIPE_RUN_INTEGRATION: "1"
-        run: bun test tests/integration/mainnet-registry.integration.test.ts
+          REGISTRY_STATUS_FILE: ${{ runner.temp }}/registry-status
+        run: |
+          set -uo pipefail
+          compare() {
+            rm -f "$REGISTRY_STATUS_FILE"
+            "$@" bun test tests/integration/mainnet-registry.integration.test.ts
+          }
+          reported() { cat "$REGISTRY_STATUS_FILE" 2>/dev/null || true; }
+
+          code=0
+          compare || code=$?
+          # One more try for a read the public RPC did not answer, so a blip does not open an
+          # issue every hour. A mismatch is never retried, and the second run is the result.
+          if [ "$code" -ne 0 ] && [ "$(reported)" = "incomplete" ] && [ "$SECONDS" -lt 120 ]; then
+            echo "::warning::incomplete read; comparing once more in 60 seconds"
+            sleep 60
+            code=0
+            compare timeout 240 || code=$?
+          fi
+          if [ "$code" -ne 0 ]; then echo "status=$(reported)" >> "$GITHUB_OUTPUT"; fi
+          exit "$code"
 
   service-accounts:
     name: service accounts
@@ -140,12 +167,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           REGISTRY: ${{ needs.registry.result }}
+          REGISTRY_STATUS: ${{ needs.registry.outputs.status }}
           CONFIG: ${{ needs.service-accounts.outputs.config }}
           KEYS: ${{ needs.service-accounts.outputs.keys }}
           KEYS_STATUS: ${{ needs.service-accounts.outputs.keys_status }}
           BALANCES: ${{ needs.service-accounts.outputs.balances }}
           FORWARD: ${{ needs.service-accounts.outputs.forward }}
           FORWARD_STATUS: ${{ needs.service-accounts.outputs.forward_status }}
+          # False on the 06:00 schedule and on a manual run, the ones that comment on an open issue.
           HOURLY: ${{ github.event.schedule == '0 0-5,7-23 * * *' }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -165,22 +194,23 @@ jobs:
           BALANCES="${BALANCES:-missing}"
           FORWARD="${FORWARD:-missing}"
 
-          # What a failed keys or forward step reported: a finding, or a read it could not finish
-          # (page cap, Horizon error or timeout, time budget). A step that wrote neither crashed,
-          # timed out or never ran, which is an incomplete read too.
+          # What a failed registry, keys or forward step reported: a finding, or a read it could
+          # not finish (RPC or Horizon error or timeout, page cap, time budget). A step that wrote
+          # neither crashed, timed out or never ran, which is an incomplete read too.
+          REGISTRY_STATUS="${REGISTRY_STATUS:-incomplete}"
           KEYS_STATUS="${KEYS_STATUS:-incomplete}"
           FORWARD_STATUS="${FORWARD_STATUS:-incomplete}"
           detail() { if [ "$1" = "success" ]; then echo "$1"; else echo "$1 ($2)"; fi; }
 
           STATUS=$(printf '%s\n' \
-            "- registry hashes still match mainnet: $REGISTRY" \
+            "- registry hashes still match mainnet: $(detail "$REGISTRY" "$REGISTRY_STATUS")" \
             "- variables, monitoring plan and stellar.toml agree: $CONFIG" \
             "- service keys have not signed anything: $(detail "$KEYS" "$KEYS_STATUS")" \
             "- service accounts are above their balance floor: $BALANCES" \
             "- no service account paid out beyond the forward and the drain: $(detail "$FORWARD" "$FORWARD_STATUS")")
 
-          # The registry's `cancelled` and `skipped` are a superseded run, a human stopping a job,
-          # or the hourly run leaving it to the daily one: not findings.
+          # The registry's `cancelled` and `skipped` are a superseded run or a human stopping a
+          # job: not findings, and not the clean comparison that closes the issue either.
           FINDING=no
           if [ "$REGISTRY" = "failure" ]; then FINDING=yes; fi
           for result in "$CONFIG" "$KEYS" "$BALANCES" "$FORWARD"; do
@@ -211,6 +241,10 @@ jobs:
             "against the protocol's own release, update the entry, and re-run the integration" \
             "suite before exits resume." \
             "" \
+            "A registry incomplete read means the RPC did not answer the comparison, twice a minute" \
+            "apart: rate-limited, timed out or unreachable. It is not a redeploy and nothing was" \
+            "compared: re-run the workflow, or wait for the next hourly run." \
+            "" \
             "A balance failure means a service account dropped below its floor: check what" \
             "drained it before topping it up, and compare with the mediator's own transactions." \
             "" \
@@ -229,8 +263,8 @@ jobs:
             "compromise and pages nobody, but nothing it did not read is known to be clean:" \
             "re-run the workflow, and if the cap was hit, read the account's history by hand." \
             "" \
-            "This issue closes itself on the next clean daily run, including a manual one from the" \
-            "Actions tab.")
+            "This issue closes itself on the next run in which every check, the registry comparison" \
+            "included, is clean: the next hourly run, or a manual one from the Actions tab.")
 
           # A key compromise is re-announced every hour it persists; a registry or balance
           # finding, or an incomplete read, gets one alert, then one daily comment, so the channel

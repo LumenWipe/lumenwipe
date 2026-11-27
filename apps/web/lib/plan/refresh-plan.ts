@@ -7,6 +7,7 @@ import {
   apiStepsToPlannedSteps,
   decisionPointsToClaimableBalances,
   decisionPointsToConversions,
+  exitPayoutsOf,
   planFeeStroopsOf,
   planTransactionCountOf,
   planTransactionsOf,
@@ -180,6 +181,7 @@ function install(
             dispositions: now.assetDispositions,
             claims: decisionPointsToClaimableBalances(plan),
             claimSelections: now.claimableBalanceSelections,
+            exitPayouts: exitPayoutsOf(plan),
           }),
           now
         );
@@ -188,7 +190,10 @@ function install(
   // screen describes the account the build will read.
   now.setAccountState(account);
   // The build is checked against the hash of the plan it was answered from: the fresh one.
-  now.setPlan(steps, plan.planHash, count, fresh, planTransactionsOf(plan));
+  // Unchanged, the consented signature stays the baseline: drift within the tolerance on every
+  // refresh never adds up to a change no one consented to.
+  const baseline = changes.length === 0 ? { ...planSignature } : fresh;
+  now.setPlan(steps, plan.planHash, count, baseline, planTransactionsOf(plan));
   if (changes.length === 0) {
     // The figure the user consented to stays as shown.
     return { kind: "unchanged" };

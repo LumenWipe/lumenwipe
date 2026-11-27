@@ -9322,6 +9322,80 @@
           "sorobanBoundStroops"
         ]
       },
+      "ExitPayoutPartDto": {
+        "type": "object",
+        "properties": {
+          "asset": {
+            "type": "string",
+            "description": "\"native\" or \"CODE:ISSUER\".",
+            "example": "native"
+          },
+          "stroops": {
+            "type": "string",
+            "description": "What the exit pays in of this asset, net of what it spends, in stroops; negative when it spends more than it pays in.",
+            "example": "57213000"
+          }
+        },
+        "required": [
+          "asset",
+          "stroops"
+        ]
+      },
+      "ExitTargetPayoutDto": {
+        "type": "object",
+        "properties": {
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "blend",
+              "aquarius",
+              "soroswap",
+              "phoenix",
+              "fxdao"
+            ]
+          },
+          "contract": {
+            "type": "string",
+            "description": "The pool, market, or vault contract the exit leaves."
+          },
+          "parts": {
+            "nullable": true,
+            "description": "The least the exit pays in per asset: an LP withdrawal's minimum-received floors, a lending withdrawal's live balance, less every repay. Null when the plan could not work it out: the exit is blocked or was not checked, or a step's proceeds are only known once it runs.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExitPayoutPartDto"
+            }
+          }
+        },
+        "required": [
+          "protocol",
+          "contract",
+          "parts"
+        ]
+      },
+      "ExitPayoutEstimateDto": {
+        "type": "object",
+        "properties": {
+          "targets": {
+            "description": "Every exit target the close would run.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExitTargetPayoutDto"
+            }
+          },
+          "quotes": {
+            "type": "object",
+            "description": "Keyed by classic asset (CODE:ISSUER) an exit pays in or spends, when it has a route to XLM: the swap quote for the amount the account will hold once every exit has run. Display only; a convert answer's floor comes from the decision point's own quote.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ClassicConversionQuoteDto"
+            }
+          }
+        },
+        "required": [
+          "targets",
+          "quotes"
+        ]
+      },
       "PlanEstimateDto": {
         "type": "object",
         "properties": {
@@ -9338,6 +9412,14 @@
             "allOf": [
               {
                 "$ref": "#/components/schemas/PlanFeePartsDto"
+              }
+            ]
+          },
+          "exitPayouts": {
+            "description": "What exiting the account's DeFi positions is expected to pay in. Display only: it feeds no decision, floor or transaction.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ExitPayoutEstimateDto"
               }
             ]
           }

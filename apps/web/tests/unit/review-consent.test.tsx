@@ -33,10 +33,12 @@ function expected(totalStroops: string): ExpectedReceive {
     feeStroops: "100",
     swapStroops: "0",
     claimStroops: "0",
+    exitStroops: "0",
     estimated: false,
     unquotedSwaps: 0,
     flaggedSwaps: 0,
     leavesOutDefiExits: false,
+    uncomputedExits: [],
   };
 }
 

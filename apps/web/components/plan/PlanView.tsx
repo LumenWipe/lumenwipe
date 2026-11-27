@@ -6,6 +6,7 @@ import { ArrowRight, AlertTriangle, RefreshCw } from "lucide-react";
 import type { AccountState } from "@/types/account";
 import type { AssetDisposition, ClaimableBalanceSelection, PlanBlocker } from "@/types/plan";
 import type { Network } from "@/config/networks";
+import type { ExitPayoutEstimate } from "@lumenwipe/types";
 import type {
   AssetConvertibility,
   ClaimableBalanceDecision,
@@ -91,6 +92,7 @@ import {
 } from "@/lib/plan/open-items";
 import { expectedReceive, type ExpectedReceive } from "@/lib/plan/expected-receive";
 import { destinationRefusal } from "@/lib/plan/destination-check";
+import { isCompletedOnChainSweep } from "@/lib/plan/defi-verification-source";
 import { useBusyWait } from "@/hooks/useBusyWait";
 import BusyRetryNotice from "./BusyRetryNotice";
 import { keepDestinationDraft } from "@/lib/session/restore-decisions";
@@ -107,6 +109,8 @@ interface PlanViewProps {
   blockers: PlanBlocker[];
   /** The fee the latest plan estimated, in stroops; null until a plan is in. */
   planFeeStroops: string | null;
+  /** What the latest plan expects the DeFi exits to pay in; null when it carries none. */
+  exitPayouts?: ExitPayoutEstimate | null;
   network: Network;
   onRefresh: () => void;
   loading: boolean;
@@ -122,6 +126,7 @@ export default function PlanView({
   leavablePositions = [],
   blockers,
   planFeeStroops,
+  exitPayouts = null,
   network,
   onRefresh,
   loading,
@@ -524,6 +529,7 @@ export default function PlanView({
       dispositions: assetDispositions,
       claims: claimableBalanceDecisions,
       claimSelections: claimableBalanceSelections,
+      exitPayouts,
     });
   // The plan on screen was asked for without a destination, so it never counts the relay's
   // forward payment; the plan fetched on proceed does.
@@ -656,6 +662,7 @@ export default function PlanView({
       {defiPositionsBlocker && (
         <div data-open-item="confirm:defi">
           <DefiPositionsAcknowledgement
+            sweepCompleted={isCompletedOnChainSweep(account.defiPositions.source)}
             acknowledged={defiPositionsAcknowledgedFor === account.address}
             onAcknowledgedChange={(ack) => acknowledgeDefiPositions(ack ? account.address : null)}
           />

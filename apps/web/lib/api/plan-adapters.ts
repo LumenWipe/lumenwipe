@@ -1,7 +1,14 @@
 import type { PlanResponse } from "@lumenwipe/sdk";
 import type { ClaimableBalanceSelection, PlannedStep, StepType } from "@/types/plan";
 import type { ClaimPredicate } from "@/types/account";
-import type { TokenQuoteFlag, TokenUnquotedReason } from "@lumenwipe/types";
+import type {
+  DefiProtocol,
+  ExitPayoutEstimate,
+  ExitPayoutPart,
+  ExitTargetPayout,
+  TokenQuoteFlag,
+  TokenUnquotedReason,
+} from "@lumenwipe/types";
 import type { ClassicConversionQuote, ExecutionTxBreakdown } from "@/types/close-api";
 
 /**
@@ -148,6 +155,54 @@ function tokenQuoteOf(raw: unknown): TokenQuote | undefined {
 export function planFeeStroopsOf(plan: PlanResponse): string | null {
   const fee: unknown = plan.estimate?.feeStroops;
   return typeof fee === "string" && /^\d+$/.test(fee) ? fee : null;
+}
+
+const EXIT_PROTOCOLS: ReadonlySet<string> = new Set<DefiProtocol>([
+  "blend",
+  "aquarius",
+  "soroswap",
+  "phoenix",
+  "fxdao",
+]);
+
+function exitPartsOf(raw: unknown): ExitPayoutPart[] | null {
+  if (!Array.isArray(raw)) return null;
+  const parts: ExitPayoutPart[] = [];
+  for (const part of raw as unknown[]) {
+    const p = (part ?? {}) as Record<string, unknown>;
+    if (typeof p.asset !== "string" || typeof p.stroops !== "string") return null;
+    if (!/^-?\d+$/.test(p.stroops)) return null;
+    parts.push({ asset: p.asset, stroops: p.stroops });
+  }
+  return parts;
+}
+
+/** The plan's exit payouts, or null when it carries none it can read. A target whose parts do
+ *  not read counts as one the plan could not work out. Display only. */
+export function exitPayoutsOf(plan: PlanResponse): ExitPayoutEstimate | null {
+  const raw: unknown = plan.estimate?.exitPayouts;
+  if (!raw || typeof raw !== "object") return null;
+  const { targets, quotes } = raw as Record<string, unknown>;
+  if (!Array.isArray(targets) || !quotes || typeof quotes !== "object") return null;
+  const read: ExitTargetPayout[] = [];
+  for (const target of targets as unknown[]) {
+    const t = (target ?? {}) as Record<string, unknown>;
+    if (typeof t.protocol !== "string" || !EXIT_PROTOCOLS.has(t.protocol)) return null;
+    if (typeof t.contract !== "string") return null;
+    read.push({
+      protocol: t.protocol as DefiProtocol,
+      contract: t.contract,
+      parts: exitPartsOf(t.parts),
+    });
+  }
+  const readQuotes: ExitPayoutEstimate["quotes"] = {};
+  for (const [asset, quote] of Object.entries(quotes as Record<string, unknown>)) {
+    const q = (quote ?? {}) as Record<string, unknown>;
+    if (typeof q.estimatedReceive !== "string" || typeof q.minAmountOut !== "string") continue;
+    if (!/^\d+$/.test(q.estimatedReceive) || !/^\d+$/.test(q.minAmountOut)) continue;
+    readQuotes[asset] = { estimatedReceive: q.estimatedReceive, minAmountOut: q.minAmountOut };
+  }
+  return { targets: read, quotes: readQuotes };
 }
 
 /** How many transactions the plan expects the close to take, for /review. Display only. Null

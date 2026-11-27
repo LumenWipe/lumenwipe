@@ -26,8 +26,13 @@ export interface SignatureAnswers {
  * it was. Display only: never sent to the API and never part of verify().
  */
 export interface PlanSignature {
-  /** One key per step, in order, with its fee: a fee the user did not see is a change. */
+  /** One key per step, in order. Fees are compared as a total, against `feeToleranceStroops`. */
   steps: string[];
+  /** The steps' fees in stroops; null when one cannot be read. */
+  feeStroops: string | null;
+  /** How far the fees may rise, and the least delivered fall, before it is a change: 1% of the
+   *  simulated Soroban part, the only part priced per ledger. Never more than 1% of the fees. */
+  feeToleranceStroops: string;
   transactionCount: number | null;
   /** Every decision point the plan offered, sorted. */
   decisionIds: string[];
@@ -46,10 +51,25 @@ export interface PlanSignature {
 }
 
 /** A signature whose least delivered amount is known: every fee read, every convert floored. */
-export type ComparableSignature = PlanSignature & { netStroops: string };
+export type ComparableSignature = PlanSignature & { netStroops: string; feeStroops: string };
 
 export function isComparable(signature: PlanSignature): signature is ComparableSignature {
-  return signature.netStroops !== null && signature.unflooredConverts.length === 0;
+  return (
+    signature.netStroops !== null &&
+    signature.feeStroops !== null &&
+    signature.unflooredConverts.length === 0
+  );
+}
+
+/** In basis points of the simulated fee: a Soroban resource fee moves between ledgers with the
+ *  network's write and rent rates, by well under 0.1% on a mainnet exit with a restore. */
+const SIMULATED_FEE_DRIFT_BPS = BigInt(100);
+
+function feeTolerance(plan: PlanResponse, fee: string | null): bigint {
+  const simulated: unknown = plan.estimate?.feeParts?.sorobanSimulatedStroops;
+  if (fee === null || typeof simulated !== "string" || !/^\d+$/.test(simulated)) return BigInt(0);
+  const base = BigInt(simulated) < BigInt(fee) ? BigInt(simulated) : BigInt(fee);
+  return (base * SIMULATED_FEE_DRIFT_BPS) / BigInt(10_000);
 }
 
 export type PlanChange =
@@ -133,7 +153,8 @@ export function heldToStoredFloors(
       BigInt(expected.balanceStroops) -
       BigInt(expected.feeStroops) +
       floors +
-      BigInt(expected.claimStroops)
+      BigInt(expected.claimStroops) +
+      BigInt(expected.exitStroops)
     ).toString(),
   };
 }
@@ -165,9 +186,10 @@ export function signatureOf(
         s.affectedAsset ?? "",
         s.affectedContract ?? "",
         s.operationCount,
-        s.estimatedFeeLumens,
       ].join("|")
     ),
+    feeStroops: fee,
+    feeToleranceStroops: feeTolerance(plan, fee).toString(),
     transactionCount: planTransactionCountOf(plan),
     decisionIds: plan.decisionPoints.map((d) => d.id).sort(),
     netStroops:
@@ -186,14 +208,24 @@ export function signatureOf(
   };
 }
 
+/** Whether `after` rose past `before` by more than the tolerance; an unreadable `before` has. */
+function rosePast(before: string | null, after: string, tolerance: bigint): boolean {
+  return before === null || BigInt(after) > BigInt(before) + tolerance;
+}
+
 /** What changed between the reviewed plan and a fresh one of the same holdings; empty when
  *  nothing material did. Holdings, floors and fees are checked before: none of them is something
- *  a new consent on /review could settle. */
+ *  a new consent on /review could settle. Fees and the least delivered are compared one way only,
+ *  within the reviewed plan's tolerance: a fee that fell or an amount that rose is no change. */
 export function comparePlans(reviewed: PlanSignature, fresh: ComparableSignature): PlanChange[] {
   const changes: PlanChange[] = [];
+  const tolerance = BigInt(reviewed.feeToleranceStroops);
   if (reviewed.steps.length !== fresh.steps.length) {
     changes.push({ kind: "step-count", before: reviewed.steps.length, after: fresh.steps.length });
-  } else if (reviewed.steps.some((key, i) => key !== fresh.steps[i])) {
+  } else if (
+    reviewed.steps.some((key, i) => key !== fresh.steps[i]) ||
+    rosePast(reviewed.feeStroops, fresh.feeStroops, tolerance)
+  ) {
     changes.push({ kind: "steps" });
   }
   if (reviewed.transactionCount !== fresh.transactionCount) {
@@ -203,7 +235,10 @@ export function comparePlans(reviewed: PlanSignature, fresh: ComparableSignature
       after: fresh.transactionCount,
     });
   }
-  if (reviewed.netStroops !== fresh.netStroops) {
+  if (
+    reviewed.netStroops === null ||
+    BigInt(fresh.netStroops) < BigInt(reviewed.netStroops) - tolerance
+  ) {
     changes.push({ kind: "net", before: reviewed.netStroops, after: fresh.netStroops });
   }
   const known = new Set(reviewed.decisionIds);

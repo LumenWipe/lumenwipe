@@ -1,6 +1,7 @@
-import { AlertOctagon, AlertTriangle, ExternalLink } from "lucide-react";
+import { AlertOctagon, AlertTriangle, ExternalLink, ShieldCheck } from "lucide-react";
 import type { PlanBlocker } from "@/types/plan";
 import { Callout } from "@/components/ui/callout";
+import { isVerifiedOnChain } from "@/lib/plan/resolvable-blockers";
 
 interface BlockersPanelProps {
   blockers: PlanBlocker[];
@@ -12,8 +13,19 @@ interface BlockersPanelProps {
 }
 
 export default function BlockersPanel({ blockers, blocking }: BlockersPanelProps) {
-  if (blockers.length === 0) return null;
+  const verified = blockers.filter(isVerifiedOnChain);
+  const others = blockers.filter((b) => !isVerifiedOnChain(b));
+  if (verified.length === 0 && others.length === 0) return null;
 
+  return (
+    <div className="space-y-3">
+      {others.length > 0 && <WarningsCallout blockers={others} blocking={blocking} />}
+      {verified.length > 0 && <VerifiedCallout blockers={verified} />}
+    </div>
+  );
+}
+
+function WarningsCallout({ blockers, blocking }: BlockersPanelProps) {
   const Icon = blocking ? AlertOctagon : AlertTriangle;
   const tone = blocking ? "danger" : "warning";
   const bullet = blocking ? "text-danger-fg" : "text-warning";
@@ -50,6 +62,43 @@ export default function BlockersPanel({ blockers, blocking }: BlockersPanelProps
           </li>
         ))}
       </ul>
+    </Callout>
+  );
+}
+
+function VerifiedCallout({ blockers }: { blockers: PlanBlocker[] }) {
+  const helpUrl = blockers.find((b) => b.helpUrl)?.helpUrl;
+
+  return (
+    <Callout
+      tone="success"
+      announce={false}
+      icon={<ShieldCheck className="h-4 w-4" />}
+      title={<h2 className="text-sm font-semibold">Verified on-chain</h2>}
+      className="p-4"
+    >
+      <div className="space-y-2 text-sm text-fg-muted">
+        {blockers.map((b, i) => (
+          <p key={i}>{b.message}</p>
+        ))}
+        <details className="text-xs">
+          <summary className="cursor-pointer text-accent hover:underline">Learn more</summary>
+          <p className="mt-1">
+            This check covers the DeFi protocols LumenWipe recognizes today. To look for anything
+            else this account holds, review it on an explorer.
+            {helpUrl && (
+              <a
+                href={helpUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ml-1 inline-flex items-center gap-0.5 text-accent hover:underline"
+              >
+                Open in explorer <ExternalLink className="h-3 w-3" />
+              </a>
+            )}
+          </p>
+        </details>
+      </div>
     </Callout>
   );
 }

@@ -1,5 +1,7 @@
-import type { ExpectedReceive } from "@/lib/plan/expected-receive";
+import type { ExpectedReceive, ExitTargetRef } from "@/lib/plan/expected-receive";
 import { formatStroops } from "@/lib/api/plan-adapters";
+import { PROTOCOL_LABELS } from "@/lib/plan/describe-position";
+import { shortAddr } from "@/lib/utils/short-id";
 
 /** The figure as shown: never below zero, with a flag for when the fees are more than the
  *  balance would cover. */
@@ -28,10 +30,28 @@ export function estimateNote(expected: ExpectedReceive): string {
         : `${expected.flaggedSwaps} swaps you confirmed were flagged on their cards: they may deliver much less than the current market price suggests.`
     );
   }
-  if (expected.leavesOutDefiExits) {
+  if (expected.uncomputedExits.length > 0) {
+    parts.push(`It leaves out what exiting ${exitNames(expected.uncomputedExits)} pays out.`);
+  } else if (expected.leavesOutDefiExits) {
     parts.push("It leaves out any XLM that exiting your DeFi positions pays out.");
   }
   return parts.join(" ");
+}
+
+function exitNames(exits: readonly ExitTargetRef[]): string {
+  const names = exits.map(
+    ({ protocol, contract }) =>
+      `the ${PROTOCOL_LABELS[protocol]} position in ${shortAddr(contract)}`
+  );
+  return names.length === 1
+    ? names[0]!
+    : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+function signedLine(stroops: string): string {
+  return stroops.startsWith("-")
+    ? `- ${formatStroops(stroops.slice(1))} XLM`
+    : `+ ${formatStroops(stroops)} XLM`;
 }
 
 interface ExpectedReceiveBreakdownProps {
@@ -50,6 +70,9 @@ export function ExpectedReceiveBreakdown({
     { label: "Network fees", value: `- ${formatStroops(expected.feeStroops)} XLM` },
     ...(expected.swapStroops !== "0"
       ? [{ label: "Swaps to XLM, at least", value: `+ ${formatStroops(expected.swapStroops)} XLM` }]
+      : []),
+    ...(expected.exitStroops !== "0"
+      ? [{ label: "DeFi exits, at least", value: signedLine(expected.exitStroops) }]
       : []),
     ...(expected.claimStroops !== "0"
       ? [{ label: "XLM claimed", value: `+ ${formatStroops(expected.claimStroops)} XLM` }]

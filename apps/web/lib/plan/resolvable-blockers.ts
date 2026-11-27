@@ -63,6 +63,17 @@ const NON_BLOCKING_ELSEWHERE = new Set([
   "defi_position_left_behind",
 ]);
 
+/** The NON_BLOCKING_ELSEWHERE codes that report a completed on-chain sweep: a finding, shown as
+ *  verified rather than as something to check. */
+const VERIFIED_ON_CHAIN = new Set([
+  "defi_positions_unconfirmed_no_trustlines",
+  "defi_positions_unconfirmed_but_detected",
+]);
+
+export function isVerifiedOnChain(blocker: Pick<PlanBlocker, "code">): boolean {
+  return blocker.code !== undefined && VERIFIED_ON_CHAIN.has(blocker.code);
+}
+
 export function isResolvableHere(blocker: Pick<PlanBlocker, "code">): boolean {
   return blocker.code !== undefined && RESOLVABLE_HERE.has(blocker.code);
 }

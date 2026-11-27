@@ -131,7 +131,7 @@ test("refreshing a plan that did not change says so and keeps the consent", asyn
 });
 
 test("refreshing a plan that changed lists what changed and asks for the consent again", async () => {
-  refreshReads(freshAccount(SOURCE, { nativeBalanceLumens: "20.0000000" }));
+  refreshReads(freshAccount(SOURCE, { nativeBalanceLumens: "5.0000000" }));
   await show();
   fireEvent.click(checkbox());
 
@@ -141,11 +141,11 @@ test("refreshing a plan that changed lists what changed and asks for the consent
 
   const changes = screen.getByTestId("plan-changes");
   expect(changes.textContent).toContain("The plan changed since you reviewed it");
-  expect(changes.textContent).toContain("The least you will receive is now about 19.99999 XLM");
+  expect(changes.textContent).toContain("The least you will receive is now about 4.99999 XLM");
   expect(checkbox().checked).toBe(false);
   expect(continueButton().disabled).toBe(true);
   // The fresh plan is the one on screen now, and the one the consent will be about.
-  expect(useDemolishStore.getState().accountState?.nativeBalanceLumens).toBe("20.0000000");
+  expect(useDemolishStore.getState().accountState?.nativeBalanceLumens).toBe("5.0000000");
   expect(useDemolishStore.getState().planHash).toBe(FRESH_HASH);
 });
 
@@ -193,6 +193,84 @@ test("a step fee the user did not see is a change, never signed silently", async
   );
   expect(save).not.toHaveBeenCalled();
   expect(useDemolishStore.getState().phase).toBe("PREFLIGHT_COMPLETE");
+});
+
+/** A plan whose one step is a simulated exit of this fee, in stroops under 1 XLM. */
+function exitPlan(feeStroops: string, planHash = FRESH_HASH) {
+  return freshPlan([{ ...STEP, type: "EXIT_POSITIONS", estimatedFeeLumens: `0.${feeStroops}` }], {
+    planHash,
+    estimate: {
+      feeStroops,
+      freedReserveXlm: "1.0000000",
+      feeParts: {
+        classicStroops: "0",
+        sorobanSimulatedStroops: feeStroops,
+        sorobanBoundStroops: "0",
+      },
+    },
+  });
+}
+
+function seedExit(feeStroops: string): void {
+  const reviewed = exitPlan(feeStroops, REVIEWED_HASH);
+  useDemolishStore
+    .getState()
+    .setPlan(
+      [{ ...STEP, type: "EXIT_POSITIONS", estimatedFeeLumens: `0.${feeStroops}` }],
+      REVIEWED_HASH,
+      1
+    );
+  stubUnchangedRefresh(freshAccount(SOURCE), reviewed);
+}
+
+test("a simulated fee that drifts a little on every refresh still reaches signing", async () => {
+  seedExit("4569288");
+  const fetchPlan = spyOn(closeClient, "fetchClosePlan")
+    .mockResolvedValueOnce(exitPlan("4570225"))
+    .mockResolvedValueOnce(exitPlan("4571866"));
+  await show();
+  fireEvent.click(checkbox());
+
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Refresh plan" }));
+  });
+  expect(screen.getByText("The plan is the same as the one you reviewed.")).toBeDefined();
+  expect(checkbox().checked).toBe(true);
+  expect(useDemolishStore.getState().executionPlan[0]!.estimatedFeeLumens).toBe("0.4570225");
+
+  await act(async () => {
+    fireEvent.click(continueButton());
+  });
+
+  expect(fetchPlan).toHaveBeenCalledTimes(2);
+  expect(useDemolishStore.getState().executionPlan[0]!.estimatedFeeLumens).toBe("0.4571866");
+  expect(useDemolishStore.getState().phase).toBe("STEP_EXECUTING");
+  expect(pushed).toEqual(["/testnet/execute"]);
+});
+
+test("drift within the tolerance is measured from the consented plan, so it never adds up", async () => {
+  seedExit("4569288");
+  spyOn(closeClient, "fetchClosePlan")
+    .mockResolvedValueOnce(exitPlan("4600000"))
+    .mockResolvedValueOnce(exitPlan("4630000"));
+  await show();
+  fireEvent.click(checkbox());
+
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Refresh plan" }));
+  });
+  expect(checkbox().checked).toBe(true);
+
+  await act(async () => {
+    fireEvent.click(continueButton());
+  });
+
+  expect(screen.getByTestId("plan-changes").textContent).toContain(
+    "The steps of the plan or their network fees changed."
+  );
+  expect(checkbox().checked).toBe(false);
+  expect(useDemolishStore.getState().phase).toBe("PREFLIGHT_COMPLETE");
+  expect(pushed).toEqual([]);
 });
 
 test("a confirm whose fetch fails says so, does not move on, and can be tried again", async () => {

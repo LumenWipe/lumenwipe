@@ -75,6 +75,10 @@ function explorerUrl(result: DefiPositionsResult): string {
   return `${SE_EXPLORER_BASE[result.network]}/account/${result.address}`;
 }
 
+function isCompletedEmptySweep(result: DefiPositionsResult): boolean {
+  return result.source === DEGRADED_SOURCE_CONFIRMED && result.positions.length === 0;
+}
+
 /**
  * A null timestamp means "no confirmed snapshot," regardless of why: OctoPos's real "not-tracked"
  * response always pairs with a null timestamp (confirmed via a live capture during #146), and
@@ -86,10 +90,13 @@ function explorerUrl(result: DefiPositionsResult): string {
 function unavailableBlocker(result: DefiPositionsResult): PlanBlocker {
   return {
     code: DEFI_POSITIONS_UNAVAILABLE_CODE,
-    message:
-      "DeFi position data for this account could not be confirmed. This account may hold open " +
-      "DeFi positions that have not been detected - verify manually on an explorer before " +
-      "proceeding.",
+    message: isCompletedEmptySweep(result)
+      ? "A direct on-chain check found no open DeFi positions in the protocols LumenWipe " +
+        "recognizes, but this account holds trustlines that check cannot rule out. Confirm " +
+        "that they are for other assets, not open DeFi positions, before proceeding."
+      : "DeFi position data for this account could not be confirmed. This account may hold " +
+        "open DeFi positions that have not been detected - verify manually on an explorer " +
+        "before proceeding.",
     helpUrl: explorerUrl(result),
   };
 }
@@ -101,10 +108,13 @@ function unavailableBlocker(result: DefiPositionsResult): PlanBlocker {
 function userVerifiedBlocker(result: DefiPositionsResult): PlanBlocker {
   return {
     code: DEFI_POSITIONS_UNCONFIRMED_USER_VERIFIED_CODE,
-    message:
-      "DeFi position data for this account could not be confirmed, but you confirmed manually " +
-      "that its trustlines are for other assets, not open DeFi positions. This check only " +
-      "covers protocols LumenWipe recognizes today.",
+    message: isCompletedEmptySweep(result)
+      ? "A direct on-chain check found no open DeFi positions in the protocols LumenWipe " +
+        "recognizes, and you confirmed manually that this account's trustlines are for other " +
+        "assets, not open DeFi positions."
+      : "DeFi position data for this account could not be confirmed, but you confirmed " +
+        "manually that its trustlines are for other assets, not open DeFi positions. This " +
+        "check only covers protocols LumenWipe recognizes today.",
     helpUrl: explorerUrl(result),
   };
 }
@@ -113,10 +123,9 @@ function confirmedEmptyNoTrustlinesBlocker(result: DefiPositionsResult): PlanBlo
   return {
     code: DEFI_POSITIONS_UNCONFIRMED_NO_TRUSTLINES_CODE,
     message:
-      "DeFi position data for this account could not be confirmed by the indexer, but a " +
-      "direct on-chain check found nothing, and this account holds no trustlines - which " +
-      "rules out virtually every classic DeFi position type. Verify manually on an explorer " +
-      "if you want full certainty before proceeding.",
+      "A direct on-chain check found no open DeFi positions in the protocols LumenWipe " +
+      "recognizes, and this account holds no trustlines, which rules out every classic " +
+      "liquidity pool position.",
     helpUrl: explorerUrl(result),
   };
 }
@@ -126,11 +135,8 @@ function confirmedButDetectedBlocker(result: DefiPositionsResult): PlanBlocker {
   return {
     code: DEFI_POSITIONS_UNCONFIRMED_BUT_DETECTED_CODE,
     message:
-      `DeFi position data for this account could not be confirmed by the indexer, but a ` +
-      `direct on-chain check identified ${n} position${n === 1 ? "" : "s"} (shown below), ` +
-      `which will be included in this close. This check only covers protocols LumenWipe ` +
-      `recognizes today - verify manually on an explorer if you want full certainty that ` +
-      `nothing else is open.`,
+      `A direct on-chain check found ${n} DeFi position${n === 1 ? "" : "s"} (shown below), ` +
+      `and this close includes ${n === 1 ? "its" : "their"} exit.`,
     helpUrl: explorerUrl(result),
   };
 }

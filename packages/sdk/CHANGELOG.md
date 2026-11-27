@@ -13,6 +13,12 @@ version number before 0.4.0. Neither has a git tag.
 
 ### Added
 
+- Expected DeFi exit payouts. `PlanEstimate` gains an optional `exitPayouts`
+  (`ExitPayoutEstimate`): for each exit target the close would run, what its exit pays in per asset
+  net of repays (`ExitTargetPayout.parts`, `ExitPayoutPart`), or null when the plan could not work
+  it out, plus a swap quote per paid-in classic asset for the amount held once every exit has run.
+  Display only: no decision, floor or transaction reads it.
+
 - Classic liquidity pool withdrawal. `PoolShareEntry` gains `balance` and `pool` (the pool's
   `LiquidityPoolState`: asset pair, fee, reserves and total shares, or null when it could not be
   read), `StepType` gains `"WITHDRAW_POOL_SHARES"`, and `IntentOperationBody` gains
