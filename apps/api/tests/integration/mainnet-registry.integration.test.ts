@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { afterAll, expect, test } from "bun:test";
 import {
   Account,
   Address,
@@ -25,12 +25,18 @@ import {
   phoenixUnbondToken,
   phoenixWithdrawArgs,
 } from "@/lib/defi-exits/phoenix";
+import { ReadStatusRecorder } from "../support/read-status";
 
 // Read-only against live mainnet RPC: no account, no transaction, no funds. Every verifiedLive
 // mainnet entry must still run the code it was verified as, or exits on that protocol would halt
 // at the registry gate (or, worse, a redeploy would be building against the wrong interface).
 // Opt-in like every integration test: `bun run test:integration`.
 const RUN_INTEGRATION = !!process.env.LUMENWIPE_RUN_INTEGRATION;
+
+// The on-chain monitors workflow reads this file to tell a registry mismatch from a read the
+// provider did not answer. Unset everywhere else, where nothing is written.
+const readStatus = new ReadStatusRecorder();
+afterAll(() => readStatus.write(process.env.REGISTRY_STATUS_FILE));
 
 test.skipIf(!RUN_INTEGRATION)(
   "every verifiedLive mainnet registry entry still resolves on live mainnet with its recorded wasmHash",
@@ -44,9 +50,11 @@ test.skipIf(!RUN_INTEGRATION)(
       try {
         live = await readLiveCodeIdentity(rpc, entry.address);
       } catch (err) {
+        readStatus.record(err);
         live = `error: ${err instanceof Error ? err.message : String(err)}`;
       }
       if (live === null || typeof live === "string" || !codeMatchesEntry(entry, live)) {
+        if (typeof live !== "string") readStatus.finding();
         mismatches.push(
           `${entry.protocol} ${entry.kind} ${entry.address}: live ${JSON.stringify(live)}, registry ${entry.wasmHash}`
         );
@@ -78,7 +86,7 @@ const hex = (value: unknown): string =>
 
 test.skipIf(!RUN_INTEGRATION)(
   "the code the mainnet factories deploy today is the code the registry's representative pools run",
-  async () => {
+  readStatus.watch(async () => {
     // A registry that only re-reads its own representatives would stay green after a protocol
     // rotated its pool code: every new pool would run a hash the registry does not know, and
     // positions in them would be unexitable. So the deployers' current hashes are checked too.
@@ -104,7 +112,7 @@ test.skipIf(!RUN_INTEGRATION)(
       };
       expect(hex(meta.pool_hash)).toBe(pool.wasmHash ?? "missing");
     }
-  },
+  }),
   120_000
 );
 
@@ -153,7 +161,7 @@ function readPhoenixPools(): Promise<Map<string, xdr.LedgerEntryData>> {
 
 test.skipIf(!RUN_INTEGRATION)(
   "every listed mainnet Phoenix pool names, in its own CONFIG, a stake contract the registry lists, and that stake pays the pool's share_token on unbond; only a blended pool names itself",
-  async () => {
+  readStatus.watch(async () => {
     // A stake paying another token would make an unbond-then-withdraw chain hand the pool a token
     // it does not take; the adapter blocks that live, and this catches the registry drifting there.
     // A pool that names itself has no staking: only the blended code is registered that way.
@@ -207,13 +215,13 @@ test.skipIf(!RUN_INTEGRATION)(
     );
     expect([...stakes].filter((s) => !named.has(s))).toEqual([]);
     expect(unbondMismatches).toEqual([]);
-  },
+  }),
   120_000
 );
 
 test.skipIf(!RUN_INTEGRATION)(
   "withdraw_liquidity built with the adapter's own arguments simulates on one listed mainnet Phoenix pool of each code",
-  async () => {
+  readStatus.watch(async () => {
     // A pool given another argument count than its code declares answers
     // Error(WasmVm, UnexpectedSize), so every exit from it would fail at simulation. Each pool is
     // withdrawn from as a real holder of its shares: its stake contract, which holds every bonded
@@ -259,6 +267,6 @@ test.skipIf(!RUN_INTEGRATION)(
     for (const [key, result] of Object.entries(results)) {
       expect({ [key]: Array.isArray(result) && result.length === 2 }).toEqual({ [key]: true });
     }
-  },
+  }),
   180_000
 );
