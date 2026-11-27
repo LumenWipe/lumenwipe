@@ -473,6 +473,7 @@
                                 "invalid_network",
                                 "invalid_source",
                                 "invalid_destination",
+                                "unsupported_address_type",
                                 "invalid_decisions",
                                 "invalid_body"
                               ]
@@ -1039,6 +1040,7 @@
                                 "invalid_addresses",
                                 "too_many_addresses",
                                 "invalid_destination",
+                                "unsupported_address_type",
                                 "invalid_body"
                               ]
                             }
@@ -1352,6 +1354,7 @@
                                 "invalid_network",
                                 "invalid_source",
                                 "invalid_destination",
+                                "unsupported_address_type",
                                 "invalid_decisions",
                                 "invalid_plan_hash",
                                 "invalid_body"
@@ -2679,7 +2682,8 @@
                               "type": "string",
                               "enum": [
                                 "invalid_network",
-                                "invalid_source"
+                                "invalid_source",
+                                "unsupported_address_type"
                               ]
                             }
                           }
@@ -2958,6 +2962,7 @@
                               "enum": [
                                 "invalid_network",
                                 "invalid_destination",
+                                "unsupported_address_type",
                                 "invalid_tx_hash"
                               ]
                             }
@@ -3948,6 +3953,7 @@
                               "enum": [
                                 "invalid_network",
                                 "invalid_address",
+                                "unsupported_address_type",
                                 "invalid_tokens"
                               ]
                             }
@@ -4425,7 +4431,8 @@
                               "type": "string",
                               "enum": [
                                 "invalid_network",
-                                "invalid_address"
+                                "invalid_address",
+                                "unsupported_address_type"
                               ]
                             }
                           }
@@ -4715,6 +4722,7 @@
                               "enum": [
                                 "invalid_network",
                                 "invalid_owner",
+                                "unsupported_address_type",
                                 "invalid_token",
                                 "invalid_spender",
                                 "invalid_body"
@@ -5882,7 +5890,8 @@
                               "type": "string",
                               "enum": [
                                 "invalid_network",
-                                "invalid_address"
+                                "invalid_address",
+                                "unsupported_address_type"
                               ]
                             }
                           }
@@ -9001,6 +9010,7 @@
               "tx_not_verified",
               "unauthorized",
               "unprocessable_entity",
+              "unsupported_address_type",
               "unsupported_media_type",
               "unsupported_memo_type",
               "vault_undercollateralized",

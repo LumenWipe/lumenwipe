@@ -28,7 +28,7 @@ import { lookupTransaction } from "@/lib/close-api/transaction-lookup";
 import { horizonDepsFor } from "@/lib/stellar/account-state";
 import { horizonGet } from "@/lib/stellar/horizon-http";
 import { horizonFallbacksFor, withHorizonFailover } from "@/lib/stellar/provider-failover";
-import { isValidGAddress } from "@/lib/utils/validation";
+import { requireGAddress } from "@/common/require-g-address";
 
 const TX_HASH = /^[0-9a-f]{64}$/i;
 
@@ -110,6 +110,7 @@ export class TransactionsController {
   @ApiErrorResponse(400, "Invalid network or source account.", [
     "invalid_network",
     "invalid_source",
+    "unsupported_address_type",
   ])
   @ApiErrorResponse(503, "The account could not be read. Retry.", ["service_unavailable"])
   @Get("close/status")
@@ -130,9 +131,7 @@ export class TransactionsController {
     @Param("network", new NetworkPipe()) network: Network,
     @Query("source") source: unknown
   ) {
-    if (typeof source !== "string" || !isValidGAddress(source)) {
-      fail("invalid_source", "source must be a valid Stellar account address.", 400);
-    }
+    requireGAddress(source, "invalid_source", "source must be a valid Stellar account address.");
     try {
       return await readCloseStatus(this.serverFor(network), lastOperationReader(network), source);
     } catch {
@@ -143,6 +142,7 @@ export class TransactionsController {
   @ApiErrorResponse(400, "Invalid network, destination or transaction hashes.", [
     "invalid_network",
     "invalid_destination",
+    "unsupported_address_type",
     "invalid_tx_hash",
   ])
   @ApiErrorResponse(503, "The network could not be read. Retry.", ["service_unavailable"])
@@ -178,9 +178,11 @@ export class TransactionsController {
     @Query("destination") destination: unknown,
     @Query("hashes") rawHashes: unknown
   ) {
-    if (typeof destination !== "string" || !isValidGAddress(destination)) {
-      fail("invalid_destination", "destination must be a valid Stellar account address.", 400);
-    }
+    requireGAddress(
+      destination,
+      "invalid_destination",
+      "destination must be a valid Stellar account address."
+    );
     const hashes = parseHashes(rawHashes);
     if (!hashes) {
       fail(

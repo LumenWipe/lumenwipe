@@ -36,6 +36,7 @@ export class CloseController {
     "invalid_network",
     "invalid_source",
     "invalid_destination",
+    "unsupported_address_type",
     "invalid_decisions",
     "invalid_body",
   ])
@@ -76,6 +77,7 @@ export class CloseController {
     "invalid_addresses",
     "too_many_addresses",
     "invalid_destination",
+    "unsupported_address_type",
     "invalid_body",
   ])
   @ApiBodyErrorResponses()
@@ -105,6 +107,7 @@ export class CloseController {
     "invalid_network",
     "invalid_source",
     "invalid_destination",
+    "unsupported_address_type",
     "invalid_decisions",
     "invalid_plan_hash",
     "invalid_body",

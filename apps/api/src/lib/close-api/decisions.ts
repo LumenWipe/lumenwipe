@@ -23,6 +23,11 @@ import {
   trustlineShortfallNote,
 } from "@/lib/stellar/claim-reserve";
 import { StrKey } from "@stellar/stellar-sdk";
+import {
+  UNSUPPORTED_ADDRESS_MESSAGES,
+  unsupportedAddressKind,
+  type UnsupportedAddressKind,
+} from "@/lib/utils/validation";
 import type { IssuanceSummary } from "@/lib/close-api/issuance-preflight";
 import type { Network } from "@/config/networks";
 import { lookupExchange } from "@/lib/exchange-registry";
@@ -840,6 +845,26 @@ export class MissingTransferDestinationError extends Error {
   }
 }
 
+/** Raised when a transfer answer names a contract (C...) or muxed contract (W...) address. A
+ *  transfer here pays an ed25519 account, so the answer is refused by kind, never as "missing". */
+export class UnsupportedTransferDestinationError extends Error {
+  constructor(
+    readonly asset: string,
+    readonly kind: UnsupportedAddressKind
+  ) {
+    super(UNSUPPORTED_ADDRESS_MESSAGES[kind]);
+    this.name = "UnsupportedTransferDestinationError";
+  }
+}
+
+/** Throws for the first transfer answer that names a contract or muxed contract address. */
+export function refuseUnsupportedDestinations(
+  unsupported: { asset: string; kind: UnsupportedAddressKind }[]
+): void {
+  const [first] = unsupported;
+  if (first !== undefined) throw new UnsupportedTransferDestinationError(first.asset, first.kind);
+}
+
 /**
  * Collects the per-asset destinations that transfer answers carry.
  *
@@ -857,7 +882,8 @@ export function resolveTransferDestinations(
   answers: DecisionAnswer[],
   assetsById: { id: string; asset: string }[]
 ): TransferDestinations {
-  const { destinations, missing } = collectTransferDestinations(answers, assetsById);
+  const { destinations, missing, unsupported } = collectTransferDestinations(answers, assetsById);
+  refuseUnsupportedDestinations(unsupported);
   const first = missing[0];
   if (first !== undefined) throw new MissingTransferDestinationError(first);
   return destinations;
@@ -879,11 +905,16 @@ export function resolveTransferDestinations(
 export function collectTransferDestinations(
   answers: DecisionAnswer[],
   assetsById: { id: string; asset: string }[]
-): { destinations: TransferDestinations; missing: string[] } {
+): {
+  destinations: TransferDestinations;
+  missing: string[];
+  unsupported: { asset: string; kind: UnsupportedAddressKind }[];
+} {
   const assetForId = new Map(assetsById.map((a) => [a.id, a.asset]));
   const dispositions = resolveDispositions(answers, assetsById);
   const destinations: TransferDestinations = {};
   const missing: string[] = [];
+  const unsupported = new Map<string, UnsupportedAddressKind>();
 
   for (const answer of answers) {
     if (answer.choice !== TRANSFER_CHOICE) continue;
@@ -892,14 +923,22 @@ export function collectTransferDestinations(
     if (dispositions[asset] !== "transfer") continue;
 
     const destination = answer.params?.destination;
+    const kind = unsupportedAddressKind(destination);
+    if (kind === null) unsupported.delete(asset);
+    else unsupported.set(asset, kind);
     if (!destination || !StrKey.isValidEd25519PublicKey(destination)) {
       if (!missing.includes(asset)) missing.push(asset);
       continue;
     }
     destinations[asset] = destination;
   }
-  // A later valid answer for the same asset clears an earlier malformed one.
-  return { destinations, missing: missing.filter((asset) => destinations[asset] === undefined) };
+  // A later valid answer for the same asset clears an earlier malformed one. Answers are
+  // last-wins, so an unsupported kind counts only while it is the asset's final answer.
+  return {
+    destinations,
+    missing: missing.filter((asset) => destinations[asset] === undefined),
+    unsupported: [...unsupported].map(([asset, kind]) => ({ asset, kind })),
+  };
 }
 
 // Derives the per-claimable-balance decision the caller must resolve before a close can

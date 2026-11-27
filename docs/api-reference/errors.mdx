@@ -60,6 +60,7 @@ These mean the request itself is wrong or not allowed. Treat them as a fault in 
 | `unauthorized`                        | 401    | After fix | The API key, session token or operator token is missing or invalid.                             |
 | `forbidden`                           | 403    | No        | The caller is not allowed to do this.                                                           |
 | `unprocessable_entity`                | 422    | After fix | The request is valid but cannot be processed.                                                   |
+| `unsupported_address_type`            | 400    | After fix | A contract (C...) or muxed contract (W...) address is not supported here.                       |
 | `unsupported_media_type`              | 415    | After fix | The request body must be UTF-8 JSON.                                                            |
 
 ## Availability and rate limits

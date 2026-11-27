@@ -25,7 +25,7 @@ import type { Network } from "@/config/networks";
 import { GAddressPipe } from "@/common/pipes/g-address.pipe";
 import { NetworkFirstGuard } from "@/common/guards/network-first.guard";
 import { NetworkPipe } from "@/common/pipes/network.pipe";
-import { isValidGAddress } from "@/lib/utils/validation";
+import { requireGAddress } from "@/common/require-g-address";
 import { parseTokenContracts } from "@/lib/utils/token-contracts";
 import { fetchConversionPath } from "@/lib/stellar/path-finding";
 import { discoverAllowances, defaultAllowancesDeps } from "@/lib/stellar/allowances";
@@ -53,6 +53,7 @@ export class AccountController {
   @ApiErrorResponse(400, "Invalid network, address or token list.", [
     "invalid_network",
     "invalid_address",
+    "unsupported_address_type",
     "invalid_tokens",
   ])
   @ApiErrorResponse(404, "Account not found.", ["account_not_found"])
@@ -103,7 +104,11 @@ export class AccountController {
     return analyzeAccount(address, network, manualTokenCandidates, this.logger);
   }
 
-  @ApiErrorResponse(400, "Invalid network or address.", ["invalid_network", "invalid_address"])
+  @ApiErrorResponse(400, "Invalid network or address.", [
+    "invalid_network",
+    "invalid_address",
+    "unsupported_address_type",
+  ])
   @ApiErrorResponse(500, "Allowances could not be read.", ["allowances_read_failed"])
   @UseGuards(new NetworkFirstGuard("Invalid network"))
   @Get("allowances/:address")
@@ -136,6 +141,7 @@ export class AccountController {
   @ApiErrorResponse(400, "Invalid network, owner, token, spender or JSON body.", [
     "invalid_network",
     "invalid_owner",
+    "unsupported_address_type",
     "invalid_token",
     "invalid_spender",
     "invalid_body",
@@ -177,7 +183,7 @@ export class AccountController {
     const owner = typeof body.owner === "string" ? body.owner : "";
     const token = typeof body.token === "string" ? body.token : "";
     const spender = typeof body.spender === "string" ? body.spender : "";
-    if (!isValidGAddress(owner)) fail("invalid_owner", "Invalid owner address", 400);
+    requireGAddress(owner, "invalid_owner", "Invalid owner address");
     if (!StrKey.isValidContract(token)) fail("invalid_token", "Invalid token contract", 400);
     if (!StrKey.isValidContract(spender) && !StrKey.isValidEd25519PublicKey(spender)) {
       fail("invalid_spender", "Invalid spender address", 400);

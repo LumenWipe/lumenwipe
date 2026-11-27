@@ -135,6 +135,7 @@ export type ErrorCode =
   | "tx_not_verified"
   | "unauthorized"
   | "unprocessable_entity"
+  | "unsupported_address_type"
   | "unsupported_media_type"
   | "unsupported_memo_type"
   | "vault_undercollateralized"

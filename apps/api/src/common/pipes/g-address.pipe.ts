@@ -1,7 +1,6 @@
 import type { PipeTransform } from "@nestjs/common";
 import type { ErrorCode } from "@lumenwipe/types";
-import { isValidGAddress } from "@/lib/utils/validation";
-import { fail } from "@/common/fail";
+import { requireGAddress } from "@/common/require-g-address";
 
 export class GAddressPipe implements PipeTransform<string, string> {
   constructor(
@@ -10,7 +9,7 @@ export class GAddressPipe implements PipeTransform<string, string> {
   ) {}
 
   transform(value: string): string {
-    if (!isValidGAddress(value)) fail(this.code, this.message, 400);
+    requireGAddress(value, this.code, this.message);
     return value;
   }
 }

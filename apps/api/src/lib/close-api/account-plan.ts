@@ -54,6 +54,7 @@ import {
   deriveBulkClaimDecisionPoints,
   resolveDispositions,
   collectTransferDestinations,
+  refuseUnsupportedDestinations,
   deriveDefiPositionsDecisionPoints,
   defiPositionsDecisionId,
   isDefiPositionsAcknowledged,
@@ -367,8 +368,14 @@ export async function buildAccountPlan(
   // A transfer answer is well-formed whether or not it names a usable account, so both halves
   // are taken here. The destinations that resolved describe the plan's asset steps and feed
   // the live-ledger check below; the ones that did not go back on the pending list.
-  const { destinations: planDestinations, missing: missingDestinations } =
-    collectTransferDestinations(decisions, planAssetsById);
+  const {
+    destinations: planDestinations,
+    missing: missingDestinations,
+    unsupported: unsupportedDestinations,
+  } = collectTransferDestinations(decisions, planAssetsById);
+  // A contract or muxed contract destination is not a typo the caller can fix by answering
+  // again, so it is refused by kind here instead of going back on the pending list.
+  refuseUnsupportedDestinations(unsupportedDestinations);
   const planDispositions = resolveDispositions(decisions, planAssetsById);
 
   // Whether the unconfirmed-positions gate would produce its hard-blocking code on THIS

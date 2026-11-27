@@ -10,10 +10,12 @@ import {
   resolveClaimableBalanceSelections,
   resolveDispositions,
   resolveTransferDestinations,
+  UnsupportedTransferDestinationError,
 } from "@/lib/close-api/decisions";
 import type { AccountState, ClaimableBalance, Trustline } from "@lumenwipe/types";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { authorizationOf } from "./fixtures/trustline";
+import { C_ADDRESS, W_ADDRESS } from "./fixtures/contract-addresses";
 
 const MASTER = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
@@ -344,7 +346,11 @@ test("an answer later switched away from transfer is not validated", () => {
   ];
   const assets = [{ id: `asset:USDC-${ISSUER}`, asset: `USDC:${ISSUER}` }];
 
-  expect(collectTransferDestinations(answers, assets)).toEqual({ destinations: {}, missing: [] });
+  expect(collectTransferDestinations(answers, assets)).toEqual({
+    destinations: {},
+    missing: [],
+    unsupported: [],
+  });
   expect(() => resolveTransferDestinations(answers, assets)).not.toThrow();
 });
 
@@ -362,6 +368,62 @@ test("a later valid answer clears an earlier malformed one for the same asset", 
   );
   expect(destinations).toEqual({ [`USDC:${ISSUER}`]: DESTINATION });
   expect(missing).toEqual([]);
+});
+
+const USDC_ASSETS = [{ id: `asset:USDC-${ISSUER}`, asset: `USDC:${ISSUER}` }];
+const transferTo = (destination: string) => ({
+  id: `asset:USDC-${ISSUER}`,
+  choice: "transfer_to_account",
+  params: { destination },
+});
+
+test("collect names a contract or muxed contract destination by kind and leaves it unresolved", () => {
+  for (const [address, kind] of [
+    [W_ADDRESS, "muxed_contract"],
+    [C_ADDRESS, "contract"],
+  ] as const) {
+    expect(collectTransferDestinations([transferTo(address)], USDC_ASSETS)).toEqual({
+      destinations: {},
+      missing: [`USDC:${ISSUER}`],
+      unsupported: [{ asset: `USDC:${ISSUER}`, kind }],
+    });
+  }
+});
+
+test("resolve refuses a contract or muxed contract destination by kind, not as a missing one", () => {
+  for (const [address, kind] of [
+    [W_ADDRESS, "muxed_contract"],
+    [C_ADDRESS, "contract"],
+  ] as const) {
+    const refusal = (() => {
+      try {
+        resolveTransferDestinations([transferTo(address)], USDC_ASSETS);
+      } catch (e) {
+        return e;
+      }
+    })();
+    expect(refusal).toBeInstanceOf(UnsupportedTransferDestinationError);
+    expect(refusal).toMatchObject({ asset: `USDC:${ISSUER}`, kind });
+    expect(refusal).not.toBeInstanceOf(MissingTransferDestinationError);
+  }
+});
+
+test("answers are last-wins for the unsupported kind too", () => {
+  const unsupported = (answers: ReturnType<typeof transferTo>[]) =>
+    collectTransferDestinations(answers, USDC_ASSETS).unsupported;
+  expect(unsupported([transferTo(W_ADDRESS), transferTo(DESTINATION)])).toEqual([]);
+  expect(unsupported([transferTo(W_ADDRESS), transferTo("nope")])).toEqual([]);
+  expect(unsupported([transferTo(DESTINATION), transferTo(C_ADDRESS)])).toEqual([
+    { asset: `USDC:${ISSUER}`, kind: "contract" },
+  ]);
+  expect(unsupported([transferTo(W_ADDRESS), transferTo(C_ADDRESS)])).toEqual([
+    { asset: `USDC:${ISSUER}`, kind: "contract" },
+  ]);
+});
+
+test("an unsupported destination on an answer switched away from transfer is not refused", () => {
+  const answers = [transferTo(W_ADDRESS), { id: `asset:USDC-${ISSUER}`, choice: "convert_to_xlm" }];
+  expect(() => resolveTransferDestinations(answers, USDC_ASSETS)).not.toThrow();
 });
 
 // ─── Assets that arrive through a claim need a disposition too ──────────────

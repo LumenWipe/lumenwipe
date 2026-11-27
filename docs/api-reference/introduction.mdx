@@ -233,6 +233,7 @@ Each endpoint page lists the codes that endpoint can return. Every error respons
 | `tx_not_verified`                             | 400    | The transaction could not be verified as a LumenWipe close on the network.                                                     |
 | `unauthorized`                                | 401    | The API key, session token or operator token is missing or invalid.                                                            |
 | `unprocessable_entity`                        | 422    | The request is valid but cannot be processed.                                                                                  |
+| `unsupported_address_type`                    | 400    | A contract (C...) or muxed contract (W...) address is not supported here.                                                      |
 | `unsupported_media_type`                      | 415    | The request body must be UTF-8 JSON.                                                                                           |
 | `unsupported_memo_type`                       | 422    | The memo type is not supported for this destination.                                                                           |
 | `vault_undercollateralized`                   | 422    | An FxDAO vault is undercollateralized and cannot be exited.                                                                    |

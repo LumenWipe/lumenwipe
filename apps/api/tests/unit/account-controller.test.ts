@@ -3,6 +3,8 @@ import { HttpException } from "@nestjs/common";
 import { Keypair } from "@stellar/stellar-sdk";
 import { AccountController } from "@/account/account.controller";
 import * as accountState from "@/lib/stellar/account-state";
+import * as revokeAllowance from "@/lib/stellar/revoke-allowance";
+import { C_ADDRESS } from "./fixtures/contract-addresses";
 import { AccountStateChangedError } from "@/lib/utils/errors";
 
 const ADDRESS = Keypair.random().publicKey();
@@ -29,4 +31,23 @@ test("an account that kept changing during the read is a 409 state_changed, not 
         "This account changed while it was being read. Nothing was submitted. Please try again.",
     },
   });
+});
+
+test("revoke accepts a contract spender and token: only the owner has to be an account", async () => {
+  const builds: unknown[][] = [];
+  spyOn(revokeAllowance, "buildRevokeAllowanceTransaction").mockImplementation((async (
+    ...args: unknown[]
+  ) => {
+    builds.push(args.slice(0, 3));
+    return { xdr: "AAAA" };
+  }) as unknown as typeof revokeAllowance.buildRevokeAllowanceTransaction);
+
+  const result = await new AccountController().revokeAllowance("testnet", {
+    owner: ADDRESS,
+    token: C_ADDRESS,
+    spender: C_ADDRESS,
+  });
+
+  expect(result).toEqual({ transaction: "AAAA" });
+  expect(builds).toEqual([[ADDRESS, C_ADDRESS, C_ADDRESS]]);
 });

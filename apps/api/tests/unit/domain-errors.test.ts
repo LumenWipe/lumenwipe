@@ -12,6 +12,7 @@ import {
   MissingTransferDestinationError,
   tokenDecisionId,
   UnrecognizedConversionProviderError,
+  UnsupportedTransferDestinationError,
 } from "@/lib/close-api/decisions";
 import { mapDomainError, PLAN_ERRORS, TRANSACTION_ERRORS } from "@/lib/close-api/domain-errors";
 import { DestinationReadError, LedgerReadError } from "@/lib/close-api/merge-preflight";
@@ -111,6 +112,13 @@ const PLAN_CASES: Case[] = [
     "provider_response_unusable",
     undefined,
   ],
+  [
+    "unsupported transfer destination",
+    new UnsupportedTransferDestinationError(`USDC:${ADDRESS}`, "muxed_contract"),
+    400,
+    "unsupported_address_type",
+    { addressType: "muxed_contract", decisionId: decisionIdFor(`USDC:${ADDRESS}`) },
+  ],
 ];
 
 const TRANSACTION_CASES: Case[] = [
@@ -175,6 +183,13 @@ const TRANSACTION_CASES: Case[] = [
   ],
 
   [
+    "unsupported transfer destination",
+    new UnsupportedTransferDestinationError(`USDC:${ADDRESS}`, "muxed_contract"),
+    400,
+    "unsupported_address_type",
+    { addressType: "muxed_contract", decisionId: decisionIdFor(`USDC:${ADDRESS}`) },
+  ],
+  [
     "missing transfer destination",
     new MissingTransferDestinationError(`USDC:${ADDRESS}`),
     422,
@@ -205,10 +220,12 @@ const TRANSACTION_CASES: Case[] = [
 ];
 
 describe("PlanErrorFilter", () => {
-  test.each(PLAN_CASES)("%s", (_name, error, status, code) => {
+  test.each(PLAN_CASES)("%s", (_name, error, status, code, details) => {
+    const expected: Record<string, unknown> = { code, message: error.message };
+    if (details !== undefined) expected.details = details;
     expect(respondWith(new PlanErrorFilter(), error)).toEqual({
       status,
-      body: { error: { code, message: error.message } },
+      body: { error: expected },
       headers: retryAfterFor(status),
     });
   });
