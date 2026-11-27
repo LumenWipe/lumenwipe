@@ -159,8 +159,10 @@ surface and the reasoning for accepting it. By category:
 - Dependencies: Renovate opens one pull request with every update each week, plus lockfile maintenance
   (`renovate.json`). A high or critical advisory fails CI unless it is allowlisted with a reason and an expiry
   (`scripts/audit-gate.ts`, `scripts/audit-allowlist.json`, INV-27).
-- On-chain monitors: the service-account checks and the registry comparison run every hour
-  (`.github/workflows/onchain-monitors.yml`). A finding opens an issue and alerts the maintainers, and a check that
+- On-chain monitors: the service-account checks and the registry comparison are scheduled every hour
+  (`.github/workflows/onchain-monitors.yml`). GitHub runs schedules on a best-effort basis: measured on 2026-11-27, 21 percent of the expected
+  hourly runs happened over the previous five weeks, so a finding can wait hours. An external scheduler is planned to start the same
+  workflow hourly; it does not exist yet. A finding opens an issue and alerts the maintainers, and a check that
   did not run counts as a finding ([monitoring plan](/monitoring-plan#how-the-live-ones-run)).
 - Data providers: each configured Horizon-compatible provider is checked daily for the routes and fields the API
   reads (`.github/workflows/provider-contract.yml`).
