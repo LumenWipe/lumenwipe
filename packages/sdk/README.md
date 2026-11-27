@@ -155,7 +155,8 @@ Never sign a transaction from this SDK without it or an equivalent check.
 - `health()` / `healthDeep()` - service health, and whether Stellar RPC is reachable on every
   network (a degraded service throws its 503, never retried).
 - `getExchangeRegistry()` - the exchange registry the API closes against; do not rely on it past
-  `validUntil`.
+  `validUntil`. The response carries the registry's `signature`; pass the whole response to
+  `@lumenwipe/verify`.
 - `getAccount(address, network?)` - current on-chain state for an account.
 - `getPaths(params, network?)` - conversion path quotes for a source asset.
 - `closePlan(body, network?)` - a preview of the full close plan, with blockers if any step

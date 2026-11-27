@@ -47,7 +47,17 @@ Expiry is a date on a file, so it is the one incident that can always be prevent
 
    Expected: all pass.
 
-4. **Open the pull request** with what you checked for every entry, and merge it after review. The merge deploys the API.
+4. **Sign the exchange registry** (skip it when only the contract registry changed). The exchange registry carries a maintainer signature, and CI fails when the registry changed without a fresh one. A maintainer holding a registry signing key pipes the secret seed into the first command below on standard input and commits the data files; nothing is passed as an argument and nothing is written anywhere else:
+
+   ```bash
+   bun packages/verify/scripts/sign-registry.ts   # secret seed on standard input
+   bun run --filter '@lumenwipe/verify' vectors
+   bun packages/verify/scripts/sign-registry.ts --check
+   ```
+
+   Expected: `Signed sequence N`, the vectors rewritten, and `The exchange registry signature is current.` An unsigned or stale signature does not block closes: clients treat the registry as unsigned, so it can still tighten rules, but a newly listed exchange that needs the relay account stays refused until the signed copy is current.
+
+5. **Open the pull request** with what you checked for every entry, and merge it after review. The merge deploys the API.
 
 ## Confirm the fix
 

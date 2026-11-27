@@ -13,6 +13,11 @@ version number before 0.4.0. Neither has a git tag.
 
 ### Added
 
+- The exchange registry's signature. `ServedExchangeRegistry` gains an optional `signature`
+  (`ExchangeRegistrySignature`: `format`, `sequence`, `issuedAt` and the base64 `signature`), which
+  `GET /v1/config/exchange-registry` now returns. Pass the whole response to `@lumenwipe/verify`,
+  which checks it against the registry keys pinned in its release. Nothing else about the response
+  changes.
 - Expected DeFi exit payouts. `PlanEstimate` gains an optional `exitPayouts`
   (`ExitPayoutEstimate`): for each exit target the close would run, what its exit pays in per asset
   net of repays (`ExitTargetPayout.parts`, `ExitPayoutPart`), or null when the plan could not work
