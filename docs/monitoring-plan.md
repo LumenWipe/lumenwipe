@@ -363,8 +363,11 @@ missing account is not a failure of the service, and each run logs the fixed mes
 signal to replace the fixture in `apps/api/src/health/user-path-probe.ts`.
 
 A dependency outage shows on its own row and does not mark the API as down. No startup or liveness probe points
-at `/health/deep`, `/health/dependencies` or `/health/user-path`. The page shows no uptime figure until 30 days of measurement exist, as
-[service levels](/service-levels#status) requires.
+at `/health/deep`, `/health/dependencies` or `/health/user-path`. Each row shows its
+history day by day since its probe started, with the share of that period in which the probe passed. That figure
+is the pass rate of one outside probe, counted from the day the probe was created. It is not the availability
+indicator of [service levels](/service-levels#status), which publishes nothing until 30 days of measurement
+exist.
 
 The site banner reads the page's summary through the web's `/api/status` route, server-side, cached for 60
 seconds, with a 3 second budget and no redirects followed. It names the close-flow components that are degraded or
