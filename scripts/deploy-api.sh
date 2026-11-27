@@ -33,11 +33,13 @@ DEEP_DELAY="${DEEP_DELAY:-10}"
 # longer than the API's own deadline (REQUEST_DEADLINE_MS, 40 s), so the API's answer decides.
 ANALYZE_TIMEOUT="${ANALYZE_TIMEOUT:-45}"
 # Every deploy and restore sets these, so the service never drifts from this file (docs/architecture.md,
-# "Instance cap"). One instance at most: four pieces of per-process state degrade above one. None kept
-# warm: the first request after an idle period pays a cold start (about 12 s at p50). Eight requests in
-# flight at most: the last stage of the load ramp before the providers refused it. CPU is billed per
-# request: nothing runs between requests (upstream counts flush inside one, SIGTERM gets CPU for the rest).
-RESOURCE_FLAGS=(--min-instances=0 --max-instances=1 --concurrency=8 --cpu-throttling --cpu=1
+# "Infrastructure and deployment"). MIN_INSTANCES is the number of instances kept allocated while idle:
+# 0 pays a cold start on the first request after an idle period (12 to 15 s), 1 does not. One instance
+# at most: four pieces of per-process state degrade above one. Eight requests in flight at most: the
+# last stage of the load ramp before the providers refused it. CPU is billed per request: nothing runs
+# between requests (upstream counts flush inside one, SIGTERM gets CPU for the rest).
+MIN_INSTANCES=0
+RESOURCE_FLAGS=(--min-instances="$MIN_INSTANCES" --max-instances=1 --concurrency=8 --cpu-throttling --cpu=1
   --memory=512Mi --execution-environment=gen1 --cpu-boost)
 
 note() { printf '%s\n' "$*" >> "$SUMMARY"; }
