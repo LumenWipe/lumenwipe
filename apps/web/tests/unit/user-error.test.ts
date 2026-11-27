@@ -22,6 +22,7 @@ import {
   apiErrorText,
   ApiRequestError,
   closeFailureMessage,
+  DEFI_CONFIRMATION_NEEDED,
   closeRetryIsSafe,
   PREIMAGE_EXPOSED,
   SIGNED_NOT_APPROVED,
@@ -104,6 +105,18 @@ describe("toUserMessage", () => {
     );
     expect(msg).toMatch(/^Your wallet didn't respond in time/);
     expect(msg).not.toMatch(/No new transaction was sent/);
+  });
+
+  test("a round refused for the DeFi confirmation says how to continue instead of retrying", () => {
+    const refused = new ApiRequestError(
+      422,
+      "A direct on-chain check found no open DeFi positions in the protocols LumenWipe recognizes, but this account holds trustlines that check cannot rule out.",
+      undefined,
+      "defi_positions_unavailable"
+    );
+    const msg = closeFailureMessage(refused, "before-submit", []);
+    expect(msg.endsWith(DEFI_CONFIRMATION_NEEDED)).toBe(true);
+    expect(msg).not.toMatch(/safe to retry/);
   });
 
   test("a refusal adds the clock hint only when this device's clock said it had expired", () => {

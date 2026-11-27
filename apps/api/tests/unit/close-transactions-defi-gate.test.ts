@@ -211,3 +211,77 @@ test("a confirmed sweep with a real detected position is never refused by the co
     }
   });
 });
+
+const USDC_TRUSTLINE: AccountState["trustlines"][number] = {
+  asset: `USDC:${DEST}`,
+  code: "USDC",
+  issuer: DEST,
+  balance: "0.0000000",
+  authorized: true,
+  authorization: "authorized",
+  clawbackEnabled: false,
+};
+
+const DETECTED_BLEND = {
+  protocol: "blend" as const,
+  positionType: "supply" as const,
+  contractAddress: "CAJJZSGMMM3PD7N33TAPHGBUGTB43OC73HVIK2L2G6BNGGGYOSSYBXBD",
+  assetAddress: "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA",
+  bTokenAmount: "99997766",
+  usdValue: null,
+};
+
+function withTrustline(over: Partial<AccountState["defiPositions"]>): AccountState {
+  return { ...state(over), trustlines: [USDC_TRUSTLINE], numSubEntries: 1 };
+}
+
+test("a detected position next to a trustline is refused before its exit without the acknowledgement", async () => {
+  const promise = buildCloseTransactions(
+    ALL_ON,
+    withTrustline({
+      source: DEGRADED_SOURCE_CONFIRMED,
+      timestamp: null,
+      positions: [DETECTED_BLEND],
+    }),
+    DEST,
+    {},
+    "testnet"
+  );
+  await expect(promise).rejects.toMatchObject({ code: "defi_positions_unavailable", status: 422 });
+});
+
+// Regression: on mainnet, every round after a Phoenix exit was refused on an account that kept a
+// USDC trustline, because the acknowledgement had never been asked or carried.
+test("after the exit, a round carrying the acknowledgement is not refused by the gate", async () => {
+  spyOn(rpcModule, "getRpcServer").mockImplementation(() =>
+    fakeRpcServer({
+      getAccount: () => Promise.resolve(new Account(SOURCE, "100")),
+      getLatestLedger: () => Promise.resolve(latestLedger(1000)),
+      getLedgerEntries: () => Promise.reject(new Error("not stubbed")),
+    })
+  );
+  const afterExit = withTrustline({ source: DEGRADED_SOURCE_CONFIRMED, timestamp: null });
+
+  await expect(
+    buildCloseTransactions(ALL_ON, afterExit, DEST, {}, "testnet")
+  ).rejects.toMatchObject({ code: "defi_positions_unavailable", status: 422 });
+
+  const carried = buildCloseTransactions(
+    ALL_ON,
+    afterExit,
+    DEST,
+    {},
+    "testnet",
+    null,
+    {},
+    {},
+    {},
+    {},
+    {},
+    true
+  );
+  const outcome: unknown = await carried.catch((err: unknown) => err);
+  expect(outcome instanceof CloseBuildError && outcome.code === "defi_positions_unavailable").toBe(
+    false
+  );
+});

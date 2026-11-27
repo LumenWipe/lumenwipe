@@ -32,8 +32,9 @@ export const DEFI_POSITIONS_UNCONFIRMED_NO_TRUSTLINES_CODE =
  *  read directly off the ledger). That is a stronger confirmation than an empty result, not a
  *  weaker one - the account's plan already includes an exit step for exactly what was found, so
  *  refusing to proceed here would only ever punish the position the tool can already close, not
- *  protect against one it can't. Unlike the empty-result code, this never depends on trustline
- *  count - a named position is actionable regardless of what else the account holds. */
+ *  protect against one it can't. On an account that also holds trustlines it is given only with
+ *  the trustline acknowledgement: once the exit confirms, the same account reads as a
+ *  confirmed-empty sweep with trustlines, which hard-blocks without it. */
 export const DEFI_POSITIONS_UNCONFIRMED_BUT_DETECTED_CODE =
   "defi_positions_unconfirmed_but_detected";
 
@@ -130,6 +131,19 @@ function confirmedEmptyNoTrustlinesBlocker(result: DefiPositionsResult): PlanBlo
   };
 }
 
+function detectedWithTrustlinesBlocker(result: DefiPositionsResult): PlanBlocker {
+  const n = result.positions.length;
+  return {
+    code: DEFI_POSITIONS_UNAVAILABLE_CODE,
+    message:
+      `A direct on-chain check found ${n} DeFi position${n === 1 ? "" : "s"} (shown below), ` +
+      `and this close includes ${n === 1 ? "its" : "their"} exit, but this account also holds ` +
+      "trustlines that check cannot rule out. Confirm that they are for other assets, not open " +
+      "DeFi positions, before proceeding.",
+    helpUrl: explorerUrl(result),
+  };
+}
+
 function confirmedButDetectedBlocker(result: DefiPositionsResult): PlanBlocker {
   const n = result.positions.length;
   return {
@@ -142,16 +156,14 @@ function confirmedButDetectedBlocker(result: DefiPositionsResult): PlanBlocker {
 }
 
 /**
- * @param trustlineCount The account's trustline count, when the caller has it. Only consulted
- *   for a confirmed-empty result (positions.length === 0); `undefined` (the default) fails
- *   closed to the hard `defi_positions_unavailable` blocker there, same as before this
- *   parameter existed. A confirmed result that actually named a position never needs it - see
- *   DEFI_POSITIONS_UNCONFIRMED_BUT_DETECTED_CODE above.
+ * @param trustlineCount The account's trustline count, when the caller has it. `undefined` (the
+ *   default) fails closed to the hard `defi_positions_unavailable` blocker, as a nonzero count
+ *   does unless the acknowledgement below is given.
  * @param userVerifiedNoPositions Whether the caller has an explicit, address-scoped
- *   acknowledgement that this account holds no DeFi positions (close-api/decisions.ts's
- *   `isDefiPositionsAcknowledged`). Only ever downgrades the hard blocker when the sweep itself
- *   also found nothing (`result.positions.length === 0`) - an acknowledgement never overrides a
- *   position the sweep actually named, confirmed or not.
+ *   acknowledgement that this account's trustlines are not DeFi positions (close-api/decisions.ts's
+ *   `isDefiPositionsAcknowledged`). It never overrides a position the sweep actually named: a
+ *   confirmed detected position keeps its own code and its exit, and an unconfirmed one stays
+ *   hard-blocked.
  */
 export function assessDefiPositionsGate(
   result: DefiPositionsResult,
@@ -163,7 +175,11 @@ export function assessDefiPositionsGate(
 
   if (result.timestamp === null) {
     if (result.source === DEGRADED_SOURCE_CONFIRMED && result.positions.length > 0) {
-      blockers.push(confirmedButDetectedBlocker(result));
+      blockers.push(
+        trustlineCount === 0 || userVerifiedNoPositions
+          ? confirmedButDetectedBlocker(result)
+          : detectedWithTrustlinesBlocker(result)
+      );
     } else if (result.source === DEGRADED_SOURCE_CONFIRMED && trustlineCount === 0) {
       blockers.push(confirmedEmptyNoTrustlinesBlocker(result));
     } else if (userVerifiedNoPositions && result.positions.length === 0) {
