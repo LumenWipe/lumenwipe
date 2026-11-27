@@ -20,14 +20,14 @@ Keep the key on a server. See [Authentication](/api-reference/introduction#authe
 
 ## Install
 
-Create a project with this `package.json`. These are the versions the documentation is written against; `@lumenwipe/verify` needs exactly the `@stellar/stellar-sdk` version shown.
+Create a project with this `package.json`. These are the versions the documentation is written against; `@lumenwipe/verify` needs exactly the `@stellar/stellar-sdk` version shown. Upgrade `@lumenwipe/verify` together with `@lumenwipe/sdk`: the API can start building a close that an older verifier refuses, and each release's changelog names the shapes it added.
 
 ```json package.json
 {
   "type": "module",
   "dependencies": {
     "@lumenwipe/sdk": "~0.13.0",
-    "@lumenwipe/verify": "~0.5.0",
+    "@lumenwipe/verify": "~0.9.0",
     "@stellar/stellar-sdk": "17.4.0"
   }
 }
@@ -83,7 +83,11 @@ import {
   TransactionBuilder,
 } from "@stellar/stellar-sdk";
 import { LumenWipeClient, runClose } from "@lumenwipe/sdk";
-import { exitExpectations, verifyCloseTransaction } from "@lumenwipe/verify";
+import {
+  exitExpectations,
+  poolWithdrawalExpectations,
+  verifyCloseTransaction,
+} from "@lumenwipe/verify";
 
 const network = "testnet";
 const client = new LumenWipeClient({
@@ -166,6 +170,7 @@ await runClose({
         tokenConversions: {},
         sponsoredEntries: account.sponsoredEntries,
         ...exitExpectations(account, network),
+        poolWithdrawals: poolWithdrawalExpectations(account),
       },
     }),
   requiredWeight: () => Math.max(1, account.thresholds.high),
@@ -190,7 +195,7 @@ console.log(`Closed ${source.publicKey()}. Delivered ${delivered.totalStroops} s
 node close.mjs
 ```
 
-The verifier is given the account read and the script's own inputs: the destination it chose, no memo, and no transfers or conversions. Any transaction that does something else is refused before it is signed, and the script stops. A real account usually needs more: decisions about its assets, conversions, protocol exits, or more than one signer. Those are answers your user gives, and they go to both `closeTransactions` and the verifier. See [Verification](/sdk/verification).
+The verifier is given the account read and the script's own inputs: the destination it chose, no memo, and no transfers or conversions. Any transaction that does something else is refused before it is signed, and the script stops. A real account usually needs more: decisions about its assets, conversions, protocol exits, liquidity pool shares, or more than one signer. Those are answers your user gives, and they go to both `closeTransactions` and the verifier. See [Verification](/sdk/verification).
 
 To run any of these against an API you host yourself, set `LUMENWIPE_API_URL`, for example `http://localhost:3001`, and use that base URL in the `curl` command.
 

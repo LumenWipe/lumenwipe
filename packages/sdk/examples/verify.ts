@@ -1,4 +1,8 @@
-import { exitExpectations, verifyCloseTransaction as verifyClose } from "@lumenwipe/verify";
+import {
+  exitExpectations,
+  poolWithdrawalExpectations,
+  verifyCloseTransaction as verifyClose,
+} from "@lumenwipe/verify";
 import type { AccountState, CloseTransaction, DecisionAnswer, DecisionPoint } from "@lumenwipe/sdk";
 import type { ExampleNetwork } from "./support";
 
@@ -46,6 +50,7 @@ export function verifyCloseTransaction(tx: CloseTransaction, expected: CloseExpe
       tokenConversions: {},
       sponsoredEntries: account.sponsoredEntries,
       ...exitExpectations(account, network),
+      poolWithdrawals: poolWithdrawalExpectations(account),
     },
   });
 }

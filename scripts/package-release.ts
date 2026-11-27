@@ -58,7 +58,7 @@ export const PACKAGES: Record<PackageId, PackageConfig> = {
     dir: "packages/verify",
     tagPrefix: "verify-v",
     versionConstant: null,
-    docsPin: null,
+    docsPin: /"@lumenwipe\/verify":\s*"([^"\n]*)"/g,
   },
 };
 

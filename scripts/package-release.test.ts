@@ -485,13 +485,17 @@ const VERIFY_RELEASED = `# Changelog
 [0.1.0]: ${R}/tree/verify-v0.1.0
 `;
 
+const VERIFY_DOCS = [
+  { path: "docs/integrators/quickstart.mdx", text: `{ "@lumenwipe/verify": "~0.1.0" }` },
+];
+
 function verify(over: Partial<AgreementInput> = {}): AgreementInput {
   return {
     pkg: PACKAGES.verify,
     mode: "offline",
     packageVersion: "0.1.0",
     changelog: VERIFY_FIRST,
-    docs: [],
+    docs: VERIFY_DOCS,
     ...over,
   };
 }
@@ -504,10 +508,10 @@ describe("checkAgreement: a package before its first release (verify)", () => {
     expect(verdict.warnings[0]).toContain("the first release is still to be cut");
   });
 
-  test("needs no version constant and no docs pin", () => {
+  test("needs no version constant, but its docs pin must exist", () => {
     expect(PACKAGES.verify.versionConstant).toBeNull();
-    expect(PACKAGES.verify.docsPin).toBeNull();
-    expect(checkAgreement(verify({ docs: [] })).errors).toEqual([]);
+    expect(checkAgreement(verify()).errors).toEqual([]);
+    expectError(checkAgreement(verify({ docs: [] })), 'no docs page pins "@lumenwipe/verify"');
   });
 
   test("pr: a package npm has never seen passes with the warning", () => {
@@ -617,6 +621,82 @@ describe("checkAgreement: a package before its first release (verify)", () => {
     const verdict = checkAgreement(pr({ npm: UNPUBLISHED }));
     expectError(verdict, "tag sdk-v0.1.0 exists, but npm has no version of @lumenwipe/sdk");
     expectError(verdict, "tag sdk-v0.2.0 exists, but npm has no version of @lumenwipe/sdk");
+  });
+});
+
+describe("the verifier's docs pin", () => {
+  const docs = (text: string) => [{ path: "docs/integrators/quickstart.mdx", text }];
+
+  test("a pin on another minor fails with the page named", () => {
+    expectError(
+      checkAgreement(verify({ docs: docs(`"@lumenwipe/verify": "~0.0.5"`) })),
+      'docs/integrators/quickstart.mdx pins "@lumenwipe/verify": "~0.0.5", expected "~0.1.0"'
+    );
+  });
+
+  test("a pin that is not a tilde range on X.Y.0 fails", () => {
+    for (const range of ["^0.1.0", "0.1.0", "~0.1.1"]) {
+      expectError(
+        checkAgreement(verify({ docs: docs(`"@lumenwipe/verify": "${range}"`) })),
+        `"${range}", expected "~0.1.0"`
+      );
+    }
+  });
+
+  test("each package reads only its own pin", () => {
+    const both = docs(`"@lumenwipe/sdk": "~0.5.0"
+"@lumenwipe/verify": "~0.1.0"`);
+    expect(checkAgreement(verify({ docs: both })).errors).toEqual([]);
+    expect(checkAgreement(input({ docs: both })).errors).toEqual([]);
+    expectError(
+      checkAgreement(verify({ docs: docs(`"@lumenwipe/sdk": "~0.1.0"`) })),
+      "no docs page pins"
+    );
+  });
+
+  test("every pin in every page is checked, not only the first", () => {
+    const pages = [
+      ...docs(`"@lumenwipe/verify": "~0.1.0"`),
+      { path: "README.md", text: `"@lumenwipe/verify": "~0.0.9"` },
+    ];
+    expectError(checkAgreement(verify({ docs: pages })), "README.md pins");
+  });
+
+  test("a release not on npm yet stays a warning when the docs already pin it", () => {
+    const verdict = checkAgreement(
+      verify({
+        mode: "pr",
+        npm: UNPUBLISHED,
+        tags: [],
+        baseVersion: "0.1.0",
+        changelog: VERIFY_RELEASED,
+      })
+    );
+    expect(verdict.errors).toEqual([]);
+    expect(verdict.warnings[0]).toContain("0.1.0 is in CHANGELOG.md but not on npm yet");
+  });
+
+  test("the pin is checked in pr and publish mode too", () => {
+    const wrong = docs(`"@lumenwipe/verify": "~0.0.5"`);
+    expectError(
+      checkAgreement(verify({ mode: "pr", npm: UNPUBLISHED, tags: [], docs: wrong })),
+      "expected"
+    );
+    expectError(
+      checkAgreement(
+        verify({
+          mode: "publish",
+          changelog: VERIFY_RELEASED,
+          npm: UNPUBLISHED,
+          tags: ["verify-v0.1.0"],
+          tag: "verify-v0.1.0",
+          tagOnMain: true,
+          headIsTag: true,
+          docs: wrong,
+        })
+      ),
+      "expected"
+    );
   });
 });
 
@@ -820,13 +900,18 @@ describe("the repository agrees with itself", () => {
     expect(verdict.errors).toEqual([]);
   });
 
-  test("the verifier's package.json and CHANGELOG.md agree", () => {
+  test("the verifier's package.json, CHANGELOG.md and the quickstart's pin agree", () => {
     const verdict = checkAgreement({
       pkg: PACKAGES.verify,
       mode: "offline",
       packageVersion: version("packages/verify"),
       changelog: read("packages/verify/CHANGELOG.md"),
-      docs: [],
+      docs: [
+        {
+          path: "docs/integrators/quickstart.mdx",
+          text: read("docs/integrators/quickstart.mdx"),
+        },
+      ],
     });
     expect(verdict.errors).toEqual([]);
   });
