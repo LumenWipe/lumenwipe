@@ -229,13 +229,66 @@ export async function buildContractChallenge(
   };
 }
 
-/** The address credentials of an entry, legacy or CAP-71 v2; null for any other kind. */
+type CredentialKind = xdr.SorobanCredentials["type"];
+
+/**
+ * The credential kinds a challenge entry may carry, one row per kind the SDK knows. A reader gives
+ * the entry's address credentials; null refuses the kind. The type is total over the SDK's union,
+ * so a new kind (Protocol 31 proposes two, CAP-90, Draft) does not compile until someone writes its
+ * row: supporting it is a deliberate change, never a default.
+ *
+ * Delegated signers (CAP-71, `sorobanCredentialsAddressWithDelegates`) are refused. The account's
+ * own `__check_auth` decides who must have signed, through delegates the entry names and the
+ * account must police itself, and each delegate runs its own code on every provider. That rests on
+ * CAP-71's text and the SDK's structure, not on host behavior observed here. To accept it later:
+ * a real testnet end to end with a deployed delegating account, a cap on the count and depth of
+ * delegates, and a reviewed model of the host in `FakeWebAuthRpc`.
+ */
+const CREDENTIAL_READERS: {
+  readonly [K in CredentialKind]:
+    | ((credentials: Extract<xdr.SorobanCredentials, { type: K }>) => xdr.SorobanAddressCredentials)
+    | null;
+} = {
+  sorobanCredentialsSourceAccount: null,
+  sorobanCredentialsAddress: (credentials) => credentials.address,
+  sorobanCredentialsAddressV2: (credentials) => credentials.addressV2,
+  sorobanCredentialsAddressWithDelegates: null,
+};
+
+/** The address credentials of an entry when its kind is in the table and readable; null otherwise. */
 function addressCredentialsOf(
   entry: xdr.SorobanAuthorizationEntry
 ): xdr.SorobanAddressCredentials | null {
   const credentials = entry.credentials;
-  if (credentials.type === "sorobanCredentialsAddress") return credentials.address;
-  if (credentials.type === "sorobanCredentialsAddressV2") return credentials.addressV2;
+  // TypeScript cannot correlate `credentials.type` with the reader its row holds, so the lookup is
+  // widened to a reader of any kind; each row above is still checked against its own kind.
+  const read = CREDENTIAL_READERS[credentials.type] as
+    ((credentials: xdr.SorobanCredentials) => xdr.SorobanAddressCredentials) | null;
+  return read ? read(credentials) : null;
+}
+
+/** The entries of a returned challenge, or null when the input is oversized or does not decode.
+ *  The one decode both `readSignedContractChallenge` and `unsupportedCredentialKind` use. */
+function decodeEntries(authorizationEntries: string): xdr.SorobanAuthorizationEntry[] | null {
+  if (authorizationEntries.length > MAX_ENTRIES_XDR_LENGTH) return null;
+  try {
+    return xdr.decodeArray(xdr.SorobanAuthorizationEntry, authorizationEntries, "base64", {
+      maxLength: MAX_ENTRIES,
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The credential kind of the first entry whose kind the table refuses, so the refusal can name it;
+ * null when the list does not decode or every entry's kind is supported. It reads nothing but the
+ * credential kinds, and returns only the table's own kind names, never anything the caller wrote.
+ */
+export function unsupportedCredentialKind(authorizationEntries: string): CredentialKind | null {
+  for (const entry of decodeEntries(authorizationEntries) ?? []) {
+    if (!CREDENTIAL_READERS[entry.credentials.type]) return entry.credentials.type;
+  }
   return null;
 }
 
@@ -268,7 +321,7 @@ export interface SignedContractChallenge {
 /**
  * The account's signed entry from a returned challenge, when every check that needs no network
  * passes: the list decodes and is short, every entry is the account's or the server account's,
- * the account's has address credentials, a nonce this server minted for this account and network
+ * the account's credentials are of a kind in `CREDENTIAL_READERS`, a nonce this server minted for this account and network
  * that has not expired, exactly the invocation that nonce implies (contract, function, arguments,
  * no sub-invocations), and a signature that expires within the challenge's ledger window. The
  * server account's entry the client returns is ignored: the server signs its own again.
@@ -279,15 +332,8 @@ export function readSignedContractChallenge(
   authorizationEntries: string,
   now: Date = new Date()
 ): SignedContractChallenge | null {
-  if (authorizationEntries.length > MAX_ENTRIES_XDR_LENGTH) return null;
-  let entries: xdr.SorobanAuthorizationEntry[];
-  try {
-    entries = xdr.decodeArray(xdr.SorobanAuthorizationEntry, authorizationEntries, "base64", {
-      maxLength: MAX_ENTRIES,
-    });
-  } catch {
-    return null;
-  }
+  const entries = decodeEntries(authorizationEntries);
+  if (!entries) return null;
   const server = config.signer.publicKey();
   const mine: {
     entry: xdr.SorobanAuthorizationEntry;

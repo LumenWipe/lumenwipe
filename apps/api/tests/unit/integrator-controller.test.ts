@@ -3,7 +3,14 @@ import { createHash } from "crypto";
 import { HttpException } from "@nestjs/common";
 import { ExecutionContextHost } from "@nestjs/core/helpers/execution-context-host";
 import type { ConfigService } from "@nestjs/config";
-import { Keypair, Networks, StrKey, authorizeEntry, xdr } from "@stellar/stellar-sdk";
+import {
+  Keypair,
+  Networks,
+  StrKey,
+  authorizeEntry,
+  buildWithDelegatesEntry,
+  xdr,
+} from "@stellar/stellar-sdk";
 import { ApiKeyDirectory } from "@/auth/api-key-directory";
 import { ApiKeyService } from "@/auth/api-key.service";
 import type { ApiKeyRecord, ApiKeyStore, NewApiKeyOptions } from "@/auth/api-key-store";
@@ -505,6 +512,154 @@ describe("contract-account auth endpoints", () => {
     expect(codeOf(await rejection(controller.contractSession("testnet", body)))).toBe(
       "invalid_challenge"
     );
+  });
+
+  describe("credential kinds this API does not accept", () => {
+    /** A used-challenge store that counts every touch, so a refusal can be shown to leave it alone. */
+    class CountingStore extends InMemoryUsedChallengeStore {
+      claims = 0;
+      override async claim(challenge: string, expiresAt: Date): Promise<boolean> {
+        this.claims++;
+        return super.claim(challenge, expiresAt);
+      }
+    }
+
+    const messageOf = (e: unknown): string =>
+      (e as HttpException).getResponse() instanceof Object
+        ? ((e as HttpException).getResponse() as { error: { message: string } }).error.message
+        : "";
+    const statusOf = (e: unknown): number => (e as HttpException).getStatus();
+
+    /** One challenge, signed twice: as plain address credentials, and as a delegated-signers
+     *  credential whose delegate signs with its own throwaway key. */
+    async function bothWays(controller: IntegratorController, who: string, delegate: Keypair) {
+      const challenge = await controller.contractChallenge("testnet", { address: who });
+      const [client, server] = xdr.decodeArray(
+        xdr.SorobanAuthorizationEntry,
+        challenge.authorizationEntries,
+        "base64"
+      );
+      const sign = (entry: xdr.SorobanAuthorizationEntry, forAddress?: string) =>
+        authorizeEntry(
+          entry,
+          forAddress ? delegate : owner,
+          challenge.validUntilLedger,
+          challenge.networkPassphrase,
+          forAddress
+        );
+      const plain = await sign(client!);
+      const withDelegates = await sign(
+        await sign(
+          buildWithDelegatesEntry({
+            entry: client!,
+            validUntilLedgerSeq: challenge.validUntilLedger,
+            delegates: [{ address: delegate.publicKey() }],
+          })
+        ),
+        delegate.publicKey()
+      );
+      const encode = (entry: xdr.SorobanAuthorizationEntry) =>
+        xdr.encodeArray(xdr.SorobanAuthorizationEntry, [entry, server!], "base64");
+      return { plain: encode(plain), delegated: encode(withDelegates) };
+    }
+
+    test("a delegated credential is refused by name before anything is read, and the challenge stays usable", async () => {
+      const provider = fakeProvider([[account, { kind: "ed25519", owner }]]);
+      const store = new CountingStore();
+      const { controller } = setup([provider], store);
+      const entries = await bothWays(controller, account, Keypair.random());
+
+      // Issuing the challenge read the ledger once; the refusal must add nothing to that.
+      const readsBefore = provider.ledgerReads;
+      const refusal = await rejection(
+        controller.contractSession("testnet", {
+          address: account,
+          authorizationEntries: entries.delegated,
+        })
+      );
+      expect(codeOf(refusal)).toBe("invalid_challenge");
+      expect(statusOf(refusal)).toBe(401);
+      expect(messageOf(refusal)).toContain("sorobanCredentialsAddressWithDelegates");
+      expect(provider.ledgerReads).toBe(readsBefore);
+      expect(provider.simulations).toBe(0);
+      expect(store.claims).toBe(0);
+
+      const { token } = await controller.contractSession("testnet", {
+        address: account,
+        authorizationEntries: entries.plain,
+      });
+      expect(token.startsWith("lws.")).toBe(true);
+      expect(store.claims).toBe(1);
+    });
+
+    test("the refusal reads the same for every account and every delegate, and echoes none of them", async () => {
+      const other = contractAddress(2);
+      const { controller } = setup([
+        fakeProvider([
+          [account, { kind: "ed25519", owner }],
+          [other, { kind: "ed25519", owner }],
+        ]),
+      ]);
+      const a = Keypair.random();
+      const b = Keypair.random();
+      const first = await bothWays(controller, account, a);
+      const second = await bothWays(controller, other, b);
+      const messages = [
+        messageOf(
+          await rejection(
+            controller.contractSession("testnet", {
+              address: account,
+              authorizationEntries: first.delegated,
+            })
+          )
+        ),
+        messageOf(
+          await rejection(
+            controller.contractSession("testnet", {
+              address: other,
+              authorizationEntries: second.delegated,
+            })
+          )
+        ),
+      ];
+      expect(messages[0]).toBe(messages[1]!);
+      for (const echoed of [account, other, a.publicKey(), b.publicKey()]) {
+        expect(messages[0]).not.toContain(echoed);
+      }
+    });
+
+    test("a source-account credential is refused by name too", async () => {
+      const { controller } = setup([fakeProvider([[account, { kind: "ed25519", owner }]])]);
+      const challenge = await controller.contractChallenge("testnet", { address: account });
+      const [client] = xdr.decodeArray(
+        xdr.SorobanAuthorizationEntry,
+        challenge.authorizationEntries,
+        "base64"
+      );
+      const source = new xdr.SorobanAuthorizationEntry({
+        credentials: xdr.SorobanCredentials.sorobanCredentialsSourceAccount(),
+        rootInvocation: client!.rootInvocation,
+      });
+      const refusal = await rejection(
+        controller.contractSession("testnet", {
+          address: account,
+          authorizationEntries: xdr.encodeArray(xdr.SorobanAuthorizationEntry, [source], "base64"),
+        })
+      );
+      expect(codeOf(refusal)).toBe("invalid_challenge");
+      expect(messageOf(refusal)).toContain("sorobanCredentialsSourceAccount");
+    });
+
+    test("an input that is not a list of entries keeps the generic refusal", async () => {
+      const { controller } = setup([fakeProvider([[account, { kind: "ed25519", owner }]])]);
+      for (const authorizationEntries of ["not xdr", "A".repeat(20_000)]) {
+        const refusal = await rejection(
+          controller.contractSession("testnet", { address: account, authorizationEntries })
+        );
+        expect(codeOf(refusal)).toBe("invalid_challenge");
+        expect(messageOf(refusal)).toBe("The signed challenge is invalid or has expired.");
+      }
+    });
   });
 
   test("a forged authorization is refused, and the challenge still works for its owner", async () => {

@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Address, Keypair, Networks, StrKey, authorizeEntry, xdr } from "@stellar/stellar-sdk";
+import {
+  Address,
+  Keypair,
+  Networks,
+  StrKey,
+  authorizeEntry,
+  buildWithDelegatesEntry,
+  xdr,
+} from "@stellar/stellar-sdk";
 import {
   CONTRACT_CHALLENGE_TTL_SECONDS,
   MAINNET_WEB_AUTH_CONTRACT,
@@ -8,6 +16,7 @@ import {
   contractAuthConfig,
   isReady,
   readSignedContractChallenge,
+  unsupportedCredentialKind,
   verifyOnEveryProvider,
   type ContractAuthConfig,
 } from "@/integrator/contract-auth";
@@ -399,18 +408,6 @@ describe("readSignedContractChallenge", () => {
     expect(readSignedContractChallenge(config(), account, onTime, NOW)).not.toBeNull();
   });
 
-  test("source-account and delegated credentials are refused", async () => {
-    const challenge = await buildContractChallenge(config(), account, LEDGER, NOW);
-    const [client] = decode(challenge.authorizationEntries);
-    const source = new xdr.SorobanAuthorizationEntry({
-      credentials: xdr.SorobanCredentials.sorobanCredentialsSourceAccount(),
-      rootInvocation: client!.rootInvocation,
-    });
-    expect(
-      readSignedContractChallenge(config(), account, encode([source, client!]), NOW)
-    ).toBeNull();
-  });
-
   test("an entry for a third address, a duplicate entry, garbage and oversized input are refused", async () => {
     const { challenge, xdrs } = await signed();
     const [client] = decode(xdrs);
@@ -425,6 +422,172 @@ describe("readSignedContractChallenge", () => {
     expect(readSignedContractChallenge(config(), account, "not xdr", NOW)).toBeNull();
     expect(readSignedContractChallenge(config(), account, "A".repeat(20_000), NOW)).toBeNull();
     expect(readSignedContractChallenge(config(), account, encode([client!]), NOW)).not.toBeNull();
+  });
+});
+
+/**
+ * What the API did with a CAP-71 delegated-signers credential before the table of kinds: the
+ * reader returned null for it, the same answer as for an expired challenge (401 invalid_challenge,
+ * "invalid or has expired"), and nothing named the kind. Now it still refuses, and the controller
+ * names the kind. The entries below are built with the SDK's own `buildWithDelegatesEntry` and
+ * signed with throwaway keys made in the test; no host runs them, which is why they are refused
+ * rather than accepted (see CREDENTIAL_READERS).
+ */
+describe("credential kinds", () => {
+  const account = contractAddress(1);
+  const owner = Keypair.random();
+
+  async function challengeEntries() {
+    const challenge = await buildContractChallenge(config(), account, LEDGER, NOW);
+    const [client, server] = decode(challenge.authorizationEntries);
+    return { challenge, client: client!, server: server! };
+  }
+
+  const asV2 = (entry: xdr.SorobanAuthorizationEntry) => {
+    if (entry.credentials.type !== "sorobanCredentialsAddress") throw new Error();
+    return new xdr.SorobanAuthorizationEntry({
+      credentials: xdr.SorobanCredentials.sorobanCredentialsAddressV2(entry.credentials.address),
+      rootInvocation: entry.rootInvocation,
+    });
+  };
+
+  /** The account's entry as a wallet using delegated signers would send it: the top-level node
+   *  signed by the account's key and every delegate node signed by that delegate's own key. */
+  async function delegated(
+    base: xdr.SorobanAuthorizationEntry,
+    validUntil: number,
+    delegates: { key: Keypair; nested?: Keypair[] }[]
+  ): Promise<xdr.SorobanAuthorizationEntry> {
+    let entry = buildWithDelegatesEntry({
+      entry: base,
+      validUntilLedgerSeq: validUntil,
+      delegates: delegates.map(({ key, nested }) => ({
+        address: key.publicKey(),
+        nestedDelegates: (nested ?? []).map((n) => ({ address: n.publicKey() })),
+      })),
+    });
+    entry = await authorizeEntry(entry, owner, validUntil, Networks.TESTNET);
+    for (const { key, nested } of delegates) {
+      entry = await authorizeEntry(entry, key, validUntil, Networks.TESTNET, key.publicKey());
+      for (const n of nested ?? []) {
+        entry = await authorizeEntry(entry, n, validUntil, Networks.TESTNET, n.publicKey());
+      }
+    }
+    return entry;
+  }
+
+  test("every credential kind the SDK knows is either read or refused by name", async () => {
+    const { challenge, client, server } = await challengeEntries();
+    const legacy = await authorizeEntry(
+      client,
+      owner,
+      challenge.validUntilLedger,
+      Networks.TESTNET
+    );
+    const v2 = await authorizeEntry(
+      asV2(client),
+      owner,
+      challenge.validUntilLedger,
+      Networks.TESTNET
+    );
+    const source = new xdr.SorobanAuthorizationEntry({
+      credentials: xdr.SorobanCredentials.sorobanCredentialsSourceAccount(),
+      rootInvocation: client.rootInvocation,
+    });
+    const withDelegates = await delegated(client, challenge.validUntilLedger, [
+      { key: Keypair.random() },
+    ]);
+    const cases: [xdr.SorobanAuthorizationEntry, ReturnType<typeof unsupportedCredentialKind>][] = [
+      [legacy, null],
+      [v2, null],
+      [source, "sorobanCredentialsSourceAccount"],
+      [withDelegates, "sorobanCredentialsAddressWithDelegates"],
+    ];
+    expect(cases.map(([entry]) => entry.credentials.type).sort()).toEqual([
+      "sorobanCredentialsAddress",
+      "sorobanCredentialsAddressV2",
+      "sorobanCredentialsAddressWithDelegates",
+      "sorobanCredentialsSourceAccount",
+    ]);
+    for (const [entry, refusedAs] of cases) {
+      const xdrs = encode([entry, server]);
+      expect(unsupportedCredentialKind(xdrs)).toBe(refusedAs);
+      const read = readSignedContractChallenge(config(), account, xdrs, NOW);
+      if (refusedAs === null) expect(read).not.toBeNull();
+      else expect(read).toBeNull();
+    }
+  });
+
+  test("a delegated entry under a legacy base and under a V2 base both read as refused", async () => {
+    const { challenge, client, server } = await challengeEntries();
+    for (const base of [client, asV2(client)]) {
+      const entry = await delegated(base, challenge.validUntilLedger, [{ key: Keypair.random() }]);
+      expect(entry.credentials.type).toBe("sorobanCredentialsAddressWithDelegates");
+      if (entry.credentials.type !== "sorobanCredentialsAddressWithDelegates") throw new Error();
+      const top = entry.credentials.addressWithDelegates.addressCredentials;
+      expect(Address.fromScAddress(top.address).toString()).toBe(account);
+      expect(top.signatureExpirationLedger).toBe(challenge.validUntilLedger);
+      const xdrs = encode([entry, server]);
+      expect(readSignedContractChallenge(config(), account, xdrs, NOW)).toBeNull();
+      expect(unsupportedCredentialKind(xdrs)).toBe("sorobanCredentialsAddressWithDelegates");
+    }
+  });
+
+  test("a delegated entry with nested delegates, signed by real delegate keys, is refused", async () => {
+    const { challenge, client, server } = await challengeEntries();
+    const entry = await delegated(client, challenge.validUntilLedger, [
+      { key: Keypair.random(), nested: [Keypair.random(), Keypair.random()] },
+      { key: Keypair.random() },
+    ]);
+    const xdrs = encode([entry, server]);
+    expect(readSignedContractChallenge(config(), account, xdrs, NOW)).toBeNull();
+    expect(unsupportedCredentialKind(xdrs)).toBe("sorobanCredentialsAddressWithDelegates");
+  });
+
+  test("a delegated entry for a third address, or beside a duplicate, is still refused", async () => {
+    const { challenge, client, server } = await challengeEntries();
+    const entry = await delegated(client, challenge.validUntilLedger, [{ key: Keypair.random() }]);
+    const other = new xdr.SorobanAuthorizationEntry({
+      credentials: xdr.SorobanCredentials.sorobanCredentialsAddress(
+        new xdr.SorobanAddressCredentials({
+          address: new Address(contractAddress(7)).toScAddress(),
+          nonce: 1n,
+          signatureExpirationLedger: 0,
+          signature: xdr.ScVal.scvVoid(),
+        })
+      ),
+      rootInvocation: client.rootInvocation,
+    });
+    expect(readSignedContractChallenge(config(), account, encode([entry, entry]), NOW)).toBeNull();
+    expect(readSignedContractChallenge(config(), account, encode([entry, other]), NOW)).toBeNull();
+    expect(readSignedContractChallenge(config(), account, encode([entry, server]), NOW)).toBeNull();
+  });
+
+  test("unsupportedCredentialKind names only a table kind and ignores what it cannot decode", async () => {
+    const { client, server } = await challengeEntries();
+    expect(unsupportedCredentialKind("not xdr")).toBeNull();
+    expect(unsupportedCredentialKind("")).toBeNull();
+    expect(unsupportedCredentialKind("A".repeat(20_000))).toBeNull();
+    expect(unsupportedCredentialKind(encode([client, server]))).toBeNull();
+    expect(unsupportedCredentialKind(encode([]))).toBeNull();
+    const source = new xdr.SorobanAuthorizationEntry({
+      credentials: xdr.SorobanCredentials.sorobanCredentialsSourceAccount(),
+      rootInvocation: client.rootInvocation,
+    });
+    expect(unsupportedCredentialKind(encode([client, source]))).toBe(
+      "sorobanCredentialsSourceAccount"
+    );
+    // The same size cap as the reader, on input that does decode: a delegated entry with so many
+    // delegates that the list passes 16 KiB is not read for a kind either.
+    const crowded = buildWithDelegatesEntry({
+      entry: client,
+      validUntilLedgerSeq: 1,
+      delegates: Array.from({ length: 400 }, () => ({ address: Keypair.random().publicKey() })),
+    });
+    const oversized = encode([crowded]);
+    expect(oversized.length).toBeGreaterThan(16_384);
+    expect(unsupportedCredentialKind(oversized)).toBeNull();
+    expect(readSignedContractChallenge(config(), account, oversized, NOW)).toBeNull();
   });
 });
 
