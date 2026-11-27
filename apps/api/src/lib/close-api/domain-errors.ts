@@ -17,6 +17,7 @@ import {
   MissingTransferDestinationError,
   tokenDecisionId,
   UnrecognizedConversionProviderError,
+  UnsupportedTransferDestinationError,
 } from "@/lib/close-api/decisions";
 
 export interface MappedError {
@@ -98,6 +99,15 @@ const UPSTREAM_FAILED = entry(UpstreamError, (e) =>
     : { code: "service_unavailable", status: 503, message: e.message }
 );
 
+/** A transfer answer naming a contract or muxed contract address: refused by kind, in the plan
+ *  and in the transactions round alike, before anything is read or built. */
+const UNSUPPORTED_TRANSFER_DESTINATION = entry(UnsupportedTransferDestinationError, (e) => ({
+  code: "unsupported_address_type",
+  status: 400,
+  message: e.message,
+  details: { addressType: e.kind, decisionId: decisionIdFor(e.asset) },
+}));
+
 export const UPSTREAM_ERRORS: readonly DomainErrorEntry[] = [UPSTREAM_FAILED];
 
 /** What `close/plan` and each `close/batch-plan` address recognise as a planning failure. */
@@ -110,6 +120,7 @@ export const PLAN_ERRORS: readonly DomainErrorEntry[] = [
   ISSUER_READ_FAILED,
   LEDGER_READ_FAILED,
   UPSTREAM_FAILED,
+  UNSUPPORTED_TRANSFER_DESTINATION,
 ];
 
 /** What `close/transactions` recognises; anything else is a `transactions_failed`. */
@@ -127,6 +138,7 @@ export const TRANSACTION_ERRORS: readonly DomainErrorEntry[] = [
     status: 409,
     message: "A conversion route is no longer available; re-plan and retry.",
   })),
+  UNSUPPORTED_TRANSFER_DESTINATION,
   entry(MissingTransferDestinationError, (e) => ({
     code: "transfer_destination_missing",
     status: 422,

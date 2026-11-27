@@ -304,29 +304,29 @@
 <!-- ledger -->
 <g id="node19" class="node">
 <title>ledger</title>
-<path fill="#faf5ff" stroke="#9333ea" stroke-width="2" d="M1825.78,-195.28C1825.78,-198.51 1775.36,-201.13 1713.28,-201.13 1651.21,-201.13 1600.78,-198.51 1600.78,-195.28 1600.78,-195.28 1600.78,-142.72 1600.78,-142.72 1600.78,-139.49 1651.21,-136.87 1713.28,-136.87 1775.36,-136.87 1825.78,-139.49 1825.78,-142.72 1825.78,-142.72 1825.78,-195.28 1825.78,-195.28"/>
-<path fill="none" stroke="#9333ea" stroke-width="2" d="M1825.78,-195.28C1825.78,-192.06 1775.36,-189.44 1713.28,-189.44 1651.21,-189.44 1600.78,-192.06 1600.78,-195.28"/>
+<path fill="#faf5ff" stroke="#9333ea" stroke-width="2" d="M1813.28,-195.28C1813.28,-198.51 1768.46,-201.13 1713.28,-201.13 1658.1,-201.13 1613.28,-198.51 1613.28,-195.28 1613.28,-195.28 1613.28,-142.72 1613.28,-142.72 1613.28,-139.49 1658.1,-136.87 1713.28,-136.87 1768.46,-136.87 1813.28,-139.49 1813.28,-142.72 1813.28,-142.72 1813.28,-195.28 1813.28,-195.28"/>
+<path fill="none" stroke="#9333ea" stroke-width="2" d="M1813.28,-195.28C1813.28,-192.06 1768.46,-189.44 1713.28,-189.44 1658.1,-189.44 1613.28,-192.06 1613.28,-195.28"/>
 <text text-anchor="start" x="1669.28" y="-175.7" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="11.00" fill="#1e293b">Stellar Ledger</text>
-<text text-anchor="start" x="1616.78" y="-166.3" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#475569">Classic + Soroban (Protocol 26 · Yardstick)</text>
+<text text-anchor="start" x="1629.28" y="-166.3" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#475569">Classic + Soroban (Protocol 30 · Bell)</text>
 <text text-anchor="start" x="1631.78" y="-157.3" font-family="Helvetica,sans-Serif" font-size="9.00" fill="#475569">Source of truth for all account state</text>
 </g>
 <!-- rpc&#45;&gt;ledger -->
 <g id="edge21" class="edge">
 <title>rpc&#45;&gt;ledger</title>
-<path fill="none" stroke="#94a3b8" stroke-width="2" d="M1594.47,-564.6C1548.21,-557.7 1499.7,-540.63 1471.78,-502 1413.99,-422.03 1418.54,-363.07 1471.78,-280 1498.85,-237.76 1546.49,-211.38 1592.34,-195"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" stroke-width="2" points="1593.51,-197.75 1600.57,-192.16 1591.57,-192.12 1593.51,-197.75"/>
+<path fill="none" stroke="#94a3b8" stroke-width="2" d="M1594.47,-564.6C1548.21,-557.7 1499.7,-540.63 1471.78,-502 1413.99,-422.03 1418.54,-363.07 1471.78,-280 1501.32,-233.91 1555.36,-206.7 1604.83,-190.77"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" stroke-width="2" points="1605.81,-193.58 1613.05,-188.21 1604.05,-187.9 1605.81,-193.58"/>
 </g>
 <!-- idx&#45;&gt;ledger -->
 <g id="edge22" class="edge">
 <title>idx&#45;&gt;ledger</title>
-<path fill="none" stroke="#94a3b8" stroke-width="1.4" d="M1550.09,-466.7C1519.26,-456.67 1490.77,-440.28 1471.78,-414 1436.9,-365.73 1439.64,-330.14 1471.78,-280 1498.85,-237.76 1546.49,-211.38 1592.34,-195"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" stroke-width="1.4" points="1593.51,-197.75 1600.57,-192.16 1591.57,-192.12 1593.51,-197.75"/>
+<path fill="none" stroke="#94a3b8" stroke-width="1.4" d="M1550.09,-466.7C1519.26,-456.67 1490.77,-440.28 1471.78,-414 1436.9,-365.73 1439.64,-330.14 1471.78,-280 1501.32,-233.91 1555.36,-206.7 1604.83,-190.77"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" stroke-width="1.4" points="1605.81,-193.58 1613.05,-188.21 1604.05,-187.9 1605.81,-193.58"/>
 </g>
 <!-- soro_api&#45;&gt;ledger -->
 <g id="edge23" class="edge">
 <title>soro_api&#45;&gt;ledger</title>
-<path fill="none" stroke="#94a3b8" stroke-width="1.4" d="M1570.13,-385.31C1531.89,-376.23 1494.84,-358.9 1471.78,-327 1429.22,-268.11 1512.38,-225.24 1592.48,-199.13"/>
-<polygon fill="#94a3b8" stroke="#94a3b8" stroke-width="1.4" points="1593.52,-201.92 1600.71,-196.5 1591.71,-196.25 1593.52,-201.92"/>
+<path fill="none" stroke="#94a3b8" stroke-width="1.4" d="M1570.13,-385.31C1531.89,-376.23 1494.84,-358.9 1471.78,-327 1427.05,-265.1 1521.2,-220.9 1604.71,-195.27"/>
+<polygon fill="#94a3b8" stroke="#94a3b8" stroke-width="1.4" points="1605.73,-198.07 1613.01,-192.77 1604.01,-192.37 1605.73,-198.07"/>
 </g>
 <!-- octopos&#45;&gt;ledger -->
 <g id="edge24" class="edge">

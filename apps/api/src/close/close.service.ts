@@ -1,7 +1,7 @@
 import { HttpException, Inject, Injectable, Logger } from "@nestjs/common";
 import type { Network } from "@/config/networks";
 import { readKillSwitches } from "@/config/kill-switches";
-import { isValidGAddress } from "@/lib/utils/validation";
+import { requireGAddress } from "@/common/require-g-address";
 import { BATCH_PLAN_MAX_ADDRESSES } from "@/lib/close-api/batch-plan";
 import {
   claimableBalanceDecisionId,
@@ -101,12 +101,14 @@ export class CloseService {
     body: { source?: unknown; destination?: unknown; decisions?: unknown }
   ) {
     const { source } = body;
-    if (typeof source !== "string" || !isValidGAddress(source)) {
-      fail("invalid_source", "A valid source account (G...) is required.", 400);
-    }
+    requireGAddress(source, "invalid_source", "A valid source account (G...) is required.");
     const destination = typeof body.destination === "string" ? body.destination : null;
-    if (destination !== null && !isValidGAddress(destination)) {
-      fail("invalid_destination", "Destination must be a valid account (G...).", 400);
+    if (destination !== null) {
+      requireGAddress(
+        destination,
+        "invalid_destination",
+        "Destination must be a valid account (G...)."
+      );
     }
     const decisions = parseDecisions(body.decisions);
 
@@ -137,12 +139,20 @@ export class CloseService {
         400
       );
     }
-    if (!addresses.every((a): a is string => typeof a === "string" && isValidGAddress(a))) {
-      fail("invalid_addresses", "Every address must be a valid Stellar account (G...).", 400);
+    for (const address of addresses) {
+      requireGAddress(
+        address,
+        "invalid_addresses",
+        "Every address must be a valid Stellar account (G...)."
+      );
     }
     const destination = typeof body.destination === "string" ? body.destination : null;
-    if (destination !== null && !isValidGAddress(destination)) {
-      fail("invalid_destination", "Destination must be a valid account (G...).", 400);
+    if (destination !== null) {
+      requireGAddress(
+        destination,
+        "invalid_destination",
+        "Destination must be a valid account (G...)."
+      );
     }
 
     const results = await this.reader.planBatch(
@@ -166,12 +176,12 @@ export class CloseService {
     }
   ) {
     const { source, destination } = body;
-    if (typeof source !== "string" || !isValidGAddress(source)) {
-      fail("invalid_source", "A valid source account (G...) is required.", 400);
-    }
-    if (typeof destination !== "string" || !isValidGAddress(destination)) {
-      fail("invalid_destination", "A valid destination account (G...) is required.", 400);
-    }
+    requireGAddress(source, "invalid_source", "A valid source account (G...) is required.");
+    requireGAddress(
+      destination,
+      "invalid_destination",
+      "A valid destination account (G...) is required."
+    );
     const decisions = parseDecisions(body.decisions);
     const suppliedPlanHash = body.planHash;
     if (

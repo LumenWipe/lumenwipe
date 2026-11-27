@@ -159,6 +159,8 @@ export const ERROR_CODE_DESCRIPTIONS: Record<ErrorCode, string> = {
   tx_not_verified: "The transaction could not be verified as a LumenWipe close on the network.",
   unauthorized: "The API key, session token or operator token is missing or invalid.",
   unprocessable_entity: "The request is valid but cannot be processed.",
+  unsupported_address_type:
+    "A contract (C...) or muxed contract (W...) address is not supported here.",
   unsupported_media_type: "The request body must be UTF-8 JSON.",
   unsupported_memo_type: "The memo type is not supported for this destination.",
   vault_undercollateralized: "An FxDAO vault is undercollateralized and cannot be exited.",

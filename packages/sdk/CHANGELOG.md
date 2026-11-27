@@ -46,6 +46,13 @@ version number before 0.4.0. Neither has a git tag.
   other source's.
 - `SorobanTokenSource` gains `"indexer"`: a token the API found in the account's received
   movements on StellarIndex. Its balance is read from the ledger like every other source's.
+- `ErrorCode` gains `unsupported_address_type` (HTTP 400). The API returns it, with
+  `details.addressType` of `"contract"` or `"muxed_contract"`, when an address parameter, source,
+  destination, owner or transfer destination is a valid contract (`C...`) or muxed contract
+  (`W...`) address, instead of the generic `invalid_address`, `invalid_source`,
+  `invalid_destination`, `invalid_owner` or `invalid_addresses`. Those codes still mean the value
+  is not a valid address at all. `ApiErrorCode` already accepts unknown codes, so nothing breaks
+  for code that does not branch on it.
 
 ### Changed
 

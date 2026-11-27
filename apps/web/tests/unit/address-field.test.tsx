@@ -1,11 +1,13 @@
 import { expect, test } from "bun:test";
 import { useState, type ReactElement } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { Keypair } from "@stellar/stellar-sdk";
+import { Keypair, StrKey } from "@stellar/stellar-sdk";
 import { AddressField } from "@/components/ui/address-field";
 import { addressErrorMessage, isValidGAddress } from "@/lib/utils/validation";
 
 const VALID = Keypair.random().publicKey();
+const CONTRACT = StrKey.encodeContract(new Uint8Array(32).fill(7));
+const MUXED_CONTRACT = StrKey.encodeMuxedContract(new Uint8Array(40).fill(9));
 const flipLast = (address: string): string =>
   address.slice(0, -1) + (address.endsWith("A") ? "B" : "A");
 
@@ -99,6 +101,8 @@ test.each([
   ["length", VALID.slice(0, 40), "56 characters"],
   ["prefix", "X" + VALID.slice(1), "starts with G"],
   ["checksum", flipLast(VALID), "checksum"],
+  ["contract", CONTRACT, "contract address (C...)"],
+  ["muxed contract", MUXED_CONTRACT, "muxed contract address (W...)"],
 ])("a %s error is one alert the input points at", (_, value, text) => {
   render(<Harness emitted={[]} />);
   const input = screen.getByLabelText("Account");

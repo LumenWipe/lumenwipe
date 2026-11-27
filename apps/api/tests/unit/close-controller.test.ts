@@ -55,6 +55,8 @@ import { OFFLINE_SOROBAN_TOKENS } from "./fixtures/fake-soroban-tokens";
 import { authorizationOf } from "./fixtures/trustline";
 import { readKillSwitches, type KillSwitches } from "@/config/kill-switches";
 import { fakeFetch } from "../support/fetch";
+import { C_ADDRESS, W_ADDRESS, tampered } from "./fixtures/contract-addresses";
+import { UNSUPPORTED_ADDRESS_MESSAGES } from "@/lib/utils/validation";
 
 const SOURCE = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -992,6 +994,92 @@ describe("transactions", () => {
         [USDC, "destination_requires_memo"],
         [TOKEN, "destination_requires_memo"],
       ]);
+    });
+  });
+
+  describe("T12d a transfer to a contract or muxed contract address is refused before anything is read or built", () => {
+    const HOLDING = accountState({
+      trustlines: [
+        {
+          asset: USDC,
+          balance: "5.0000000",
+          limit: "1000",
+          ...authorizationOf(true),
+          issuer: ISSUER,
+          code: "USDC",
+        },
+      ],
+    });
+    const sendingTo = (destination: string) =>
+      body({
+        decisions: [
+          ACK,
+          { id: decisionIdFor(USDC), choice: TRANSFER_CHOICE, params: { destination } },
+        ],
+      });
+
+    for (const [name, address, addressType] of [
+      ["muxed contract", W_ADDRESS, "muxed_contract"],
+      ["contract", C_ADDRESS, "contract"],
+    ] as const) {
+      test(`a ${name} destination is the unsupported_address_type 400, not a missing destination`, async () => {
+        const calls: string[] = [];
+        const { controller } = await makeController({
+          readAccountState: async () => HOLDING,
+          assessMergePreflight: async () => {
+            calls.push("assessMergePreflight");
+            return [];
+          },
+          validateTransferDestinations: async () => {
+            calls.push("validateTransferDestinations");
+            return [];
+          },
+          buildCloseTransactions: (async () => {
+            calls.push("buildCloseTransactions");
+            return BUILT;
+          }) as unknown as Builder,
+        });
+
+        const err = await controller
+          .transactions("testnet", sendingTo(address))
+          .catch((e: unknown) => e);
+
+        expect(mapDomainError(TRANSACTION_ERRORS, err)).toEqual({
+          code: "unsupported_address_type",
+          status: 400,
+          message: UNSUPPORTED_ADDRESS_MESSAGES[addressType],
+          details: { addressType, decisionId: decisionIdFor(USDC) },
+        });
+        expect(JSON.stringify(mapDomainError(TRANSACTION_ERRORS, err))).not.toContain(address);
+        expect(calls).toEqual([]);
+      });
+    }
+
+    test("a destination that is not a valid strkey is still a missing destination", async () => {
+      const { controller } = await makeController({ readAccountState: async () => HOLDING });
+      const err = await controller
+        .transactions("testnet", sendingTo(tampered(W_ADDRESS)))
+        .catch((e: unknown) => e);
+      expect(mapDomainError(TRANSACTION_ERRORS, err)?.code).toBe("transfer_destination_missing");
+    });
+
+    test("a later account address for the same asset replaces the refused one", async () => {
+      const { controller } = await makeController({ readAccountState: async () => HOLDING });
+      const result = await controller.transactions(
+        "testnet",
+        body({
+          decisions: [
+            ACK,
+            {
+              id: decisionIdFor(USDC),
+              choice: TRANSFER_CHOICE,
+              params: { destination: W_ADDRESS },
+            },
+            { id: decisionIdFor(USDC), choice: TRANSFER_CHOICE, params: { destination: DEST } },
+          ],
+        })
+      );
+      expect(result.status).toBe("ready");
     });
   });
 

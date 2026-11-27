@@ -13,7 +13,8 @@ export function isValidGAddress(address: string): boolean {
 }
 
 /** Why a value is not a usable account address. */
-export type AddressProblem = "secret-key" | "muxed" | "prefix" | "length" | "checksum";
+export type AddressProblem =
+  "secret-key" | "muxed" | "contract" | "muxed-contract" | "prefix" | "length" | "checksum";
 
 export const SECRET_KEY_WARNING = ADDRESS[SITE_LOCALE].problems["secret-key"];
 
@@ -55,6 +56,9 @@ export function addressProblem(address: string): AddressProblem | null {
   if (looksLikeSecretKey(address)) return "secret-key";
   // Stripping the mux id ourselves would send the deposit with nothing to credit it by.
   if (isValidMuxedAddress(address)) return "muxed";
+  // A well-formed contract strkey is not a typo: say what it is, as the API does.
+  if (StrKey.isValidContract(address)) return "contract";
+  if (StrKey.isValidMuxedContract(address)) return "muxed-contract";
   if (!address.startsWith("G")) return "prefix";
   if (address.length !== ADDRESS_LENGTH) return "length";
   return "checksum";

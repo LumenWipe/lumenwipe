@@ -69,7 +69,11 @@ export class MediatorController {
     return this.signing.sign(network, body);
   }
 
-  @ApiErrorResponse(400, "Invalid network or address.", ["invalid_network", "invalid_address"])
+  @ApiErrorResponse(400, "Invalid network or address.", [
+    "invalid_network",
+    "invalid_address",
+    "unsupported_address_type",
+  ])
   @ApiErrorResponse(503, "The destination could not be read.", ["service_unavailable"])
   @UseGuards(new NetworkFirstGuard("Invalid network"))
   @Get("check/:address")
