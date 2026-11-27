@@ -27,7 +27,7 @@ export class RegistryController {
   @ApiResponse({
     status: 200,
     description:
-      "`entries` plus `lastVerified` and `validUntil`. A consumer MUST refuse to rely on this " +
+      "`entries` plus `lastVerified`, `validUntil` and the maintainers' `signature`. A consumer MUST refuse to rely on this " +
       "past `validUntil` rather than proceed on unchecked data: a close into an exchange with " +
       "the wrong memo rule succeeds on-chain and is credited to nobody, with no error and no " +
       "source account left to investigate from.",

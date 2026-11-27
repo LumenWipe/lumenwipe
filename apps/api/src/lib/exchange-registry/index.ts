@@ -1,4 +1,5 @@
 import registryJson from "@/config/exchange-registry.json";
+import signatureJson from "@/config/exchange-registry.sig.json";
 import type { Network } from "@/config/networks";
 import { isValidGAddress } from "@/lib/utils/validation";
 
@@ -143,7 +144,43 @@ export function registryLookups(entries: readonly RegistryEntry[]): RegistryLook
   };
 }
 
+/** The maintainers' signature over the registry, served beside it. The API never verifies it and
+ *  cannot create one: the clients check it against keys pinned in their releases, and CI checks
+ *  the committed file against them. */
+export interface RegistrySignature {
+  format: 1;
+  sequence: number;
+  issuedAt: string;
+  signature: string;
+}
+
+export function parseSignature(raw: unknown): RegistrySignature {
+  if (
+    !isRecord(raw) ||
+    Object.keys(raw).sort().join(",") !== "format,issuedAt,sequence,signature"
+  ) {
+    throw new RegistryValidationError(
+      "the signature needs exactly format, sequence, issuedAt and signature"
+    );
+  }
+  const { format, sequence, issuedAt, signature } = raw;
+  if (
+    format !== 1 ||
+    typeof sequence !== "number" ||
+    !Number.isSafeInteger(sequence) ||
+    sequence < 1 ||
+    typeof issuedAt !== "string" ||
+    !ISO_DATE.test(issuedAt) ||
+    typeof signature !== "string" ||
+    !/^[A-Za-z0-9+/]{86}==$/.test(signature)
+  ) {
+    throw new RegistryValidationError("the signature is not a version 1 envelope");
+  }
+  return { format, sequence, issuedAt, signature };
+}
+
 const registry = parseRegistry(registryJson);
+const signature = parseSignature(signatureJson);
 const shipped = registryLookups(registry.entries);
 
 /** The registry as served: the entries plus the freshness a consumer can judge them by. */
@@ -155,6 +192,8 @@ export interface ServedRegistry {
   validUntil: string;
   source: string;
   entries: RegistryEntry[];
+  /** Present when the registry is the shipped one. */
+  signature?: RegistrySignature;
 }
 
 export function servedRegistry(from: LoadedRegistry = registry): ServedRegistry {
@@ -164,6 +203,7 @@ export function servedRegistry(from: LoadedRegistry = registry): ServedRegistry 
     validUntil: from.validUntil,
     source: from.source,
     entries: from.entries,
+    ...(from === registry ? { signature } : {}),
   };
 }
 

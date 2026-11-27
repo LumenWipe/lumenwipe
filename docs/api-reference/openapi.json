@@ -376,7 +376,7 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": "`entries` plus `lastVerified` and `validUntil`. A consumer MUST refuse to rely on this past `validUntil` rather than proceed on unchecked data: a close into an exchange with the wrong memo rule succeeds on-chain and is credited to nobody, with no error and no source account left to investigate from.",
+            "description": "`entries` plus `lastVerified`, `validUntil` and the maintainers' `signature`. A consumer MUST refuse to rely on this past `validUntil` rather than proceed on unchecked data: a close into an exchange with the wrong memo rule succeeds on-chain and is credited to nobody, with no error and no source account left to investigate from.",
             "content": {
               "application/json": {
                 "schema": {
@@ -8836,6 +8836,39 @@
           "memoType"
         ]
       },
+      "RegistrySignatureDto": {
+        "type": "object",
+        "properties": {
+          "format": {
+            "type": "number",
+            "description": "Envelope version.",
+            "enum": [
+              1
+            ],
+            "example": 1
+          },
+          "sequence": {
+            "type": "number",
+            "description": "Rises by one with every signed registry. A client never accepts a sequence below the one bundled with it.",
+            "example": 1
+          },
+          "issuedAt": {
+            "type": "string",
+            "description": "The day (UTC) the registry was signed.",
+            "example": "2026-11-27"
+          },
+          "signature": {
+            "type": "string",
+            "description": "Base64 of the 64-byte Ed25519 signature, by one of the keys pinned in the clients, over a fixed label and the canonical JSON of the registry fields, the sequence and the issue date."
+          }
+        },
+        "required": [
+          "format",
+          "sequence",
+          "issuedAt",
+          "signature"
+        ]
+      },
       "ServedRegistryDto": {
         "type": "object",
         "properties": {
@@ -8863,6 +8896,14 @@
             "items": {
               "$ref": "#/components/schemas/RegistryEntryDto"
             }
+          },
+          "signature": {
+            "description": "The maintainers' signature over this registry. A client that verifies it may accept an exchange added after its release that needs the shared intermediary; without it, or when it does not verify, the registry can only make a client stricter.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RegistrySignatureDto"
+              }
+            ]
           }
         },
         "required": [
