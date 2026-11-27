@@ -53,6 +53,8 @@ import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { contractSimulation } from "./fixtures/fake-exit-adapter";
 import xbullFixture from "../fixtures/xbull-strict-send-sample.json";
 import { fakeFetch } from "../support/fetch";
+import { getFeeStatsAt } from "../support/rpc-fixtures";
+import { MAX_SOROBAN_INCLUSION_FEE_STROOPS } from "@/config/constants";
 
 const ACCOUNT = Keypair.random().publicKey();
 const OTHER_ACCOUNT = Keypair.random().publicKey();
@@ -557,6 +559,7 @@ function quoteFor(amountIn: bigint, amountOut: bigint): QuoteResponse {
 
 interface RoundWorld {
   balance: bigint | null;
+  getFeeStats?: rpc.Server["getFeeStats"];
   /** XLM out the API quotes for the balance; null = no route. */
   quotedOut: bigint | null;
   /** What the API builds; defaults to a sound router swap at the quoted floor. */
@@ -611,6 +614,7 @@ function roundDeps(world: RoundWorld) {
   };
   return {
     rpc: {
+      getFeeStats: world.getFeeStats ?? getFeeStatsAt(),
       async simulateTransaction() {
         if (world.balance === null) return contractSimulation("error", [], "0");
         return contractSimulation("ok", [], "100", nativeToScVal(world.balance, { type: "i128" }));
@@ -729,6 +733,34 @@ describe("the token conversion round", () => {
       expect(op.accountsReferenced).toEqual([ACCOUNT]);
       expect(op.authDepth).toBe(1);
     }
+  });
+
+  test("a Soroswap build bids the inclusion fee the fee stats price, whatever the API put in it", async () => {
+    const round = await run(
+      account(BALANCE.toString()),
+      { [TOKEN]: FLOOR.toString() },
+      { balance: BALANCE, quotedOut: 524_963_090n, getFeeStats: getFeeStatsAt("200") }
+    );
+    expect(TransactionBuilder.fromXDR(round!.transaction.xdr, Networks.PUBLIC).fee).toBe(
+      String(50_000 + 400)
+    );
+  });
+
+  test("a fee surge above the cap refuses the conversion by name", async () => {
+    await expect(
+      run(
+        account(BALANCE.toString()),
+        { [TOKEN]: FLOOR.toString() },
+        {
+          balance: BALANCE,
+          quotedOut: 524_963_090n,
+          getFeeStats: getFeeStatsAt(String(MAX_SOROBAN_INCLUSION_FEE_STROOPS)),
+        }
+      )
+    ).rejects.toMatchObject({
+      code: "soroban_token_conversion_failed",
+      message: expect.stringMatching(/fees are surging/),
+    });
   });
 
   test("a build whose shape deviates, or whose contract runs other code than the registry verified, is refused", async () => {
@@ -883,11 +915,13 @@ describe("the token conversion round", () => {
         xbullFetch: xbullFetchStub(freshAmountOut, xbullFixture.contractArgsXDR),
         xbullAuth: [xbullAuthEntry(XBULL_ROUTER)],
         xbullResolvePath: async () => [TOKEN, XLM],
+        getFeeStats: getFeeStatsAt("200"),
       }
     );
     expect(round).not.toBeNull();
     expect(round!.transaction.covers).toEqual(["HANDLE_ASSETS"]);
     expect(round!.transaction.sourceSequence).toBe(SEQUENCE);
+    expect(TransactionBuilder.fromXDR(round!.transaction.xdr, Networks.PUBLIC).fee).toBe("400");
     expect(round!.transaction.intent.summary).toContain("through xBull");
     expect(round!.transaction.intent.summary).not.toContain("Soroswap");
   });
@@ -949,8 +983,9 @@ describe("resolveXBullPath (via defaultTokenConversionRoundDeps)", () => {
    *  missing entry is a real "no ledger entry" case, not a stubbing shortcut. */
   function xbullStorageRpc(
     map: Record<string, string>
-  ): Pick<rpc.Server, "getLedgerEntries" | "simulateTransaction"> {
+  ): Pick<rpc.Server, "getFeeStats" | "getLedgerEntries" | "simulateTransaction"> {
     return {
+      getFeeStats: getFeeStatsAt(),
       async getLedgerEntries(...keys: xdr.LedgerKey[]) {
         const key0 = keys[0]!;
         if (key0.type !== "contractData") throw new Error("not stubbed");

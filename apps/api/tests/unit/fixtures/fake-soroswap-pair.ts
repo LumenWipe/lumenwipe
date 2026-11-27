@@ -15,6 +15,7 @@ import {
 import type { ExitRpc } from "@/lib/defi-exits";
 import { contractSimulation } from "./fake-exit-adapter";
 import { archivedAnswer, type EntryArchival } from "./entry-archival";
+import { getFeeStatsAt } from "../../support/rpc-fixtures";
 
 export const SOROSWAP_PAIR_HASH =
   "8447525edd62f72ffaf52136358034657ea0511a8fec1cd0ebde649f86cca464";
@@ -167,6 +168,7 @@ export function fakeSoroswapRpc(
   const simulateCalls: Transaction[] = [];
   return {
     simulateCalls,
+    getFeeStats: getFeeStatsAt(),
     async getLedgerEntries(...keys: xdr.LedgerKey[]) {
       const wanted = new Set(keys.map((k) => k.toXdr("base64")));
       return archivedAnswer(

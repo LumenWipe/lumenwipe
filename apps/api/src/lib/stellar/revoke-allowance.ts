@@ -10,12 +10,9 @@ import {
   scValToNative,
   type Transaction,
 } from "@stellar/stellar-sdk";
-import {
-  BASE_FEE_STROOPS,
-  MAX_SOROBAN_EXIT_FEE_STROOPS,
-  TX_TIMEOUT_SECONDS,
-} from "@/config/constants";
+import { MAX_SOROBAN_EXIT_FEE_STROOPS, TX_TIMEOUT_SECONDS } from "@/config/constants";
 import { NETWORK_PASSPHRASES, type Network } from "@/config/networks";
+import { sorobanInclusionFee } from "@/lib/stellar/soroban-fee";
 
 /**
  * The allowance inspector's revocation side (architecture.md §12, #163): a standalone
@@ -40,7 +37,7 @@ export class RevokeAllowanceBlockedError extends Error {
 }
 
 export interface RevokeAllowanceDeps {
-  rpc: Pick<stellarRpc.Server, "simulateTransaction" | "getAccount">;
+  rpc: Pick<stellarRpc.Server, "getAccount" | "getFeeStats" | "simulateTransaction">;
 }
 
 /**
@@ -130,6 +127,7 @@ export interface RevokeAllowanceTransaction {
  * Builds the one-operation `approve(owner, spender, 0, 0)` transaction that revokes a live
  * allowance. The expiration ledger is 0: it has no meaning once the amount is zero, and the
  * contract does not validate it against the current ledger in that case, unlike a genuine grant.
+ * Throws `SorobanFeeSurgeError` when the network prices inclusion above the cap.
  */
 export async function buildRevokeAllowanceTransaction(
   owner: string,
@@ -140,8 +138,9 @@ export async function buildRevokeAllowanceTransaction(
 ): Promise<RevokeAllowanceTransaction> {
   const passphrase = NETWORK_PASSPHRASES[network];
   const liveAccount = await deps.rpc.getAccount(owner);
+  const inclusionFee = await sorobanInclusionFee(deps.rpc);
   const raw = new TransactionBuilder(new Account(owner, liveAccount.sequenceNumber()), {
-    fee: String(BASE_FEE_STROOPS),
+    fee: inclusionFee.toString(),
     networkPassphrase: passphrase,
   })
     .addOperation(

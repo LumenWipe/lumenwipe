@@ -22,6 +22,8 @@ import {
 } from "@/lib/close-api/token-transfer-round";
 import { emptyDefiPositionsResult } from "./fixtures/defi-positions";
 import { contractSimulation } from "./fixtures/fake-exit-adapter";
+import { getFeeStatsAt } from "../support/rpc-fixtures";
+import { MAX_SOROBAN_INCLUSION_FEE_STROOPS } from "@/config/constants";
 
 const SOURCE = Keypair.random().publicKey();
 const DEST = Keypair.random().publicKey();
@@ -126,15 +128,18 @@ interface FakeOptions {
   balances: Record<string, bigint>;
   /** How the token's `transfer` simulates: the auth it asks for, or a failure. */
   transfer?: { auth?: AuthShape; mode?: "ok" | "error" | "restore"; minResourceFee?: string };
+  getFeeStats?: rpc.Server["getFeeStats"];
 }
 
 function fakeRpc(options: FakeOptions): {
+  getFeeStats: rpc.Server["getFeeStats"];
   simulateTransaction: rpc.Server["simulateTransaction"];
   simulated: Array<{ contract: string; fn: string }>;
 } {
   const simulated: Array<{ contract: string; fn: string }> = [];
   return {
     simulated,
+    getFeeStats: options.getFeeStats ?? getFeeStatsAt(),
     async simulateTransaction(tx) {
       const call = calledFunction(tx as Transaction);
       simulated.push({ contract: call.contract, fn: call.fn });
@@ -203,6 +208,39 @@ describe("the Soroban token transfer round", () => {
     }
     // 700 base units at 7 decimals, rendered the way the plan step renders it.
     expect(round!.transaction.intent.summary).toContain("Send 0.00007 XTAR to");
+  });
+
+  test("bids the inclusion fee the network's fee stats price, on top of the simulated resource fee", async () => {
+    const round = await build(
+      account([{ contract: TOKEN_A, balance: "5", symbol: "XTAR" }]),
+      { [TOKEN_A]: "transfer" },
+      { [TOKEN_A]: DEST },
+      { balances: { [TOKEN_A]: 5n }, getFeeStats: getFeeStatsAt("200") }
+    );
+    const tx = TransactionBuilder.fromXDR(round!.transaction.xdr, Networks.TESTNET);
+    expect(tx.fee).toBe(String(1000 + 400));
+  });
+
+  test("a fee surge above the cap refuses the transfer by name, with nothing built", async () => {
+    const options: FakeOptions = {
+      balances: { [TOKEN_A]: 5n },
+      getFeeStats: getFeeStatsAt(String(MAX_SOROBAN_INCLUSION_FEE_STROOPS)),
+    };
+    const rpc = fakeRpc(options);
+    const attempt = buildTokenTransferRound(
+      account([{ contract: TOKEN_A, balance: "5" }]),
+      { [TOKEN_A]: "transfer" },
+      { [TOKEN_A]: DEST },
+      "testnet",
+      "100",
+      5_000,
+      { rpc }
+    );
+    await expect(attempt).rejects.toMatchObject({
+      code: "soroban_token_transfer_failed",
+      message: expect.stringMatching(/fees are surging/),
+    });
+    expect(rpc.simulated.map((c) => c.fn)).toEqual(["balance"]);
   });
 
   test("one token per round, in a stable order, and a balance already moved is skipped for the next", async () => {

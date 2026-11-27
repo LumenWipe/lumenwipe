@@ -17,6 +17,11 @@ import {
   xbullConversionContracts,
 } from "@/lib/contract-registry";
 import { readLiveCodeIdentity } from "@/lib/stellar/contract-instance";
+import {
+  SorobanFeeSurgeError,
+  sorobanInclusionFee,
+  withInclusionFee,
+} from "@/lib/stellar/soroban-fee";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import {
   buildTokenConversion,
@@ -59,7 +64,7 @@ import { defaultXBullConversionDeps, quoteTokenToXlmViaXBull } from "@/lib/xbull
  */
 
 export interface TokenConversionRoundDeps {
-  rpc: Pick<stellarRpc.Server, "simulateTransaction" | "getLedgerEntries">;
+  rpc: Pick<stellarRpc.Server, "getFeeStats" | "simulateTransaction" | "getLedgerEntries">;
   conversion: ConversionDeps;
   /** Everything an xBull build needs: its own RPC view, its HTTP deps, and the live path
    *  resolver (`resolveXBullPath` below, by default). A sibling of `conversion` above - one
@@ -436,6 +441,17 @@ export function assertConversionShape(tx: Transaction, expected: ExpectedConvers
   }
 }
 
+async function conversionInclusionFee(rpc: TokenConversionRoundDeps["rpc"]): Promise<bigint> {
+  try {
+    return await sorobanInclusionFee(rpc);
+  } catch (err) {
+    if (err instanceof SorobanFeeSurgeError) {
+      throw new TokenTransferBlockedError("soroban_token_conversion_failed", err.message);
+    }
+    throw err;
+  }
+}
+
 /**
  * Builds the next token conversion, or null when no held token is due to be converted. Every
  * refusal is a named 422 for the client to act on; `quote_drifted` asks for a fresh decision.
@@ -548,6 +564,7 @@ export async function buildTokenConversionRound(
         account,
         network,
         sequence,
+        await conversionInclusionFee(deps.rpc),
         deps.xbull
       );
       if (!built) {
@@ -647,6 +664,7 @@ export async function buildTokenConversionRound(
           "Soroswap entries for this network. Send it to another account, or leave it on record."
       );
     }
+    const inclusionFee = await conversionInclusionFee(deps.rpc);
     const xdrBase64 = await buildTokenConversion(quote, account, network, deps.conversion);
     if (!xdrBase64) {
       throw new TokenTransferBlockedError(
@@ -660,7 +678,7 @@ export async function buildTokenConversionRound(
       const nowSeconds = Math.floor(deps.conversion.now() / 1000);
       const built = TransactionBuilder.fromXDR(xdrBase64, passphrase);
       if (!(built instanceof Transaction)) throw new Error("not a plain transaction");
-      tx = withCloseExpiry(built, nowSeconds);
+      tx = withInclusionFee(withCloseExpiry(built, nowSeconds), inclusionFee);
       assertConversionShape(tx, {
         token,
         account,

@@ -34,6 +34,7 @@ import {
   RevokeAllowanceBlockedError,
 } from "@/lib/stellar/revoke-allowance";
 import { fail } from "@/common/fail";
+import { SorobanFeeSurgeError } from "@/lib/stellar/soroban-fee";
 import { PathResponseDto, RevokeAllowanceResponseDto } from "./dto/account-responses.dto";
 import { AllowancesResultDto } from "./dto/allowance-responses.dto";
 import { AccountStateDto } from "./dto/account-state-response.dto";
@@ -191,6 +192,7 @@ export class AccountController {
       if (err instanceof RevokeAllowanceBlockedError) {
         fail(err.code, err.message, 422);
       }
+      if (err instanceof SorobanFeeSurgeError) fail("revoke_build_failed", err.message, 500);
       // The SDK's own not-found error for a nonexistent owner account, thrown by getAccount()
       // before this function ever reaches its own error handling - surfaced by name rather than
       // as a generic failure, the same reasoning as account.controller.ts's own account() handler.

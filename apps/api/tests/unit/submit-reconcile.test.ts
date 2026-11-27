@@ -155,6 +155,23 @@ describe("an answer short of acceptance is settled by hash", () => {
     expect(counts.reads).toBe(1);
   });
 
+  test("a resend the network keeps busy, then refuses for its fee, says nothing changed and to rebuild", async () => {
+    const { result, counts, clock } = run({
+      reads: [notFound],
+      sends: [
+        sendResult("TRY_AGAIN_LATER"),
+        sendResult("TRY_AGAIN_LATER"),
+        rejected("txInsufficientFee"),
+      ],
+    });
+    const failure = await result.catch((e: unknown) => e);
+    expect(failure).toMatchObject({ resultCode: "tx_insufficient_fee" });
+    expect((failure as TxSubmitError).message).toMatch(/Nothing changed on the account/);
+    expect((failure as TxSubmitError).message).toMatch(/retry to build it again/);
+    expect(counts).toEqual({ reads: 1, sends: 3 });
+    expect(clock.slept).toEqual([4_000, 4_000]);
+  });
+
   test("the original rejection stands when the window shows nothing", async () => {
     const { result, clock } = run({ reads: [notFound], sends: [rejected("txBadSeq")] });
     await expect(result).rejects.toMatchObject({ resultCode: "tx_bad_seq" });

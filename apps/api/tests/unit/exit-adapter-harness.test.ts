@@ -5,7 +5,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import { Address, Keypair, xdr } from "@stellar/stellar-sdk";
-import { EXIT_SIMULATION_CPU_LEEWAY } from "@/config/constants";
+import { EXIT_SIMULATION_CPU_LEEWAY, MAX_SOROBAN_INCLUSION_FEE_STROOPS } from "@/config/constants";
 import { runExitAdapter } from "@/lib/defi-exits";
 import {
   describeExitAdapterInvariants,
@@ -22,6 +22,7 @@ import {
   type FakeRpcOptions,
 } from "./fixtures/fake-exit-adapter";
 import { v1TransactionFromXdr } from "../support/v1-transaction";
+import { getFeeStatsAt } from "../support/rpc-fixtures";
 
 const WASM_HASH = "c".repeat(64);
 const LIVE_BALANCE = "750000000";
@@ -135,6 +136,40 @@ describe("runExitAdapter checks what the simulation added before offering the by
     );
     expect(result.next).toBeNull();
     expect(result.blockers.map((b) => b.code)).toEqual(["exit_fee_excessive"]);
+  });
+});
+
+describe("runExitAdapter prices the exit's inclusion fee from the network's fee stats", () => {
+  const RESOURCE_FEE = 12_345n;
+  const envelopeFee = (result: Awaited<ReturnType<typeof runWith>>) =>
+    BigInt(v1TransactionFromXdr(result.next!.simulation.txXdr).fee);
+
+  test("bids above a lane whose transactions tie at the surge level, on top of the resource fee", async () => {
+    const result = await runWith({}, { ...liveRpc(), getFeeStats: getFeeStatsAt("200") });
+    expect(result.blockers).toEqual([]);
+    expect(envelopeFee(result) - RESOURCE_FEE).toBe(400n);
+  });
+
+  test("bids exactly the cap when the stats ask for it", async () => {
+    const result = await runWith({}, { ...liveRpc(), getFeeStats: getFeeStatsAt("5000") });
+    expect(envelopeFee(result) - RESOURCE_FEE).toBe(BigInt(MAX_SOROBAN_INCLUSION_FEE_STROOPS));
+  });
+
+  test("refuses the step, before simulating, when the stats price inclusion above the cap", async () => {
+    const rpc = { ...liveRpc(), getFeeStats: getFeeStatsAt("5001") };
+    const result = await runWith({}, rpc);
+    expect(result.next).toBeNull();
+    expect(result.blockers.map((b) => b.code)).toEqual(["exit_fee_surge"]);
+    expect(rpc.simulateCalls).toHaveLength(0);
+  });
+
+  test("bids the cap when the stats cannot be read", async () => {
+    const result = await runWith(
+      {},
+      { ...liveRpc(), getFeeStats: () => Promise.reject(new Error("rpc down")) }
+    );
+    expect(result.blockers).toEqual([]);
+    expect(envelopeFee(result) - RESOURCE_FEE).toBe(BigInt(MAX_SOROBAN_INCLUSION_FEE_STROOPS));
   });
 });
 

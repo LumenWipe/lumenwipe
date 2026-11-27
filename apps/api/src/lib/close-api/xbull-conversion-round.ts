@@ -9,11 +9,7 @@ import {
 } from "@stellar/stellar-sdk";
 import { envelopeOps } from "@/lib/stellar/envelope-ops";
 import type { Network } from "@lumenwipe/types";
-import {
-  BASE_FEE_STROOPS,
-  MAX_SOROBAN_EXIT_FEE_STROOPS,
-  TX_TIMEOUT_SECONDS,
-} from "@/config/constants";
+import { MAX_SOROBAN_EXIT_FEE_STROOPS, TX_TIMEOUT_SECONDS } from "@/config/constants";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { addressOf, bigOf, collectAccounts, CONTRACT_ID } from "@/lib/stellar/scval-read";
 import {
@@ -218,6 +214,7 @@ export async function buildXBullConversion(
   from: string,
   network: Network,
   sequence: string,
+  inclusionFee: bigint,
   deps: XBullBuildDeps
 ): Promise<{ xdr: string; contractArgsXDR: string } | null> {
   let contractArgsXDR: string | null;
@@ -240,12 +237,10 @@ export async function buildXBullConversion(
   try {
     const contractArgs = xdr.InvokeContractArgs.fromXdr(contractArgsXDR, "base64");
     const account = new Account(from, sequence);
-    // A small, fixed inclusion fee: `assembleTransaction` below adds the simulation's own
-    // resource fee on top, and `assertXBullConversionShape`'s MAX_SOROBAN_EXIT_FEE_STROOPS
-    // check is a ceiling on that *assembled* total, not a budget to spend up front here. The
-    // same split `defi-exits/run-exit.ts` already uses for every other Soroban build.
+    // `assembleTransaction` below adds the simulation's resource fee on top of the inclusion fee,
+    // and `assertXBullConversionShape`'s MAX_SOROBAN_EXIT_FEE_STROOPS caps that assembled total.
     const tx = new TransactionBuilder(account, {
-      fee: BASE_FEE_STROOPS.toString(),
+      fee: inclusionFee.toString(),
       networkPassphrase: NETWORK_PASSPHRASES[network],
     })
       .addOperation(

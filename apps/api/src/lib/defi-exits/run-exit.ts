@@ -9,13 +9,13 @@ import {
   xdr,
 } from "@stellar/stellar-sdk";
 import {
-  BASE_FEE_STROOPS,
   EXIT_SIMULATION_CPU_LEEWAY,
   MAX_SOROBAN_EXIT_FEE_STROOPS,
   TX_TIMEOUT_SECONDS,
 } from "@/config/constants";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { isRegistryFresh, resolveCode, type ContractResolution } from "@/lib/contract-registry";
+import { SorobanFeeSurgeError, sorobanInclusionFee } from "@/lib/stellar/soroban-fee";
 import {
   readLiveCodeIdentity,
   type CodeIdentity,
@@ -443,9 +443,16 @@ export async function runExitAdapter<P extends DefiPosition, L>(
   let tx: Transaction;
   let op: xdr.Operation;
   if (built.build.source === "local") {
+    let inclusionFee: bigint;
+    try {
+      inclusionFee = await sorobanInclusionFee(deps.rpc);
+    } catch (err) {
+      if (!(err instanceof SorobanFeeSurgeError)) throw err;
+      return blocked(contract, resolution, steps, [blocker("exit_fee_surge", err.message)]);
+    }
     op = built.build.op;
     tx = new TransactionBuilder(new Account(ctx.account, ctx.sequence), {
-      fee: String(BASE_FEE_STROOPS),
+      fee: inclusionFee.toString(),
       networkPassphrase: passphrase,
     })
       .addOperation(op)

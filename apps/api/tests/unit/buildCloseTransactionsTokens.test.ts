@@ -22,6 +22,7 @@ import { authorizationOf } from "./fixtures/trustline";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 import { ALL_ON } from "@/config/kill-switches";
+import { getFeeStatsAt } from "../support/rpc-fixtures";
 
 beforeEach(() => {
   stubIssuance();
@@ -91,8 +92,9 @@ function withToken(balance: string, over: Partial<AccountState> = {}): AccountSt
 }
 
 /** Answers the token's `balance` and simulates its `transfer` under source-account credentials. */
-function tokenRpc(balance: bigint): { simulateTransaction: rpc.Server["simulateTransaction"] } {
+function tokenRpc(balance: bigint): Pick<rpc.Server, "getFeeStats" | "simulateTransaction"> {
   return {
+    getFeeStats: getFeeStatsAt(),
     async simulateTransaction(tx) {
       const call = callOf(onlyOperation(tx as Transaction));
       if (call.functionName.toString() === "balance") {
@@ -180,6 +182,7 @@ test("a token left on record needs no transaction: the classic close builds stra
     {},
     {
       rpc: {
+        getFeeStats: getFeeStatsAt(),
         simulateTransaction: () => Promise.reject(new Error("the token round must not run")),
       },
     }
@@ -294,6 +297,7 @@ test("a trustline answered leave is refused before any token moves: the token ro
     {},
     {
       rpc: {
+        getFeeStats: getFeeStatsAt(),
         simulateTransaction: () => {
           simulated++;
           return Promise.reject(new Error("must not run"));

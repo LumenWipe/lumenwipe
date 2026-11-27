@@ -190,3 +190,32 @@ export function sampleTransaction(): Transaction {
     .setTimeout(30)
     .build();
 }
+
+/** A `getFeeStats` answer whose Soroban inclusion fees all sit at `fee` stroops. */
+export function feeStats(fee = "100"): rpc.Api.GetFeeStatsResponse {
+  const distribution = {
+    max: fee,
+    min: fee,
+    mode: fee,
+    p10: fee,
+    p20: fee,
+    p30: fee,
+    p40: fee,
+    p50: fee,
+    p60: fee,
+    p70: fee,
+    p80: fee,
+    p90: fee,
+    p95: fee,
+    p99: fee,
+    transactionCount: "10",
+    ledgerCount: 50,
+  };
+  return { sorobanInclusionFee: distribution, inclusionFee: distribution, latestLedger: 1 };
+}
+
+/** A `getFeeStats` that answers `feeStats(fee)`, for a fake RPC. */
+export const getFeeStatsAt =
+  (fee = "100") =>
+  async (): Promise<rpc.Api.GetFeeStatsResponse> =>
+    feeStats(fee);
