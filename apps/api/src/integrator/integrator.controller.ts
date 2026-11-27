@@ -51,6 +51,7 @@ import {
   contractAuthConfig,
   isReady,
   readSignedContractChallenge,
+  unsupportedCredentialKind,
   verifyOnEveryProvider,
   type ContractAuthConfig,
   type ContractAuthNetwork,
@@ -212,7 +213,7 @@ export class IntegratorController {
   @ApiOperation({
     summary: "Exchange a contract account's signed challenge for a session token.",
     description:
-      "The signed entries are accepted only when an enforcing simulation of `web_auth_verify` succeeds on every RPC provider the API is configured with, and only once.",
+      "The signed entries are accepted only when an enforcing simulation of `web_auth_verify` succeeds on every RPC provider the API is configured with, and only once. The account's entry must carry address credentials (`sorobanCredentialsAddress` or `sorobanCredentialsAddressV2`); any other credential kind, source-account and delegated signers included, is refused with `invalid_challenge` and a message naming the kind, and the challenge stays usable.",
   })
   @ApiBody({ type: ContractSessionRequestDto })
   @ApiResponse({ status: 200, description: "A session token.", type: SessionResponseDto })
@@ -223,6 +224,14 @@ export class IntegratorController {
     const { account, config } = this.contractRequest(network, body);
     if (typeof body.authorizationEntries !== "string") {
       fail("invalid_request", "authorizationEntries is required.", 400);
+    }
+    const kind = unsupportedCredentialKind(body.authorizationEntries);
+    if (kind) {
+      fail(
+        "invalid_challenge",
+        `The signed challenge uses a credential kind this API does not accept: ${kind}. Sign the account's entry as address credentials (sorobanCredentialsAddress or sorobanCredentialsAddressV2).`,
+        401
+      );
     }
     const signed = readSignedContractChallenge(config, account, body.authorizationEntries);
     if (!signed) fail("invalid_challenge", "The signed challenge is invalid or has expired.", 401);
