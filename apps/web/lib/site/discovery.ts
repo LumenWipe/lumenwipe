@@ -108,7 +108,7 @@ export const AGENT_SKILLS: readonly AgentSkill[] = [
       "",
       "## Steps",
       "",
-      "1. Plan: `POST /v1/{network}/close/plan` with `{ source, destination }`. Stop on any blocker. Ask the user for every required decision point except the destination acknowledgement you can answer for an address you control. Keep the `planHash` of the plan the user reviewed.",
+      "1. Plan: `POST /v1/{network}/close/plan` with `{ source, destination }`. Stop on any blocker. Ask the user for every required decision point, including the acknowledgement of a destination LumenWipe does not recognize: each is the user's own choice, never yours. Keep the `planHash` of the plan the user reviewed.",
       "2. Fetch: `POST /v1/{network}/close/transactions` with `{ source, destination, decisions, planHash }`. It returns the next round of unsigned transactions.",
       "3. Verify every transaction with `@lumenwipe/verify` before signing it: `verifyCloseTransaction` with the destination and per-asset choices the user made and the account read the user reviewed, plus `exitExpectations(account, network)` and `poolWithdrawalExpectations(account)`. Take no expectation from the transaction or from its `intent` summary. It throws `VerificationError` on any mismatch: do not sign.",
       "4. Sign locally, then `POST /v1/{network}/submit` with `{ signedXdr }`.",
