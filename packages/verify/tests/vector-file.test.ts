@@ -55,6 +55,9 @@ describe("close-v1.json", () => {
     for (const name of [
       "snapshot-lists-destination-as-needing-intermediary",
       "snapshot-enables-intermediary-for-destination",
+      "snapshot-signed-by-unpinned-key-enables-intermediary",
+      "snapshot-with-forged-signature-enables-intermediary",
+      "snapshot-with-truncated-signature-lists-destination-as-needing-intermediary",
       "snapshot-requires-memo-for-destination",
       "snapshot-lists-transfer-destination-as-deposit-address",
       "snapshot-extends-expiry-past-cap",

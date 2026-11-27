@@ -12,14 +12,15 @@ import type {
   AccountState,
   AccountThresholds,
   ExchangeRegistryEntry,
+  ExchangeRegistrySignature,
   SponsoredEntry,
 } from "@lumenwipe/types";
 import {
+  mediatorAllowedUnder as webMediatorAllowedUnder,
   poolWithdrawalExpectations as webPoolWithdrawalExpectations,
   verifyCloseTransaction as webVerifyCloseTransaction,
 } from "../../../apps/web/lib/stellar/verify";
 import { exitExpectations as webExitExpectations } from "../../../apps/web/lib/stellar/exit-expectations";
-import { mediatorAllowedFor } from "../../../apps/web/lib/exchange-registry";
 import { verifyRevokeAllowanceTransaction as webVerifyRevokeAllowanceTransaction } from "../../../apps/web/lib/stellar/verify-revoke-allowance";
 
 export {
@@ -35,6 +36,7 @@ export type {
   AccountState,
   AccountThresholds,
   ExchangeRegistryEntry,
+  ExchangeRegistrySignature,
   SponsoredEntry,
 };
 
@@ -174,21 +176,30 @@ export interface CloseExpectationInput extends ExitExpectations {
 
 /**
  * A served exchange registry: the body of `GET /v1/config/exchange-registry` (the SDK's
- * `client.getExchangeRegistry()`), passed as is. Only these three fields are read.
+ * `client.getExchangeRegistry()`), passed as is, with its `signature`.
  *
- * It is not authenticated, and it does not need to be for what it can do: it is merged over the
- * registry bundled in this package and can only make verification stricter.
+ * Without a signature that verifies, it is not authenticated, and it does not need to be for what
+ * it can do: it is merged over the registry bundled in this package and can only make
+ * verification stricter.
  *
  * - A bundled exchange is never removed, and its memo requirement and its refusal of a direct
  *   merge are never turned off.
  * - An address it adds is checked as an exchange: a direct merge into it is refused when it
  *   needs the intermediary, a memo is required when it needs one, and a transfer to it is refused.
- * - It never enables the mediated hand-off. That stays limited to the exchanges the bundled
- *   registry lists ({@link requiresMediator}), so an address only the snapshot lists as needing
- *   the intermediary refuses both shapes until this package is updated.
- * - It never changes the network a bundled exchange applies on: a testnet-only entry stays
- *   unlisted on mainnet, and an entry listed on every network stays listed on both. An entry it
- *   adds with `network: "testnet"` applies on testnet only; any other `network` value drops it.
+ * - Its `signature` is an Ed25519 signature by one of the two registry keys pinned in this
+ *   release, over the registry fields (`version`, `lastVerified`, `validUntil`, `source`,
+ *   `entries`) with a sequence and an issue date. It verifies only when it is by a pinned key, is
+ *   not older than the registry bundled here (its sequence is at least the bundled one), has not
+ *   passed its `validUntil` by this machine's clock, and is not dated more than a day ahead.
+ *   Anything else, including a missing or truncated signature, leaves the snapshot unsigned.
+ * - Only a verified signature enables the mediated hand-off, and only for an address it adds that
+ *   needs the intermediary ({@link requiresMediator}). An address an unsigned snapshot lists as
+ *   needing the intermediary refuses both shapes until this package is updated. The signature
+ *   gates the shape; it does not vouch for the account a mediated close merges into.
+ * - A verified signature adds exchanges and nothing else. It never changes a bundled entry, the
+ *   network a bundled exchange applies on, or a memo type: a testnet-only entry stays unlisted
+ *   on mainnet, and an entry it adds with `network: "testnet"` applies on testnet only; any other
+ *   `network` value drops it.
  * - Its `validUntil` may move the bundled expiry later, by at most 120 days, never earlier.
  * - It never decides a memo type. A different type for a bundled exchange is refused with
  *   `registry_memo_type_conflict`, and a type for an address it adds that differs from the one
@@ -200,10 +211,17 @@ export interface CloseExpectationInput extends ExitExpectations {
 export interface ServedRegistry {
   /** The listed exchanges. An entry that is not well formed is dropped. */
   entries: ExchangeRegistryEntry[];
-  /** When the entries were last checked (YYYY-MM-DD). Not used to decide anything. */
+  /** When the entries were last checked (YYYY-MM-DD). Covered by the signature. */
   lastVerified: string;
   /** The date (YYYY-MM-DD) after which the registry is not relied on. */
   validUntil: string;
+  /** The registry's version. Covered by the signature, so pass it as served. */
+  version?: string;
+  /** Where the entries come from. Covered by the signature, so pass it as served. */
+  source?: string;
+  /** The maintainers' signature, as served. Omit it, or pass a copy that fails to verify, and
+   *  the snapshot can only make verification stricter. */
+  signature?: ExchangeRegistrySignature;
 }
 
 /** A classic liquidity pool the account holds shares in, as the account read showed it. Every
@@ -274,15 +292,20 @@ export function poolWithdrawalExpectations(
 }
 
 /**
- * Whether a close to `address` on `network` goes through the shared intermediary: true only for
- * an exchange the registry bundled in this package lists, on that network, as unable to receive
- * an account merge. An entry scoped to testnet never answers true on mainnet. The same rule
- * `verifyCloseTransaction` applies, so an integrator decides from it, never from the API's
- * response, whether a transaction needs the intermediary's co-signature. A served snapshot never
- * changes this answer, so it takes none.
+ * Whether a close to `address` on `network` goes through the shared intermediary: true for an
+ * exchange the registry bundled in this package lists, on that network, as unable to receive an
+ * account merge, and for one a verified signature on `servedRegistry` adds. An entry scoped to
+ * testnet never answers true on mainnet. The same rule `verifyCloseTransaction` applies, so an
+ * integrator decides from it, never from the API's response, whether a transaction needs the
+ * intermediary's co-signature. Pass the same snapshot you pass to `verifyCloseTransaction`;
+ * without one, or with an unsigned one, only the bundled registry answers.
  */
-export function requiresMediator(address: string, network: Network): boolean {
-  return mediatorAllowedFor(address, network);
+export function requiresMediator(
+  address: string,
+  network: Network,
+  servedRegistry?: ServedRegistry
+): boolean {
+  return webMediatorAllowedUnder(address, network, servedRegistry);
 }
 
 /**

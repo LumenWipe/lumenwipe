@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import type { RegistryEntry, ServedRegistry } from "@/lib/exchange-registry";
+import type { RegistryEntry, RegistrySignature, ServedRegistry } from "@/lib/exchange-registry";
 
 // Documentation-only (see close/dto/close-requests.dto.ts's header comment for why).
 
@@ -33,6 +33,27 @@ export class RegistryEntryDto implements RegistryEntry {
   network?: "testnet";
 }
 
+export class RegistrySignatureDto implements RegistrySignature {
+  @ApiProperty({ description: "Envelope version.", enum: [1], example: 1 })
+  format!: 1;
+
+  @ApiProperty({
+    description:
+      "Rises by one with every signed registry. A client never accepts a sequence below the one bundled with it.",
+    example: 1,
+  })
+  sequence!: number;
+
+  @ApiProperty({ description: "The day (UTC) the registry was signed.", example: "2026-11-27" })
+  issuedAt!: string;
+
+  @ApiProperty({
+    description:
+      "Base64 of the 64-byte Ed25519 signature, by one of the keys pinned in the clients, over a fixed label and the canonical JSON of the registry fields, the sequence and the issue date.",
+  })
+  signature!: string;
+}
+
 export class ServedRegistryDto implements ServedRegistry {
   @ApiProperty({ description: "Registry file version.", example: "1.0.0" })
   version!: string;
@@ -55,4 +76,11 @@ export class ServedRegistryDto implements ServedRegistry {
 
   @ApiProperty({ type: [RegistryEntryDto] })
   entries!: RegistryEntry[];
+
+  @ApiPropertyOptional({
+    type: RegistrySignatureDto,
+    description:
+      "The maintainers' signature over this registry. A client that verifies it may accept an exchange added after its release that needs the shared intermediary; without it, or when it does not verify, the registry can only make a client stricter.",
+  })
+  signature?: RegistrySignature;
 }

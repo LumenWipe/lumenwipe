@@ -7,9 +7,16 @@ import {
   lookupExchange,
   mediatorAllowedFor,
   memoTypeInDispute,
+  pinnedRegistryTrust,
   type RegistryEntry,
 } from "@/lib/exchange-registry";
-import { appliesOn, isUsableAt, mergeServedRegistry } from "@/lib/exchange-registry/merge";
+import {
+  appliesOn,
+  isUsableAt,
+  mediatedByAddition,
+  resolveServedRegistry,
+} from "@/lib/exchange-registry/merge";
+import type { RegistrySignature } from "@/lib/exchange-registry/signature";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
 import { toHex } from "@/lib/stellar/hex";
 import { VerificationError } from "@/lib/stellar/verification-error";
@@ -44,7 +51,8 @@ export interface CloseExpectation {
   /** The user's chosen final destination. */
   destination: string;
   /** Whether the user's destination routes through the shared intermediary.
-   *  `verifyCloseTransaction` derives it from the bundled exchange registry alone; the caller
+   *  `verifyCloseTransaction` derives it from the bundled exchange registry and a verified signed
+   *  snapshot; the caller
    *  does not pass it. Without it the two-operation hand-off would be accepted for a close the
    *  user asked to send straight to their own wallet. */
   mediatorRequired: boolean;
@@ -1795,6 +1803,11 @@ export interface ServedRegistryInput {
   entries: RegistryEntry[];
   lastVerified: string;
   validUntil: string;
+  version?: string;
+  source?: string;
+  /** The maintainers' signature over the registry, as served. Read only to decide whether the
+   *  snapshot may add an exchange that needs the intermediary. */
+  signature?: RegistrySignature;
 }
 
 /** The exchange registry one verification reads on one network: its entries, whether it is still
@@ -1803,6 +1816,14 @@ interface RegistryView {
   lookup: (address: string) => RegistryEntry | null;
   usable: () => boolean;
   memoTypeInDispute: (address: string) => boolean;
+  mediatorAllowed: (address: string) => boolean;
+}
+
+/** What a snapshot signature is checked against: the pinned keys, and the sequence of the
+ *  registry bundled with this build. */
+export interface RegistryTrust {
+  keys: readonly string[];
+  bundledSequence: number;
 }
 
 /**
@@ -1812,20 +1833,27 @@ interface RegistryView {
  * caller asked for it to be applied, and quietly verifying without it would check a newly listed
  * exchange as a plain wallet.
  *
- * The mediated hand-off is not part of the view. It stays decided by the bundled copy alone
- * (`mediatorAllowedFor`): enabling it from served data would let the party that builds the
- * transaction and reports the balance also choose which closes may route through an
- * intermediary it names.
+ * The mediated hand-off is decided by the bundled copy and by a snapshot whose signature verifies
+ * against `keys`. An unsigned snapshot, or one whose signature does not verify, never enables it:
+ * that would let the party that builds the transaction and reports the balance also choose which
+ * closes may route through an intermediary it names. The signature gates the shape; it does not
+ * vouch for the account the transaction merges into.
  */
-function registryView(served: ServedRegistryInput | undefined, network: Network): RegistryView {
+export function registryView(
+  served: ServedRegistryInput | undefined,
+  network: Network,
+  trust: RegistryTrust
+): RegistryView {
   if (served === undefined) {
     return {
       lookup: (address) => lookupExchange(address, network),
       usable: () => isRegistryUsable(),
       memoTypeInDispute,
+      mediatorAllowed: (address) => mediatorAllowedFor(address, network),
     };
   }
-  const merged = mergeServedRegistry(bundledRegistry(), served);
+  const bundled = bundledRegistry();
+  const merged = resolveServedRegistry(bundled, served, { ...trust, now: new Date() });
   if (merged === null) {
     throw new VerificationError(
       "registry_snapshot_invalid",
@@ -1841,7 +1869,20 @@ function registryView(served: ServedRegistryInput | undefined, network: Network)
     lookup: (address) => byAddress.get(address) ?? null,
     usable: () => isUsableAt(merged.validUntil, new Date()),
     memoTypeInDispute: (address) => disputes.has(address),
+    mediatorAllowed: (address) =>
+      bundledExchange(address, network)?.requiresMediator === true ||
+      mediatedByAddition(merged, address, network),
   };
+}
+
+/** Whether a close to `destination` may take the mediated hand-off, read the way the close reads
+ *  it: from the bundled registry and from `served` when its signature verifies. */
+export function mediatorAllowedUnder(
+  destination: string,
+  network: Network,
+  served?: ServedRegistryInput
+): boolean {
+  return registryView(served, network, pinnedRegistryTrust()).mediatorAllowed(destination);
 }
 
 /**
@@ -1882,14 +1923,8 @@ function listedMemoType(
   return expected.memoType;
 }
 
-/**
- * Decodes a server-built unsigned close transaction and asserts it against what the client
- * expects, using the client-bundled exchange registry for the memo policy. Throws on any
- * mismatch; the browser must only sign after this returns. Run once per transaction, before
- * each sign. Fully client-side: safety follows from the transaction's own structure, so no
- * on-chain read is needed (an over-stated amount or a stale build simply fails on submission).
- */
-export function verifyCloseTransaction(opts: {
+/** What `verifyCloseTransaction` takes. */
+export interface CloseVerificationOptions {
   unsignedXdr: string;
   network: Network;
   preAuthorized?: boolean;
@@ -1935,9 +1970,27 @@ export function verifyCloseTransaction(opts: {
     poolWithdrawals?: Record<string, PoolWithdrawalExpectation>;
     sponsoredEntries?: SponsoredEntry[];
   };
-}): void {
+}
+
+/**
+ * Decodes a server-built unsigned close transaction and asserts it against what the client
+ * expects, using the client-bundled exchange registry for the memo policy. Throws on any
+ * mismatch; the browser must only sign after this returns. Run once per transaction, before
+ * each sign. Fully client-side: safety follows from the transaction's own structure, so no
+ * on-chain read is needed (an over-stated amount or a stale build simply fails on submission).
+ */
+export function verifyCloseTransaction(opts: CloseVerificationOptions): void {
+  verifyCloseWith(opts, pinnedRegistryTrust());
+}
+
+/**
+ * `verifyCloseTransaction` with the trust a snapshot signature is checked against. Not part of
+ * the package surface: the public function always passes the pinned keys, so an integrator cannot
+ * name another set.
+ */
+export function verifyCloseWith(opts: CloseVerificationOptions, trust: RegistryTrust): void {
   const intent = intentFromXdr(opts.unsignedXdr, NETWORK_PASSPHRASES[opts.network]);
-  const registry = registryView(opts.servedRegistry, opts.network);
+  const registry = registryView(opts.servedRegistry, opts.network, trust);
   const exchange = registry.lookup(opts.expected.destination);
 
   // Asserted here, not only in the UI. The plan view disables its button on an expired
@@ -1961,8 +2014,7 @@ export function verifyCloseTransaction(opts: {
       [...Object.values(opts.expected.transfers), ...Object.values(opts.expected.tokenTransfers)],
       registry.lookup
     ),
-    // From the bundled copy alone, whatever was served: see `registryView`.
-    mediatorRequired: mediatorAllowedFor(opts.expected.destination, opts.network),
+    mediatorRequired: registry.mediatorAllowed(opts.expected.destination),
     directMergeRefused: exchange?.requiresMediator ?? false,
     memoRequired: exchange?.requiresMemo ?? false,
     memoType:

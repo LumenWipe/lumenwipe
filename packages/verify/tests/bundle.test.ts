@@ -46,6 +46,17 @@ for (const [file, source, sdkImport] of bundles) {
   });
 }
 
+const PINNED_KEYS = [
+  "GAKGKRCTIPJIFS4UAL6TZEXW3ZUUYBFBPBAVNG37NKILQQ5ZSW3VGDTK",
+  "GAOXVNB4UHWUOXDLSQXTPUJUZWRHKO35ZP5P5XZNPESMEIPUL3X66PDD",
+];
+
+for (const [file, source] of bundles) {
+  test(`dist/${file} pins the two registry signing keys, once each`, () => {
+    for (const key of PINNED_KEYS) expect(source.split(key).length - 1).toBe(1);
+  });
+}
+
 test("exports exactly the documented surface, in both formats", async () => {
   const surface = [
     "RevokeAllowanceVerificationError",

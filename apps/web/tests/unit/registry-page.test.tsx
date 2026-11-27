@@ -115,3 +115,50 @@ describe("the registry", () => {
     fetchSpy.mockRestore();
   });
 });
+
+describe("an exchange the API's copy adds that needs the relay account", () => {
+  const ADDED = `G${"B".repeat(55)}`;
+  const added = {
+    address: ADDED,
+    name: "Newly Listed",
+    domain: "newly-listed.example",
+    requiresMediator: true,
+    requiresMemo: true,
+    memoType: "text" as const,
+  };
+
+  test("is shown as unavailable when the copy is not signed", async () => {
+    render(
+      <RegistryClient
+        load={async () => served({ entries: [...BUNDLED.entries, added], trust: "unsigned" })}
+        clock={at("2026-11-16T12:00:00Z")}
+      />
+    );
+    await screen.findByText(ADDED);
+    const card = screen.getByText(ADDED).closest("li");
+    expect(card?.textContent).toContain("which this app version cannot use for it");
+    expect(card?.textContent).not.toContain("Through the relay account");
+    expect(screen.getByText(/is not signed/)).toBeTruthy();
+  });
+
+  test("is shown as using the relay account when a verified signature added it", async () => {
+    render(
+      <RegistryClient
+        load={async () =>
+          served({
+            entries: [...BUNDLED.entries, added],
+            trust: "signed",
+            sequence: 7,
+            mediatedAdditions: [ADDED],
+          })
+        }
+        clock={at("2026-11-16T12:00:00Z")}
+      />
+    );
+    await screen.findByText(ADDED);
+    expect(screen.getByText(ADDED).closest("li")?.textContent).toContain(
+      "Through the relay account"
+    );
+    expect(screen.getByText(/signed by the maintainers \(sequence 7\)/)).toBeTruthy();
+  });
+});

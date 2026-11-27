@@ -98,19 +98,29 @@ network at all. A new version is released on every registry change.
 
 `verifyCloseTransaction` takes an optional `servedRegistry`: the body of
 `GET /v1/config/exchange-registry` (`client.getExchangeRegistry()`), fetched by you and passed
-as is. It is merged over the bundled exchange registry with the same stricter-only rule the web
-app applies to the copy it is served. The snapshot is not authenticated; it is safe to pass
-because it can only make verification stricter:
+as is, `signature` included. It is merged over the bundled exchange registry with the same
+stricter-only rule the web app applies to the copy it is served. Unless its signature verifies it
+is not authenticated; it is safe to pass because it can only make verification stricter:
 
 - A bundled exchange is never removed, and its memo requirement and its refusal of a direct
   merge are never turned off.
 - An address the snapshot adds is checked as an exchange: a direct merge into it is refused if it
   needs the intermediary, a memo is required if it needs one, and a transfer to it is refused.
-- It never enables the mediated hand-off: that stays limited to the exchanges bundled here
-  (`requiresMediator`, which takes no snapshot). An address only the snapshot lists as needing the
-  intermediary refuses both a direct merge and the hand-off until you upgrade. Accepting the
-  hand-off on served data would let the API, which also builds the transaction and reports the
+- Without a signature that verifies it never enables the mediated hand-off: that stays limited to
+  the exchanges bundled here. An address an unsigned snapshot lists as needing the intermediary
+  refuses both a direct merge and the hand-off until you upgrade. Accepting the hand-off on
+  unauthenticated data would let the API, which also builds the transaction and reports the
   balance the forward is checked against, choose which closes go through an intermediary.
+- With a signature that verifies, the snapshot may add an exchange that needs the hand-off, and
+  nothing else (`requiresMediator(address, network, servedRegistry)` answers by the same rule). The
+  signature is an Ed25519 signature by one of two registry keys pinned in this release, over the
+  registry, a sequence and an issue date. It verifies only when a pinned key made it, its sequence
+  is at least the one of the registry bundled here, `validUntil` has not passed by your clock and
+  `issuedAt` is no more than a day ahead of it. A missing, truncated, forged or stale signature
+  leaves the snapshot unsigned rather than refusing the close. It changes no bundled entry, memo
+  type or network scope, and it gates the hand-off without vouching for the account a mediated
+  close merges into. Rotating a key is a release of this package; the conformance vectors are
+  `vectors/registry-signing-v1.json`.
 - It never changes the network a bundled exchange applies on: a testnet-only entry stays
   unlisted on mainnet, and an entry listed on every network stays listed on both. An address it
   adds with `"network": "testnet"` applies on testnet only.

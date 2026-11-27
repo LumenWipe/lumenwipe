@@ -31,6 +31,7 @@ import {
   TransactionBuilder,
   xdr,
 } from "@stellar/stellar-sdk";
+import { signingBytes } from "../../../apps/web/lib/exchange-registry/signature";
 import { bundledRegistry } from "../../../apps/web/lib/exchange-registry";
 import { MAX_EXTENSION_DAYS } from "../../../apps/web/lib/exchange-registry/merge";
 import { REAL_EXIT_ENVELOPES } from "../../../apps/web/tests/unit/fixtures/real-exit-envelopes";
@@ -43,6 +44,10 @@ import {
   type VerificationErrorCode,
   type VerifyCloseInput,
 } from "../src/index";
+import {
+  buildRegistrySigningVectorFile,
+  REGISTRY_SIGNING_VECTORS_PATH,
+} from "./registry-signing-vectors";
 import { buildRevokeVectorFile, REVOKE_VECTORS_PATH } from "./revoke-vectors";
 
 export const VECTORS_PATH = fileURLToPath(new URL("../vectors/close-v1.json", import.meta.url));
@@ -999,6 +1004,51 @@ rejectUnderSnapshot(
   build([merge(INTERMEDIARY), forward({ destination: DESTINATION })])
 );
 
+// A signature gates the hand-off only when a key pinned in the package made it. The signing key
+// below is a throwaway from a fixed seed and is not pinned, so even a signature that verifies
+// under it, and a signature of the right shape that verifies under nothing, change nothing.
+const walletAsExchangeBody = {
+  ...walletAsExchange,
+  version: "2026-10-25",
+  source: "https://registry.example/directory",
+};
+const unpinnedSigner = Keypair.fromRawEd25519Seed(
+  hash(Buffer.from("lumenwipe close-v1 unpinned registry signer"))
+);
+const unpinnedMeta = { sequence: 1000, issuedAt: "2026-10-25" };
+const unpinnedBytes = signingBytes(walletAsExchangeBody, unpinnedMeta);
+if (unpinnedBytes === null) throw new Error("the unpinned-signer registry must be canonical");
+const withSignature = (signature: string): ServedRegistry => ({
+  ...walletAsExchangeBody,
+  signature: { format: 1, ...unpinnedMeta, signature },
+});
+rejectUnderSnapshot(
+  minimal,
+  "snapshot-signed-by-unpinned-key-enables-intermediary",
+  "Routes the merge through an intermediary that forwards the balance to the destination, with a snapshot listing the destination as needing the intermediary and carrying a valid signature by a key this package does not pin. Only a pinned key's signature enables the hand-off.",
+  withSignature(Buffer.from(unpinnedSigner.sign(Buffer.from(unpinnedBytes))).toString("base64")),
+  "merge_destination_mismatch",
+  "The account would be merged to an address you did not choose.",
+  build([merge(INTERMEDIARY), forward({ destination: DESTINATION })])
+);
+rejectUnderSnapshot(
+  minimal,
+  "snapshot-with-forged-signature-enables-intermediary",
+  "The same close and snapshot, with a signature of the right shape that no key made. A signature that does not verify leaves the snapshot unsigned.",
+  withSignature(Buffer.alloc(64, 7).toString("base64")),
+  "merge_destination_mismatch",
+  "The account would be merged to an address you did not choose.",
+  build([merge(INTERMEDIARY), forward({ destination: DESTINATION })])
+);
+rejectUnderSnapshot(
+  minimal,
+  "snapshot-with-truncated-signature-lists-destination-as-needing-intermediary",
+  "A direct merge to the destination, with the snapshot listing it as needing the intermediary and carrying a truncated signature. The snapshot is unsigned, so it still refuses the direct merge.",
+  withSignature(Buffer.alloc(63, 7).toString("base64")),
+  "merge_direct_refused",
+  DIRECT_MERGE_REFUSED
+);
+
 // Tightening is honored.
 rejectUnderSnapshot(
   minimal,
@@ -1416,6 +1466,7 @@ export const serialize = (file: unknown): string => `${JSON.stringify(file, null
 const OUTPUTS: [path: string, build: () => unknown][] = [
   [VECTORS_PATH, buildVectorFile],
   [REVOKE_VECTORS_PATH, buildRevokeVectorFile],
+  [REGISTRY_SIGNING_VECTORS_PATH, buildRegistrySigningVectorFile],
 ];
 
 if (import.meta.main) {

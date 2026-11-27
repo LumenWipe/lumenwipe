@@ -147,6 +147,21 @@ export interface ExchangeRegistryEntry {
 }
 
 /**
+ * A maintainer signature over the exchange registry (an Ed25519 signature over the canonical JSON
+ * of the registry fields, this envelope's `sequence` and `issuedAt`, under a fixed domain label).
+ * `@lumenwipe/verify` checks it against the keys pinned in its release.
+ */
+export interface ExchangeRegistrySignature {
+  format: 1;
+  /** Rises by one with every signed registry. */
+  sequence: number;
+  /** The day it was signed (YYYY-MM-DD, UTC). */
+  issuedAt: string;
+  /** Base64 of the 64-byte signature. */
+  signature: string;
+}
+
+/**
  * Response from `GET /v1/config/exchange-registry`. A consumer must refuse to rely on it past
  * `validUntil` (YYYY-MM-DD): a close into an exchange with the wrong memo rule succeeds on-chain and
  * is credited to nobody.
@@ -159,4 +174,8 @@ export interface ServedExchangeRegistry {
   validUntil: string;
   source: string;
   entries: ExchangeRegistryEntry[];
+  /** The registry's signature. Absent on a copy that was not signed. Pass the whole response to
+   *  `@lumenwipe/verify` unchanged: it is what lets a newly listed exchange that needs the
+   *  intermediary be accepted. */
+  signature?: ExchangeRegistrySignature;
 }

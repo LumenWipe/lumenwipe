@@ -47,6 +47,7 @@ describe("app zones", () => {
   test("the two registry files are the one exception, by alias or by path", async () => {
     for (const specifier of [
       "@registry/exchange-registry.json",
+      "@registry/exchange-registry.sig.json",
       "@registry/contract-registry.json",
     ]) {
       expect(await errors(importOf(specifier), "lib/zz-fixture.ts")).toEqual([]);

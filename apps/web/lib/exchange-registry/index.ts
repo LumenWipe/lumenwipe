@@ -1,12 +1,16 @@
 import embedded from "@registry/exchange-registry.json";
+import embeddedSignature from "@registry/exchange-registry.sig.json";
 import type { Network } from "@/config/networks";
 import {
   appliesOn,
   bundledEntries,
   isUsableAt,
-  mergeServedRegistry,
+  mediatedByAddition,
+  resolveServedRegistry,
   type RegistryEntry,
 } from "./merge";
+import { parseSignature } from "./signature";
+import { REGISTRY_SIGNING_KEYS } from "./trust-roots";
 
 /**
  * The exchange registry, as the browser sees it.
@@ -35,19 +39,41 @@ export interface RegistrySnapshot {
   /** Listed addresses whose memo type the served copy disputes (see `mergeServedRegistry`).
    *  Absent means none. */
   memoTypeDisputes?: readonly string[];
+  /** "signed" when the served copy carried a signature that verified, "unsigned" when it did
+   *  not, "bundled" for the floor. Only a signed copy may add an exchange that needs the
+   *  intermediary. Absent means unsigned. */
+  trust?: "bundled" | "signed" | "unsigned";
+  /** The signature's sequence for a bundled or signed copy; null or absent when unsigned. */
+  sequence?: number | null;
+  /** Addresses a verified signature adds as needing the intermediary. Absent means none. */
+  mediatedAdditions?: readonly string[];
 }
 
-const EMBEDDED: RegistrySnapshot = {
+const BUNDLED_SIGNATURE = parseSignature(embeddedSignature);
+if (BUNDLED_SIGNATURE === null) {
+  throw new Error("The bundled exchange registry signature is malformed.");
+}
+
+const EMBEDDED: RegistrySnapshot & { sequence: number } = {
   entries: bundledEntries(embedded.entries),
   lastVerified: embedded.lastVerified,
   validUntil: embedded.validUntil,
   served: false,
+  trust: "bundled",
+  sequence: BUNDLED_SIGNATURE.sequence,
 };
 
 // Module-level, because `verify()` is synchronous and runs immediately before signing: it
 // cannot await a fetch at that moment. The flow loads the registry earlier (analyze time) and
 // this is what every later lookup reads.
 let current: RegistrySnapshot = EMBEDDED;
+
+/** What a snapshot signature is checked against in this build: the pinned keys, and the sequence
+ *  of the registry bundled here. Every entry point that decides whether a served registry is
+ *  signed reads this, so none can name another set. */
+export function pinnedRegistryTrust(): { keys: readonly string[]; bundledSequence: number } {
+  return { keys: REGISTRY_SIGNING_KEYS, bundledSequence: EMBEDDED.sequence };
+}
 
 /** Replaces the active snapshot. Called once the API's copy has been fetched. */
 export function setRegistry(snapshot: RegistrySnapshot): void {
@@ -61,7 +87,7 @@ export function activeRegistry(): RegistrySnapshot {
 
 /** The bundled floor, whatever has been served since. What a per-call served snapshot merges
  *  over, so the verifier never depends on what an earlier fetch left in module state. */
-export function bundledRegistry(): RegistrySnapshot {
+export function bundledRegistry(): RegistrySnapshot & { sequence: number } {
   return EMBEDDED;
 }
 
@@ -102,7 +128,10 @@ export async function fetchServedRegistry(
     // error, no retry and no way out but a reload.
     const res = await fetchImpl("/api/config/exchange-registry");
     if (!res.ok) return null;
-    const merged = mergeServedRegistry(EMBEDDED, await res.json());
+    const merged = resolveServedRegistry(EMBEDDED, await res.json(), {
+      ...pinnedRegistryTrust(),
+      now: new Date(),
+    });
     if (merged === null) return null;
     return {
       // Every embedded address survives: a served payload cannot make the client forget an
@@ -113,6 +142,9 @@ export async function fetchServedRegistry(
       validUntil: merged.validUntil,
       served: true,
       memoTypeDisputes: merged.memoTypeDisputes,
+      trust: merged.trust,
+      sequence: merged.sequence,
+      mediatedAdditions: merged.mediatedAdditions,
     };
   } catch {
     return null;
@@ -156,12 +188,16 @@ export function bundledExchange(address: string, network: Network): RegistryEntr
 }
 
 /**
- * Whether a close to this address may take the mediated hand-off. Only an exchange the bundled
- * registry lists on this network qualifies; a served copy can tighten its rules but cannot add
- * one, and cannot widen a testnet-only entry to mainnet.
+ * Whether a close to this address may take the mediated hand-off. An exchange the bundled
+ * registry lists on this network qualifies, and so does one a verified signature added; an
+ * unsigned served copy can tighten a listed entry but cannot add one, and no copy can widen a
+ * testnet-only entry to mainnet.
  */
 export function mediatorAllowedFor(address: string, network: Network): boolean {
-  return bundledExchange(address, network)?.requiresMediator === true;
+  return (
+    bundledExchange(address, network)?.requiresMediator === true ||
+    mediatedByAddition(current, address, network)
+  );
 }
 
 /**

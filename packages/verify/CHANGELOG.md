@@ -7,6 +7,22 @@ release is cut.
 
 ## [Unreleased]
 
+### Added
+
+- A served exchange registry may carry a maintainer signature. `ServedRegistry` gains an optional
+  `signature` (`ExchangeRegistrySignature`), `version` and `source`: pass the body of
+  `GET /v1/config/exchange-registry` as served. A signature made by one of the two registry keys
+  pinned in this release, not older than the registry bundled here, not past its `validUntil` and
+  not dated more than a day ahead of the clock, lets the snapshot add an exchange that needs the
+  mediated hand-off, which `verifyCloseTransaction` then accepts through the mediated shape
+  only. A missing, truncated, forged or stale signature leaves the snapshot stricter-only, exactly
+  as in 0.8.0. A signed snapshot adds exchanges and changes no bundled entry, memo type or network
+  scope, and the signature does not vouch for the account a mediated close merges into.
+  `requiresMediator(address, network, servedRegistry?)` takes the snapshot and answers by the same
+  rule. New vectors: `vectors/registry-signing-v1.json` for the signature scheme, and rejected
+  `close-v1` vectors for a snapshot signed by a key this package does not pin, with a forged
+  signature and with a truncated one. Rotating a key is a release of this package.
+
 ### Changed
 
 - The bundled contract registry (version `2026-11-25`) re-pins the mainnet Aquarius router

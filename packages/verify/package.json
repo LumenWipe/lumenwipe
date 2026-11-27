@@ -19,7 +19,8 @@
       }
     },
     "./vectors/close-v1.json": "./vectors/close-v1.json",
-    "./vectors/revoke-allowance-v1.json": "./vectors/revoke-allowance-v1.json"
+    "./vectors/revoke-allowance-v1.json": "./vectors/revoke-allowance-v1.json",
+    "./vectors/registry-signing-v1.json": "./vectors/registry-signing-v1.json"
   },
   "files": [
     "dist",
@@ -57,6 +58,7 @@
     "type-check": "tsc --noEmit && tsc -p tests/tsconfig.json --noEmit",
     "lint": "eslint src scripts tests",
     "test": "bun run build:js && bun test tests",
+    "registry:check": "bun scripts/sign-registry.ts --check",
     "vectors": "bun scripts/generate-vectors.ts",
     "vectors:check": "bun scripts/generate-vectors.ts --check"
   },
