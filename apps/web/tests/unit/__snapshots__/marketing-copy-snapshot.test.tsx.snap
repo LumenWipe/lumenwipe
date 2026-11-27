@@ -328,6 +328,9 @@ The browser check is open source: https://github.com/LumenWipe/lumenwipe/blob/ma
 - [Documentation](https://docs.lumenwipe.com)
 - [Supported protocols, assets and wallets](https://docs.lumenwipe.com/reference/supported)
 - [API reference](https://docs.lumenwipe.com/api-reference/introduction)
+- [API keys and limits](https://lumenwipe.com/auth.md): how to get an API key, where it goes and what it allows
+- [Agent skills index](https://lumenwipe.com/.well-known/agent-skills/index.json): the skills for analyzing, closing and revoking allowances through the API
+- [Agentic resource discovery manifest](https://lumenwipe.com/.well-known/ard.json): the API description, documentation, status page and skills index
 - [Source code](https://github.com/LumenWipe/lumenwipe)
 "
 `;

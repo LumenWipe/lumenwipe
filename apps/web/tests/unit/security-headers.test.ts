@@ -143,10 +143,11 @@ test("security-headers › only the signing rules ever send usb=(self)", async (
   expect(opened).toEqual(["/:network(mainnet|testnet)/:path*", "/cosign"]);
 });
 
-test("security-headers › the homepage alone links the API catalog, the docs and llms.txt", () => {
+test("security-headers › the homepage alone links the API catalog, the docs, llms.txt and the ARD manifest", () => {
   expect(HOMEPAGE_LINK).toBe(
     '<https://api.lumenwipe.com/.well-known/api-catalog>; rel="api-catalog", ' +
       '<https://docs.lumenwipe.com>; rel="service-doc", ' +
-      '</llms.txt>; rel="describedby"; type="text/plain"'
+      '</llms.txt>; rel="describedby"; type="text/plain", ' +
+      '</.well-known/ard.json>; rel="ard"'
   );
 });

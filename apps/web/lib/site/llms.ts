@@ -1,3 +1,4 @@
+import { ARD_PATH, AUTH_PATH, SKILLS_INDEX_PATH } from "@/lib/site/discovery";
 import { FEATURES, PROTOCOLS, STATUS_LABEL } from "@/lib/site/status";
 import {
   CHECK_STATEMENT,
@@ -61,6 +62,9 @@ export function renderLlmsTxt(siteUrl: string): string {
     `- [Documentation](${DOCS_URL})`,
     `- [Supported protocols, assets and wallets](${DOCS_URL}/reference/supported)`,
     `- [API reference](${DOCS_URL}/api-reference/introduction)`,
+    `- [API keys and limits](${site(AUTH_PATH)}): how to get an API key, where it goes and what it allows`,
+    `- [Agent skills index](${site(SKILLS_INDEX_PATH)}): the skills for analyzing, closing and revoking allowances through the API`,
+    `- [Agentic resource discovery manifest](${site(ARD_PATH)}): the API description, documentation, status page and skills index`,
     `- [Source code](${REPO_URL})`,
     "",
   ].join("\n");
