@@ -20,6 +20,9 @@ import {
   buildRevokeAllowanceTransaction,
 } from "@/lib/stellar/revoke-allowance";
 import { contractSimulation } from "./fixtures/fake-exit-adapter";
+import { getFeeStatsAt } from "../support/rpc-fixtures";
+import { MAX_SOROBAN_INCLUSION_FEE_STROOPS } from "@/config/constants";
+import { SorobanFeeSurgeError } from "@/lib/stellar/soroban-fee";
 
 const OWNER = Keypair.random().publicKey();
 const TOKEN = Address.contract(Buffer.alloc(32, 1)).toString();
@@ -87,13 +90,14 @@ interface FakeOptions {
   approve?: { auth?: AuthShape; mode?: "ok" | "error" | "restore"; minResourceFee?: string };
   sequence?: string;
   accountMissing?: boolean;
+  getFeeStats?: rpc.Server["getFeeStats"];
 }
 
-function fakeRpc(options: FakeOptions = {}): {
-  simulateTransaction: rpc.Server["simulateTransaction"];
-  getAccount: rpc.Server["getAccount"];
-} {
+function fakeRpc(
+  options: FakeOptions = {}
+): Pick<rpc.Server, "getAccount" | "getFeeStats" | "simulateTransaction"> {
   return {
+    getFeeStats: options.getFeeStats ?? getFeeStatsAt(),
     async getAccount(address: string) {
       if (options.accountMissing) throw new Error(`Account not found: ${address}`);
       return new Account(address, options.sequence ?? "100") as unknown as Awaited<
@@ -127,6 +131,17 @@ describe("the allowance revocation builder", () => {
     expect(Address.fromScVal(call.args[1]!).toString()).toBe(SPENDER);
     expect(result.sourceSequence).toBe("42");
     expect(result.summary).toContain("Revoke the allowance");
+  });
+
+  test("bids the inclusion fee the network's fee stats price, on top of the simulated resource fee", async () => {
+    const result = await build({ getFeeStats: getFeeStatsAt("200") });
+    expect(TransactionBuilder.fromXDR(result.xdr, Networks.TESTNET).fee).toBe(String(1000 + 400));
+  });
+
+  test("a fee surge above the cap builds nothing and says so", async () => {
+    await expect(
+      build({ getFeeStats: getFeeStatsAt(String(MAX_SOROBAN_INCLUSION_FEE_STROOPS)) })
+    ).rejects.toThrow(SorobanFeeSurgeError);
   });
 
   test("the fresh account sequence comes from a live read, not a caller-supplied value", async () => {

@@ -79,6 +79,11 @@ export const SOROBAN_SWAP_FEE_ESTIMATE_STROOPS = 1_000_000;
  *  costs a few thousand stroops; a fee anywhere near this is a simulation gone wrong or an
  *  attempt to grief the account through the fee pool, and is refused rather than offered. */
 export const MAX_SOROBAN_EXIT_FEE_STROOPS = 10_000_000; // 1 XLM
+/** Ceiling on the inclusion fee one Soroban transaction bids. It leaves the per-transaction plan
+ *  bound room for a real exit's resource fee, so the estimate keeps covering what a build charges. */
+export const MAX_SOROBAN_INCLUSION_FEE_STROOPS = SOROBAN_EXIT_FEE_ESTIMATE_STROOPS / 10;
+/** About one ledger: how long one read of the network's fee stats prices every Soroban build. */
+export const SOROBAN_FEE_STATS_TTL_MS = 5_000;
 /** Extra CPU instructions requested when simulating an exit. Protocols that accrue rewards by
  *  ledger time do slightly more work at execution than at simulation (an Aquarius withdraw ran
  *  21 instructions over its 15.1M budget), and the network rejects the whole transaction. */

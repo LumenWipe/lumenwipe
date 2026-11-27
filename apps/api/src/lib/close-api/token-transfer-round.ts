@@ -24,6 +24,7 @@ import {
 } from "@/config/constants";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
+import { SorobanFeeSurgeError, sorobanInclusionFee } from "@/lib/stellar/soroban-fee";
 import { formatTokenAmount } from "@/lib/utils/token-amounts";
 
 /**
@@ -57,7 +58,7 @@ export class TokenTransferBlockedError extends Error {
 }
 
 export interface TokenTransferRoundDeps {
-  rpc: Pick<stellarRpc.Server, "simulateTransaction">;
+  rpc: Pick<stellarRpc.Server, "getFeeStats" | "simulateTransaction">;
 }
 
 export interface TokenTransferRound {
@@ -100,7 +101,7 @@ function tokenDecimals(accountState: AccountState, contract: string): number | n
 
 /** The account's live balance of the token, by simulating `balance(account)`; null if unreadable. */
 export async function liveTokenBalance(
-  rpc: TokenTransferRoundDeps["rpc"],
+  rpc: Pick<stellarRpc.Server, "simulateTransaction">,
   network: Network,
   account: string,
   token: string
@@ -264,8 +265,15 @@ export async function buildTokenTransferRound(
       );
     }
 
+    let inclusionFee: bigint;
+    try {
+      inclusionFee = await sorobanInclusionFee(deps.rpc);
+    } catch (err) {
+      if (!(err instanceof SorobanFeeSurgeError)) throw err;
+      throw new TokenTransferBlockedError("soroban_token_transfer_failed", err.message);
+    }
     const raw = new TransactionBuilder(new Account(account, sequence), {
-      fee: String(BASE_FEE_STROOPS),
+      fee: inclusionFee.toString(),
       networkPassphrase: passphrase,
     })
       .addOperation(

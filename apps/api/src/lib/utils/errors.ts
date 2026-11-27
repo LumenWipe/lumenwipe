@@ -44,7 +44,8 @@ const RESULT_CODE_MESSAGES: Record<string, string> = {
   // ── Transaction-level codes ─────────────────────────────────────────────────
   tx_bad_auth:
     "The signatures on this transaction do not reach the signing weight the account requires. Check that every required signer signed it, or that a pasted pre-authorized transaction is the exact one the account authorized.",
-  tx_insufficient_fee: "The network fee was too low. Please retry.",
+  tx_insufficient_fee:
+    "The network did not accept the transaction: its fee is below what the network is charging right now. Nothing changed on the account; retry to build it again at the current fee.",
   tx_bad_seq: "Sequence number mismatch. Please retry - the account state has changed.",
   tx_no_account: "The source account does not exist on the network.",
   tx_insufficient_balance: "Insufficient XLM balance to cover the transaction fee and reserves.",

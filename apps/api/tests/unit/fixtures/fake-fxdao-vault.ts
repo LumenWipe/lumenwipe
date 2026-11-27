@@ -17,7 +17,7 @@ import {
   type Transaction,
 } from "@stellar/stellar-sdk";
 import type { ExitRpc } from "@/lib/defi-exits";
-import { simulation } from "../../support/rpc-fixtures";
+import { getFeeStatsAt, simulation } from "../../support/rpc-fixtures";
 import { archivedAnswer, type EntryArchival } from "./entry-archival";
 
 const contractAddr = (byte: number): string => StrKey.encodeContract(Buffer.alloc(32, byte));
@@ -298,6 +298,7 @@ export function fakeFxdaoRpc(
   const simulateCalls: Transaction[] = [];
   return {
     simulateCalls,
+    getFeeStats: getFeeStatsAt(),
     async getLedgerEntries(...keys: xdr.LedgerKey[]) {
       const wanted = new Set(keys.map((k) => k.toXdr("base64")));
       if (wanted.size !== keys.length) throw new Error("duplicate ledger keys in one request");

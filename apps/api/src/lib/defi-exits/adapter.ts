@@ -160,7 +160,7 @@ export interface ExitContext {
 }
 
 /** The two RPC calls an exit needs, so tests and the runner can pass a stub instead of a server. */
-export type ExitRpc = Pick<rpc.Server, "getLedgerEntries" | "simulateTransaction">;
+export type ExitRpc = Pick<rpc.Server, "getFeeStats" | "getLedgerEntries" | "simulateTransaction">;
 
 export interface ExitAdapter<P extends DefiPosition, L> {
   protocol: DefiProtocol;

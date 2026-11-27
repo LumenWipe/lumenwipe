@@ -16,7 +16,7 @@ import {
 } from "@stellar/stellar-sdk";
 import type { ExitRpc } from "@/lib/defi-exits";
 import { v1Transaction } from "../../support/v1-transaction";
-import { simulation as parsedSimulation } from "../../support/rpc-fixtures";
+import { getFeeStatsAt, simulation as parsedSimulation } from "../../support/rpc-fixtures";
 import { archivedAnswer, autoRestoring, type EntryArchival } from "./entry-archival";
 import type { SimulationMode } from "./fake-exit-adapter";
 
@@ -336,6 +336,7 @@ export function fakeAquariusRpc(
   const simulateCalls: Transaction[] = [];
   return {
     simulateCalls,
+    getFeeStats: getFeeStatsAt(),
     async getLedgerEntries(...keys: xdr.LedgerKey[]) {
       const wanted = new Set(keys.map((k) => k.toXdr("base64")));
       // Stellar RPC rejects a request that names the same key twice; so does this stand-in.

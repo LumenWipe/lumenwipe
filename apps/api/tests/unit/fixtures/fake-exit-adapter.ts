@@ -35,7 +35,7 @@ import { MIN_RECEIVED_REQUIRED, clampToBalance, minReceivedFromQuote } from "@/l
 import { contractDataEntry } from "@/lib/stellar/contract-data";
 import { contractDataKey, symbolVal } from "@/lib/defi-positions/testnet-direct-read";
 import { v1Transaction } from "../../support/v1-transaction";
-import { simulation } from "../../support/rpc-fixtures";
+import { getFeeStatsAt, simulation } from "../../support/rpc-fixtures";
 import { archivedAnswer, autoRestoring, type EntryArchival } from "./entry-archival";
 
 export const POSITION_CONTRACT = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
@@ -389,6 +389,7 @@ export function fakeExitRpc(options: FakeRpcOptions): ExitRpc & {
 
   return {
     simulateCalls,
+    getFeeStats: getFeeStatsAt(),
     simulateLeeway,
     async getLedgerEntries(...keys: xdr.LedgerKey[]): Promise<rpc.Api.GetLedgerEntriesResponse> {
       const entries = keys.flatMap((key) => {

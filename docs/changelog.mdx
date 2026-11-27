@@ -12,6 +12,11 @@ As of 2026-11-14, the mediator flow (exchange closes) and sponsored fees are ava
 
 ## 2026-11
 
+### 2026-11-27
+
+- **API:** Every Soroban transaction the API builds (DeFi exits, Soroban token transfers and conversions, allowance revocations) now bids an inclusion fee taken from the network's recent fee stats: twice their 90th percentile, at least the 100-stroop base fee and at most 10,000 stroops. It was a fixed 100 stroops, which tied with most of the Soroban traffic while that lane's ledgers were full, so such a transaction could wait without ever being included. A network asking for more than 10,000 stroops refuses the step with a message saying nothing was built (`exit_fee_surge` on an exit, `soroban_token_transfer_failed` or `soroban_token_conversion_failed` on a token round, `revoke_build_failed` on a revocation). When the fee stats cannot be read, the transaction bids 10,000 stroops; a lane charges every transaction it includes the lowest bid it included, not each transaction's own bid.
+- **API:** A submit the network refuses for its fee (`submit_rejected`, `resultCode` `tx_insufficient_fee`) now says that nothing changed on the account and that retrying builds the transaction again at the current fee.
+
 ### 2026-11-18
 
 - **API:** `/mediator/check` and the close plan now report the exchange flow unavailable when the mediator key does not match `MEDIATOR_PUBLIC_<NETWORK>`, instead of reporting it available and having `/mediator/sign` refuse with `503 mediator_key_misconfiguration` after the user signed. With the public key unset, `/mediator/check` reports `available: false` and `/mediator/sign` answers `503 mediator_not_configured`, as the close plan already did.

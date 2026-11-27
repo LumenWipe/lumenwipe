@@ -34,6 +34,7 @@ import { authorizationOf } from "./fixtures/trustline";
 import { stubIssuance } from "./fixtures/issuance";
 import { stubLedgerConfirmation } from "./fixtures/ledger-confirmation";
 import { ALL_ON } from "@/config/kill-switches";
+import { getFeeStatsAt } from "../support/rpc-fixtures";
 
 const SOURCE = Keypair.random().publicKey();
 const ISSUER = Keypair.random().publicKey();
@@ -108,8 +109,9 @@ function withToken(balanceStroops: bigint, over: Partial<AccountState> = {}): Ac
   });
 }
 
-function tokenRpc(): { simulateTransaction: rpc.Server["simulateTransaction"] } {
+function tokenRpc(): Pick<rpc.Server, "getFeeStats" | "simulateTransaction"> {
   return {
+    getFeeStats: getFeeStatsAt(),
     async simulateTransaction(tx) {
       const call = callOf(onlyOperation(tx as Transaction));
       if (call.functionName.toString() === "balance") {

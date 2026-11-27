@@ -1424,6 +1424,11 @@ test("rejects an exit whose fee is far above what any exit costs", () => {
   expect(() => assertCloseIntent(exitOnly(exit(), "10000000"), expectation())).not.toThrow();
 });
 
+test("an exit bidding the API's inclusion fee cap on top of a plan-bound resource fee passes", () => {
+  // The API's MAX_SOROBAN_INCLUSION_FEE_STROOPS (10,000) plus SOROBAN_EXIT_FEE_ESTIMATE_STROOPS.
+  expect(() => assertCloseIntent(exitOnly(exit(), "110000"), expectation())).not.toThrow();
+});
+
 test("rejects an exit that shares its transaction with anything else", () => {
   const i = intent({ operations: [exit(), merge(DEST)] });
   expectRefusal(

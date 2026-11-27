@@ -14,7 +14,10 @@ import {
   TransactionBuilder,
   nativeToScVal,
 } from "@stellar/stellar-sdk";
-import { MAX_SOROBAN_EXIT_FEE_STROOPS } from "@/config/constants";
+import {
+  MAX_SOROBAN_EXIT_FEE_STROOPS,
+  MAX_SOROBAN_INCLUSION_FEE_STROOPS,
+} from "@/config/constants";
 import {
   assertXBullConversionShape,
   buildXBullConversion,
@@ -238,19 +241,14 @@ test("builds an unsigned transaction from xBull's contractArgsXDR against our ow
     fixture.decoded.from,
     "mainnet",
     "0",
+    400n,
     fakeXBullDeps(fixture.contractArgsXDR, [fixture.fromAsset, fixture.toAsset])
   );
   expect(typeof built?.xdr).toBe("string");
   expect(built?.contractArgsXDR).toBe(fixture.contractArgsXDR);
 });
 
-test("assembles with a realistic resource fee and still fits under the ceiling assertXBullConversionShape enforces", async () => {
-  // A representative single-contract-invocation resource fee (tens of thousands of stroops), not
-  // the "0" the other build test uses. With `buildXBullConversion`'s own inclusion fee correctly
-  // set to BASE_FEE_STROOPS, the assembled total (100 + 84,523) stays well under
-  // MAX_SOROBAN_EXIT_FEE_STROOPS. If the builder's own fee ever regresses back to
-  // MAX_SOROBAN_EXIT_FEE_STROOPS itself, the assembled total (10,000,000 + 84,523) would exceed
-  // that same ceiling, and this assertion - unlike the zero-fee build test above - would catch it.
+test("bids the inclusion fee it is given on top of a realistic resource fee, under the ceiling assertXBullConversionShape enforces", async () => {
   const built = await buildXBullConversion(
     {
       token: fixture.fromAsset,
@@ -261,9 +259,11 @@ test("assembles with a realistic resource fee and still fits under the ceiling a
     fixture.decoded.from,
     "mainnet",
     "0",
+    BigInt(MAX_SOROBAN_INCLUSION_FEE_STROOPS),
     fakeXBullDeps(fixture.contractArgsXDR, [fixture.fromAsset, fixture.toAsset], "84523")
   );
   const tx = TransactionBuilder.fromXDR(built!.xdr, Networks.PUBLIC);
+  expect(BigInt(tx.fee)).toBe(BigInt(MAX_SOROBAN_INCLUSION_FEE_STROOPS) + 84_523n);
   expect(BigInt(tx.fee)).toBeLessThanOrEqual(BigInt(MAX_SOROBAN_EXIT_FEE_STROOPS));
 });
 
@@ -279,6 +279,7 @@ test("a failed fetch or a simulation error both build null, never throw", async 
       fixture.decoded.from,
       "mainnet",
       "0",
+      400n,
       fakeXBullDeps(null, [])
     )
   ).toBeNull();

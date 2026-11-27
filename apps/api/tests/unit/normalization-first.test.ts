@@ -139,7 +139,7 @@ async function build(state: AccountState) {
     {},
     { [TOKEN]: Keypair.random().publicKey() },
     { runExitAdapter: sentinel("exit") },
-    { rpc: { simulateTransaction: sentinel("token transfer") } }
+    { rpc: { getFeeStats: sentinel("fee stats"), simulateTransaction: sentinel("token transfer") } }
   );
 }
 
