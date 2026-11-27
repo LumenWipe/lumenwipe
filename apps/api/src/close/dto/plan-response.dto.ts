@@ -1,12 +1,16 @@
-import { ApiExtraModels, ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { ApiExtraModels, ApiProperty, ApiPropertyOptional, getSchemaPath } from "@nestjs/swagger";
 import type {
   BatchPlanResponse,
   BatchPlanResult,
   ClassicConversionQuote,
   CloseApiStatus,
+  DefiProtocol,
   DecisionOption,
   DecisionPoint,
   ExecutionTxBreakdown,
+  ExitPayoutEstimate,
+  ExitPayoutPart,
+  ExitTargetPayout,
   PlanEstimate,
   PlanResponse,
   QuoteInfo,
@@ -247,6 +251,59 @@ class PlanFeePartsDto {
   sorobanBoundStroops!: string;
 }
 
+const EXIT_PROTOCOLS: DefiProtocol[] = ["blend", "aquarius", "soroswap", "phoenix", "fxdao"];
+
+class ExitPayoutPartDto implements ExitPayoutPart {
+  @ApiProperty({ description: '"native" or "CODE:ISSUER".', example: "native" })
+  asset!: string;
+
+  @ApiProperty({
+    description:
+      "What the exit pays in of this asset, net of what it spends, in stroops; negative when it " +
+      "spends more than it pays in.",
+    example: "57213000",
+  })
+  stroops!: string;
+}
+
+class ExitTargetPayoutDto implements ExitTargetPayout {
+  @ApiProperty({ enum: EXIT_PROTOCOLS })
+  protocol!: DefiProtocol;
+
+  @ApiProperty({ description: "The pool, market, or vault contract the exit leaves." })
+  contract!: string;
+
+  @ApiProperty({
+    type: [ExitPayoutPartDto],
+    nullable: true,
+    description:
+      "The least the exit pays in per asset: an LP withdrawal's minimum-received floors, a " +
+      "lending withdrawal's live balance, less every repay. Null when the plan could not work it " +
+      "out: the exit is blocked or was not checked, or a step's proceeds are only known once it " +
+      "runs.",
+  })
+  parts!: ExitPayoutPart[] | null;
+}
+
+@ApiExtraModels(ClassicConversionQuoteDto)
+class ExitPayoutEstimateDto implements ExitPayoutEstimate {
+  @ApiProperty({
+    type: [ExitTargetPayoutDto],
+    description: "Every exit target the close would run.",
+  })
+  targets!: ExitTargetPayout[];
+
+  @ApiProperty({
+    description:
+      "Keyed by classic asset (CODE:ISSUER) an exit pays in or spends, when it has a route to " +
+      "XLM: the swap quote for the amount the account will hold once every exit has run. " +
+      "Display only; a convert answer's floor comes from the decision point's own quote.",
+    type: "object",
+    additionalProperties: { $ref: getSchemaPath(ClassicConversionQuoteDto) },
+  })
+  quotes!: Record<string, ClassicConversionQuote>;
+}
+
 class PlanEstimateDto implements PlanEstimate {
   @ApiProperty({
     description:
@@ -263,6 +320,14 @@ class PlanEstimateDto implements PlanEstimate {
     description: "How each part of `feeStroops` is known.",
   })
   feeParts!: PlanEstimate["feeParts"];
+
+  @ApiPropertyOptional({
+    type: ExitPayoutEstimateDto,
+    description:
+      "What exiting the account's DeFi positions is expected to pay in. Display only: it feeds " +
+      "no decision, floor or transaction.",
+  })
+  exitPayouts?: ExitPayoutEstimate;
 }
 
 class PlanExecutionDto {

@@ -5,7 +5,7 @@ import type { AccountState, CloseTransaction, Network } from "@lumenwipe/types";
 import { SLIPPAGE_BPS } from "@/config/constants";
 import { NETWORK_PASSPHRASES } from "@/config/networks";
 import { intentFromXdr } from "@/lib/stellar/intent/serialize";
-import { EXIT_POSITION_GONE, type ExitContext, type ExitRpc } from "./adapter";
+import { EXIT_POSITION_GONE, type ExitContext, type ExitRpc, type ExitStep } from "./adapter";
 import { exitAdapterFor } from "./catalog";
 import {
   exitablePositions,
@@ -184,6 +184,8 @@ export interface ExitPreflightReport {
   /** Targets, by contract, whose first exit transaction was simulated: the assembled envelope's
    *  total fee in stroops, the most the network may charge it. */
   simulatedFeeStroops: Map<string, bigint>;
+  /** Targets, by contract, whose exit can be built: every step their plan holds. */
+  plannedSteps: Map<string, ExitStep[]>;
 }
 
 /** The fee an assembled envelope declares, or undefined when it does not parse. */
@@ -206,7 +208,11 @@ export async function preflightExitTargets(
   network: Network,
   deps: Pick<ExitRoundDeps, "rpc" | "now" | "runExitAdapter">
 ): Promise<ExitPreflightReport> {
-  const report: ExitPreflightReport = { blocked: new Map(), simulatedFeeStroops: new Map() };
+  const report: ExitPreflightReport = {
+    blocked: new Map(),
+    simulatedFeeStroops: new Map(),
+    plannedSteps: new Map(),
+  };
   const targets = groupExitTargets(accountState.defiPositions.positions);
   if (targets.length === 0) return report;
   const ctx = exitContext(accountState, network, accountState.sequence, deps.now);
@@ -222,6 +228,7 @@ export async function preflightExitTargets(
     } else if (outcome.kind === "exitable") {
       const fee = envelopeFeeStroops(outcome.result.next.simulation.txXdr, network);
       if (fee !== undefined) report.simulatedFeeStroops.set(contract, fee);
+      report.plannedSteps.set(contract, outcome.result.plan);
     }
   });
   return report;

@@ -149,6 +149,44 @@ test("DeFi positions are flagged as not counted", () => {
   expect(recoveryRange(withPosition, plan())!.leavesOutDefiExits).toBe(true);
 });
 
+test("an exit's XLM counts in both figures and its swapped asset only in the high one", () => {
+  const USDC = "USDC:GISSUER";
+  const POOL = "CPHOENIX000000000000000000000000000000000000000000000000";
+  const defi = emptyDefiPositionsResult(SOURCE);
+  const withPosition = freshAccount(SOURCE, {
+    defiPositions: { ...defi, positions: [{} as never] },
+  });
+  const held = { estimatedReceive: "21000000", minAmountOut: "20000000" };
+  const after = { estimatedReceive: "130000000", minAmountOut: "120000000" };
+  const range = recoveryRange(
+    withPosition,
+    plan({
+      decisionPoints: [classic(USDC, held)],
+      estimate: {
+        ...planEstimate(PLAN_FEE.toString(), "3"),
+        exitPayouts: {
+          targets: [
+            {
+              protocol: "phoenix",
+              contract: POOL,
+              parts: [
+                { asset: "native", stroops: "57213000" },
+                { asset: USDC, stroops: "7303000" },
+              ],
+            },
+          ],
+          quotes: { [USDC]: after },
+        },
+      },
+    })
+  )!;
+  expect(range.lowStroops).toBe((LOW + BigInt(57_213_000)).toString());
+  expect(range.highStroops).toBe(
+    (LOW + BigInt(57_213_000) + BigInt(classicFloorFromQuote(after.minAmountOut))).toString()
+  );
+  expect(range.leavesOutDefiExits).toBe(false);
+});
+
 test("a plan with no usable fee yields no figure at all", () => {
   expect(
     recoveryRange(

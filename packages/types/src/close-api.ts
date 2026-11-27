@@ -1,5 +1,6 @@
 import type { StepType } from "./plan";
 import type { AccountSigner, AccountThresholds } from "./account";
+import type { DefiProtocol } from "./defi-position";
 
 export type CloseApiStatus = "ready" | "needs_decisions" | "blocked" | "complete";
 
@@ -124,6 +125,35 @@ export interface PlanEstimate {
      *  high: token swaps and transfers, and DeFi exits past the first or without a simulation. */
     sorobanBoundStroops: string;
   };
+  /** What exiting the account's DeFi positions is expected to pay in. Display only: it feeds no
+   *  decision, floor or transaction. Absent from an API that predates it. */
+  exitPayouts?: ExitPayoutEstimate;
+}
+
+/** One asset an exit pays in, net of what it spends, in stroops (negative when it spends more). */
+export interface ExitPayoutPart {
+  /** "native" or "CODE:ISSUER". */
+  asset: string;
+  stroops: string;
+}
+
+/** One DeFi exit target, by protocol and the contract it leaves, and what its exit pays in. */
+export interface ExitTargetPayout {
+  protocol: DefiProtocol;
+  contract: string;
+  /** The least the exit pays in per asset, from the floors and live balances its planned steps
+   *  carry; null when the plan could not work it out (the exit is blocked or was not checked, or
+   *  a step's proceeds are not known until it runs). */
+  parts: ExitPayoutPart[] | null;
+}
+
+/** What the plan expects the close's DeFi exits to pay in, for its estimate. */
+export interface ExitPayoutEstimate {
+  /** Every exit target the close would run, by protocol and contract. */
+  targets: ExitTargetPayout[];
+  /** For a classic asset an exit pays in or spends: the swap quote for the amount the account
+   *  will hold once every exit has run, in stroops of XLM. Never a convert answer's floor. */
+  quotes: Record<string, ClassicConversionQuote>;
 }
 
 /** One transaction the close is expected to take. */

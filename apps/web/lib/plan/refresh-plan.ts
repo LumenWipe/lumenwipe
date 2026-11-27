@@ -7,6 +7,7 @@ import {
   apiStepsToPlannedSteps,
   decisionPointsToClaimableBalances,
   decisionPointsToConversions,
+  exitPayoutsOf,
   planFeeStroopsOf,
   planTransactionCountOf,
   planTransactionsOf,
@@ -180,6 +181,7 @@ function install(
             dispositions: now.assetDispositions,
             claims: decisionPointsToClaimableBalances(plan),
             claimSelections: now.claimableBalanceSelections,
+            exitPayouts: exitPayoutsOf(plan),
           }),
           now
         );

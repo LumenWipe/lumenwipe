@@ -190,6 +190,7 @@ describe("the plan's fee estimate for DeFi exits", () => {
       preflightExits: async () => ({
         blocked: new Map(),
         simulatedFeeStroops: new Map([[POOL, 31_234n]]),
+        plannedSteps: new Map(),
       }),
     });
     expect(stepStroops(exitStep(plan.steps))).toBe(31_234n + EXIT);
