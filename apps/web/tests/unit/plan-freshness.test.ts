@@ -92,17 +92,100 @@ test("a fee change in any step is a change, even with the same number of steps",
   expect(changes).toContainEqual({ kind: "steps" });
 });
 
-test("a changed net estimate is a change, with both figures said", () => {
+test("a lower net estimate is a change, with both figures said", () => {
+  const poorer = freshAccount(SOURCE, {
+    trustlines: ACCOUNT.trustlines,
+    nativeBalanceLumens: "10.0000000",
+  });
+  const changes = comparePlans(reviewed, fresh(freshPlan(STEPS), poorer, CONVERTING));
+  const net = changes.find((c) => c.kind === "net");
+  expect(net).toBeDefined();
+  expect(describeChange(net!)).toBe(
+    "The least you will receive is now about 12.99998 XLM, where it was about 15.49998 XLM."
+  );
+});
+
+test("a higher net estimate is no change: the close delivers more than was consented to", () => {
   const richer = freshAccount(SOURCE, {
     trustlines: ACCOUNT.trustlines,
     nativeBalanceLumens: "20.0000000",
   });
-  const changes = comparePlans(reviewed, fresh(freshPlan(STEPS), richer, CONVERTING));
-  const net = changes.find((c) => c.kind === "net");
-  expect(net).toBeDefined();
-  expect(describeChange(net!)).toBe(
-    "The least you will receive is now about 22.99998 XLM, where it was about 15.49998 XLM."
-  );
+  expect(comparePlans(reviewed, fresh(freshPlan(STEPS), richer, CONVERTING))).toEqual([]);
+});
+
+const EXIT = "C" + "B".repeat(55);
+
+/** A plan of one simulated exit, whose fee is under 1 XLM, and a merge. */
+function exitPlan(feeStroops: string, simulated = feeStroops, title = "Exit Phoenix") {
+  const exit: PlannedStep = {
+    ...step(0, "EXIT_POSITIONS", `0.${feeStroops.padStart(7, "0")}`),
+    title,
+    affectedContract: EXIT,
+  };
+  const steps = [exit, step(1, "MERGE")];
+  return freshPlan(steps, {
+    estimate: {
+      feeStroops: (BigInt(feeStroops) + BigInt(100)).toString(),
+      freedReserveXlm: "1.0000000",
+      feeParts: {
+        classicStroops: "100",
+        sorobanSimulatedStroops: simulated,
+        sorobanBoundStroops: "0",
+      },
+    },
+  });
+}
+
+const reviewedExit = signatureOf(exitPlan("4569288"), ACCOUNT, CONVERTING);
+
+test("the fee tolerance is 1% of the simulated part of the fees", () => {
+  expect(reviewedExit.feeToleranceStroops).toBe("45692");
+  expect(reviewed.feeToleranceStroops).toBe("0");
+});
+
+test("a simulated fee that rose within the tolerance is no change", () => {
+  for (const fee of ["4570225", "4571866", "4614980"]) {
+    const next = fresh(exitPlan(fee), ACCOUNT, CONVERTING);
+    expect(comparePlans(reviewedExit, next)).toEqual([]);
+  }
+});
+
+test("a simulated fee that rose past the tolerance is a change of the fees and the net", () => {
+  const next = fresh(exitPlan("4614981"), ACCOUNT, CONVERTING);
+  const changes = comparePlans(reviewedExit, next);
+  expect(changes).toContainEqual({ kind: "steps" });
+  expect(changes.map((c) => c.kind)).toContain("net");
+});
+
+test("a fee that fell is never a change, however far", () => {
+  const next = fresh(exitPlan("569288"), ACCOUNT, CONVERTING);
+  expect(comparePlans(reviewedExit, next)).toEqual([]);
+});
+
+test("a changed step is a change even when its fee is the same", () => {
+  const next = fresh(exitPlan("4569288", "4569288", "Exit Blend"), ACCOUNT, CONVERTING);
+  expect(comparePlans(reviewedExit, next)).toEqual([{ kind: "steps" }]);
+});
+
+test("a net drop past the tolerance is a change even when the fees did not move", () => {
+  const poorer = freshAccount(SOURCE, {
+    trustlines: ACCOUNT.trustlines,
+    nativeBalanceLumens: "12.4954307",
+  });
+  const changes = comparePlans(reviewedExit, fresh(exitPlan("4569288"), poorer, CONVERTING));
+  expect(changes.map((c) => c.kind)).toEqual(["net"]);
+});
+
+test("a simulated part above the fees the user saw is held to those fees", () => {
+  const inflated = signatureOf(exitPlan("4569288", "99999999999"), ACCOUNT, CONVERTING);
+  expect(inflated.feeToleranceStroops).toBe("45693");
+});
+
+test("a simulated part that is not whole stroops gives no tolerance", () => {
+  for (const simulated of ["4569288.5", "-1", ""]) {
+    const odd = signatureOf(exitPlan("4569288", simulated), ACCOUNT, CONVERTING);
+    expect(odd.feeToleranceStroops).toBe("0");
+  }
 });
 
 test("a new decision point is a change", () => {
