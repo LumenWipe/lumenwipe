@@ -19,6 +19,7 @@ export const PACK_ALLOWLIST = [
   "package.json",
   "vectors/close-v1.json",
   "vectors/revoke-allowance-v1.json",
+  "vectors/registry-signing-v1.json",
 ] as const;
 
 export function checkPackList(files: readonly string[]): string[] {

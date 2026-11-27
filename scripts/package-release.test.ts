@@ -784,6 +784,9 @@ describe("the verify bundle inputs", () => {
       "apps/web/lib/stellar/exit-expectations.ts",
       "apps/web/lib/stellar/verification-error.ts",
       "apps/api/src/config/exchange-registry.json",
+      "apps/api/src/config/exchange-registry.sig.json",
+      "apps/web/lib/exchange-registry/signature.ts",
+      "apps/web/lib/exchange-registry/trust-roots.ts",
       "apps/api/src/config/contract-registry.json",
       "apps/web/config/xbull-asset-map.json",
     ]) {

@@ -265,9 +265,13 @@ const appZones = {
         {
           target: "./",
           from: "../api",
-          except: ["./src/config/exchange-registry.json", "./src/config/contract-registry.json"],
+          except: [
+            "./src/config/exchange-registry.json",
+            "./src/config/exchange-registry.sig.json",
+            "./src/config/contract-registry.json",
+          ],
           message:
-            "apps/web must not import apps/api source. Reach the backend through @lumenwipe/sdk; only the two registry JSON files are shared.",
+            "apps/web must not import apps/api source. Reach the backend through @lumenwipe/sdk; only the two registry JSON files and the exchange registry's signature file are shared.",
         },
         {
           target: "./",

@@ -7657,6 +7657,297 @@
       }
     },
     {
+      "name": "snapshot-signed-by-unpinned-key-enables-intermediary",
+      "verdict": "reject",
+      "base": "minimal-direct-merge",
+      "mutation": "Routes the merge through an intermediary that forwards the balance to the destination, with a snapshot listing the destination as needing the intermediary and carrying a valid signature by a key this package does not pin. Only a pinned key's signature enables the hand-off.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAAMgAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAIAAAAAAAAACAAAAADeseK//+US0apXUBwEI6rW0jXFjUrJ7isuI4eQeC6F0QAAAAEAAAAA3rHiv//lEtGqV1AcBCOq1tI1xY1Kye4rLiOHkHguhdEAAAABAAAAAKmFgRJEK7AofY5vVS6+LnBUwokz0Byc5FdDyT75jaxbAAAAAAAAAAA7msoAAAAAAAAAAAA=",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+          "nativeBalance": "100.0000000",
+          "memo": null,
+          "memoType": null,
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CA4V7YVUC3EE2EFVTEYJ47ZD34K4DCAKEYV6AHRR73KTKO5GDGNZLLMT",
+            "CBYFZPJ2DP5IK74JOXUPUM2RAM7N42OVOLK7K5UOIK7QQQKQTN2PZJWU"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": []
+        },
+        "servedRegistry": {
+          "entries": [
+            {
+              "address": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+              "name": "Newly Listed",
+              "domain": "newly-listed.example",
+              "requiresMediator": true,
+              "requiresMemo": false,
+              "memoType": "text"
+            }
+          ],
+          "lastVerified": "2026-10-25",
+          "validUntil": "2027-02-15",
+          "version": "2026-10-25",
+          "source": "https://registry.example/directory",
+          "signature": {
+            "format": 1,
+            "sequence": 1000,
+            "issuedAt": "2026-10-25",
+            "signature": "RePIV8gYLqikcoQB5ORDAY9KKZwrqHn9g07EjPrxllsndGhb4IO41EOp7/foIyswrLK4orfNqrZJ76rjx5A/Ag=="
+          }
+        }
+      },
+      "error": {
+        "name": "VerificationError",
+        "code": "merge_destination_mismatch",
+        "message": "The account would be merged to an address you did not choose."
+      }
+    },
+    {
+      "name": "snapshot-with-forged-signature-enables-intermediary",
+      "verdict": "reject",
+      "base": "minimal-direct-merge",
+      "mutation": "The same close and snapshot, with a signature of the right shape that no key made. A signature that does not verify leaves the snapshot unsigned.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAAMgAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAIAAAAAAAAACAAAAADeseK//+US0apXUBwEI6rW0jXFjUrJ7isuI4eQeC6F0QAAAAEAAAAA3rHiv//lEtGqV1AcBCOq1tI1xY1Kye4rLiOHkHguhdEAAAABAAAAAKmFgRJEK7AofY5vVS6+LnBUwokz0Byc5FdDyT75jaxbAAAAAAAAAAA7msoAAAAAAAAAAAA=",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+          "nativeBalance": "100.0000000",
+          "memo": null,
+          "memoType": null,
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CA4V7YVUC3EE2EFVTEYJ47ZD34K4DCAKEYV6AHRR73KTKO5GDGNZLLMT",
+            "CBYFZPJ2DP5IK74JOXUPUM2RAM7N42OVOLK7K5UOIK7QQQKQTN2PZJWU"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": []
+        },
+        "servedRegistry": {
+          "entries": [
+            {
+              "address": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+              "name": "Newly Listed",
+              "domain": "newly-listed.example",
+              "requiresMediator": true,
+              "requiresMemo": false,
+              "memoType": "text"
+            }
+          ],
+          "lastVerified": "2026-10-25",
+          "validUntil": "2027-02-15",
+          "version": "2026-10-25",
+          "source": "https://registry.example/directory",
+          "signature": {
+            "format": 1,
+            "sequence": 1000,
+            "issuedAt": "2026-10-25",
+            "signature": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBw=="
+          }
+        }
+      },
+      "error": {
+        "name": "VerificationError",
+        "code": "merge_destination_mismatch",
+        "message": "The account would be merged to an address you did not choose."
+      }
+    },
+    {
+      "name": "snapshot-with-truncated-signature-lists-destination-as-needing-intermediary",
+      "verdict": "reject",
+      "base": "minimal-direct-merge",
+      "mutation": "A direct merge to the destination, with the snapshot listing it as needing the intermediary and carrying a truncated signature. The snapshot is unsigned, so it still refuses the direct merge.",
+      "nowSeconds": 1793491200,
+      "input": {
+        "unsignedXdr": "AAAAAgAAAABmSFtLHHJl+deRfKFiyBk4nXItPhFRSrcAceUOyZ1AAwAAAGQAAAABAAAAAQAAAAEAAAAAAAAAAAAAAABq5oIsAAAAAAAAAAEAAAAAAAAACAAAAACphYESRCuwKH2Ob1Uuvi5wVMKJM9AcnORXQ8k++Y2sWwAAAAAAAAAA",
+        "network": "testnet",
+        "expected": {
+          "source": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+          "destination": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+          "nativeBalance": "100.0000000",
+          "memo": null,
+          "memoType": null,
+          "claimTrustlineAssets": [],
+          "accountSigners": [
+            {
+              "key": "GBTEQW2LDRZGL6OXSF6KCYWIDE4J24RNHYIVCSVXABY6KDWJTVAAG6HD",
+              "weight": 1,
+              "type": "ed25519_public_key"
+            }
+          ],
+          "accountThresholds": {
+            "low": 0,
+            "med": 0,
+            "high": 0
+          },
+          "transfers": {},
+          "tokenTransfers": {},
+          "classicConversions": {},
+          "tokenConversions": {},
+          "exitContracts": [],
+          "heldTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "positionTokenContracts": [],
+          "exitFunctions": {},
+          "conversionContracts": [
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD"
+          ],
+          "xlmContract": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+          "registryContracts": [
+            "CDV6RX4CGPCOKGTBFS52V3LMWQGZN3LCQTXF5RVPOOCG4XVMHXQ4NTF6",
+            "CBDVWXT433PRVTUNM56C3JREF3HIZHRBA64NB2C3B2UNCKIS65ZYCLZA",
+            "CCEBVDYM32YNYCVNRXQKDFFPISJJCV557CDZEIRBEE4NCV4KHPQ44HGF",
+            "CBCFTQSPDBAIZ6R6PJQKSQWKNKWH2QIV3I4J72SHWBIK3ADRRAM5A6GD",
+            "CDLYWB5CCSNOEXPGHSKYO4FW3R4XFQVI2HR2QC735YDVCSEQJABQDFXI",
+            "CDDLEQE6CPQGIK3RU4MK5CX2IAWN6CXWNJ2C3VOXV4FOVF3BBQFVZDIC",
+            "CCS6EFFKPQWG5SKMMYL4UQIXVYVDNIXAPHKHUM7IGJVN7QIAWXD2L7TO",
+            "CDP3HMUH6SMS3S7NPGNDJLULCOXXEPSHY4JKUKMBNQMATHDHWXRRJTBY",
+            "CCJUD55AG6W5HAI5LRVNKAE5WDP5XGZBUDS5WNTIVDU7O264UZZE7BRD",
+            "CAAZMNZDUPXEPLLJOGVQYQOJPXFYDZRYX2AMSXFYNP7Q5IKY7WCH2ZV4",
+            "CBETTPAGB46UYACPNU7MFH4D26TTNCDZXOKJ5N3C7PYKU22AIC4C573N",
+            "CB7UHVINMUGNHPEFSJYTIIF67ETZAOCVHTBY7XFN5TVKNAWOMVNYIIWW",
+            "CDQM2A7B5ZJIR5DEQF7Q63PWU2EWEJ2KXU5IPN5GY3DR67M2SLQMO7B3",
+            "CA4V7YVUC3EE2EFVTEYJ47ZD34K4DCAKEYV6AHRR73KTKO5GDGNZLLMT",
+            "CBYFZPJ2DP5IK74JOXUPUM2RAM7N42OVOLK7K5UOIK7QQQKQTN2PZJWU"
+          ],
+          "protectedTokenContracts": [
+            "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
+          ],
+          "xbullAssets": {},
+          "ownTokensByContract": {},
+          "repayTokensByPool": {},
+          "shareTokenContracts": [],
+          "debtTokenContracts": []
+        },
+        "servedRegistry": {
+          "entries": [
+            {
+              "address": "GCUYLAISIQV3AKD5RZXVKLV6FZYFJQUJGPIBZHHEK5B4SPXZRWWFX3H5",
+              "name": "Newly Listed",
+              "domain": "newly-listed.example",
+              "requiresMediator": true,
+              "requiresMemo": false,
+              "memoType": "text"
+            }
+          ],
+          "lastVerified": "2026-10-25",
+          "validUntil": "2027-02-15",
+          "version": "2026-10-25",
+          "source": "https://registry.example/directory",
+          "signature": {
+            "format": 1,
+            "sequence": 1000,
+            "issuedAt": "2026-10-25",
+            "signature": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcH"
+          }
+        }
+      },
+      "error": {
+        "name": "VerificationError",
+        "code": "merge_direct_refused",
+        "message": "This exchange cannot credit an account merge, so the balance has to reach it as a payment. This transaction would merge your account straight into it."
+      }
+    },
+    {
       "name": "snapshot-requires-memo-for-destination",
       "verdict": "reject",
       "base": "minimal-direct-merge",

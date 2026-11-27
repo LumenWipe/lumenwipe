@@ -1,4 +1,5 @@
 import type { Network } from "@/config/networks";
+import { verifyRegistrySignature, type SignatureContext } from "./signature";
 
 /**
  * The stricter-only merge of a served exchange registry over the bundled one, as pure functions:
@@ -160,6 +161,55 @@ export function mergeServedRegistry(floor: RegistryFloor, body: unknown): Merged
     validUntil: boundedValidUntil(floor.validUntil, served.validUntil),
     memoTypeDisputes: [...disputes],
   };
+}
+
+/** A served registry after the merge, with whether its signature verified. */
+export interface ResolvedRegistry extends MergedRegistry {
+  trust: "signed" | "unsigned";
+  /** The sequence of the verified signature; null when unsigned. */
+  sequence: number | null;
+  /** Addresses a verified signature adds that the bundled copy does not list and that need the
+   *  intermediary. Empty unless `trust` is "signed". */
+  mediatedAdditions: string[];
+}
+
+/**
+ * The stricter-only merge, plus the one thing a signature unlocks. A body whose `signature`
+ * verifies may add exchanges that need the intermediary; nothing else changes, so a bundled
+ * entry, a memo type and a network scope are read exactly as the merge leaves them. A signature
+ * that is missing or does not verify leaves the plain merge, with no addition allowed.
+ */
+export function resolveServedRegistry(
+  floor: RegistryFloor,
+  body: unknown,
+  context: SignatureContext
+): ResolvedRegistry | null {
+  const merged = mergeServedRegistry(floor, body);
+  if (merged === null) return null;
+  const envelope = (body as { signature?: unknown }).signature;
+  const verdict = verifyRegistrySignature(body, envelope, context);
+  if (!verdict.ok) return { ...merged, trust: "unsigned", sequence: null, mediatedAdditions: [] };
+  const bundled = new Set(floor.entries.map((e) => e.address));
+  return {
+    ...merged,
+    trust: "signed",
+    sequence: verdict.sequence,
+    mediatedAdditions: merged.entries
+      .filter((e) => !bundled.has(e.address) && e.requiresMediator)
+      .map((e) => e.address),
+  };
+}
+
+/** Whether a verified signature added `address` as needing the intermediary on `network`. */
+export function mediatedByAddition(
+  registry: { entries: readonly RegistryEntry[]; mediatedAdditions?: readonly string[] },
+  address: string,
+  network: Network
+): boolean {
+  if (!registry.mediatedAdditions?.includes(address)) return false;
+  return registry.entries.some(
+    (e) => e.address === address && e.requiresMediator && appliesOn(e, network)
+  );
 }
 
 /** Whether a registry valid until `validUntil` (YYYY-MM-DD, inclusive) may still be relied on at

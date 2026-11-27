@@ -21,6 +21,7 @@ import {
   assertCloseIntent,
   poolWithdrawalExpectations,
   verifyCloseTransaction,
+  verifyCloseWith,
   VerificationError,
   type CloseExpectation,
 } from "@/lib/stellar/verify";
@@ -34,6 +35,7 @@ import type { AccountSigner } from "@/types/account";
 import { fromHex, toHex } from "@/lib/stellar/hex";
 import { activeRegistry, bundledRegistry, setRegistry } from "@/lib/exchange-registry";
 import { MAX_EXTENSION_DAYS } from "@/lib/exchange-registry/merge";
+import { registryBody, signBody, TEST_NOW, type RegistryBody } from "./fixtures/signed-registry";
 import { confirmedMemo } from "@/lib/plan/memo-field";
 import { exitExpectations } from "@/lib/stellar/exit-expectations";
 import type { AccountState, SponsoredEntry } from "@/types/account";
@@ -4753,6 +4755,7 @@ describe("a transfer is never sent to an exchange deposit address", () => {
 // can only tighten. Never over module state, and never a way to enable the mediated hand-off.
 
 const NEW_EXCHANGE = Keypair.random().publicKey();
+const DEST_OTHER = Keypair.random().publicKey();
 const BUNDLED_UNTIL = bundledRegistry().validUntil;
 const daysAfterBundled = (days: number): string =>
   new Date(Date.parse(`${BUNDLED_UNTIL}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
@@ -4784,6 +4787,7 @@ function closeTo(
     memoType?: "text" | "id" | null;
     sentMemo?: Memo;
     served?: unknown;
+    trust?: { keys: readonly string[]; bundledSequence: number };
     transfers?: Record<string, { destination: string; amount: string }>;
     extraOps?: xdr.Operation[];
   } = {}
@@ -4815,12 +4819,15 @@ function closeTo(
       transfers: over.transfers ?? {},
     },
   };
+  const withSnapshot =
+    "served" in over
+      ? { ...input, servedRegistry: over.served as ReturnType<typeof snapshot> }
+      : input;
+  const trust = over.trust;
   return () =>
-    verifyCloseTransaction(
-      "served" in over
-        ? { ...input, servedRegistry: over.served as ReturnType<typeof snapshot> }
-        : input
-    );
+    trust === undefined
+      ? verifyCloseTransaction(withSnapshot)
+      : verifyCloseWith(withSnapshot, trust);
 }
 
 describe("a served registry snapshot passed to verifyCloseTransaction", () => {
@@ -5461,4 +5468,187 @@ describe("revoking the sponsorship of an entry on another account", () => {
 // they saw are exactly the registry. A code nothing throws, or a refusal with no test, fails here.
 test("the refusal tests cover every registered code, and nothing outside the registry", () => {
   expect([...refusalCodesSeen].sort()).toEqual([...VERIFICATION_ERROR_CODES].sort());
+});
+
+// --- A snapshot whose signature verifies -------------------------------------------------------
+// The one thing a signature unlocks: the mediated hand-off for an address the snapshot adds. The
+// keys are throwaway, injected through `verifyCloseWith`, which the package never exports.
+
+describe("a signed registry snapshot passed to verifyCloseWith", () => {
+  const SIGNER = Keypair.random();
+  const TRUST = { keys: [SIGNER.publicKey()], bundledSequence: 5 };
+  const memo = { memo: "deposit-1", memoType: "text" as const };
+
+  const signed = (entries: unknown[], over: Partial<RegistryBody> = {}, sequence = 5) =>
+    signBody(registryBody(entries, { validUntil: BUNDLED_UNTIL, ...over }), SIGNER, { sequence });
+  const added = (over: Record<string, unknown> = {}) =>
+    servedEntry(NEW_EXCHANGE, { requiresMediator: true, requiresMemo: true, ...over });
+
+  beforeEach(() => setSystemTime(TEST_NOW));
+  afterEach(() => setSystemTime());
+
+  test("an added exchange that needs the intermediary is accepted through the mediated shape", () => {
+    expect(
+      closeTo(NEW_EXCHANGE, "mediated", { ...memo, served: signed([added()]), trust: TRUST })
+    ).not.toThrow();
+  });
+
+  test("and a direct merge into it is still refused", () => {
+    expectRefusal(
+      closeTo(NEW_EXCHANGE, "direct", { ...memo, served: signed([added()]), trust: TRUST }),
+      "merge_direct_refused",
+      DIRECT_MERGE_REFUSED
+    );
+  });
+
+  test("its memo requirement still holds on the mediated shape", () => {
+    expectRefusal(
+      closeTo(NEW_EXCHANGE, "mediated", { served: signed([added()]), trust: TRUST }),
+      "memo_required",
+      "requires a deposit memo"
+    );
+  });
+
+  test("an added exchange that does not need the intermediary does not enable it", () => {
+    const served = signed([added({ requiresMediator: false })]);
+    expectRefusal(
+      closeTo(NEW_EXCHANGE, "mediated", { ...memo, served, trust: TRUST }),
+      "merge_destination_mismatch",
+      "merged to an address you did not choose"
+    );
+  });
+
+  test("the mediated shape is still refused for an address the signed snapshot does not list", () => {
+    expectRefusal(
+      closeTo(DEST_OTHER, "mediated", { served: signed([added()]), trust: TRUST }),
+      "merge_destination_mismatch",
+      "merged to an address you did not choose"
+    );
+  });
+
+  test("the same snapshot without a signature keeps the stricter-only behavior", () => {
+    const { signature: _drop, ...unsigned } = signed([added()]);
+    expectRefusal(
+      closeTo(NEW_EXCHANGE, "mediated", { ...memo, served: unsigned, trust: TRUST }),
+      "merge_destination_mismatch",
+      "merged to an address you did not choose"
+    );
+    expectRefusal(
+      closeTo(NEW_EXCHANGE, "direct", { ...memo, served: unsigned, trust: TRUST }),
+      "merge_direct_refused",
+      DIRECT_MERGE_REFUSED
+    );
+  });
+
+  test("a snapshot signed by a key that is not trusted keeps the stricter-only behavior", () => {
+    const served = signed([added()]);
+    expectRefusal(
+      closeTo(NEW_EXCHANGE, "mediated", {
+        ...memo,
+        served,
+        trust: { ...TRUST, keys: [Keypair.random().publicKey()] },
+      }),
+      "merge_destination_mismatch",
+      "merged to an address you did not choose"
+    );
+  });
+
+  test("the packaged entry point trusts only the pinned keys, whoever signed", () => {
+    expectRefusal(
+      closeTo(NEW_EXCHANGE, "mediated", { ...memo, served: signed([added()]) }),
+      "merge_destination_mismatch",
+      "merged to an address you did not choose"
+    );
+  });
+
+  test("keys named on the input are not read", () => {
+    const served = {
+      ...signed([added()]),
+      trustRoots: [SIGNER.publicKey()],
+      keys: [SIGNER.publicKey()],
+    };
+    expectRefusal(
+      closeTo(NEW_EXCHANGE, "mediated", { ...memo, served }),
+      "merge_destination_mismatch",
+      "merged to an address you did not choose"
+    );
+  });
+
+  test("a snapshot changed after it was signed keeps the stricter-only behavior", () => {
+    const doc = signed([added({ requiresMediator: false })]);
+    const swapped = { ...doc, entries: [added()] };
+    expectRefusal(
+      closeTo(NEW_EXCHANGE, "mediated", { ...memo, served: swapped, trust: TRUST }),
+      "merge_destination_mismatch",
+      "merged to an address you did not choose"
+    );
+  });
+
+  test("a document older than the bundled one keeps the stricter-only behavior", () => {
+    expectRefusal(
+      closeTo(NEW_EXCHANGE, "mediated", {
+        ...memo,
+        served: signed([added()], {}, 4),
+        trust: TRUST,
+      }),
+      "merge_destination_mismatch",
+      "merged to an address you did not choose"
+    );
+  });
+
+  test("a document past its validUntil keeps the stricter-only behavior", () => {
+    const served = signed([added()], { validUntil: "2026-11-26" });
+    expectRefusal(
+      closeTo(NEW_EXCHANGE, "mediated", { ...memo, served, trust: TRUST }),
+      "merge_destination_mismatch",
+      "merged to an address you did not choose"
+    );
+  });
+
+  test("it cannot change a bundled exchange: relaxing is ignored and a memo type conflict stands", () => {
+    const relaxed = signed([
+      servedEntry(COINBASE, { requiresMediator: false, requiresMemo: false }),
+    ]);
+    expect(closeTo(COINBASE, "mediated", { ...memo, served: relaxed, trust: TRUST })).not.toThrow();
+    expectRefusal(
+      closeTo(COINBASE, "direct", { ...memo, served: relaxed, trust: TRUST }),
+      "merge_direct_refused",
+      DIRECT_MERGE_REFUSED
+    );
+    expectRefusal(
+      closeTo(COINBASE, "mediated", {
+        ...memo,
+        served: signed([servedEntry(COINBASE, { memoType: "id" })]),
+        trust: TRUST,
+      }),
+      "registry_memo_type_conflict",
+      "different memo type"
+    );
+  });
+
+  test("it cannot promote a bundled exchange that is merged into directly", () => {
+    const bundledDirect = bundledRegistry().entries.find((e) => !e.requiresMediator);
+    if (bundledDirect === undefined) return;
+    expectRefusal(
+      closeTo(bundledDirect.address, "mediated", {
+        served: signed([servedEntry(bundledDirect.address, { requiresMediator: true })]),
+        trust: TRUST,
+      }),
+      "merge_destination_mismatch",
+      "merged to an address you did not choose"
+    );
+  });
+
+  test("the type the user confirmed still wins over a signed addition's", () => {
+    expectRefusal(
+      closeTo(NEW_EXCHANGE, "mediated", {
+        memo: "4411",
+        memoType: "id",
+        served: signed([added({ memoType: "text" })]),
+        trust: TRUST,
+      }),
+      "registry_memo_type_unconfirmed",
+      "not the id memo you confirmed"
+    );
+  });
 });

@@ -51,8 +51,9 @@ function memoRule(entry: RegistryEntry): string {
   return entry.requiresMemo ? T.memoRequired(MEMO_TYPE[entry.memoType]) : T.noMemo;
 }
 
-function route(entry: RegistryEntry): string {
-  return entry.requiresMediator ? T.throughRelay : T.mergedDirectly;
+function route(entry: RegistryEntry, relayAllowed: boolean): string {
+  if (!entry.requiresMediator) return T.mergedDirectly;
+  return relayAllowed ? T.throughRelay : T.relayUnavailable;
 }
 
 function DateLine({ lastVerified, validUntil }: { lastVerified: string; validUntil: string }) {
@@ -103,6 +104,10 @@ export default function RegistryClient({ load = fetchServedRegistry, clock }: Pr
   const bundled = bundledRegistry();
   const snapshot = served ?? bundled;
   const bundledAddresses = new Set(bundled.entries.map((e) => e.address));
+  const relayAddresses = new Set([
+    ...bundled.entries.filter((e) => e.requiresMediator).map((e) => e.address),
+    ...(snapshot.mediatedAdditions ?? []),
+  ]);
   const disputes = new Set(snapshot.memoTypeDisputes ?? []);
   const exchanges = groupByExchange(snapshot.entries);
 
@@ -122,7 +127,9 @@ export default function RegistryClient({ load = fetchServedRegistry, clock }: Pr
             usable={now === null ? null : isUsableAt(snapshot.validUntil, now)}
             expired={T.exchangesExpired(snapshot.validUntil)}
           />
-          <p className="max-w-3xl text-sm leading-relaxed text-fg-muted">{T.unsigned}</p>
+          <p className="max-w-3xl text-sm leading-relaxed text-fg-muted">
+            {snapshot.trust === "signed" ? T.signed(snapshot.sequence ?? 0) : T.unsigned}
+          </p>
         </div>
 
         <ul className="mt-6 grid gap-4 md:grid-cols-2">
@@ -142,7 +149,7 @@ export default function RegistryClient({ load = fetchServedRegistry, clock }: Pr
                   >
                     <p className="mkt-mono break-all text-label text-white/75">{entry.address}</p>
                     <p className="mt-1 text-sm text-fg-muted">
-                      {memoRule(entry)} · {route(entry)}
+                      {memoRule(entry)} · {route(entry, relayAddresses.has(entry.address))}
                       {entry.network === "testnet" && T.testnetOnly}
                     </p>
                     {!bundledAddresses.has(entry.address) && (

@@ -120,6 +120,15 @@ export interface ExchangeRegistryEntry {
 }
 
 // @public
+export interface ExchangeRegistrySignature {
+    // (undocumented)
+    format: 1;
+    issuedAt: string;
+    sequence: number;
+    signature: string;
+}
+
+// @public
 export interface ExitExpectations {
     conversionContracts: string[];
     debtTokenContracts: string[];
@@ -154,7 +163,7 @@ export interface PoolWithdrawalExpectation {
 export function poolWithdrawalExpectations(accountState: AccountState | null | undefined): Record<string, PoolWithdrawalExpectation>;
 
 // @public
-export function requiresMediator(address: string, network: Network): boolean;
+export function requiresMediator(address: string, network: Network, servedRegistry?: ServedRegistry): boolean;
 
 // @public
 export interface RevokeAllowanceExpectation {
@@ -178,7 +187,10 @@ export type RevokeAllowanceVerificationErrorCode = (typeof REVOKE_ALLOWANCE_VERI
 export interface ServedRegistry {
     entries: ExchangeRegistryEntry[];
     lastVerified: string;
+    signature?: ExchangeRegistrySignature;
+    source?: string;
     validUntil: string;
+    version?: string;
 }
 
 // @public

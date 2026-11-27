@@ -6,6 +6,7 @@
  */
 import { expect, test } from "bun:test";
 import type {
+  mediatorAllowedUnder,
   poolWithdrawalExpectations as webPoolWithdrawalExpectations,
   verifyCloseTransaction as webVerifyCloseTransaction,
 } from "../../../apps/web/lib/stellar/verify";
@@ -13,7 +14,6 @@ import type {
   ExitExpectations as WebExitExpectations,
   exitExpectations as webExitExpectations,
 } from "../../../apps/web/lib/stellar/exit-expectations";
-import type { mediatorAllowedFor } from "../../../apps/web/lib/exchange-registry";
 import type {
   RevokeAllowanceVerificationError as WebRevokeAllowanceVerificationError,
   RevokeAllowanceVerificationErrorCode as WebRevokeAllowanceVerificationErrorCode,
@@ -105,11 +105,11 @@ const pins = {
   >,
   mediatorParams: true satisfies Pinned<
     Parameters<typeof requiresMediator>,
-    Parameters<typeof mediatorAllowedFor>
+    Parameters<typeof mediatorAllowedUnder>
   >,
   mediatorReturn: true satisfies Pinned<
     ReturnType<typeof requiresMediator>,
-    ReturnType<typeof mediatorAllowedFor>
+    ReturnType<typeof mediatorAllowedUnder>
   >,
   revokeExpected: true satisfies Pinned<RevokeAllowanceExpectation, WebRevokeParams[2]>,
   revokeParams: true satisfies Pinned<

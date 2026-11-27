@@ -627,6 +627,15 @@ export interface ExchangeRegistryEntry {
 }
 
 // @public
+export interface ExchangeRegistrySignature {
+    // (undocumented)
+    format: 1;
+    issuedAt: string;
+    sequence: number;
+    signature: string;
+}
+
+// @public
 export interface ExecutionTxBreakdown {
     covers: StepType[];
     order: number;
@@ -1256,6 +1265,7 @@ export interface ServedExchangeRegistry {
     // (undocumented)
     entries: ExchangeRegistryEntry[];
     lastVerified: string;
+    signature?: ExchangeRegistrySignature;
     // (undocumented)
     source: string;
     validUntil: string;
